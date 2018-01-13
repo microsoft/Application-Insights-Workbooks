@@ -1,0 +1,92 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Unbounded Retention\n\nUnbounded retention shows you the percentage of users who came back on a specific day **or anytime after that day**. It is useful in cases where you want to see how many new users returning to your app after the first week."
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "e62098ae-ac3f-4800-8e62-3e7d9a052e56",
+            "version": "KqlParameterItem/1.0",
+            "name": "RetentionPeriod",
+            "type": 2,
+            "description": "1d: Daily, 7d: Weekly, 30/28d: Monthly",
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(id:string, text:string)[\n'1d', 'Daily',\n'7d', 'Weekly',\n'28d', 'Monthly (28 days)', \n'30d', 'Monthly (30 days)'\n]",
+            "value": "7d"
+          },
+          {
+            "isRequired": true,
+            "name": "CohortsToAnalyze",
+            "value": "6",
+            "description": "Number of cohort periods to analyze",
+            "id": "fa4b29d9-bfc1-46e3-98f1-3cba05afbea3",
+            "type": 1
+          },
+          {
+            "id": "97ae2ae5-ec95-455b-bac2-36caf2db61db",
+            "version": "KqlParameterItem/1.0",
+            "name": "CohortingActivities",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "union customEvents, pageViews\n| where timestamp >= ago(7d)\n| summarize count() by name\n| order by count_ desc\n| project Id=name, Title=name, Selected=false\n| union (\ndatatable(Id:string, Title:string, Selected:boolean)[\n'*', 'All Events and Page Views', true\n]\n)",
+            "value": [
+              "*"
+            ]
+          },
+          {
+            "name": "CohortingFilters",
+            "id": "94bacf68-78db-4755-8a40-c2702dea4018",
+            "type": 1
+          },
+          {
+            "id": "6cb4afed-7dac-4608-892b-154f4943ddb6",
+            "version": "KqlParameterItem/1.0",
+            "name": "RetainingActivities",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "union customEvents, pageViews\n| where timestamp >= ago(7d)\n| summarize count() by name\n| order by count_ desc\n| project Id=name, Title=name, Selected=false\n| union (\ndatatable(Id:string, Title:string, Selected:boolean)[\n'#', 'Same as cohorting activities', true,\n'*', 'All Events and Page Views', false\n]\n)"
+          },
+          {
+            "name": "RetainingFilters",
+            "id": "0cc5211a-557e-4648-9569-1236bf16559f",
+            "type": 1
+          }
+        ]
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "| Parameter | Used for |\n| ----- | ----- |\n| Retention Period | The period to use in retention calculation. Can be Daily, Weekly or Monthly |\n| Cohorts To Analyze  | The number of cohorts to analyze. This corresponds to the N in N-period retention |\n| Cohorting Activities  | The activities that selects a cohort of users. Example: Users who used event *Read Product Review* (cohorting activity). |\n| Retaining Activities  | The activities that indicates retention of a cohorted user selected above. Example: Users who used event *Read Product Review* (cohorting activity) and returned to use *Purchase Product* (retaining activity). |\n| Cohorting/Retaining Filters  | An analytics query snippet to further filter the cohorting activity. Example: *&#124; where application_Version = '1.0'* |\n"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let periodsToAnalyze = {CohortsToAnalyze};\r\nlet cohortSize = {RetentionPeriod};\r\nlet retainingActivities = iff({RetainingActivities} == '#', dynamic([{CohortingActivities}]), dynamic([{RetainingActivities}]));\r\nlet cohortUnit = case(cohortSize == 30d or cohortSize == 28d, \"month\", cohortSize == 7d, \"week\", \"day\");\r\nlet timeRange = startofday(now()) - case(cohortSize == 30d or cohortSize == 28d, startofmonth(now() - periodsToAnalyze * cohortSize), cohortSize == 7d, startofweek(now() - periodsToAnalyze * cohortSize), startofday(now() - \r\nperiodsToAnalyze * cohortSize));\r\nlet totalWeeks = toint(timeRange / cohortSize);\r\nlet cohorts = union customEvents, pageViews\r\n| where timestamp > startofday(now() - timeRange)\r\n| where name in ({CohortingActivities}) or '*' in ({CohortingActivities})\r\n{CohortingFilters}\r\n| extend Cohort = case(cohortSize == 30d or cohortSize == 28d, startofmonth(timestamp), cohortSize == 7d, startofweek(timestamp), startofday(timestamp))\r\n| summarize EarliestInCohort = min(startofday(timestamp)) by user_Id, Cohort\r\n| summarize UsersInCohort = hll(user_Id) by EarliestInCohort, Cohort;\r\nlet users = union customEvents, pageViews\r\n| where timestamp > startofday(now() - timeRange)\r\n| where name in (retainingActivities) or '*' in (retainingActivities)\r\n{RetainingFilters}\r\n| summarize Users = hll(user_Id) by Day = startofday(timestamp);\r\nlet Retention = materialize(range i from 1d to timeRange step 1d\r\n| extend Day = startofday(now() - i)\r\n| extend WeeksUntilNow = toint(i / cohortSize)\r\n| extend Weeks = range(0, WeeksUntilNow, 1)\r\n| mvexpand Weeks limit 10000\r\n| extend WeeksLater = Day + toint(Weeks) * cohortSize\r\n| project-away WeeksUntilNow\r\n| extend Range = range(1d, i, 1d)\r\n| mvexpand Range limit 10000\r\n| extend RetentionDay = Day + totimespan(Range)\r\n| where RetentionDay > WeeksLater\r\n| project Day, RetentionDay, Weeks\r\n| join kind=inner\r\n(\r\n    users\r\n    | project UsersOnDay = Users, RetentionDay = Day\r\n) on RetentionDay\r\n| summarize ReturningUsers = hll_merge(UsersOnDay) by ForDay = Day, AfterWeek = toint(Weeks)\r\n| project ForDay, AfterWeek, ReturningUsers\r\n| join kind=inner\r\n(\r\n    cohorts\r\n    | project UsersInCohort, Cohort, ForDay = EarliestInCohort\r\n)\r\non ForDay\r\n| project-away ForDay1\r\n| evaluate dcount_intersect(UsersInCohort, ReturningUsers)\r\n| summarize RetainedUsers = sum(s1) by Cohort, AfterWeek\r\n);\r\ncohorts\r\n| summarize UsersInCohort = hll_merge(UsersInCohort) by Cohort\r\n| project Cohort, CohortUsers = dcount_hll(UsersInCohort) \r\n| join kind=inner (Retention) on Cohort\r\n| project-away Cohort1\r\n| extend RetentionRate = round(100.0 * RetainedUsers / CohortUsers, 2)\r\n| project-away RetainedUsers \r\n//| extend AfterWeek = AfterWeek + totalWeeks - toint((now() - Cohort) / cohortSize)\r\n| order by Cohort asc, AfterWeek asc\r\n| extend AfterWeek = strcat(AfterWeek, \"-\", cohortUnit, \" +\")\r\n| extend month = monthofyear(Cohort)\r\n| extend friendlyMonthName = case(month == 1, 'January', month == 2, 'February', month == 3, 'March', month == 4, 'April', month == 5, 'May', month == 6, 'June', month == 7, 'July', month == 8, 'August', month == 9, 'September', month == 10, 'October', month == 11, 'November', 'December')\r\n| extend dayofweek = dayofweek(Cohort)\r\n| extend friendlyDayOfweek = case(dayofweek == 0d, \"Sun\", dayofweek == 1d, \"Mon\", dayofweek == 2d, \"Tue\", dayofweek == 3d, \"Wed\", dayofweek == 4d, \"Thu\", dayofweek == 5d, \"Fri\", \"Sat\")\r\n| extend Cohort = iff(cohortSize == 1d, strcat(friendlyMonthName, ' ', dayofmonth(Cohort), ' (', friendlyDayOfweek, ')'), strcat(friendlyMonthName, ' ', dayofmonth(Cohort)))\r\n| project Cohort, ['Users'] = CohortUsers, AfterWeek, RetentionRate\r\n| evaluate pivot(AfterWeek, sum(RetentionRate))",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 0,
+        "showAnnotations": false
+      }
+    }
+  ]
+}
