@@ -17,12 +17,12 @@
           {
             "id": "b3d5a360-d38d-458e-bb47-832d9f5be0e7",
             "version": "KqlParameterItem/1.0",
-            "name": "Period",
+            "name": "Metric",
             "type": 2,
             "description": "Defines the number of days in a month. Use 30d for a more traditional representation of a month. Use 28d to prevent weekly ups/downs due to weekends.",
             "isRequired": true,
             "multiSelect": null,
-            "query": "datatable(key:string, display:string) \r\n[ \r\n\"7d\", \"Weekly\", \r\n\"28d\", \"Monthly (28 days)\", \r\n\"30d\", \"Monthly (30 days)\" \r\n] ",
+            "query": "datatable(key: string, display: string)[\r\n'1d', 'Daily Active Users',\r\n'7d', 'Weekly Active Users',\r\n'28d', 'Monthly Active Users (28d)',\r\n'30d', 'Monthly Active Users (30d)',\r\n]",
             "value": "28d"
           },
           {
@@ -60,12 +60,6 @@
     {
       "type": 1,
       "content": {
-        "json": "Set `Period` to get to one of the common definitions of Active Users \n\n| Period | Metric |\n| ----- |: ----- |\n| Weekly | Weekly Active Users or WAU |\n|  Monthly (28d) | Monthly Active Users or MAU calculated over 28 days. This avoids quirks due to weekends.  |\n|  Monthly (30d) | Monthly Active Users or MAU calculated over 30 days. This is susceptible to weekend quirks but is closer to the common definition of a month.  |\n"
-      }
-    },
-    {
-      "type": 1,
-      "content": {
         "json": "## Active Users"
       }
     },
@@ -73,7 +67,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let timeRange = {TimeRange};\nlet monthDefinition = {Period};\nlet hlls = union customEvents, pageViews\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\n| where name in ({Activities}) or '*' in ({Activities})\n{OtherFilters}\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\n| project DaysToMerge = timestamp, Hlls;\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to timeRange step 1d\n| extend Day = startofday(now() - d)\n| extend R = range(0d, monthDefinition - 1d, 1d)\n| mvexpand R\n| extend ThisMonth = Day - totimespan(R)\n| extend LastMonth = Day - monthDefinition - totimespan(R)\n| project Day, ThisMonth, LastMonth);\nchurnSeriesWithHllsToInclude\n| extend DaysToMerge = ThisMonth\n| join kind= inner (hlls) on DaysToMerge \n| project Day, ThisMonthHlls = Hlls\n| union (\nchurnSeriesWithHllsToInclude\n| extend DaysToMerge = LastMonth\n| join kind= inner (hlls) on DaysToMerge\n| project Day, LastMonthHlls = Hlls)\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\n| evaluate dcount_intersect(ThisMonth, LastMonth)\n| extend NewUsers = s0 - s1\n| extend ChurnedUsers = -1 * (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\n| project Day, [\"Active Users\"] = s1 + NewUsers, [\"Returning Users\"] = s1, [\"Lost Users\"] = ChurnedUsers, [\"New Users\"] = NewUsers\n",
+        "query": "let timeRange = {TimeRange};\nlet monthDefinition = {Metric};\nlet hlls = union customEvents, pageViews\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\n| where name in ({Activities}) or '*' in ({Activities})\n{OtherFilters}\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\n| project DaysToMerge = timestamp, Hlls;\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to timeRange step 1d\n| extend Day = startofday(now() - d)\n| extend R = range(0d, monthDefinition - 1d, 1d)\n| mvexpand R\n| extend ThisMonth = Day - totimespan(R)\n| extend LastMonth = Day - monthDefinition - totimespan(R)\n| project Day, ThisMonth, LastMonth);\nchurnSeriesWithHllsToInclude\n| extend DaysToMerge = ThisMonth\n| join kind= inner (hlls) on DaysToMerge \n| project Day, ThisMonthHlls = Hlls\n| union (\nchurnSeriesWithHllsToInclude\n| extend DaysToMerge = LastMonth\n| join kind= inner (hlls) on DaysToMerge\n| project Day, LastMonthHlls = Hlls)\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\n| evaluate dcount_intersect(ThisMonth, LastMonth)\n| extend NewUsers = s0 - s1\n| extend ChurnedUsers = -1 * (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\n| project Day, [\"Active Users\"] = s1 + NewUsers, [\"Returning Users\"] = s1, [\"Lost Users\"] = ChurnedUsers, [\"New Users\"] = NewUsers\n",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
@@ -90,6 +84,24 @@
     {
       "type": 1,
       "content": {
+        "json": "## Usage Growth\nThis chart shows you the trend of the {Period} growth rates of your app. This allows you to analyze how your New, Returning, Lost and Overall users growth rates change over time -- for instance see if growth is accelerating, decelerating or holding steady. \n\nThe metrics at the bottow show the current growth rate. The `Active Users` series shows the overall usage growth rate."
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let timeRange = {TimeRange};\nlet monthDefinition = {Metric};\nlet hlls = union customEvents, pageViews\n| where timestamp >= startofmonth(now() - 2 * timeRange - 2 * monthDefinition)\n| where name in ({Activities}) or '*' in ({Activities})\n{OtherFilters}\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\n| project DaysToMerge = timestamp, Hlls;\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to 2 * timeRange step 1d\n| extend Day = startofday(now() - d)\n| extend R = range(0d, monthDefinition - 1d, 1d)\n| mvexpand R\n| extend ThisMonth = Day - totimespan(R)\n| extend LastMonth = Day - monthDefinition - totimespan(R)\n| project Day, ThisMonth, LastMonth);\nlet activeUsers = churnSeriesWithHllsToInclude\n| extend DaysToMerge = ThisMonth\n| join kind= inner (hlls) on DaysToMerge \n| project Day, ThisMonthHlls = Hlls\n| union (\nchurnSeriesWithHllsToInclude\n| extend DaysToMerge = LastMonth\n| join kind= inner (hlls) on DaysToMerge\n| project Day, LastMonthHlls = Hlls)\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\n| evaluate dcount_intersect(ThisMonth, LastMonth)\n| extend NewUsers = s0 - s1\n| extend ChurnedUsers = -1 * (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\n| project Day, ActiveUsers = s1 + NewUsers, ReturningUsers = s1, ChurnedUsers, NewUsers;\nactiveUsers\n| extend LastPeriod = Day - monthDefinition\n| join kind=inner (activeUsers | project-rename LastPeriod = Day) on LastPeriod\n| project Day, [\"Active Users\"] = 100.0 * (ActiveUsers - ActiveUsers1) / ActiveUsers1, [\"Returning Users\"] = 100.0 * (ReturningUsers - ReturningUsers1) / ReturningUsers1, [\"Lost Users\"] = 100.0 * (ChurnedUsers - ChurnedUsers1) / ChurnedUsers1, [\"New Users\"] = 100.0 * (NewUsers - NewUsers1) / NewUsers1\n",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "timechart"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
         "json": "## Retention Rate\nYour app's retention rate, defined as lost users as percentage of total users."
       }
     },
@@ -97,7 +109,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let timeRange = {TimeRange};\r\nlet monthDefinition = {Period};\r\nlet hlls = union customEvents, pageViews\r\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\r\n| project DaysToMerge = timestamp, Hlls;\r\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to (timeRange  - 1d) step 1d\r\n| extend Day = startofday(now() - d)\r\n| extend R = range(0d, monthDefinition - 1d, 1d)\r\n| mvexpand R\r\n| extend ThisMonth = Day - totimespan(R)\r\n| extend LastMonth = Day - monthDefinition - totimespan(R)\r\n| project Day, ThisMonth, LastMonth);\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = ThisMonth\r\n| join kind= inner (hlls) on DaysToMerge \r\n| project Day, ThisMonthHlls = Hlls\r\n| union (\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = LastMonth\r\n| join kind= inner (hlls) on DaysToMerge\r\n| project Day, LastMonthHlls = Hlls)\r\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\r\n| evaluate dcount_intersect(ThisMonth, LastMonth)\r\n| extend NewUsers = s0 - s1\r\n| extend ChurnedUsers = (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\r\n| project Day, [\"Retention Rate\"] = iff((s1) == 0, 0.0, 100.0 * s1 / (s1 + ChurnedUsers))\r\n",
+        "query": "let timeRange = {TimeRange};\r\nlet monthDefinition = {Metric};\r\nlet hlls = union customEvents, pageViews\r\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\r\n| project DaysToMerge = timestamp, Hlls;\r\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to (timeRange  - 1d) step 1d\r\n| extend Day = startofday(now() - d)\r\n| extend R = range(0d, monthDefinition - 1d, 1d)\r\n| mvexpand R\r\n| extend ThisMonth = Day - totimespan(R)\r\n| extend LastMonth = Day - monthDefinition - totimespan(R)\r\n| project Day, ThisMonth, LastMonth);\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = ThisMonth\r\n| join kind= inner (hlls) on DaysToMerge \r\n| project Day, ThisMonthHlls = Hlls\r\n| union (\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = LastMonth\r\n| join kind= inner (hlls) on DaysToMerge\r\n| project Day, LastMonthHlls = Hlls)\r\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\r\n| evaluate dcount_intersect(ThisMonth, LastMonth)\r\n| extend NewUsers = s0 - s1\r\n| extend ChurnedUsers = (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\r\n| project Day, [\"Retention Rate\"] = iff((s1) == 0, 0.0, 100.0 * s1 / (s1 + ChurnedUsers))\r\n",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
@@ -115,7 +127,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let timeRange = {TimeRange};\r\nlet monthDefinition = {Period};\r\nlet hlls = union customEvents, pageViews\r\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\r\n| project DaysToMerge = timestamp, Hlls;\r\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to (timeRange  - 1d) step 1d\r\n| extend Day = startofday(now() - d)\r\n| extend R = range(0d, monthDefinition - 1d, 1d)\r\n| mvexpand R\r\n| extend ThisMonth = Day - totimespan(R)\r\n| extend LastMonth = Day - monthDefinition - totimespan(R)\r\n| project Day, ThisMonth, LastMonth);\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = ThisMonth\r\n| join kind= inner (hlls) on DaysToMerge \r\n| project Day, ThisMonthHlls = Hlls\r\n| union (\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = LastMonth\r\n| join kind= inner (hlls) on DaysToMerge\r\n| project Day, LastMonthHlls = Hlls)\r\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\r\n| evaluate dcount_intersect(ThisMonth, LastMonth)\r\n| extend NewUsers = s0 - s1\r\n| extend ChurnedUsers = -1 * (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\r\n| project Day, [\"Returning Users Ratio\"] = 1.0 * s1 / (s1 + NewUsers)",
+        "query": "let timeRange = {TimeRange};\r\nlet monthDefinition = {Metric};\r\nlet hlls = union customEvents, pageViews\r\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\r\n| project DaysToMerge = timestamp, Hlls;\r\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to (timeRange  - 1d) step 1d\r\n| extend Day = startofday(now() - d)\r\n| extend R = range(0d, monthDefinition - 1d, 1d)\r\n| mvexpand R\r\n| extend ThisMonth = Day - totimespan(R)\r\n| extend LastMonth = Day - monthDefinition - totimespan(R)\r\n| project Day, ThisMonth, LastMonth);\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = ThisMonth\r\n| join kind= inner (hlls) on DaysToMerge \r\n| project Day, ThisMonthHlls = Hlls\r\n| union (\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = LastMonth\r\n| join kind= inner (hlls) on DaysToMerge\r\n| project Day, LastMonthHlls = Hlls)\r\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\r\n| evaluate dcount_intersect(ThisMonth, LastMonth)\r\n| extend NewUsers = s0 - s1\r\n| extend ChurnedUsers = -1 * (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\r\n| project Day, [\"Returning Users Ratio\"] = 1.0 * s1 / (s1 + NewUsers)",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
@@ -133,7 +145,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let timeRange = {TimeRange};\r\nlet monthDefinition = {Period};\r\nlet hlls = union customEvents, pageViews\r\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\r\n| project DaysToMerge = timestamp, Hlls;\r\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to (timeRange ) step 1d\r\n| extend Day = startofday(now() - d)\r\n| extend R = range(0d, monthDefinition - 1d, 1d)\r\n| mvexpand R\r\n| extend ThisMonth = Day - totimespan(R)\r\n| extend LastMonth = Day - monthDefinition - totimespan(R)\r\n| project Day, ThisMonth, LastMonth);\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = ThisMonth\r\n| join kind= inner (hlls) on DaysToMerge \r\n| project Day, ThisMonthHlls = Hlls\r\n| union (\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = LastMonth\r\n| join kind= inner (hlls) on DaysToMerge\r\n| project Day, LastMonthHlls = Hlls)\r\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\r\n| evaluate dcount_intersect(ThisMonth, LastMonth)\r\n| extend NewUsers = s0 - s1\r\n| extend ChurnedUsers = (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\r\n| project Day, [\"Potential Usage (includes Lost)\"] = ChurnedUsers, [\"Current Users\"] = s1 + NewUsers\r\n",
+        "query": "let timeRange = {TimeRange};\r\nlet monthDefinition = {Metric};\r\nlet hlls = union customEvents, pageViews\r\n| where timestamp >= startofmonth(now() - timeRange - 2 * monthDefinition)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| summarize Hlls = hll(user_Id) by bin(timestamp, 1d)\r\n| project DaysToMerge = timestamp, Hlls;\r\nlet churnSeriesWithHllsToInclude = materialize(range d from 0d to (timeRange ) step 1d\r\n| extend Day = startofday(now() - d)\r\n| extend R = range(0d, monthDefinition - 1d, 1d)\r\n| mvexpand R\r\n| extend ThisMonth = Day - totimespan(R)\r\n| extend LastMonth = Day - monthDefinition - totimespan(R)\r\n| project Day, ThisMonth, LastMonth);\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = ThisMonth\r\n| join kind= inner (hlls) on DaysToMerge \r\n| project Day, ThisMonthHlls = Hlls\r\n| union (\r\nchurnSeriesWithHllsToInclude\r\n| extend DaysToMerge = LastMonth\r\n| join kind= inner (hlls) on DaysToMerge\r\n| project Day, LastMonthHlls = Hlls)\r\n| summarize ThisMonth = hll_merge(ThisMonthHlls), LastMonth = hll_merge(LastMonthHlls) by Day\r\n| evaluate dcount_intersect(ThisMonth, LastMonth)\r\n| extend NewUsers = s0 - s1\r\n| extend ChurnedUsers = (dcount_hll(LastMonth) - s1) // Last Months Users - Returning Users\r\n| project Day, [\"Potential Usage (includes Lost)\"] = ChurnedUsers, [\"Current Users\"] = s1 + NewUsers\r\n",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,

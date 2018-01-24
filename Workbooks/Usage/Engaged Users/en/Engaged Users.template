@@ -1,0 +1,125 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Engaged Users\n---\nAn _engaged_ user is someone who has used your app a certain number of days within a time window. For instance, you could define an engaged user as a person who used feature X on at least _5_ unique days over a 30 day range. This allows you to differentiate serious users of your app from the more casual ones. \n\nUse the `Activities` parameter to choose the events that count towards engagement. The `Period`, `DaysUsed` and `CustomDaysUsed` parameters allow you to select set the engagement definitions. \n"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "fb53a45c-54cd-4583-8e1d-7e05e168ef60",
+            "version": "KqlParameterItem/1.0",
+            "name": "Activities",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "union customEvents, pageViews\r\n| where timestamp >= ago(7d)\r\n| summarize count() by name\r\n| order by count_ desc\r\n| project Id=name, Title=name, Selected=false\r\n| union (\r\ndatatable(Id:string, Title:string, Selected:boolean)[\r\n'*', 'All Events and Page Views', true\r\n]\r\n)"
+          },
+          {
+            "id": "ec53bf53-d708-4c63-b079-438039757a7c",
+            "version": "KqlParameterItem/1.0",
+            "name": "Period",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(x:string, y:string)[\r\n'7d', '7 days',\r\n'28d', '28 days',\r\n'30d', '30 days',\r\n]",
+            "value": "28d"
+          },
+          {
+            "id": "b5e1b1b3-d133-48ca-9d40-7d6b6b32775b",
+            "version": "KqlParameterItem/1.0",
+            "name": "DaysUsed",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(x:string, y:string)[\r\n'5d', '5+ days',\r\n'2d, 7d', '2-7 days and 7+ days',\r\n'1d, 2d, 12d', '1-2 days, 2-12 days and 12+ days',\r\n]",
+            "value": "2d, 7d"
+          },
+          {
+            "id": "b8a702da-adba-4fcf-b5a4-d2bdf4626087",
+            "version": "KqlParameterItem/1.0",
+            "name": "CustomDaysUsed",
+            "type": 1,
+            "description": null,
+            "isRequired": true,
+            "query": "datatable(x:string)[\"{DaysUsed}\"]"
+          },
+          {
+            "id": "122307c6-fffe-427c-b416-272344fd64fa",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(key:string, display:string) \r\n[ \r\n\"7d\", \"Last 7 days\", \r\n\"14d\", \"Last 14 days\", \r\n\"30d\", \"Last 30 days\", \r\n\"60d\", \"Last 60 days\", \r\n\"90d\", \"Last 90 days\"\r\n] ",
+            "value": "30d"
+          }
+        ]
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let timeRange = {TimeRange};\nlet monthDefinition = {Period};\nlet start = startofday(ago(timeRange + monthDefinition));\nlet userTypes = array_concat(dynamic([{CustomDaysUsed}]), dynamic([{Period}]));\nlet groups = range i from 1 to 1 step 1\n| extend types = userTypes\n| mvexpand types\n| extend groups = totimespan(types) \n| project groups\n| serialize rank = row_number()\n| extend jkey = 1;\nlet groupTitles = groups\n| join kind=inner (groups) on jkey\n| where rank1 - rank == 1\n| project Group = tolong(groups / 1d), OtherGroup = tolong(groups1 / 1d)\n| extend GroupName = strcat(Group, ' to ', OtherGroup - 1, ' days')\n| project-away OtherGroup;\nlet cohorts = range day from 1d to monthDefinition - 1d step 1d\n| extend types = userTypes\n| mvexpand types\n| extend types = totimespan(types) \n| where day >= types\n| summarize Group = max(types) by day\n| extend day = tolong(day / 1d), Group = tolong(Group / 1d);\nlet usage = union customEvents, pageViews\n| where timestamp >= start\n| where name in ({Activities}) or '*' in ({Activities})\n| summarize Count = max(1) by User = user_Id, UsageDay = bin(timestamp, 1d);\nrange i from 0d to timeRange step 1d\n| extend Day = startofday(now() - i)\n| extend m = range(0d, monthDefinition - 1d, 1d)\n| mvexpand m\n| extend MonthForThisDay = Day - totimespan(m)\n| project Day, MonthForThisDay\n| join kind=inner (usage | project Count, User, MonthForThisDay = UsageDay) on MonthForThisDay\n| summarize UsedDays = sum(Count) by User, Day\n| join kind=inner (cohorts | project Group, UsedDays = day) on UsedDays\n| summarize Users=count() by Day, Group\n| join kind=inner (groupTitles) on Group\n| project Day, Users, GroupName \n",
+        "showQuery": false,
+        "size": 2,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "barchart"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Growth Rates\n"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "d88ea1b4-f648-4084-81b8-b1149651b029",
+            "version": "KqlParameterItem/1.0",
+            "name": "Show",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(val: string, text: string)[\r\n'1d', 'Daily Growth Rate',\r\n'7d', 'Weekly Growth Rate',\r\n'28d', 'Monthly Growth Rate (28d)',\r\n'30d', 'Monthly Growth Rate (30d)',\r\n'365d', 'Annual Growth Rate',\r\n]\r\n| extend isdefault = iff(val == '{Period}', true, false)"
+          }
+        ]
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let timeRange = {TimeRange};\nlet monthDefinition = {Period};\nlet start = startofday(ago(timeRange + monthDefinition));\nlet userTypes = array_concat(dynamic([{CustomDaysUsed}]), dynamic([{Period}]));\nlet groups = range i from 1 to 1 step 1\n| extend types = userTypes\n| mvexpand types\n| extend groups = totimespan(types) \n| project groups\n| serialize rank = row_number()\n| extend jkey = 1;\nlet groupTitles = groups\n| join kind=inner (groups) on jkey\n| where rank1 - rank == 1\n| project Group = tolong(groups / 1d), OtherGroup = tolong(groups1 / 1d)\n| extend GroupName = strcat(Group, ' to ', OtherGroup - 1, ' days')\n| project-away OtherGroup;\nlet cohorts = range day from 1d to monthDefinition - 1d step 1d\n| extend types = userTypes\n| mvexpand types\n| extend types = totimespan(types) \n| where day >= types\n| summarize Group = max(types) by day\n| extend day = tolong(day / 1d), Group = tolong(Group / 1d);\nlet usage = union customEvents, pageViews\n| where timestamp >= start\n| where name in ({Activities}) or '*' in ({Activities})\n| summarize Count = max(1) by User = user_Id, UsageDay = bin(timestamp, 1d);\nrange i from 0d to timeRange step 1d\n| where i == 0d or i == timeRange - 1d // -1d so that growth is computed on data for a full day\n| extend Day = startofday(now() - i)\n| extend m = range(0d, monthDefinition - 1d, 1d)\n| mvexpand m\n| extend MonthForThisDay = Day - totimespan(m)\n| project Day, MonthForThisDay\n| join kind=inner (usage | project Count, User, MonthForThisDay = UsageDay) on MonthForThisDay\n| summarize UsedDays = sum(Count) by User, Day\n| join kind=inner (cohorts | project Group, UsedDays = day) on UsedDays\n| summarize Users=count() by Day, Group\n| join kind=inner (groupTitles) on Group\n| project Day, Users, GroupName \n| summarize (LastDay, LastDayUsers) = argmax(Day, Users), (FirstDay, FirstDayUsers) = argmin(Day, Users) by GroupName\n| extend SimpleGrowth = 100.0 * (LastDayUsers - FirstDayUsers) / (FirstDayUsers * (1.0 * (LastDay - FirstDay) / {Show}))\n| extend CompoundGrowth = 100.0 * (pow(1.0 * LastDayUsers / FirstDayUsers, 1.0 / ((LastDay - FirstDay) / {Show})) - 1)\n| project [\"Engagement Group\"] = GroupName, [\"Users at the Begining\"] = FirstDayUsers, [\"Users at the End\"] = LastDayUsers, [\"# of Periods\"] = round((LastDay - FirstDay) / {Period}, 1), [\"Growth Rate (%)\"] = round(SimpleGrowth, 2), [\"Compounded Growth Rate (%)\"] = round(CompoundGrowth, 2)",
+        "showQuery": false,
+        "size": 2,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "table"
+      }
+    }
+  ]
+}

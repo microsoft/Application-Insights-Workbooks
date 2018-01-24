@@ -1,0 +1,163 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Performance Counter Analysis\nWindows provides a wide variety of [performance counters](http://www.codeproject.com/Articles/8590/An-Introduction-To-Performance-Counters) such as CPU occupancy, memory, disk, and network usage. You can also define your own. [Application Insights](https://docs.microsoft.com/en-us/azure/application-insights/app-insights-overview) can show these performance counters if your application is running under IIS on an on-premises host or virtual machine to which you have administrative access. The charts indicate the resources available to your live application, and can help to identify unbalanced load between server instances. More details can be found at [Performance counters in Application Insights](https://docs.microsoft.com/en-us/azure/application-insights/app-insights-performance-counters)\n\nThis report will help you analyze your app's performance counters and potentially indentify issues in resource utilization."
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "0cfd17fb-eb71-437e-adef-2abb387f3eed",
+            "version": "KqlParameterItem/1.0",
+            "name": "PerformanceCounter",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(value:string)[\n'% Processor Time Normalized', '% Processor Time', 'Available Bytes',\t\n'Requests In Application Queue',\t\n'Private Bytes', 'IO Data Bytes/sec', \n'Request Execution Time',\n'Requests/Sec'\n]",
+            "value": "% Processor Time Normalized"
+          },
+          {
+            "id": "846bc272-8fd8-4336-ad2c-7ab6727e7af4",
+            "version": "KqlParameterItem/1.0",
+            "name": "AnalysisWindow",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(value:string, text:string)[\n'30m', 'Last 30 minutes', \n'1h', 'Last hour', \n'2h', 'Last 2 hours', \n'4h', 'Last 4 hours', \n'24h', 'Last 24 hours', \n'2d', 'Last 2 days',\n'7d', 'Last 7 days',\n]",
+            "value": "2h"
+          },
+          {
+            "id": "fed4649a-2d80-4546-85cf-9b6966082963",
+            "version": "KqlParameterItem/1.0",
+            "name": "RollingTimeWindow",
+            "type": 1,
+            "description": null,
+            "isRequired": true,
+            "query": "let t = totimespan({AnalysisWindow});\nlet w = case(t == 30m, '15m', t == 1h, '30m', t == 2h, '30m', t == 4h, '1h', t == 24h, '4h', t == 2d, '12h', t == 7d, '1d', '1m');\nrange i from 1 to 1 step 1\n| project x = w"
+          },
+          {
+            "id": "21285db2-f41e-4889-91ea-b9675f4b153f",
+            "version": "KqlParameterItem/1.0",
+            "name": "ChartGrain",
+            "type": 1,
+            "description": null,
+            "isRequired": true,
+            "query": "let t = totimespan({AnalysisWindow});\nlet w = case(t == 30m, '30s', t == 1h, '1m', t == 2h, '1m', t == 4h, '5m', t == 24h, '30m', t == 2d, '1h', t == 7d, '4d', '1m');\nrange i from 1 to 1 step 1\n| project x = w"
+          },
+          {
+            "id": "ac9c2ff8-7a50-4a9e-9d62-c7f450bcfca4",
+            "version": "KqlParameterItem/1.0",
+            "name": "Machines",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "performanceCounters\n| where timestamp >= ago({AnalysisWindow})\n| where name == '{PerformanceCounter}'\n| summarize by cloud_RoleInstance\n| order by cloud_RoleInstance asc\n| project value = cloud_RoleInstance, text = cloud_RoleInstance, Default = false\n| union (datatable(value:string, text:string, Default:boolean)[\n'*', 'All Machines', true\n])"
+          },
+          {
+            "id": "57d9ddb2-a6f8-487b-b2ef-3e9f98abfa66",
+            "version": "KqlParameterItem/1.0",
+            "name": "Instances",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "performanceCounters\n| where timestamp >= ago({AnalysisWindow})\n| where name == '{PerformanceCounter}'\n| summarize by instance\n| order by instance asc\n| project value = instance, text = instance, Default = false\n| extend text = iff(text == '', '<Blank>', text)\n| union (datatable(value:string, text:string, Default:boolean)[\n'*', 'All Instances', true\n])",
+            "value": [
+              "*"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Perf Counter Trend Compared to the {RollingTimeWindow} Moving Average"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let rollingInterval = {RollingTimeWindow};\nlet timeRange = {AnalysisWindow};\nlet grain = {ChartGrain};\nlet timeWindow = bin(ago(timeRange + rollingInterval), grain);\nlet windowRange = toscalar(range i from 0m to rollingInterval - grain step grain\n| summarize makelist(i)); \nlet perfData = performanceCounters\n| where timestamp >= timeWindow \n| where name == '{PerformanceCounter}'\n| where cloud_RoleInstance in ({Machines}) or '*' in ({Machines})\n| where instance in ({Instances}) or '*' in ({Instances})\n| summarize Data = avg(value) by Window = bin(timestamp, grain);\nrange i from 0m to timeRange - grain step grain\n| extend Time = bin(now() - i, grain)\n| project-away i\n| extend Range = windowRange\n| mvexpand Range\n| extend Window = Time - totimespan(Range) \n| project-away Range \n| order by Time desc, Window desc\n| join kind=inner (perfData) on Window\n| summarize Data = avg(Data) by bin(Time, grain)\n| extend T = 'Simple Moving Average'\n| union (perfData | project Time = Window, T = 'Actual', Data)\n| where Time >= ago(timeRange) and Time < bin(now() - 1m, grain)\n",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "timechart"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Breakouts in Perf Counter"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "bcad0e53-5421-4982-a1a2-472a7755070c",
+            "version": "KqlParameterItem/1.0",
+            "name": "BreakoutCriterion",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(value:string, text:string)[\n'1.281552', 'Outside 80% Population',\n'1.959964', 'Outside 95% Population',\n'2.575829', 'Outside 99% Population',\n'3.290527', 'Outside 99.9% Population'\n]",
+            "value": "1.959964"
+          }
+        ]
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let rollingInterval = {RollingTimeWindow};\nlet timeRange = {AnalysisWindow};\nlet grain = {ChartGrain};\nlet timeWindow = bin(ago(timeRange + rollingInterval), grain);\nlet windowRange = toscalar(range i from 0m to rollingInterval - grain step grain\n| summarize makelist(i)); \nlet perfData = performanceCounters\n| where timestamp >= timeWindow \n| where name == '{PerformanceCounter}'\n| where cloud_RoleInstance in ({Machines}) or '*' in ({Machines})\n| where instance in ({Instances}) or '*' in ({Instances})\n| summarize Data = avg(value) by Window = bin(timestamp, grain);\nlet data = range i from 0m to timeRange - grain step grain\n| extend Time = bin(now() - i, grain)\n| project-away i\n| extend Range = windowRange\n| mvexpand Range\n| extend Window = Time - totimespan(Range) \n| project-away Range \n| order by Time desc, Window desc\n| join kind=inner (perfData) on Window\n| summarize Data = avg(Data), Stdev = stdev(Data) by bin(Time, grain)\n| join kind = inner (perfData | project Time = Window, Data) on Time\n| where Time >= ago(timeRange) and Time < bin(now() - 1m, grain)\n| extend Series = iff(Data1 >=  Data - {BreakoutCriterion} * Stdev and Data1 <= Data + {BreakoutCriterion} * Stdev, 'N', 'A')\n| project Time, Data = Data1, Series;\ndata\n  | where Series == 'N'\n  | extend T = 'Normal'\n| union (data\n  | where Series == 'A'\n  | extend T = 'Breakout')\n| union (data\n  | where Series == 'A'\n  | extend T = 'Breakout (For Reds)')\n| project Time, Data, T",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "scatterchart"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Perf Counters by Machine"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let timeRange = {AnalysisWindow};\nlet grain = {ChartGrain};\nperformanceCounters\n| where timestamp >= ago(bin(timeRange, grain)) and timestamp <= bin(now() - 1m, grain)\n| where name == '{PerformanceCounter}'\n| where cloud_RoleInstance in ({Machines}) or '*' in ({Machines})\n| where instance in ({Instances}) or '*' in ({Instances})\n| summarize Data = avg(value) by cloud_RoleInstance, bin(timestamp, grain)\n",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "timechart"
+      }
+    }
+  ]
+}
