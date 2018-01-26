@@ -13,7 +13,7 @@ For more information see the [Code of Conduct FAQ](https://opensource.microsoft.
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 # What is Community Template Repository for?
-This repository allows developers or IT professionals to create reusable template so that they can share Usage related reports with a community. We currently support Workbooks and Cohorts templates. 
+This repository allows developers or IT professionals to create reusable template so that they can share Usage related reports with a community. We currently support Workbooks and Cohorts. 
 
 # How to contribute?
 Do contrubute it, it would be necessary to understand the structure of folders. The following is the folder structures of Community Templates.
