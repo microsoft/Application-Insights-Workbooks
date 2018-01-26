@@ -130,7 +130,7 @@ Create from the default one
 3. Select "Workbooks"
 4. Select Default Template under Quick Start section.<br/>
     ![Image of default template](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/DefaultTemplate.png)
-5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file with "your custom template name.template" extension.<br/>
+5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.template'.<br/>
 ![Image of toolbar](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/Toolbar-AdvancedEditor.png)
 
 ## Create from the existing template
@@ -140,7 +140,7 @@ Create from the default one
 4. Select a template you are interested.<br/>
     ![Image of default template](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/Existing-Template.png)
 
-5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file with "your custom template name.template" extension.<br/>
+5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.template'.<br/>
 ![Image of toolbar](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/Toolbar-AdvancedEditor.png)
 	
 ## To create it from the existing template
@@ -151,7 +151,7 @@ Create from the default one
 5. Select a desired saved report you want to start with.<br/>
     ![Image of default template](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/SavedList.png)
 
-6. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file with "your custom template name.template" extension.
+6. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.template'.
 
 ```
 * To see complete list of language code, please refer to https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
