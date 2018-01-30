@@ -110,7 +110,7 @@ Each language folder contains the following files:
         {
             "name":"Improving User Retention",
             "description": "Long description goes here",
-            "icon": "icon.svg",
+            "icon": "",
             "tags": ["Foo", "Bar"]
         }
     ```
