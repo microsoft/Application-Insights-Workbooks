@@ -12,11 +12,11 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-# What is Community Template Repository for?
-This repository allows developers or IT professionals to create reusable template so that they can share Usage related reports with a community. We currently support Workbooks and Cohorts. 
+# What is this repository for?
+This repository contains the templates shown in the template galleries of the [Application Insights Workbooks](https://docs.microsoft.com/azure/application-insights/app-insights-usage-workbooks) and Cohorts tools. Templates added to this repository will show up in the Workbooks and Cohorts tools for all users of Application Insights. By contributing templates, you can help others solve interesting problems using the workbooks and cohorts you've found helpful on your own team.
 
 # How to contribute?
-Do contrubute it, it would be necessary to understand the structure of folders. The following is the folder structures of Community Templates.
+Workbook and cohort templates follow a certain folder structure.
 ```
 Root
  |
