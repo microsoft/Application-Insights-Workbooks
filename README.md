@@ -63,10 +63,10 @@ Root
        |- Category folder 2       
 ...       
 ```
-Each report (Workbooks is shown above) consists of a list of categories (like Performance, Usage, Events, and etc) and each category has a list of templates. So think of category as template group as depicted below:
+The template galleries of the Workbooks and Cohorts tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
 ![Image of category view](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/CategoryView.png)
 
-To define a category, we need to specify categoryResources.json file per the category folder. The categoryResources.json file contains localized versions of a name, and a description.  To define, please write the following format of json.
+To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file contains localized versions of the category name, and a description. Here's an example categoryResources.json file.
 ```
 {
     "en-us": {"name":"Business Hypotheses", "description": "Long description goes here"},
@@ -74,10 +74,9 @@ To define a category, we need to specify categoryResources.json file per the cat
     "ko-kr": {"name":"비즈니스 추측", "description": "설명은 여기에..."},
 }
 ```
-Each language object has the following property:
-	- name
-	- description
-The name of language uses **language culture format**
+
+The name of language uses **language culture format.**
+
 ## Template folder
 A list of templates is located under a category folder and each template metadata and content is under a template folder as depicted below:
 ```
