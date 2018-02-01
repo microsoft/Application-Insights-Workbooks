@@ -12,11 +12,11 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-# What is Community Template Repository for?
-This repository allows developers or IT professionals to create reusable template so that they can share Usage related reports with a community. We currently support Workbooks and Cohorts. 
+# What is this repository for?
+This repository contains the templates shown in the template galleries of the [Application Insights Workbooks](https://docs.microsoft.com/azure/application-insights/app-insights-usage-workbooks) and Cohorts tools. Templates added to this repository will show up in the Workbooks and Cohorts tools for all users of Application Insights. By contributing templates, you can help others solve interesting problems using the workbooks and cohorts you've found helpful on your own team.
 
 # How to contribute?
-Do contrubute it, it would be necessary to understand the structure of folders. The following is the folder structures of Community Templates.
+Workbook and cohort templates follow a certain folder structure.
 ```
 Root
  |
@@ -63,10 +63,10 @@ Root
        |- Category folder 2       
 ...       
 ```
-Each report (Workbooks is shown above) consists of a list of categories (like Performance, Usage, Events, and etc) and each category has a list of templates. So think of category as template group as depicted below:
+The template galleries of the Workbooks and Cohorts tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
 ![Image of category view](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/CategoryView.png)
 
-To define a category, we need to specify categoryResources.json file per the category folder. The categoryResources.json file contains localized versions of a name, and a description.  To define, please write the following format of json.
+To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file contains localized versions of the category name, and a description. Here's an example categoryResources.json file.
 ```
 {
     "en-us": {"name":"Business Hypotheses", "description": "Long description goes here"},
@@ -74,12 +74,11 @@ To define a category, we need to specify categoryResources.json file per the cat
     "ko-kr": {"name":"비즈니스 추측", "description": "설명은 여기에..."},
 }
 ```
-Each language object has the following property:
-	- name
-	- description
-The name of language uses **language culture format**
+
+The name of language uses **language culture format.**
+
 ## Template folder
-A list of templates is located under a category folder and each template metadata and content is under a template folder as depicted below:
+Each category folder contains a list of templates.
 ```
        |- Category A
              |- categoryResources.json
@@ -101,11 +100,13 @@ A list of templates is located under a category folder and each template metadat
                         |- settings.json
 ```
 
-Each template folder contains a list of language folder and optional icon file. The name of language abbreviation and the format of it is **language culture format**
-The optional icon file could be any format of image like svg, png, and etc. We only support only one icon file per a template as of now.
+Each template folder contains a list of language folders and an optional icon file. Languages are given as language culture format abbreviations, like "en" instead of "en-us".
+
+The optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
+
 Each language folder contains the following files:
-* .workbook or .cohort: Any file name with .workbook or .cohort extension. You can create a template file from Azure portal. To learn how to create one, please refer to How to create .template file. (As of now, we only support .workbook and .cohort)
-* settings.json: A metadata that describes a template. You can specify a localized version of metadata per a language folder.
+* **A .workbook or .cohort file.** You can create a template file from the Workbooks or Cohort tools in Application Insights in the Azure portal. See the "How to create a .workbook or .cohort file" section for more details.
+* **A settings.json file.** This file describes a template with metadata. You can specify a localized version of metadata per a language folder.
     ```
         {
             "name":"Improving User Retention",
@@ -118,13 +119,14 @@ Each language folder contains the following files:
     * description: A localized description.
     * icon: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder. 
     * tags: Optional. You can specify a list of tags that describes the template.
-## How to create .template file
+
+## How to create a .workbook or .cohort file
 There are three ways of creating a template. 
-* Create from the default one.
+* Create from the default template.
 * From the existing template. You can modify or enhance off of the existing template.
 * From the existing report. You can modify or enhance off of the existing report.
 
-Create from the default one
+## Create from the default template
 1. Go to http://portal.azure.com 
 2. Select Application Insights resource
 3. Select "Workbooks"
@@ -133,7 +135,7 @@ Create from the default one
 5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.<br/>
 ![Image of toolbar](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/Toolbar-AdvancedEditor.png)
 
-## Create from the existing template
+## Create from an existing template
 1. Go to http://portal.azure.com 
 2. Select Application Insights resource
 3. Select "Workbooks"
@@ -143,7 +145,7 @@ Create from the default one
 5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.<br/>
 ![Image of toolbar](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/Toolbar-AdvancedEditor.png)
 	
-## To create it from the existing template
+## Create from an existing report
 1. Go to http://portal.azure.com 
 2. Select Application Insights resource
 3. Select "Workbooks"
