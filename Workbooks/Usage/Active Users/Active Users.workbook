@@ -1,11 +1,14 @@
 {
   "version": "Notebook/1.0",
+  "isLocked": false,
   "items": [
     {
       "type": 1,
       "content": {
         "json": "# Active Users\n\nActive users counts how many users have used your app at least once in a previous time period. It is typically used to answer -- *How many users does your app or feature have?*\n\nEdit the `Activities` parameter below to customize what custom events and page views qualify as active usage. \n"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 9,
@@ -35,7 +38,11 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "union customEvents, pageViews\n| where timestamp >= ago(7d)\n| summarize count() by name\n| order by count_ desc\n| project Id=name, Title=name, Selected=false\n| union (\ndatatable(Id:string, Title:string, Selected:boolean)[\n'*', 'All Events and Page Views', true\n]\n)"
+            "query": "union customEvents, pageViews\n| where timestamp >= ago(7d)\n| summarize count() by name\n| order by count_ desc\n| project Id=name, Title=name, Selected=false\n| union (\ndatatable(Id:string, Title:string, Selected:boolean)[\n'*', 'All Events and Page Views', true,\n'%', 'All Page Views', false,\n'#', 'All Custom Events', false\n]\n)",
+            "isHiddenWhenLocked": false,
+            "value": [
+              "*"
+            ]
           },
           {
             "id": "79126a9c-4ec6-4719-872a-f4a9b022e8f9",
@@ -57,31 +64,85 @@
             "value": "30d"
           }
         ]
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 1,
       "content": {
         "json": "## Users who have used your app at least once in the last {Metric}"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let start = startofday(ago({TimeRange} + {Metric}));\r\nunion customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, start, now(), 1d, {Metric})\r\n| where timestamp >= startofday(ago({TimeRange}))\r\n| project timestamp, [\"Active User\"] = dcount_activities_outer\r\n| render timechart ",
+        "query": "let start = startofday(ago({TimeRange} + {Metric}));\r\nunion customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, start, now(), 1d, {Metric})\r\n| where timestamp >= startofday(ago({TimeRange}))\r\n| project timestamp, [\"Active User\"] = dcount_activities_outer\r\n| render timechart ",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
         "showAnnotations": false,
         "visualization": "timechart"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Active Users Drill-in"
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "294a19a2-f834-4ceb-8b35-0900c6fd2116",
+            "version": "KqlParameterItem/1.0",
+            "name": "AnalyzeBy",
+            "type": 2,
+            "description": null,
+            "isRequired": true,
+            "multiSelect": null,
+            "query": "datatable(value:string, text:string)[\r\n'name', '📛 Activity Name',\r\n'cloud_RoleInstance', '🖥️ Machine',\r\n'client_CountryOrRegion', '📍 Country or Region',\r\n'client_StateOrProvince', '📍 State or Province',\r\n'client_City', '📍 City',\r\n'client_Browser', '🌐 Client Browser',\r\n'client_OS', '️️🖥️ Client Operating System',\r\n'client_Model', '📱 Client Model',\r\n'application_Version', '⚪ Application Version',\r\n'operation_Name', '⚪ Operation',\r\n]\r\n| union (union pageViews, customEvents\r\n| where timestamp >= ago(1d)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n| project customDimensions \r\n| summarize schema = buildschema(customDimensions) \r\n| mvexpand schema\r\n| extend e = extract(@'{\"(.+)\":.+}', 1, tostring(schema))\r\n| project text = strcat('❄️ ', e), value = strcat('customDimensions[\"', e, '\"]'))",
+            "isHiddenWhenLocked": false,
+            "value": "name"
+          }
+        ]
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let start = startofday(ago({Metric}));\r\nlet events = union customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| extend Dim1 = tostring({AnalyzeBy});\r\nlet overall = events |  summarize Users = dcount(user_Id);\r\nlet allUsers = toscalar(overall);\r\nlet data = events\r\n| summarize Users = dcount(user_Id), Sessions = dcount(session_Id), Instances = count() by Dim1\r\n| extend rank = 2, Dim1 = strcat('🔹 ', Dim1)\r\n| union (\r\n    events |  summarize Users = dcount(user_Id), Sessions = dcount(session_Id), Instances = count()\r\n    | extend Dim1 = '🔸 Overall', rank = 1)\r\n| order by rank asc, Users desc\r\n| project Dim1, Users, Sessions, Instances;\r\ndata\r\n    | extend charArray = range(1, tolong(round(1.0 * 20 * Users / allUsers)), 2)\r\n    | extend c = iff(Dim1 == '🔸 Overall', '🔸', '🔹')\r\n    | mvexpand charArray\r\n    | summarize EmojiBar = tostring(makelist(c)) by Dim1, Users\r\n    | extend EmojiBar = replace('\"', '', EmojiBar)\r\n    | extend EmojiBar = replace(',', '', EmojiBar)\r\n    | extend EmojiBar = replace(@'\\[', '', EmojiBar)\r\n    | extend EmojiBar = replace(@'\\]', '', EmojiBar)\r\n    | extend EmojiBar = strcat(EmojiBar, '                      ') // work around a column size issue for now.\r\n| join kind=inner (data) on Dim1\r\n| project ['{AnalyzeBy}'] = Dim1, ['Active Users'] = Users, Users = EmojiBar, ['Unique Sessions'] = Sessions, ['Sessions per User'] = round(1.0 * Sessions / Users, 1), Instances, ['Instances per User'] = round(1.0 * Instances / Users, 1)\r\n",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 5,
+        "showAnnotations": false,
+        "visualization": "table"
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 1,
       "content": {
         "json": "## Growth Rate"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 9,
@@ -101,37 +162,45 @@
             "query": "datatable(val: string, text: string)[\r\n'1d', 'Daily Growth Rate',\r\n'7d', 'Weekly Growth Rate',\r\n'28d', 'Monthly Growth Rate (28d)',\r\n'30d', 'Monthly Growth Rate (30d)',\r\n'365d', 'Annual Growth Rate',\r\n]\r\n| extend isdefault = iff(val == '{Metric}', true, false)"
           }
         ]
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let start = startofday(ago({TimeRange} + {Metric}));\r\nunion customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, start, now(), 1d, {Metric})\r\n| where timestamp >= startofday(ago({TimeRange}))\r\n| project timestamp, Users=dcount_activities_outer\r\n| where timestamp == startofday(ago({TimeRange})) or timestamp == startofday(now() - 1d)\r\n| summarize (LastDay, LastDayUsers) = argmax(timestamp, Users), (FirstDay, FirstDayUsers) = argmin(timestamp, Users)\r\n| extend SimpleGrowth = 100.0 * (LastDayUsers - FirstDayUsers) / (FirstDayUsers * (1.0 * (LastDay - FirstDay) / {Show}))\r\n| extend CompoundGrowth = 100.0 * (pow(1.0 * LastDayUsers / FirstDayUsers, 1.0 / ((LastDay - FirstDay) / {Show})) - 1)\r\n| project [\"Users at the Begining\"] = FirstDayUsers, [\"Users at the End\"] = LastDayUsers, [\"# of Periods\"] = round(1.0 * (LastDay - FirstDay) / {Metric}, 1), [\"Growth Rate (%)\"] = round(SimpleGrowth, 2), [\"Compounded Growth Rate (%)\"] = round(CompoundGrowth, 2)",
+        "query": "let start = startofday(ago({TimeRange} + {Metric}));\r\nunion customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, start, now(), 1d, {Metric})\r\n| where timestamp >= startofday(ago({TimeRange}))\r\n| project timestamp, Users=dcount_activities_outer\r\n| where timestamp == startofday(ago({TimeRange})) or timestamp == startofday(now() - 1d)\r\n| summarize (LastDay, LastDayUsers) = argmax(timestamp, Users), (FirstDay, FirstDayUsers) = argmin(timestamp, Users)\r\n| extend SimpleGrowth = 100.0 * (LastDayUsers - FirstDayUsers) / (FirstDayUsers * (1.0 * (LastDay - FirstDay) / {Show}))\r\n| extend CompoundGrowth = 100.0 * (pow(1.0 * LastDayUsers / FirstDayUsers, 1.0 / ((LastDay - FirstDay) / {Show})) - 1)\r\n| project [\"Users at the Begining\"] = FirstDayUsers, [\"Users at the End\"] = LastDayUsers, [\"# of Periods\"] = round(1.0 * (LastDay - FirstDay) / {Metric}, 1), [\"Growth Rate (%)\"] = round(SimpleGrowth, 2), [\"Compounded Growth Rate (%)\"] = round(CompoundGrowth, 2)",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
         "showAnnotations": false,
         "visualization": "table"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 1,
       "content": {
         "json": "## Stickiness -- Ratio of Daily Active Users to {Metric} Active Users\nStickiness is a useful measure of engagement for your app. For example, a stickiness ratio of 0.5 means that the average user of your app uses it half of the days in the time period.\n"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let outerWindow = now() - {TimeRange} - {Metric};\r\nunion customEvents, pageViews\r\n| where timestamp >= startofday(outerWindow)\r\n| where name in ({Activities}) or '*' in ({Activities})\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, outerWindow, now(), 1d, {Metric})\r\n| project timestamp, [\"Stickiness\"] = activity_ratio\r\n| where timestamp >= ago({TimeRange})\r\n| render timechart ",
+        "query": "let outerWindow = now() - {TimeRange} - {Metric};\r\nunion customEvents, pageViews\r\n| where timestamp >= startofday(outerWindow)\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, outerWindow, now(), 1d, {Metric})\r\n| project timestamp, [\"Stickiness\"] = activity_ratio\r\n| where timestamp >= ago({TimeRange})\r\n| render timechart ",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
         "showAnnotations": false,
         "visualization": "timechart"
-      }
+      },
+      "conditionalVisibility": null,
+      "halfWidth": false
     }
   ]
 }
