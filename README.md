@@ -113,9 +113,9 @@ Each language folder contains the following files:
             "description": "Long description goes here",
             "icon": "",
             "tags": ["Foo", "Bar"],
-	    "author": "Microsoft",
-	    "visibleInGallery": true,
-	    "order": 100
+            "author": "Microsoft",
+            "visibleInGallery": true,
+            "order": 100
         }
     ```
     * name: A localized name.
