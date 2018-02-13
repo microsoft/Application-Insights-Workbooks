@@ -69,9 +69,9 @@ The template galleries of the Workbooks and Cohorts tools are organized into cat
 To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file contains localized versions of the category name, and a description. Here's an example categoryResources.json file.
 ```
 {
-    "en-us": {"name":"Business Hypotheses", "description": "Long description goes here"},
-    "es-mx": {"name":"Hipótesis de negocios", "description": "Descripción larga va aquí"},
-    "ko-kr": {"name":"비즈니스 추측", "description": "설명은 여기에..."},
+    "en-us": {"name":"Business Hypotheses", "description": "Long description goes here", "order": 100},
+    "es-mx": {"name":"Hipótesis de negocios", "description": "Descripción larga va aquí", "order": 100},
+    "ko-kr": {"name":"비즈니스 추측", "description": "설명은 여기에...", "order": 100},
 }
 ```
 
@@ -112,13 +112,19 @@ Each language folder contains the following files:
             "name":"Improving User Retention",
             "description": "Long description goes here",
             "icon": "",
-            "tags": ["Foo", "Bar"]
+            "tags": ["Foo", "Bar"],
+	    "author": "Microsoft",
+	    "visibleInGallery": true,
+	    "order": 100
         }
     ```
     * name: A localized name.
     * description: A localized description.
     * icon: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder. 
     * tags: Optional. You can specify a list of tags that describes the template.
+    * author: The name of author or company who contributes.
+    * visibleInGallery: If marked as true, it will show in Gallery.
+    * order: If you have more than one template within a category and would like to order them in certain way, you can specify sort order.
 
 ## How to create a .workbook or .cohort file
 There are three ways of creating a template. 
