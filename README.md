@@ -27,7 +27,7 @@ Root
                     |- A.template
                     |- settings.json
                     |- icon.svg
-                    |- ko
+                    |- ko-kr
                         |- A.template
                         |- settings.json
              |- Template B
@@ -83,19 +83,17 @@ Each category folder contains a list of templates.
        |- Category A
              |- categoryResources.json
              |- Template A
+                    |- A.template
+                    |- settings.json
                     |- icon.svg
-                    |- en
-                        |- A.template
-                        |- settings.json
-                    |- ko
+                    |- ko-kr
                         |- A.template
                         |- settings.json
              |- Template B
+                    |- B.template
+                    |- settings.json
                     |- icon.svg
-                    |- en
-                        |- B.template
-                        |- settings.json
-                    |- ko
+                    |- ko-kr
                         |- B.template
                         |- settings.json
 ```
