@@ -127,78 +127,43 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let start = startofday(ago({Metric}));\r\nlet events = union customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| extend Dim1 = tostring({AnalyzeBy});\r\nlet overall = events |  summarize Users = dcount(user_Id);\r\nlet allUsers = toscalar(overall);\r\nlet data = events\r\n| summarize Users = dcount(user_Id), Sessions = dcount(session_Id), Instances = count() by Dim1\r\n| extend rank = 2, Dim1 = strcat('🔹 ', Dim1)\r\n| union (\r\n    events |  summarize Users = dcount(user_Id), Sessions = dcount(session_Id), Instances = count()\r\n    | extend Dim1 = '🔸 Overall', rank = 1)\r\n| order by rank asc, Users desc\r\n| project Dim1, Users, Sessions, Instances;\r\ndata\r\n    | extend charArray = range(1, tolong(round(1.0 * 20 * Users / allUsers)), 2)\r\n    | extend c = iff(Dim1 == '🔸 Overall', '🔸', '🔹')\r\n    | mvexpand charArray\r\n    | summarize EmojiBar = tostring(makelist(c)) by Dim1, Users\r\n    | extend EmojiBar = replace('\"', '', EmojiBar)\r\n    | extend EmojiBar = replace(',', '', EmojiBar)\r\n    | extend EmojiBar = replace(@'\\[', '', EmojiBar)\r\n    | extend EmojiBar = replace(@'\\]', '', EmojiBar)\r\n    | extend EmojiBar = strcat(EmojiBar, '                      ') // work around a column size issue for now.\r\n| join kind=inner (data) on Dim1\r\n| project ['{AnalyzeBy}'] = Dim1, ['Active Users'] = Users, Users = EmojiBar, ['Unique Sessions'] = Sessions, ['Sessions per User'] = round(1.0 * Sessions / Users, 1), Instances, ['Instances per User'] = round(1.0 * Instances / Users, 1)\r\n",
+        "query": "let start = startofday(ago({Metric}));\r\nlet events = union customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| extend Dim1 = tostring({AnalyzeBy});\r\nlet overall = events |  summarize Users = dcount(user_Id);\r\nlet allUsers = toscalar(overall);\r\nevents\r\n| summarize Users = dcount(user_Id), Sessions = dcount(session_Id), Instances = count() by Dim1\r\n| extend rank = 2, Dim1 = strcat('🔹 ', Dim1)\r\n| union (\r\n    events |  summarize Users = dcount(user_Id), Sessions = dcount(session_Id), Instances = count()\r\n    | extend Dim1 = '🔸 Overall', rank = 1)\r\n| order by rank asc, Users desc\r\n| project Dim1, Users, Sessions, Instances\r\n| project ['{AnalyzeBy}'] = Dim1, ['Active Users'] = Users, ['Unique Sessions'] = Sessions, ['Sessions per User'] = round(1.0 * Sessions / Users, 1), ['Total Instances'] = Instances, ['Instances per User'] = round(1.0 * Instances / Users, 1)\r\n",
         "showQuery": false,
         "size": 0,
         "aggregation": 5,
         "showAnnotations": false,
-        "visualization": "table"
-      },
-      "conditionalVisibility": null,
-      "halfWidth": false
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "## Growth Rate"
-      },
-      "conditionalVisibility": null,
-      "halfWidth": false
-    },
-    {
-      "type": 9,
-      "content": {
-        "version": "KqlParameterItem/1.0",
-        "query": "",
-        "crossComponentResources": [],
-        "parameters": [
-          {
-            "id": "28eb41ad-aea2-465d-bb31-3facbb70f502",
-            "version": "KqlParameterItem/1.0",
-            "name": "Show",
-            "type": 2,
-            "description": null,
-            "isRequired": true,
-            "multiSelect": null,
-            "query": "datatable(val: string, text: string)[\r\n'1d', 'Daily Growth Rate',\r\n'7d', 'Weekly Growth Rate',\r\n'28d', 'Monthly Growth Rate (28d)',\r\n'30d', 'Monthly Growth Rate (30d)',\r\n'365d', 'Annual Growth Rate',\r\n]\r\n| extend isdefault = iff(val == '{Metric}', true, false)"
-          }
-        ]
-      },
-      "conditionalVisibility": null,
-      "halfWidth": false
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "let start = startofday(ago({TimeRange} + {Metric}));\r\nunion customEvents, pageViews\r\n| where timestamp >= start\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, start, now(), 1d, {Metric})\r\n| where timestamp >= startofday(ago({TimeRange}))\r\n| project timestamp, Users=dcount_activities_outer\r\n| where timestamp == startofday(ago({TimeRange})) or timestamp == startofday(now() - 1d)\r\n| summarize (LastDay, LastDayUsers) = argmax(timestamp, Users), (FirstDay, FirstDayUsers) = argmin(timestamp, Users)\r\n| extend SimpleGrowth = 100.0 * (LastDayUsers - FirstDayUsers) / (FirstDayUsers * (1.0 * (LastDay - FirstDay) / {Show}))\r\n| extend CompoundGrowth = 100.0 * (pow(1.0 * LastDayUsers / FirstDayUsers, 1.0 / ((LastDay - FirstDay) / {Show})) - 1)\r\n| project [\"Users at the Begining\"] = FirstDayUsers, [\"Users at the End\"] = LastDayUsers, [\"# of Periods\"] = round(1.0 * (LastDay - FirstDay) / {Metric}, 1), [\"Growth Rate (%)\"] = round(SimpleGrowth, 2), [\"Compounded Growth Rate (%)\"] = round(CompoundGrowth, 2)",
-        "showQuery": false,
-        "size": 0,
-        "aggregation": 5,
-        "showAnnotations": false,
-        "visualization": "table"
-      },
-      "conditionalVisibility": null,
-      "halfWidth": false
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "## Stickiness -- Ratio of Daily Active Users to {Metric} Active Users\nStickiness is a useful measure of engagement for your app. For example, a stickiness ratio of 0.5 means that the average user of your app uses it half of the days in the time period.\n"
-      },
-      "conditionalVisibility": null,
-      "halfWidth": false
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "let outerWindow = now() - {TimeRange} - {Metric};\r\nunion customEvents, pageViews\r\n| where timestamp >= startofday(outerWindow)\r\n| where name in ({Activities}) or '*' in ({Activities}) or ('%' in ({Activities}) and itemType == 'pageView') or ('#' in ({Activities}) and itemType == 'customEvent')\r\n{OtherFilters}\r\n| evaluate activity_engagement(user_Id, timestamp, outerWindow, now(), 1d, {Metric})\r\n| project timestamp, [\"Stickiness\"] = activity_ratio\r\n| where timestamp >= ago({TimeRange})\r\n| render timechart ",
-        "showQuery": false,
-        "size": 0,
-        "aggregation": 5,
-        "showAnnotations": false,
-        "visualization": "timechart"
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Active Users",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "max": null,
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "Unique Sessions",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "max": null,
+                "palette": "green"
+              }
+            },
+            {
+              "columnMatch": "Total Instances",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "max": null,
+                "palette": "yellow"
+              }
+            }
+          ]
+        }
       },
       "conditionalVisibility": null,
       "halfWidth": false
