@@ -112,7 +112,7 @@ Each language folder contains the following files:
             "icon": "",
             "tags": ["Foo", "Bar"],
             "author": "Microsoft",
-            "visibleInGallery": true,
+            "galleries": [{ "type": "workbook", "resourceType": "microsoft.insights/components", "order": 300 }]
             "order": 100
         }
     ```
@@ -121,8 +121,11 @@ Each language folder contains the following files:
     * icon: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder. 
     * tags: Optional. You can specify a list of tags that describes the template.
     * author: The name of author or company who contributes.
-    * visibleInGallery: If marked as true, it will show in Gallery.
-    * order: If you have more than one template within a category and would like to order them in certain way, you can specify sort order.
+    * galleries: Optional. Settings for gallery view. Please note that this is only available for Workbooks reportType.
+        * type: Workbook type like 'tsg', 'performance', and etc. The default value is 'workbook'
+        * resourceType: ARM resource type. The default value is 'microsoft.insigths/components'
+        * order: When specified it will be display in the ascending order.
+    * order: If you have more than one template within a category and would like to order them in certain way, you can specify sort order. This will be overriden by the order within galleries if available.
 
 ## How to create a .workbook or .cohort file
 There are three ways of creating a template. 
