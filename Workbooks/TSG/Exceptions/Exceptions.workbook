@@ -6,7 +6,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Troubleshooting Request Failures\nThis troubleshooting guide help you identify failures in your application's web requests. "
+        "json": "# Troubleshooting Exceptions\nThis troubleshooting guide help you analyze in your application's exceptions."
       },
       "conditionalVisibility": null,
       "halfWidth": false
@@ -126,28 +126,14 @@
           {
             "id": "6ab5c1cb-bad0-4d96-8e63-d439d0681c6e",
             "version": "KqlParameterItem/1.0",
-            "name": "Requests",
+            "name": "Problems",
             "type": 2,
             "description": null,
             "isRequired": true,
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "requests\n| where timestamp {TimeRange}\n| summarize Count = count(), Users = dcount(user_Id) by name\n| order by name asc\n| project v = name, t = name, s=false\n| union (datatable(v:string, t:string, s:boolean)[\n'*', 'All Requests', true\n])",
-            "isHiddenWhenLocked": false,
-            "resourceType": "microsoft.insights/components"
-          },
-          {
-            "id": "5e558db3-501c-4ce3-87c3-7f13a469fd54",
-            "version": "KqlParameterItem/1.0",
-            "name": "ResultCodes",
-            "type": 2,
-            "description": null,
-            "isRequired": true,
-            "multiSelect": true,
-            "quote": "'",
-            "delimiter": ",",
-            "query": "datatable(x:string, y:string, z:boolean)[\r\n'*', 'All', true,\r\n'@', 'All 500s', false,\r\n'#', 'All 400s', false\r\n]\r\n| union (requests\r\n| where timestamp {TimeRange}\r\n| where success == false\r\n| summarize by resultCode\r\n| order by resultCode asc\r\n| project x = resultCode, y = resultCode, z = false)",
+            "query": "exceptions\n| where timestamp {TimeRange}\n| summarize by problemId\n| order by problemId asc\n| project v = problemId, t = problemId, s=false\n| union (datatable(v:string, t:string, s:boolean)[\n'*', 'All Problems', true\n])",
             "isHiddenWhenLocked": false,
             "resourceType": "microsoft.insights/components"
           },
@@ -183,7 +169,7 @@
     {
       "type": 1,
       "content": {
-        "json": "Set the parameters above to tune your analysis set. Use the `Show` parameter above to see only existing or new failures. The comparision `UseComparisionTimeRange` parameter sets the window of time to look for existing failures. `Requests` and `ResultCodes` parameters allow you to filter down to a smaller set of issues."
+        "json": "Set the parameters above to tune your analysis set. Use the `Show` parameter above to see only existing or new failures. The comparision `UseComparisionTimeRange` parameter sets the window of time to look for existing failures. A `Problem` just a combination of exception type and method at which it is thrown. Changing this parameter allows you filter down to a smaller set of issues."
       },
       "conditionalVisibility": null,
       "halfWidth": false
@@ -191,7 +177,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## Failure Trend\nThe chart below shows the trend of request failures over your chosen time range. It is split by new and existing failures. "
+        "json": "## Exception Trend\nThe chart below shows the trend of exceptions over your chosen time range. It is split by new and existing exceptions. "
       },
       "conditionalVisibility": null,
       "halfWidth": false
@@ -200,7 +186,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let bigWindow = requests\r\n| where timestamp >= {TimeRange:start} - {UseComparisonTimeRangeOf} and timestamp <= {TimeRange:start}\r\n| where success == false\r\n| where name in ({Requests}) or '*' in ({Requests})\r\n| where resultCode in ({ResultCodes}) or '*' in ({ResultCodes}) or iff('@' in ({ResultCodes}), resultCode startswith '5', false) or iff('#' in ({ResultCodes}), resultCode startswith '4', false)\r\n| summarize by name, resultCode\r\n| summarize makelist(strcat(name, '-', resultCode), 100000);\r\nlet data = requests\r\n| where timestamp {TimeRange}\r\n| where name in ({Requests}) or '*' in ({Requests})\r\n| where resultCode in ({ResultCodes}) or '*' in ({ResultCodes}) or iff('@' in ({ResultCodes}), resultCode startswith '5', false) or iff('#' in ({ResultCodes}), resultCode startswith '4', false)\r\n| where success == false;\r\ndata\r\n| extend IsNew = strcat(name, '-', resultCode) !in (bigWindow)\r\n| where \"{Show}\" == \"['New Failure Rate (%)'], ['Existing Failure Rate (%)']\" or IsNew == true\r\n//| summarize Count = count() by bin(timestamp, {TimeRange:grain}), ['Failure'] = iff(IsNew, 'New Failure', 'Existing Failure')\r\n| make-series Count = count()  default = 0 on timestamp in range({TimeRange:start}, now(), {TimeRange:grain}) by ['Failure'] = iff(IsNew, 'New Failure', 'Existing Failure')\r\n\r\n",
+        "query": "let bigWindow = exceptions\r\n| where timestamp >= {TimeRange:start} - {UseComparisonTimeRangeOf} and timestamp <= {TimeRange:start}\r\n| where problemId in ({Problems}) or '*' in ({Problems})\r\n| summarize makelist(problemId, 100000);\r\nlet data = exceptions\r\n| where timestamp {TimeRange}\r\n| where problemId in ({Problems}) or '*' in ({Problems});\r\ndata\r\n| extend IsNew = problemId !in (bigWindow)\r\n| where \"{Show}\" == \"['New Failure Rate (%)'], ['Existing Failure Rate (%)']\" or IsNew == true\r\n| make-series Count = count()  default = 0 on timestamp in range({TimeRange:start}, now(), {TimeRange:grain}) by ['Failure'] = iff(IsNew, 'New Failure', 'Existing Failure')\r\n\r\n",
         "showQuery": false,
         "size": 0,
         "aggregation": 0,
@@ -215,7 +201,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## Failure Details"
+        "json": "## Exception Details"
       },
       "conditionalVisibility": null,
       "halfWidth": false
@@ -232,14 +218,45 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let bigWindow = requests\n| where timestamp >= {TimeRange:start} - {UseComparisonTimeRangeOf} and timestamp <= {TimeRange:start}\n| where success == false\n| where name in ({Requests}) or '*' in ({Requests})\n| where resultCode in ({ResultCodes}) or '*' in ({ResultCodes}) or iff('@' in ({ResultCodes}), resultCode startswith '5', false) or iff('#' in ({ResultCodes}), resultCode startswith '4', false)\n| summarize by name, resultCode\n| summarize makelist(strcat(name, '-', resultCode), 100000);\nlet data = requests\n| where timestamp {TimeRange}\n| where name in ({Requests}) or '*' in ({Requests})\n| where resultCode in ({ResultCodes}) or '*' in ({ResultCodes}) or iff('@' in ({ResultCodes}), resultCode startswith '5', false) or iff('#' in ({ResultCodes}), resultCode startswith '4', false)\n| where success == false;\ndata\n| summarize Count = count(), Users = dcount(user_Id) by name, resultCode\n| extend IsNew = strcat(name, '-', resultCode) !in (bigWindow)\n| where \"{Show}\" == \"['New Failure Rate (%)'], ['Existing Failure Rate (%)']\" or IsNew == true\n| join kind=inner (data\n    | make-series Trend = count() default = 0 on timestamp in range({TimeRange:start}, now(), {TimeRange:grain}) by name\n    | project name, Trend\n    ) on name\n| order by Users desc, Count desc, name asc\n| project ['Request Name'] = iff(IsNew, strcat('🔸 ', name), strcat('🔹 ', name)), ['Failed with Result Code'] = resultCode, ['Request Failures'] = Count, ['Users Affected'] = Users, ['Request Count Trend'] = Trend\n",
+        "query": "let bigWindow = exceptions\n| where timestamp >= {TimeRange:start} - {UseComparisonTimeRangeOf} and timestamp <= {TimeRange:start}\n| where problemId in ({Problems}) or '*' in ({Problems})\n| summarize makelist(problemId, 100000);\nlet data = exceptions\n| where timestamp {TimeRange}\n| where problemId in ({Problems}) or '*' in ({Problems});\ndata\n| extend IsNew = problemId !in (bigWindow)\n| where \"{Show}\" == \"['New Failure Rate (%)'], ['Existing Failure Rate (%)']\" or IsNew == true\n| summarize Count = count(), Users = dcount(user_Id) by problemId, IsNew\n| join kind=inner (data\n    | make-series Trend = count() default = 0 on timestamp in range({TimeRange:start}, now(), {TimeRange:grain}) by problemId\n    | project problemId, Trend\n    ) on problemId\n| order by Users desc, Count desc, problemId asc\n| project ['Problem'] = iff(IsNew, strcat('🔸 ', problemId), strcat('🔹 ', problemId)), ['Request Failures'] = Count, ['Users Affected'] = Users, ['Request Count Trend'] = Trend\n",
         "showQuery": false,
         "size": 0,
         "aggregation": 2,
         "showAnnotations": false,
         "showAnalytics": false,
         "resourceType": "microsoft.insights/components",
-        "visualization": "table"
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Request Failures",
+              "formatter": 8,
+              "formatOptions": {
+                "min": null,
+                "max": null,
+                "palette": "red"
+              }
+            },
+            {
+              "columnMatch": "Users Affected",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": null,
+                "palette": "red"
+              }
+            },
+            {
+              "columnMatch": "Trend",
+              "formatter": 9,
+              "formatOptions": {
+                "min": 0,
+                "max": null,
+                "palette": "greenRed"
+              }
+            }
+          ]
+        }
       },
       "conditionalVisibility": null,
       "halfWidth": false
