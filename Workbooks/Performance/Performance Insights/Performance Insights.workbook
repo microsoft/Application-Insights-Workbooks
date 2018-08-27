@@ -6,7 +6,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Performance Insights"
+        "json": "# Application Performance Insights\nUse this report to identify the slowest operations in your applications. This information can be used to diagnose potential problems or help focus your ongoing development to improve the overall performance of the application."
       },
       "conditionalVisibility": null
     },
@@ -251,7 +251,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## Details -- {SelectedOperation}\n"
+        "json": "## Operation Details -- {SelectedOperation}\n"
       },
       "conditionalVisibility": null
     },
@@ -343,42 +343,120 @@
     {
       "type": 1,
       "content": {
-        "json": "### Distribution of Durations (log scale)"
+        "json": "### Dependency Performance\n"
       },
-      "conditionalVisibility": null,
-      "customWidth": "60"
+      "conditionalVisibility": null
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select an operation in the table above to see the performance of its dependencies. "
+      },
+      "conditionalVisibility": {
+        "parameterName": "SelectedOperation",
+        "comparison": "isEqualTo",
+        "value": "all operations"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "a5b7de6f-eb50-49c6-8aaa-556d84ca9e3f",
+            "version": "KqlParameterItem/1.0",
+            "name": "AnalysisSet",
+            "type": 2,
+            "isRequired": true,
+            "query": "datatable(value:string, label:string)[\r\n'{\"from\":93, \"to\":97}', \"p95\",\r\n'{\"from\":77, \"to\":83}', \"p80\",\r\n'{\"from\":45, \"to\":55}', \"p50\",\r\n]",
+            "value": "{\"from\":93, \"to\":97}",
+            "isHiddenWhenLocked": false,
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "be711374-a833-44a2-b9a4-5307ebc58253",
+            "version": "KqlParameterItem/1.0",
+            "name": "StartPercentile",
+            "type": 1,
+            "isRequired": true,
+            "query": "let analysisSet = dynamic({AnalysisSet});\r\nlet analysisStart = toreal(analysisSet.from);\r\nrange i from 1 to 1 step 1\r\n| project Start = analysisStart",
+            "isHiddenWhenLocked": false,
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "fbca7275-4f5a-407e-84c2-e350f385eb53",
+            "version": "KqlParameterItem/1.0",
+            "name": "EndPercentile",
+            "type": 1,
+            "isRequired": true,
+            "query": "let analysisSet = dynamic({AnalysisSet});\r\nlet analysisStart = toreal(analysisSet[\"to\"]);\r\nrange i from 1 to 1 step 1\r\n| project Start = analysisStart",
+            "isHiddenWhenLocked": false,
+            "resourceType": "microsoft.insights/components"
+          }
+        ],
+        "resourceType": "microsoft.insights/components"
+      },
+      "conditionalVisibility": {
+        "parameterName": "SelectedOperation",
+        "comparison": "isNotEqualTo",
+        "value": "all operations"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "The charts below show performance of the dependencies of *{SelectedOperation}*. The data is filtered only to those operations whose durations fall between p{StartPercentile} and p{EndPercentile} of the entire distribution. Change parameters `AnalysisSet`, `StartPercentile` or `EndPercentile` to tweak the percentile window of analysis"
+      },
+      "conditionalVisibility": {
+        "parameterName": "SelectedOperation",
+        "comparison": "isNotEqualTo",
+        "value": "all operations"
+      }
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let buckets = 15;\nlet row = dynamic({Operation});\nlet operation = tostring(row.Operation);\nlet app = tostring(row.App);\nlet data = requests\n| where timestamp {TimeRange}\n| where (name == operation and appName == app) or (operation == '' and app == '') or (operation == '🔸 All operations' and app == '🔸 All Apps')\n| summarize Requests = count() by Bucket = bin(duration, 1);\nlet maxBucket = toscalar(data | summarize max(Bucket));\nlet base = exp(log(maxBucket) / buckets);\ndata\n| extend LogBucket = bin(log(Bucket) / log(base), 1)\n| summarize Requests = sum(Requests) by LogBucket\n| project Duration = round(exp(log(base) * LogBucket), 1), DurationEnd = round(exp(log(base) * (LogBucket + 1)) - 0.1, 1), Requests, LogBucket\n| order by Duration asc\n| project ['Request Duration (ms)'] = strcat(Duration, ' to ', iff(DurationEnd >= Duration, DurationEnd, Duration)) , Requests\n",
+        "query": "let row = dynamic({Operation});\r\nlet operation = tostring(row.Operation);\r\nlet app = tostring(row.App);\r\nlet data = requests\r\n| where timestamp {TimeRange}\r\n| where (name == operation and appName == app);\r\nlet minDuration = toscalar(data\r\n| summarize Start = percentile(duration, {StartPercentile}));\r\nlet maxDuration = toscalar(data\r\n| summarize End = percentile(duration, {EndPercentile}));\r\nlet operations = data\r\n| where duration >= minDuration and duration <= maxDuration\r\n| summarize by operation_Id\r\n| take 100000; // Limit to 100K operations for perf\r\ndependencies\r\n| where timestamp {TimeRange}\r\n| where operation_Id in (operations)\r\n| summarize Duration = avg(duration) by name, bin(timestamp, {TimeRange:grain})",
         "showQuery": false,
         "size": 0,
         "aggregation": 0,
         "showAnnotations": false,
         "showAnalytics": false,
+        "title": "Dependency Performance Trend (ms)",
         "resourceType": "microsoft.insights/components",
-        "crossComponentResources": [
-          "{Apps}"
-        ],
-        "visualization": "table",
-        "gridSettings": {
-          "formatters": [
-            {
-              "columnMatch": "Requests",
-              "formatter": 4,
-              "formatOptions": {
-                "min": 0,
-                "max": null,
-                "palette": "green"
-              }
-            }
-          ]
-        }
+        "visualization": "areachart"
       },
-      "conditionalVisibility": null,
-      "customWidth": "46"
+      "conditionalVisibility": {
+        "parameterName": "SelectedOperation",
+        "comparison": "isNotEqualTo",
+        "value": "all operations"
+      },
+      "customWidth": "55"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let row = dynamic({Operation});\r\nlet operation = tostring(row.Operation);\r\nlet app = tostring(row.App);\r\nlet data = requests\r\n| where timestamp {TimeRange}\r\n| where (name == operation and appName == app);\r\nlet minDuration = toscalar(data\r\n| summarize Start = percentile(duration, {StartPercentile}));\r\nlet maxDuration = toscalar(data\r\n| summarize End = percentile(duration, {EndPercentile}));\r\nlet operations = data\r\n| where duration >= minDuration and duration <= maxDuration\r\n| summarize by operation_Id\r\n| take 100000; // Limit to 100K operations for perf\r\ndependencies\r\n| where timestamp {TimeRange}\r\n| where operation_Id in (operations)\r\n| summarize Duration = avg(duration), Item = any(itemId) by name\r\n| extend Duration = round(Duration, 2)\r\n| order by Duration desc\r\n| project-rename [\"Mean Duration (ms)\"] = Duration",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 0,
+        "showAnnotations": false,
+        "showAnalytics": false,
+        "title": "Dependency Performance - Summary",
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "conditionalVisibility": {
+        "parameterName": "SelectedOperation",
+        "comparison": "isNotEqualTo",
+        "value": "all operations"
+      },
+      "customWidth": "45"
     }
   ]
 }
