@@ -1,0 +1,200 @@
+{
+  "version": "Notebook/1.0",
+  "isLocked": true,
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## Azure Blockchain Workbench Logs & Troubleshooting Guide\n---\n\nThis workbook is designed to give you some ways to root cause your failures. \nPlug in the requestId to follow the request's flow and view its logs.<br/>\nTo understand some of the common errors, please view the \"Common errors seen in logs\" section of our [Github troubleshooting guide](https://aka.ms/workbenchtroubleshooting)."
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Logs Table\n---"
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "6e3a7661-a6f1-42a1-bbad-d5f1ab577030",
+            "version": "KqlParameterItem/1.0",
+            "name": "requestId",
+            "type": 1,
+            "isRequired": true,
+            "value": "",
+            "isHiddenWhenLocked": false,
+            "timeContextFromParameter": null
+          },
+          {
+            "id": "c0b75247-9888-4698-8e97-a275ab3b8143",
+            "version": "KqlParameterItem/1.0",
+            "name": "timeRange",
+            "type": 4,
+            "isRequired": false,
+            "value": {
+              "durationMs": 604800000,
+              "createdTime": "2018-11-13T18:43:43.112Z",
+              "isInitialTime": false,
+              "grain": 1,
+              "useDashboardTimeRange": false
+            },
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 604800000,
+                  "createdTime": "2018-11-13T18:43:43.112Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                }
+              ]
+            },
+            "timeContextFromParameter": null
+          },
+          {
+            "id": "49ec9aaa-8b2a-45d7-8998-56e4360b5d6e",
+            "version": "KqlParameterItem/1.0",
+            "name": "isRequestNotSuccessful",
+            "type": 1,
+            "isRequired": false,
+            "query": "traces\r\n| union exceptions\r\n| where customDimensions.LogLevel == 'Error'\r\n| limit 1\r\n| project Result = tostring(1)\r\n",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 0,
+              "endTime": null,
+              "createdTime": "2018-11-13T19:39:09.242Z",
+              "isInitialTime": false,
+              "grain": 1,
+              "useDashboardTimeRange": false
+            },
+            "timeContextFromParameter": "timeRange",
+            "resourceType": "microsoft.insights/components"
+          }
+        ],
+        "resourceType": "microsoft.insights/components"
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let requestId = '{requestId}';\r\n// Get txHash if it exists\r\nlet txHash = toscalar(\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| extend thisRequestId = tostring(customDimensions.RequestId)\r\n| where thisRequestId== requestId\r\nand message has (' is submitted to transaction pool successfully.')\r\n| summarize txHash=any(tostring(split(split(message, \"Transaction \")[1], \" is submitted to\")[0]))\r\n);\r\n// Display the logs\r\ntraces\r\n| union exceptions\r\n| sort by timestamp desc\r\n| extend thisRequestId = tostring(customDimensions.RequestId), thisTxHash = tostring(customDimensions.transactionHash)\r\n// If requestId is available and txHash is null, then never got to submit the transaction, so show events with requestId\r\n// If requestId AND txHash is available, then it at least got to submit the transaction, show events with requestId AND txHash\r\n| where (\r\n        (requestId != '' and txHash == '' and thisRequestId == requestId) or\r\n        (requestId != '' and txHash != '' and (thisRequestId == requestId or thisTxHash == txHash))\r\n    ) and not(message has 'Microsoft.')\r\n| project LogLevel=customDimensions.LogLevel, created=format_datetime(timestamp, 'yyyy-MM-dd [hh:mm:ss tt]'), Message=iff(itemType=='exception', details[0].message, message), ServiceName=customDimensions.ServiceName, SourceContext=customDimensions.SourceContext, Method=iif(customDimensions.ServiceName == 'appbuilder.api', customDimensions.RequestPath, customDimensions.MessageName), Exception=type",
+        "showQuery": false,
+        "size": 2,
+        "aggregation": 0,
+        "showAnnotations": false,
+        "showAnalytics": true,
+        "title": "Workbench Logs",
+        "noDataMessage": "Please enter a valid requestId above.",
+        "timeContext": {
+          "durationMs": 0,
+          "endTime": null,
+          "createdTime": "2018-11-13T19:38:53.339Z",
+          "isInitialTime": false,
+          "grain": 1,
+          "useDashboardTimeRange": false
+        },
+        "timeContextFromParameter": "timeRange",
+        "resourceType": "microsoft.insights/components",
+        "gridSettings": {
+          "filter": true
+        }
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "##### How to export:\nClick on the icon to the top right of the Workbench logs table below and click on 'Export' on the top right panel."
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "<br/>\n<br/>\n<br/>\n<br/>\n\n## Potential Liveness Issues\n---\nIn the below tables you can see whether any of your requests from Workbench has gotten the system in a state with a liveness issue. This means that the requests are not being processed as expected and will continue to try submitting infinitely.\nNote that these issues are generally not caused by bugs in the Workbench codebase, but rather issues that arise from services being down.\n\n### TryCommitContractAction counter\nIf there has been over 10 tries to commit the contract/contract action to the blockchain and the transaction receipt had not arrived, then one of two things could be happening:\n1. The eth-watcher is down.\n2. The blockchain is unresponsive or taking a long time to process.\n\nThis table shows the requests that could have such issues, along with the number of times the system (eth-tx-submitter) has tried to commit the contract action to the blockchain. "
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "2f8ee2c0-5349-42c3-a8c4-799bc19c45b5",
+            "version": "KqlParameterItem/1.0",
+            "name": "hasLivenessBugInLast24hrs",
+            "type": 1,
+            "isRequired": false,
+            "query": "// Get txHashes if it exists\r\nlet txHashToRequestId = \r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has (' is submitted to transaction pool successfully.')\r\n| project\r\n  created=format_datetime(timestamp, 'yyyy-MM-dd [hh:mm:ss tt]'),\r\n  RequestId = tostring(customDimensions.RequestId), txHash=tostring(split(split(message, \"Transaction \")[1], \" is submitted to\")[0]);\r\n// Request Id to App,Contract, and Method\r\nlet requestIdToAppAndContractAndMethod =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Get work item detail: ')\r\n| project \r\n    RequestId = tostring(customDimensions.RequestId),\r\n    ContractName=tostring(split(split(message, \"contractName: \")[1], ';')[0]),\r\n  // If its empty \r\n    MethodName=tostring(iif(array_length(split(message, \"methodName: \")) == 1, 'ContractCreation', split(message, \"methodName: \")[1]));\r\n// See if there are more than one estimate gas tries (b/c then that means that blockchain is alive)\r\nlet requestIdToEstimateGasTries =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Estimating gas for')\r\n| summarize EstimateGasCount = count() by RequestId = tostring(customDimensions.RequestId);\r\n// See if eth-watcher is alive\r\n//let requestIdToEthWatcher =\r\n//traces\r\n//| union exceptions\r\n//| project txHash = tostring(customDimensions.transactionHash)\r\n//| join (txHashToRequestId) on $left.txHash == $right.txHash\r\n//| project RequestId, IsEthWatcherAlive=isnotnull(txHash);\r\n// Get txHashes if it exists\r\nlet quotations = '\\\"';\r\nlet txHashToCount =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Execute [dbo].[TryCommitContractAction] ')\r\n| summarize count() by txHash=trim(quotations, tostring(split(message, \"transactionHash = \")[1]));\r\n// Join\r\nlet table =\r\ntxHashToRequestId\r\n| join (txHashToCount) on $left.txHash == $right.txHash\r\n| join (requestIdToAppAndContractAndMethod) on $left.RequestId == $right.RequestId\r\n| join (requestIdToEstimateGasTries) on $left.RequestId == $right.RequestId\r\n| project created, RequestId, ContractName, MethodName, Count=count_, EstimateGasCount;\r\n\r\n// Check if submitter successfully finished creating after the loop\r\nlet successfulSubmit =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Getting transaction receipt ')\r\n| project TxHash = tostring(customDimensions.transactionHash), placeholder='placeholder'\r\n| join kind=inner (txHashToRequestId) on $left.TxHash == $right.txHash\r\n| project RequestId, placeholder;\r\n\r\nlet liveness_bugs =\r\ntable\r\n| distinct *\r\n| join kind=leftouter (successfulSubmit) on $left.RequestId == $right.RequestId\r\n// If placeholder is not null then it means it has successfully completed\r\n| where Count >= 10 and placeholder == 'placeholder'\r\n| project created, RequestId, ContractName, MethodName, Count, IsBlockchainAlive=EstimateGasCount>1\r\n| sort by created desc;\r\n\r\nliveness_bugs\r\n| project Result = tostring(1)",
+            "isHiddenWhenLocked": true,
+            "timeContextFromParameter": null,
+            "resourceType": "microsoft.insights/components"
+          }
+        ],
+        "resourceType": "microsoft.insights/components"
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "<span style=\"color:SpringGreen; font-size:2em;\">There are no liveness issues in the last 24 hours!</span>"
+      },
+      "conditionalVisibility": {
+        "parameterName": "hasLivenessBugInLast24hrs",
+        "comparison": "isNotEqualTo",
+        "value": "1"
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "<span style=\"color:red; font-size:2em;\">There are potential liveness issues :(</span>"
+      },
+      "conditionalVisibility": {
+        "parameterName": "hasLivenessBugInLast24hrs",
+        "comparison": "isEqualTo",
+        "value": "1"
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "// Get txHashes if it exists\r\nlet txHashToRequestId = \r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has (' is submitted to transaction pool successfully.')\r\n| extend RequestId = tostring(customDimensions.RequestId)\r\n| project\r\n  created=format_datetime(timestamp, 'yyyy-MM-dd [hh:mm:ss tt]'),\r\n  RequestId, txHash=tostring(split(split(message, \"Transaction \")[1], \" is submitted to\")[0]);\r\n// Request Id to App,Contract, and Method\r\nlet requestIdToAppAndContractAndMethod =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Get work item detail: ')\r\n| extend RequestId = tostring(customDimensions.RequestId)\r\n| project \r\n    RequestId,\r\n    ContractName=tostring(split(split(message, \"contractName: \")[1], ';')[0]),\r\n  // If its empty \r\n    MethodName=tostring(iif(array_length(split(message, \"methodName: \")) == 1, 'ContractCreation', split(message, \"methodName: \")[1]));\r\n// See if there are more than one estimate gas tries (b/c then that means that blockchain is alive)\r\nlet requestIdToEstimateGasTries =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Estimating gas for')\r\n| extend thisRequestId = tostring(customDimensions.RequestId)\r\n| summarize EstimateGasCount = count() by RequestId = thisRequestId;\r\n// See if eth-watcher is alive\r\n//let requestIdToEthWatcher =\r\n//traces\r\n//| union exceptions\r\n//| project txHash = tostring(customDimensions.transactionHash)\r\n//| join (txHashToRequestId) on $left.txHash == $right.txHash\r\n//| project RequestId, IsEthWatcherAlive=isnotnull(txHash);\r\n// Get txHashes if it exists\r\nlet quotations = '\\\"';\r\nlet txHashToCount =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Execute [dbo].[TryCommitContractAction] ')\r\n| summarize count() by txHash=trim(quotations, tostring(split(message, \"transactionHash = \")[1]));\r\n// Join\r\nlet table =\r\ntxHashToRequestId\r\n| join (txHashToCount) on $left.txHash == $right.txHash\r\n| join (requestIdToAppAndContractAndMethod) on $left.RequestId == $right.RequestId\r\n| join (requestIdToEstimateGasTries) on $left.RequestId == $right.RequestId\r\n| project created, RequestId, ContractName, MethodName, Count=count_, EstimateGasCount;\r\n// Check if submitter successfully finished creating after the loop\r\nlet successfulSubmit =\r\ntraces\r\n| union exceptions\r\n| sort by timestamp asc\r\n| where message has ('Getting transaction receipt ')\r\n| project TxHash = tostring(customDimensions.transactionHash), placeholder='placeholder'\r\n| join kind=inner (txHashToRequestId) on $left.TxHash == $right.txHash\r\n| project RequestId, placeholder;\r\ntable\r\n| distinct *\r\n| join kind=leftouter (successfulSubmit) on $left.RequestId == $right.RequestId\r\n// If placeholder is not null then it means it has successfully completed\r\n| where Count >= 10 and placeholder != 'placeholder'\r\n| project created, RequestId, ContractName, MethodName, Count, IsBlockchainAlive=EstimateGasCount>1\r\n| sort by created desc;",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 0,
+        "showAnnotations": false,
+        "showAnalytics": true,
+        "title": "TryCommitContractAction Counter",
+        "noDataMessage": "No liveness issues detected!",
+        "timeContextFromParameter": null,
+        "resourceType": "microsoft.insights/components",
+        "gridSettings": {
+          "filter": true
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "hasLivenessBug",
+        "comparison": "isEqualTo",
+        "value": "1"
+      }
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
