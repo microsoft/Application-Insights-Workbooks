@@ -22,8 +22,8 @@ describe('Validating Cohorts...', () => {
             if (error) throw error;
             results.filter(file => file.substr(-13) === 'settings.json')
                 .forEach(file => {
-                    let json = validateJsonStringAndGetObject(file);
-                    validateSettingsForCohort(json, file);
+                    let settings = validateJsonStringAndGetObject(file);
+                    validateSettingsForCohort(settings, file);
                 });
 
             done();
@@ -35,8 +35,8 @@ describe('Validating Cohorts...', () => {
             if (error) throw error;
             results.filter(file => file.substr(-22) === 'categoryResources.json')
                 .forEach(file => {
-                    let json = validateJsonStringAndGetObject(file);
-                    validateCategory(json, file);
+                    let category = validateJsonStringAndGetObject(file);
+                    validateCategory(category, file);
                 });
 
             done();
@@ -64,8 +64,8 @@ describe('Validating Workbooks...', () => {
             if (error) throw error;
             results.filter(file => file.substr(-13) === 'settings.json')
                 .forEach(file => {
-                    let json = validateJsonStringAndGetObject(file)
-                    validateSettingsForWorkbook(json, file);
+                    let settings = validateJsonStringAndGetObject(file)
+                    validateSettingsForWorkbook(settings, file);
                 });
 
             done();
@@ -77,8 +77,8 @@ describe('Validating Workbooks...', () => {
             if (error) throw error;
             results.filter(file => file.substr(-22) === 'categoryResources.json')
                 .forEach(file => {
-                    let json = validateJsonStringAndGetObject(file);
-                    validateCategory(json, file);
+                    let category = validateJsonStringAndGetObject(file);
+                    validateCategory(category, file);
                 });
 
             done();
