@@ -116,23 +116,12 @@ function validateJsonStringAndGetObject(file) {
     return obj;
 }
 
-function validateSettingsForCohort(settings) {
-    if (!settings.hasOwnProperty('$schema')) {
-        assert.fail("The $schema field is missing with '" + file + "'");
-    }
-    if (!settings.hasOwnProperty('name')) {
-        assert.fail("The name field is missing with '" + file + "'");
-    }
-    if (!settings.hasOwnProperty('author')) {
-        assert.fail("The author field is missing with '" + file + "'");
-    }
+function validateSettingsForCohort(settings, file) {
+    ["$schema", "name", "author"].forEach( field => checkProperty(settings, field, file) );
 }
 
 function validateSettingsForWorkbook(settings, file) {
-    checkProperty(settings, '$schema', file);
-    checkProperty(settings, 'name', file);
-    checkProperty(settings, 'author', file);
-    checkProperty(settings, 'galleries', file);
+    ["$schema", "name", "author", "galleries"].forEach( field => checkProperty(settings, field, file) );
     if (!Array.isArray(settings.galleries)) {
         assert.fail("The galleries should be an array with '" + file + "'");
     }
@@ -140,9 +129,7 @@ function validateSettingsForWorkbook(settings, file) {
 
 function validateCategory(category, file) {
     checkProperty(category, 'en-us', file);
-    checkProperty(category['en-us'], 'name', file);
-    checkProperty(category['en-us'], 'description', file);
-    checkProperty(category['en-us'], 'order', file);
+    ["name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
 }
 
 function checkProperty(obj, name, file) {
