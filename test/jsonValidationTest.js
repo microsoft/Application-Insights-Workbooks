@@ -112,8 +112,7 @@ var browseDirectory = function (dir, done) {
 
 function validateJsonStringAndGetObject(file) {
     let json = fs.readFileSync(file, 'utf8');
-    let obj = TryParseJson(json)
-    assert.isTrue(obj != null, 'Invalid json format with \'' + file + '\'');
+    let obj = TryParseJson(json, file)    
     return obj;
 }
 
@@ -130,42 +129,37 @@ function validateSettingsForCohort(settings) {
 }
 
 function validateSettingsForWorkbook(settings, file) {
-    if (!settings.hasOwnProperty('$schema')) {
-        assert.fail("The $schema field is missing with '" + file + "'");
-    }
-    if (!settings.hasOwnProperty('name')) {
-        assert.fail("The name field is missing with '" + file + "'");
-    }
-    if (!settings.hasOwnProperty('author')) {
-        assert.fail("The author field is missing with '" + file + "'");
-    }
-    if (!settings.hasOwnProperty('galleries')) {
-        assert.fail("The galleries field is missing with '" + file + "'");
-    }
+    checkProperty(settings, '$schema', file);
+    checkProperty(settings, 'name', file);
+    checkProperty(settings, 'author', file);
+    checkProperty(settings, 'galleries', file);
     if (!Array.isArray(settings.galleries)) {
         assert.fail("The galleries should be an array with '" + file + "'");
     }
 }
 
 function validateCategory(category, file) {
-    if (!category.hasOwnProperty('en-us')) {
-        assert.fail("The en-us field is missing with '" + file + "'");
+    checkProperty(category, 'en-us', file);
+    checkProperty(category['en-us'], 'name', file);
+    checkProperty(category['en-us'], 'description', file);
+    checkProperty(category['en-us'], 'order', file);
+}
+
+function checkProperty(obj, name, file) {
+    if (!obj) {
+        assert.fail("Can't check a property. The object is undefined.");
     }
-    if (!category['en-us'].hasOwnProperty('name')) {
-        assert.fail("The name field is missing with '" + file + "'");
-    }
-    if (!category['en-us'].hasOwnProperty('description')) {
-        assert.fail("The description field is missing with '" + file + "'");
-    }
-    if (!category['en-us'].hasOwnProperty('order')) {
-        assert.fail("The order field is missing with '" + file + "'");
+
+    if (!obj.hasOwnProperty(name)) {
+        assert.fail("The " + name + " field is missing with '" + file + "'");
     }
 }
 
-function TryParseJson(str) {
+function TryParseJson(str, file) {
     try {
         return JSON.parse(str);
     } catch (e) {
+        assert.fail('Invalid json format with \'' + file + '\'.\n' + e);
         return null;
     }
 }
