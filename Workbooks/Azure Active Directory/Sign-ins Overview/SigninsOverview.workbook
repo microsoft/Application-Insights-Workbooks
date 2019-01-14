@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
   "version": "Notebook/1.0",
   "isLocked": false,
@@ -6,7 +6,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Sign-ins Overview"
+        "json": "# Sign-in Analysis"
       },
       "conditionalVisibility": null
     },
@@ -15,28 +15,8 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "query": "",
-        "crossComponentResources": [
-          "{Workspace}"
-        ],
+        "crossComponentResources": [],
         "parameters": [
-          {
-            "id": "664c228f-a5c0-4d8a-9c6a-c1f08e05c943",
-            "version": "KqlParameterItem/1.0",
-            "name": "Workspace",
-            "type": 5,
-            "isRequired": true,
-            "value": "value::1",
-            "isHiddenWhenLocked": false,
-            "typeSettings": {
-              "resourceTypeFilter": {
-                "microsoft.operationalinsights/workspaces": true
-              },
-              "additionalResourceOptions": [
-                "value::1"
-              ]
-            },
-            "timeContextFromParameter": null
-          },
           {
             "id": "13f56671-7604-4427-a4d8-663f3da0cbc5",
             "version": "KqlParameterItem/1.0",
@@ -44,8 +24,8 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 604800000,
-              "createdTime": "2018-11-13T19:33:10.166Z",
+              "durationMs": 2592000000,
+              "createdTime": "2018-11-13T19:33:10.167Z",
               "isInitialTime": false,
               "grain": 1,
               "useDashboardTimeRange": false
@@ -152,20 +132,12 @@
             "quote": "'",
             "delimiter": ",",
             "query": "SigninLogs\r\n| summarize by AppDisplayName\r\n| order by AppDisplayName asc\r\n| project Value = AppDisplayName, Label = AppDisplayName, Selected = false\r\n| union (datatable(Value:string, Label:string, Selected:boolean)[\r\n'*', 'All Apps', true\r\n])",
-            "crossComponentResources": [
-              "{Workspace}"
-            ],
             "isHiddenWhenLocked": false,
-            "timeContext": {
-              "durationMs": 0,
-              "endTime": null,
-              "createdTime": "2018-11-22T01:01:58.937Z",
-              "isInitialTime": false,
-              "grain": 1,
-              "useDashboardTimeRange": false
-            },
-            "timeContextFromParameter": "TimeRange",
-            "resourceType": "microsoft.operationalinsights/workspaces"
+            "timeContextFromParameter": null,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "value": [
+              "*"
+            ]
           }
         ],
         "resourceType": "microsoft.operationalinsights/workspaces"
@@ -176,24 +148,39 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| summarize count() by AppDisplayName",
+        "query": "SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| make-series ['Sign-ins'] = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain})",
         "showQuery": false,
         "size": 0,
         "aggregation": 0,
         "showAnnotations": false,
         "showAnalytics": false,
-        "title": "Sign ins by App",
         "timeContext": {
           "durationMs": 0,
           "endTime": null,
-          "createdTime": "2018-11-22T01:01:44.771Z",
+          "createdTime": "2019-01-14T16:10:20.311Z",
           "isInitialTime": false,
           "grain": 1,
           "useDashboardTimeRange": false
         },
         "timeContextFromParameter": "TimeRange",
         "resourceType": "microsoft.operationalinsights/workspaces",
-        "visualization": "piechart"
+        "visualization": "areachart"
+      },
+      "conditionalVisibility": null,
+      "customWidth": "100"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### By Apps and Location"
+      },
+      "conditionalVisibility": null,
+      "customWidth": "50"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### By Operating System and Browser"
       },
       "conditionalVisibility": null,
       "customWidth": "50"
@@ -202,24 +189,58 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| summarize count() by Country = tostring(LocationDetails.countryOrRegion)",
+        "query": "let data = SigninLogs\r\n| extend AppDisplayName = iff(AppDisplayName == '', 'Unknown', AppDisplayName)\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps});\r\nlet appData = data\r\n| summarize Count = count() by AppDisplayName\r\n| join kind=inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by AppDisplayName\r\n    | project-away TimeGenerated) on AppDisplayName\r\n| order by Count desc, AppDisplayName asc\r\n| project AppDisplayName, Count, Trend\r\n| serialize Id = row_number();\r\ndata\r\n| summarize Count = count() by AppDisplayName, Country = tostring(LocationDetails.countryOrRegion)\r\n| join kind=inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by AppDisplayName, Country = tostring(LocationDetails.countryOrRegion)\r\n    | project-away TimeGenerated) on AppDisplayName, Country\r\n| order by Count desc, AppDisplayName asc\r\n| project AppDisplayName, Country, Count, Trend\r\n| serialize Id = row_number(1000000)\r\n| join kind=inner (appData) on AppDisplayName\r\n| project Id, Name = Country, Type = '📍 Location', ['Sign-in Count'] = Count, Trend, ParentId = Id1\r\n| union (appData \r\n    | project Id, Name = AppDisplayName, Type = '⚙️ App', ['Sign-in Count'] = Count, Trend, ParentId = -1)\r\n| order by ['Sign-in Count'] desc, Name asc",
         "showQuery": false,
-        "size": 0,
+        "size": 3,
         "aggregation": 0,
         "showAnnotations": false,
         "showAnalytics": false,
-        "title": "Sign ins by Country",
         "timeContext": {
           "durationMs": 0,
           "endTime": null,
-          "createdTime": "2018-11-22T01:01:44.786Z",
+          "createdTime": "2019-01-14T16:10:20.360Z",
           "isInitialTime": false,
           "grain": 1,
           "useDashboardTimeRange": false
         },
         "timeContextFromParameter": "TimeRange",
         "resourceType": "microsoft.operationalinsights/workspaces",
-        "visualization": "piechart"
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Id",
+              "formatter": 5,
+              "formatOptions": {}
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "Trend",
+              "formatter": 10,
+              "formatOptions": {
+                "min": 0,
+                "palette": "green"
+              }
+            },
+            {
+              "columnMatch": "ParentId",
+              "formatter": 5,
+              "formatOptions": {}
+            }
+          ],
+          "hierarchySettings": {
+            "idColumn": "Id",
+            "parentColumn": "ParentId",
+            "treeType": 0,
+            "expanderColumn": "Name"
+          }
+        }
       },
       "conditionalVisibility": null,
       "customWidth": "50"
@@ -228,53 +249,178 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| extend Os = tostring(DeviceDetail.operatingSystem)\r\n| extend Os = iff(isempty(Os), \"<unknown>\", Os)\r\n| summarize count() by Os",
+        "query": "let data = SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps});\r\nlet appData = data\r\n| summarize Count = count() by Os = tostring(DeviceDetail.operatingSystem)\r\n| where Os != ''\r\n| join kind=inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by Os = tostring(DeviceDetail.operatingSystem)\r\n    | project-away TimeGenerated) on Os\r\n| order by Count desc, Os asc\r\n| project Os, Count, Trend\r\n| serialize Id = row_number();\r\ndata\r\n| summarize Count = count() by Os = tostring(DeviceDetail.operatingSystem), Browser = tostring(DeviceDetail.browser)\r\n| join kind=inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by Os = tostring(DeviceDetail.operatingSystem), Browser = tostring(DeviceDetail.browser)\r\n    | project-away TimeGenerated) on Os, Browser\r\n| order by Count desc, Os asc\r\n| project Os, Browser, Count, Trend\r\n| serialize Id = row_number(1000000)\r\n| join kind=inner (appData) on Os\r\n| project Id, Name = Browser, Type = '🌐 Browser', ['Sign-in Count'] = Count, Trend, ParentId = Id1\r\n| union (appData \r\n    | project Id, Name = Os, Type = '🖥️ OS', ['Sign-in Count'] = Count, Trend, ParentId = -1)\r\n| order by ['Sign-in Count'] desc, Name asc",
         "showQuery": false,
-        "size": 0,
+        "size": 3,
         "aggregation": 0,
         "showAnnotations": false,
         "showAnalytics": false,
-        "title": "Sign ins by OS",
         "timeContext": {
           "durationMs": 0,
           "endTime": null,
-          "createdTime": "2018-11-22T01:01:44.799Z",
+          "createdTime": "2019-01-14T16:10:20.395Z",
           "isInitialTime": false,
           "grain": 1,
           "useDashboardTimeRange": false
         },
         "timeContextFromParameter": "TimeRange",
         "resourceType": "microsoft.operationalinsights/workspaces",
-        "visualization": "piechart"
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Id",
+              "formatter": 5,
+              "formatOptions": {}
+            },
+            {
+              "columnMatch": "Count",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "Trend",
+              "formatter": 10,
+              "formatOptions": {
+                "min": 0,
+                "palette": "green"
+              }
+            },
+            {
+              "columnMatch": "ParentId",
+              "formatter": 5,
+              "formatOptions": {}
+            }
+          ],
+          "hierarchySettings": {
+            "idColumn": "Id",
+            "parentColumn": "ParentId",
+            "treeType": 0,
+            "expanderColumn": "Name",
+            "expandTopLevel": true
+          }
+        }
       },
       "conditionalVisibility": null,
       "customWidth": "50"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "### Sign-Ins Triggering Policies"
+      },
+      "conditionalVisibility": null
+    },
+    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| extend Browser = tostring(DeviceDetail.browser)\r\n| extend Browser = iff(isempty(Browser), \"<unknown>\",Browser)\r\n| summarize count() by Browser",
+        "query": "let data = SigninLogs\r\n| extend AppDisplayName = iff(AppDisplayName == '', 'Unknown', AppDisplayName)\r\n| where AppDisplayName in ('*') or '*' in ('*')\r\n| extend CAStatus = case(ConditionalAccessStatus ==0,\"Success\",ConditionalAccessStatus == 1, \"Failure\", ConditionalAccessStatus == 2, \"Not Applied\", ConditionalAccessStatus == \"\", \"Not Applied\", \"Unknown\");\r\nlet caData = data\r\n| summarize Count = count() by CAStatus\r\n| join kind = inner (data\r\n| make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by CAStatus\r\n| project-away TimeGenerated) on CAStatus\r\n| order by Count desc, CAStatus asc\r\n| project CAStatus, Count, Trend\r\n| serialize Id = row_number();\r\ndata\r\n| summarize Count = count() by CAStatus,AppDisplayName\r\n| join kind=inner (data\r\n| make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by CAStatus,AppDisplayName\r\n| project-away TimeGenerated) on CAStatus, AppDisplayName\r\n| order by Count desc, AppDisplayName asc\r\n| project CAStatus, AppDisplayName, Count, Trend\r\n| serialize Id = row_number(1000000)\r\n| join kind=inner (caData) on CAStatus\r\n| project Id, ConditionalAccessStatus = AppDisplayName, Type = '⚙️ App' , ['Sign-in Count'] = Count, Trend, ParentId = Id1\r\n| union (caData \r\n| project Id, ConditionalAccessStatus = CAStatus, Type = '📍 CA Status', ['Sign-in Count'] = Count, Trend, ParentId = -1)\r\n| order by ['Sign-in Count'] desc, ConditionalAccessStatus asc",
         "showQuery": false,
         "size": 0,
         "aggregation": 0,
         "showAnnotations": false,
         "showAnalytics": false,
-        "title": "Sign ins by Browser",
         "timeContext": {
           "durationMs": 0,
           "endTime": null,
-          "createdTime": "2018-11-22T01:01:44.814Z",
+          "createdTime": "2019-01-14T16:10:20.415Z",
           "isInitialTime": false,
           "grain": 1,
           "useDashboardTimeRange": false
         },
         "timeContextFromParameter": "TimeRange",
         "resourceType": "microsoft.operationalinsights/workspaces",
-        "visualization": "piechart"
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Id",
+              "formatter": 5,
+              "formatOptions": {}
+            },
+            {
+              "columnMatch": "Sign-in Count",
+              "formatter": 8,
+              "formatOptions": {}
+            },
+            {
+              "columnMatch": "Trend",
+              "formatter": 9,
+              "formatOptions": {}
+            },
+            {
+              "columnMatch": "ParentId",
+              "formatter": 5,
+              "formatOptions": {}
+            }
+          ],
+          "hierarchySettings": {
+            "idColumn": "Id",
+            "parentColumn": "ParentId",
+            "treeType": 0,
+            "expanderColumn": "ConditionalAccessStatus"
+          }
+        }
       },
-      "conditionalVisibility": null,
-      "customWidth": "50"
+      "conditionalVisibility": null
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Top Errors"
+      },
+      "conditionalVisibility": null
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let data = SigninLogs\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps});\r\ndata\r\n|extend errorCode = toint(Status.errorCode)\r\n| where errorCode != 0\r\n|extend SigninStatus = case(errorCode == 0, \"Success\",                        errorCode == 50058, \"Interrupt\",  errorCode == 50140, \"Interrupt\",  errorCode == 51006, \"Interrupt\",  errorCode == 50059, \"Interrupt\",  errorCode == 65001, \"Interrupt\",  errorCode == 52004, \"Interrupt\",  errorCode == 50055, \"Interrupt\",  errorCode == 50144, \"Interrupt\",  errorCode == 50072, \"Interrupt\",  errorCode == 50074, \"Interrupt\",  errorCode == 16000, \"Interrupt\",  errorCode == 16001, \"Interrupt\",  errorCode == 16003, \"Interrupt\",  errorCode == 50127, \"Interrupt\",  errorCode == 50125, \"Interrupt\",  errorCode == 50129, \"Interrupt\",  errorCode == 50143, \"Interrupt\",  errorCode == 81010, \"Interrupt\",  errorCode == 81014, \"Interrupt\",  errorCode == 81012 ,\"Interrupt\",  \"Failure\")\r\n| where SigninStatus != \"Interrupt\"\r\n| summarize signInCount = count(), appCount = dcount(AppDisplayName) by SigninStatus, errorCode\r\n| top 10 by signInCount desc\r\n//| project ['Sign In Count']= signInCount, ['Error'] = errorCode, ['Sign-in Status'] = strcat(case(SigninStatus == 'Failure', '❌', '✔️'), ' ', SigninStatus), Properties = pack('Application Count', appCount)\r\n| project ['Sign In Count']= signInCount, ['Error'] = strcat(case(SigninStatus != \"Interrupt\", '❌', '✔️'), ' ', errorCode)\r\n",
+        "showQuery": false,
+        "size": 0,
+        "aggregation": 0,
+        "showAnnotations": false,
+        "showAnalytics": false,
+        "timeContextFromParameter": null,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Properties",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "CellDetails",
+                "linkLabel": "Details"
+              }
+            }
+          ]
+        },
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "Error",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Sign In Count",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibility": null
     }
   ]
 }
