@@ -1,22 +1,20 @@
 {
   "version": "Notebook/1.0",
-  "isLocked": false,
+  "isLocked": true,
   "items": [
     {
       "type": 1,
       "content": {
         "json": "# Cohort Analysis\n\nCohort Analysis measures how many of your users come back to perform one of the `RetainingActivities` in a particular period after they perform one of the `CohortingActivities` in your app - split by a dimension you choose. For instance, you could be measuring the number of users who returned to use your app on the 10th day from the day they first downloaded it, split by the country they are from. Seeing the retention trend for days 1-10 will give you an indication of the stickiness of your app. \n\nCohort Analysis is similar to N-day or Bracket retention and is only different in how the cohorts are defined. \n\nThis type of analysis is well-suited for gaming apps, or other kinds of app where you are trying to get users to develop a daily habit. Cohort Analysis will help you see differences in user retention across standard dimensions like country, app version, etc. or custom dimensions like 'Is Premium Customer' or 'Flight name in an experiment group'."
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
         "json": "### Activity Selection\nUse these fields to set events that that correspond to interesting user activities. The `Understanding Cohort Analysis Parameters` section at the bottom describes these parameters in detail."
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 9,
@@ -64,16 +62,14 @@
           }
         ]
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
         "json": "## Cohort Analysis Parameters\nUse these fields to customize your retention settings."
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 9,
@@ -124,29 +120,45 @@
             "query": "datatable(v:string, t:string)[\r\n'user_Id', 'Anonymous Users',\r\n'user_AuthenticatedId', 'Authenticated Users'\r\n]",
             "isHiddenWhenLocked": false,
             "value": "user_Id"
+          },
+          {
+            "id": "f6511ffa-e2ea-4a34-ad2e-454856288bd5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Show",
+            "type": 2,
+            "isRequired": true,
+            "isHiddenWhenLocked": false,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "jsonData": "[\r\n    { \"value\": \"RetentionRate\", \"label\": \"Retention Rate\", \"selected\": true},\r\n    { \"value\": \"RetainedUsers\", \"label\": \"Retained Users\", \"selected\": false},\r\n    { \"value\": \"Users\", \"label\": \"Potentially Retainable Users\", \"selected\": false}\r\n]",
+            "timeContextFromParameter": null
           }
-        ]
+        ],
+        "style": "pills",
+        "resourceType": "microsoft.insights/components"
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
         "json": "## Cohort Analysis Table"
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let periodsToAnalyze = {PeriodsToAnalyze};\nlet cohortSize = {RetentionPeriod};\nlet retainingActivities = iff('#' in ({RetainingActivities}), dynamic([{CohortingActivities}]), dynamic([{RetainingActivities}]));\nlet cohortUnit = case(cohortSize == 30d or cohortSize == 28d, \"month\", cohortSize == 7d, \"week\", \"day\");\nlet timeRange = startofday(now()) - case(cohortSize == 30d or cohortSize == 28d, startofmonth(now() - periodsToAnalyze * cohortSize), cohortSize == 7d, startofweek(now() - periodsToAnalyze * cohortSize), startofday(now() - periodsToAnalyze * cohortSize));\nlet cohorts = union customEvents, pageViews\n| where timestamp > startofday(now() - timeRange)\n| where name in ({CohortingActivities}) or '*' in ({CohortingActivities})\n{CohortingFilters}\n| extend Cohort = iff('{CohortType}' == 'itemType', 'Overall', iff({CohortType} == '', 'Unknown', {CohortType})) // reusing itemType to indicate no segmentation\n| summarize EarliestInCohort = min(startofday(timestamp)) by {BasedOn}, Cohort\n| summarize UsersInCohort = hll({BasedOn}) by EarliestInCohort, Cohort;\nlet users = union customEvents, pageViews\n| where timestamp > startofday(now() - timeRange)\n| where name in (retainingActivities) or '*' in (retainingActivities)\n{RetainingFilters}\n| extend Cohort = iff('{CohortType}' == 'itemType', 'Overall', iff({CohortType} == '', 'Unknown', {CohortType})) // reusing itemType to indicate no segmentation\n| summarize Users = hll({BasedOn}) by Day = startofday(timestamp), Cohort;\nlet Retention = materialize(\n    range i from 0d to timeRange step 1d\n    | extend Day = startofday(now() - i)\n    | extend RetentionRange = range(1d, timeRange, 1d)\n    | mvexpand RetentionRange limit 10000\n    | extend RetentionDay = Day + totimespan(RetentionRange)\n    | extend RetentionWeek = toint(totimespan(RetentionRange) / cohortSize)\n    | where RetentionDay <= startofday(now())\n    | project Day, RetentionDay, RetentionWeek\n    | join kind=inner\n    (\n        users\n        | project UsersOnDay = Users, RetentionDay = Day, Cohort\n    )\n    on RetentionDay\n    | summarize UsersForRetentionWeek = hll_merge(UsersOnDay) by Day, RetentionWeek, Cohort\n    | join kind=inner\n    (\n        cohorts\n        | project UsersInCohort, Cohort, Day = EarliestInCohort\n    )\n    on Day\n    | where Cohort == Cohort1\n    | project-away Day1, Cohort1\n    | evaluate dcount_intersect(UsersInCohort, UsersForRetentionWeek)\n    | summarize RetainedUsers = sum(s1) by Cohort, RetentionWeek \n);\ncohorts\n| summarize UsersInCohort = hll_merge(UsersInCohort) by Cohort\n| project Cohort, CohortUsers = dcount_hll(UsersInCohort)\n| join kind=inner\n(\n    Retention\n)\non Cohort\n| project-away Cohort1\n| extend RetentionRate = round(100.0 * RetainedUsers / CohortUsers, 2)\n| project-away RetainedUsers\n| order by CohortUsers desc, RetentionWeek asc\n| serialize rank = row_number()\n| extend RetentionWeek = case(RetentionWeek == 0, strcat(\"<1 \", cohortUnit), strcat(\"+\", RetentionWeek, \" \", cohortUnit))\n| order by rank asc\n| project Cohort, ['Users'] = CohortUsers, RetentionWeek, RetentionRate\n| evaluate pivot(RetentionWeek, sum(RetentionRate))",
+        "query": "let periodsToAnalyze = {PeriodsToAnalyze};\nlet cohortSize = {RetentionPeriod};\nlet retainingActivities = iff('#' in ({RetainingActivities}), dynamic([{CohortingActivities}]), dynamic([{RetainingActivities}]));\nlet cohortUnit = case(cohortSize == 30d or cohortSize == 28d, \"month\", cohortSize == 7d, \"week\", \"day\");\nlet timeRange = startofday(now()) - case(cohortSize == 30d or cohortSize == 28d, startofmonth(now() - periodsToAnalyze * cohortSize), cohortSize == 7d, startofweek(now() - periodsToAnalyze * cohortSize), startofday(now() - periodsToAnalyze * cohortSize));\nlet cohorts = union customEvents, pageViews\n| where timestamp > startofday(now() - timeRange)\n| where name in ({CohortingActivities}) or '*' in ({CohortingActivities})\n{CohortingFilters}\n| extend Cohort = iff('{CohortType}' == 'itemType', 'Overall', iff({CohortType} == '', 'Unknown', {CohortType})) // reusing itemType to indicate no segmentation\n| summarize EarliestInCohort = min(startofday(timestamp)) by {BasedOn}, Cohort\n| summarize UsersInCohort = hll({BasedOn}) by EarliestInCohort, Cohort;\nlet usersByWeek = cohorts\n| extend Week = toint(bin((now() - EarliestInCohort) / cohortSize, 1))\n| summarize UsersInCohort = hll_merge(UsersInCohort) by Week, Cohort;\nlet UserCohortCounts = usersByWeek\n| extend PossibleWeeks = range(0, Week, 1)\n| mvexpand PossibleWeeks to typeof(int)\n| join kind = inner (usersByWeek) on $left.PossibleWeeks == $right.Week\n| where Cohort == Cohort1\n| project Week, Users = hll_merge(UsersInCohort, UsersInCohort1), Cohort\n| summarize Users = hll_merge(Users) by Week, Cohort\n| extend UserCount = dcount_hll(Users)\n| project Week = toint(periodsToAnalyze - Week), Users = UserCount, Cohort;\nlet users = union customEvents, pageViews\n| where timestamp > startofday(now() - timeRange)\n| where name in (retainingActivities) or '*' in (retainingActivities)\n{RetainingFilters}\n| extend Cohort = iff('{CohortType}' == 'itemType', 'Overall', iff({CohortType} == '', 'Unknown', {CohortType})) // reusing itemType to indicate no segmentation\n| summarize Users = hll({BasedOn}) by Day = startofday(timestamp), Cohort;\nlet Retention = materialize(\n    range i from 0d to timeRange step 1d\n    | extend Day = startofday(now() - i)\n    | extend RetentionRange = range(1d, timeRange, 1d)\n    | mvexpand RetentionRange limit 10000\n    | extend RetentionDay = Day + totimespan(RetentionRange)\n    | extend RetentionWeek = toint(totimespan(RetentionRange) / cohortSize)\n    | where RetentionDay <= startofday(now())\n    | project Day, RetentionDay, RetentionWeek\n    | join kind=inner\n    (\n        users\n        | project UsersOnDay = Users, RetentionDay = Day, Cohort\n    )\n    on RetentionDay\n    | summarize UsersForRetentionWeek = hll_merge(UsersOnDay) by Day, RetentionWeek, Cohort\n    | join kind=inner\n    (\n        cohorts\n        | project UsersInCohort, Cohort, Day = EarliestInCohort\n    )\n    on Day\n    | where Cohort == Cohort1\n    | project-away Day1, Cohort1\n    | evaluate dcount_intersect(UsersInCohort, UsersForRetentionWeek)\n    | summarize RetainedUsers = sum(s1) by Cohort, RetentionWeek \n);\ncohorts\n| summarize UsersInCohort = hll_merge(UsersInCohort) by Cohort\n| project Cohort, CohortUsers = dcount_hll(UsersInCohort)\n| join kind=inner\n(\n    Retention\n)\non Cohort\n| project-away Cohort1\n| join kind = inner (UserCohortCounts) on $left.RetentionWeek == $right.Week\n| where Cohort == Cohort1\n| extend RetentionRate = round(100.0 * RetainedUsers / Users, 2)\n| project-away Cohort1\n| order by CohortUsers desc, RetentionWeek asc\n| serialize rank = row_number()\n| extend RetentionWeek = case(RetentionWeek == 0, strcat(\"<1 \", cohortUnit), strcat(\"+\", RetentionWeek, \" \", cohortUnit))\n| order by rank asc\n| project Cohort, ['Total Users'] = CohortUsers, RetentionWeek, {Show}\n| evaluate pivot(RetentionWeek, sum({Show}))",
         "showQuery": false,
         "size": 0,
         "aggregation": 0,
         "showAnnotations": false,
+        "showAnalytics": false,
+        "timeContextFromParameter": null,
+        "resourceType": "microsoft.insights/components",
         "gridSettings": {
           "formatters": [
             {
@@ -161,16 +173,14 @@
           ]
         }
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
         "json": "## Interpreting the table\nThis section shows how to read and interpret a retention table. The section below shows a row from a weekly retention report that we will try to read.\n"
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 3,
@@ -181,6 +191,9 @@
         "size": 0,
         "aggregation": 0,
         "showAnnotations": false,
+        "showAnalytics": false,
+        "timeContextFromParameter": null,
+        "resourceType": "microsoft.insights/components",
         "gridSettings": {
           "formatters": [
             {
@@ -195,40 +208,36 @@
           ]
         }
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
-        "json": "| Column | Explanation | Interpretation in the example |\n| ----- | :----- | :----- |\n| Cohort | Identifies the cohorting criteria specified by the CohortType parameter. | This row explains the retention behavior of users who used the 'Add to Cart' event. |\n| Users | Number of unique users who used the Add to Cart feature  | 1000 unique users added an item to their cart in your app |\n| <1 week | Percentage of cohort users who returned between 1 and 6 days after using 'Add to Cart' (using it again the same day does not count towards retention)  | 50% or 500 users returned to use your app within the first week after they added an item to their cart |\n| +1 week | Percentage of cohort users who returned between 7 and 13 days after using 'Add to Cart'  | 30% or 300 users returned to use your app a week later |\n| +N week | Percentage of cohort users who returned in the Nth week after 'Add to Cart'  | 15% or 150 users, when N = 3  |\n\n\n\n\n"
+        "json": "| Column | Explanation | Interpretation in the example |\n| ----- | :----- | :----- |\n| Cohort | Identifies the cohorting criteria specified by the CohortType parameter. | This row explains the retention behavior of users who used the 'Add to Cart' event. |\n| Total Users | Number of unique users who used the Add to Cart feature  | 1000 unique users added an item to their cart in your app |\n| <1 week | Percentage of cohort users who returned between 1 and 6 days after using 'Add to Cart' (using it again the same day does not count towards retention)  | 50% or 500 users returned to use your app within the first week after they added an item to their cart |\n| +1 week | Percentage of cohort users who returned between 7 and 13 days after using 'Add to Cart'  | 30% or 300 users returned to use your app a week later |\n| +N week | Percentage of cohort users who returned in the Nth week after 'Add to Cart'  | 15% or 150 users, when N = 3  |\n\n\n\n\n"
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
-        "json": "## Understanding Cohort Analysis Parameters\n| Parameter | Used for |\n| ----- | ----- |\n| Cohort Type | The dimension by which to split the retention numbers |\n| Retention Period | The period to use in retention calculation. Can be Daily, Weekly or Monthly |\n| Periods To Analyze  | The number of retention periods to analyze.  |\n| Cohorting Activities  | The activities that selects a cohort of users. Example: Users who used event *Read Product Review* (cohorting activity). |\n| Retaining Activities  | The activities that indicates retention of a cohorted user selected above. Example: Users who used event *Read Product Review* (cohorting activity) and returned to use *Purchase Product* (retaining activity). |\n| Cohorting/Retaining Filters  | An analytics query snippet to further filter the cohorting activity. Example: *&#124; where application_Version = '1.0'* |\n"
+        "json": "## Understanding Cohort Analysis Parameters\n| Parameter | Used for |\n| ----- | ----- |\n| Cohort Type | The dimension by which to split the retention numbers |\n| Retention Period | The period to use in retention calculation. Can be Daily, Weekly or Monthly |\n| Periods To Analyze  | The number of retention periods to analyze.  |\n| Cohorting Activities  | The activities that selects a cohort of users. Example: Users who used event *Read Product Review* (cohorting activity). |\n| Retaining Activities  | The activities that indicates retention of a cohorted user selected above. Example: Users who used event *Read Product Review* (cohorting activity) and returned to use *Purchase Product* (retaining activity). |\n| Cohorting/Retaining Filters  | An analytics query snippet to further filter the cohorting activity. Example: *&#124; where application_Version = '1.0'* |\n| Show  | The metric to visualize in the table. *Retention Rate* shows the rate at which users returned for the time period in the column. *Retained Users* is raw number of retained users for the time period. *Potentially Retainable Users* is the number of users who could potentially have been retained for that period.' |\n"
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
         "json": "## What is a week for a user?\nThe short answer is that it is unique for each user. Our analysis treats each user's retention window seperately - giving an accurate view of their actual behavior with your app. \n\nConsider the example below of two users X and Y: \n\n| User | First use of app | Weeks for user |\n| ----- | :----- | :----- |\n| X | April 3 | w1 = April 10, w2 = April 17, w3 = April 24  |\n| Y | April 5 | w1 = April 12, w2 = April 19, w3 = April 26  |\n\nEach user gets a seperate retention window. So, if both users came back on April 18, then it considered as Week 2 usage for User X but Week 1 usage for User Y. \n\nThis allows the normalization their app use over the retention window - making it seem as if all users in a cohort used the app on the same day. This allow for better analysis and comparision of user behavior."
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     },
     {
       "type": 1,
       "content": {
         "json": "## Related Workbook Templates\n* Retention - N-Period\n* Retention - Unbounded\n* Retention - Bracket"
       },
-      "conditionalVisibility": null,
-      "halfWidth": false
+      "conditionalVisibility": null
     }
-  ]
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
