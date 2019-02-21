@@ -45,11 +45,11 @@ describe('Validating Cohorts...', () => {
 });
 
 describe('Validating Workbooks...', () => {
-    const cohortPath = './Workbooks';
+    const workbookPath = './Workbooks';
 
     it('Verifying .workbook files', function (done) {
         let failedList = [];
-        browseDirectory(cohortPath, (error, results) => {
+        browseDirectory(workbookPath, (error, results) => {
             results.filter(file => file.substr(-9) === '.workbook')
                 .forEach(file => {
                     validateJsonStringAndGetObject(file)
@@ -60,7 +60,7 @@ describe('Validating Workbooks...', () => {
     });
 
     it('Verifying workbook settings.json files', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
+        browseDirectory(workbookPath, (error, results) => {
             if (error) throw error;
             results.filter(file => file.substr(-13) === 'settings.json')
                 .forEach(file => {
@@ -78,15 +78,15 @@ describe('Validating Workbooks...', () => {
             results.filter(file => file.substr(-22) === 'categoryResources.json')
                 .forEach(file => {
                     let category = validateJsonStringAndGetObject(file);
-                    validateCategory(category, file, true);
+                    validateCategory(category, file);
                 });
 
             done();
-        });
+        }, true, workbookPath);
     });
 });
 
-var browseDirectory = function (dir, done, hasRoot=false) {
+var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
     var results = [];
     fs.readdir(dir, function (err, list) {
         if (err) return done(err);
@@ -102,8 +102,7 @@ var browseDirectory = function (dir, done, hasRoot=false) {
                         next();
                     });
                 } else {
-                    if (hasRoot) {
-                        hasRoot = false;
+                    if (hasRoot && dir === rootDir) {                        
                         next();
                     } else {
                         results.push(file);
