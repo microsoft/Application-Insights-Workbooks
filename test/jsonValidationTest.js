@@ -73,12 +73,12 @@ describe('Validating Workbooks...', () => {
     });
 
     it('Verifying workbook category json files', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
+        browseDirectory(workbookPath, (error, results) => {
             if (error) throw error;
             results.filter(file => file.substr(-22) === 'categoryResources.json')
                 .forEach(file => {
                     let category = validateJsonStringAndGetObject(file);
-                    validateCategory(category, file);
+                    validateCategory(category, file, true);
                 });
 
             done();
@@ -86,7 +86,7 @@ describe('Validating Workbooks...', () => {
     });
 });
 
-var browseDirectory = function (dir, done) {
+var browseDirectory = function (dir, done, hasRoot=false) {
     var results = [];
     fs.readdir(dir, function (err, list) {
         if (err) return done(err);
@@ -102,8 +102,13 @@ var browseDirectory = function (dir, done) {
                         next();
                     });
                 } else {
-                    results.push(file);
-                    next();
+                    if (hasRoot) {
+                        hasRoot = false;
+                        next();
+                    } else {
+                        results.push(file);
+                        next();
+                    }
                 }
             });
         })();
