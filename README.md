@@ -161,3 +161,52 @@ There are three ways of creating a template.
     ![Image of default template](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/SavedList.png)
 
 6. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
+
+## How to associate any existing template to new category in Workbooks
+We are now supporting associating any exiting templates to new category (virtual category). Previously, a category is always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintain overhead of updating duplicated templates.
+
+First, to associate the existing template, we need to create a virtual category first.
+1. Go to Workbooks folder and locate "resourceCategory.json" file.
+2. Add new category entry under categories array as below:
+    ```
+    {
+    "categories": [{
+            "key": "YourUniqueCategoryKey",
+            "settings": {
+            "en-us": {
+                "name": "Your category name",
+                "description": "Category description",
+                "order": 100
+                }
+            }      
+        }]
+    }
+    ```
+    * key: This should be unique key value. This will be used in a template to link together.
+    * settings:
+        * name: This is a name of category. This will be localized.
+        * description: A description of this category.
+        * order: The sort order of category.
+3. Now we need to modify template settings to associate it together.
+4. Go to your template and open settings.json file
+    ```
+    {
+        "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
+        "name": "Bracket Retention",
+        "author": "Microsoft",
+        "galleries": [
+            {
+                "type": "workbook",
+                "resourceType": "microsoft.insights/components",
+                "order": 400
+            },
+            {
+                "type": "workbook",
+                "resourceType": "Azure Monitor",
+                "categoryKey": "YourUniqueCategoryKey"
+                "order": 400
+            }
+        ]
+    }
+    ```
+    **Note that the second item in the galleries array, it has a "categoryKey". It should be match with a "key" in a virtual category.**
