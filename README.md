@@ -162,8 +162,8 @@ There are three ways of creating a template.
 
 6. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
 
-## How to associate any existing template to new category in Workbooks
-We are now supporting associating any exiting templates to new category (virtual category). Previously, a category is always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintain overhead of updating duplicated templates.
+## How to associate any existing template to an additional category in Workbooks
+We are now supporting associating any exiting templates to an additional category (virtual category). Previously, a category was always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintenance overhead of updating duplicated templates.
 
 First, to associate the existing template, we need to create a virtual category first.
 1. Go to Workbooks folder and locate "resourceCategory.json" file.
@@ -171,10 +171,10 @@ First, to associate the existing template, we need to create a virtual category 
     ```
     {
     "categories": [{
-            "key": "YourUniqueCategoryKey",
+            "key": "YourSampleUniqueCategoryKey",
             "settings": {
             "en-us": {
-                "name": "Your category name",
+                "name": "Sample Category",
                 "description": "Category description",
                 "order": 100
                 }
@@ -200,6 +200,7 @@ First, to associate the existing template, we need to create a virtual category 
                 "resourceType": "microsoft.insights/components",
                 "order": 400
             },
+            // This is the new section to add:
             {
                 "type": "workbook",
                 "resourceType": "Azure Monitor",
