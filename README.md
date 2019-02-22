@@ -204,7 +204,7 @@ First, to associate the existing template, we need to create a virtual category 
             {
                 "type": "workbook",
                 "resourceType": "Azure Monitor",
-                "categoryKey": "YourUniqueCategoryKey"
+                "categoryKey": "YourSampleUniqueCategoryKey"
                 "order": 400
             }
         ]
