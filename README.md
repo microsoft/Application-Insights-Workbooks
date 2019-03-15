@@ -23,13 +23,11 @@ Workbooks allow Azure Monitor users to create customizable interactive reports a
 5.	Use templates for curated analysis from a public gallery
 6.	Leverage ARM programmability to create and manage their workbook assets.
 
-These capabilities of workbooks can be used to create curated and customized reports, analytic narratives, dashboards, first-class portal reports, solutions, etc. 
-
-This document will provide you with a broad overview of workbooks, its concepts and features, and the various ways it can be leveraged by Azure users.
+These capabilities of workbooks can be used to create curated and customized reports, analytic narratives, dashboards, etc. 
 
 Use these links to learn more about workbooks:
 
-* [Data Sources]()
+* [Data Sources](Documentation/DataSources/DataSources.md)
 * [Visualizations]()
 * [Parameters]()
 * [Templates]()
