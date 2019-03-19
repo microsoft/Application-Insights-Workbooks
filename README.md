@@ -28,10 +28,10 @@ These capabilities of workbooks can be used to create curated and customized rep
 Use these links to learn more about workbooks:
 
 * [Data Sources](Documentation/DataSources/DataSources.md)
-* [Visualizations]()
-* [Parameters]()
-* [Templates]()
-* [Programmability]()
+* [Visualizations](Documentation/Visualizations/Visualizations.md)
+* Parameters
+* Templates
+* Programmability
 
 ### Sample Workbook 
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)

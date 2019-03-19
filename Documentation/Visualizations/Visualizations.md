@@ -6,9 +6,9 @@ Workbooks support these kinds of visual components:
 * [Text](Text.md)
 * [Charts](Chart.md)
 * [Grids](Grid.md)
-* [Tiles]()
-* [Trees]()
-* [Graphs]()
+* Tiles
+* Trees
+* Graphs
 
 Use the links to learn more about each type of visualization.
 
