@@ -11,5 +11,7 @@ Text is added through a markdown control - into which an author can add their co
 ## Add a text control
 1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
 2. Use the _Add text_ link to add a text control to the workbook. 
-3. Add your [markdown](https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet) to the control.
+3. Add markdown to the control.
 4. Click the _Done Editing_ button to see the formatted text.
+
+> Tip: Use this [markdown cheat sheet](https://github.com/adam-p/markdown-here/wiki/Markdown-Cheatsheet) to see the different formatting options.

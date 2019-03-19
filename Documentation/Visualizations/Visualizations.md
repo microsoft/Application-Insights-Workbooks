@@ -3,12 +3,12 @@
 Workbooks provide a rich set of capabilities for visualizing Azure Monitor data. The exact set of capability depends on the data source and result set, but authors can expect them to converge over time. These controls allow authors to present their analysis in rich, interactive reports. 
 
 Workbooks support these kinds of visual components:
-* [Text](#logs)
-* [Charts](#logs)
-* [Grids](#metrics)
-* [Tiles](#alerts)
-* [Trees](#workload-health)
-* [Graphs](#azure-resource-health)
+* [Text](Text.md)
+* [Charts](Chart.md)
+* [Grids](Grid.md)
+* [Tiles]()
+* [Trees]()
+* [Graphs]()
 
 Use the links to learn more about each type of visualization.
 
