@@ -87,8 +87,8 @@ Each template folder contains a list of language folders and an optional icon fi
 The optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
 
 Each language folder contains the following files:
-* **A .workbook ** You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.
-* **A settings.json file.** This file describes a template with metadata. You can specify a localized version of metadata per a language folder.
+* **.workbook file** - You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.
+* **settings.json file** - This file describes a template with metadata. You can specify a localized version of metadata per a language folder.
     ```
         {
             "name":"Improving User Retention",

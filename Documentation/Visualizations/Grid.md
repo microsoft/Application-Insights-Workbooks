@@ -47,10 +47,10 @@ requests
 ## Grid Styling
 While a plain table shows data, it hard to read and insights don't jump out to you. Styling the grid can help you accomplish this. 
 
-Here is the same grid styles with heatmaps.
+Here is the same grid styled as heatmaps.
 ![Image showing a log based grid with columns styled as heatmaps](../Images/LogChart-Grid-Heatmap.png)
 
-Here is the same grid styles with heatmaps.
+Here is the same grid styled as bars.
 ![Image showing a log based grid with columns styled as bars](../Images/LogChart-Grid-Bar.png)
 
 ### Styling a Grid Column

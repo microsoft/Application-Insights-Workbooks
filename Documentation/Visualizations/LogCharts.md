@@ -25,8 +25,7 @@ Here is the edit mode version of the log chart above:
 | `Query Type` | The type of query to use | Log, Azure Resource Graph, etc. |
 | `Resource Type` | The resource type to target | Application Insights, Log Analytics, or Azure-first |
 | `Resources` | A set of resources to get the metrics value from | MyApp1 |
-| `Time Range` | The time window to view the log chart | Last hour, Last 24 hours, etc. 
-|
+| `Time Range` | The time window to view the log chart | Last hour, Last 24 hours, etc. |
 | `Visualization` | The visualization to use | Area, Bar, Line, Pie, Scatter, Time, bar categorical |
 | `Size` | The vertical size of the control | Small, medium, large or full |
 | `Color palette` | The color palette to use in the chart. Ignored in multi-metric or segmented mode. | Blue, green, red, etc. |
