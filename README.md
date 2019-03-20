@@ -32,7 +32,7 @@ Use these links to learn more about workbooks:
 * Parameters
 * Interactivity
 * Templates
-* Programmability
+* [Manage programmatically](Documentation/Programmatically.md)
 
 ### Sample Workbook 
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)
