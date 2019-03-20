@@ -30,8 +30,9 @@ Use these links to learn more about workbooks:
 * [Data Sources](Documentation/DataSources/DataSources.md)
 * [Visualizations](Documentation/Visualizations/Visualizations.md)
 * Parameters
+* Interactivity
 * Templates
-* Programmability
+* [Manage programmability](Documentation/Programmatically.md)
 
 ### Sample Workbook 
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)
