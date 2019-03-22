@@ -7,8 +7,8 @@ Workbooks allow you to control how your parameter controls are presented to cons
 Supported parameter types include:
 * [Time](Time.md)
 * [Drop down](DropDown.md)
-* Text
-* Resource
+* [Text](Text.md)
+* [Resource](Resources.md)
 * Subscription
 * Resource Type
 * Location
