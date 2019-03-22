@@ -1,6 +1,6 @@
 # Workbook Parameters
 
-Parameters allows workbook authors to collect input from the consumers and reference it in other parts of the workbook – usually to scope the result set or setting the right visual. It is a key capability that allows authors to build interactive reports and experiences. 
+Parameters allow workbook authors to collect input from the consumers and reference it in other parts of the workbook – usually to scope the result set or setting the right visual. It is a key capability that allows authors to build interactive reports and experiences. 
 
 Workbooks allow you to control how your parameter controls are presented to consumers – text box vs. drop down, single- vs. multi-select, values from text, JSON, KQL or Azure Resource Graph, etc.  
 
@@ -56,7 +56,7 @@ This is how the workbook will look like in read-mode.
 4. The text control will show text: _The chosen time range is Last 24 hours_
 
 ## Parameter options
-The _In Text_ section used the `label` of the parameter instead of its value. Parameters expose varuiys such options depending on its type - e.g. time range pickers allows value, label, query, start, end and grain.
+The _In Text_ section used the `label` of the parameter instead of its value. Parameters expose various such options depending on its type - e.g. time range pickers allow value, label, query, start, end and grain.
 
 Use the `Previews` section of the _Edit Parameter_ pane to see the expansion options for your parameter:
 
