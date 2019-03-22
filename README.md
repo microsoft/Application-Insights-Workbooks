@@ -29,7 +29,7 @@ Use these links to learn more about workbooks:
 
 * [Data Sources](Documentation/DataSources/DataSources.md)
 * [Visualizations](Documentation/Visualizations/Visualizations.md)
-* [Parameters](Documentation/Parameters/Parameters.md)
+* [Parameters](Documentation/Parameters/index.md)
 * Interactivity
 * Templates
 * [Manage programmatically](Documentation/Programmatically.md)
