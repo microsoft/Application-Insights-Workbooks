@@ -1,8 +1,8 @@
 # Text Parameters
 
-Textbox parameters provide a simple way to collect text input from workbook users. They are used when it is not practical to use a drop down to collect the input (e.g. an arbitrary threshold or generic filters). Workbooks allow authors to get the default value of the textbox from a KQL query. This allows interesting scenarios like setting the default threshold based on the p95 of the metric.
+Textbox parameters provide a simple way to collect text input from workbook users. They are used when it is not practical to use a drop down to collect the input (e.g. an arbitrary threshold or generic filters). Workbooks allow authors to get the default value of the textbox from a query. This allows interesting scenarios like setting the default threshold based on the p95 of the metric.
 
-A common use of textboxes is as internal variables used by other workbook controls. This is done by leveraging KQL for default values, and making the input control invisible in read-mode. For example, a user may want a threshold to come from a formulae (not a user) and then use the threshold in subsequent queries.
+A common use of textboxes is as internal variables used by other workbook controls. This is done by leveraging a query for default values, and making the input control invisible in read-mode. For example, a user may want a threshold to come from a formulae (not a user) and then use the threshold in subsequent queries.
 
 ## Creating a text parameter
 1. Start with an empty workbook in edit mode.

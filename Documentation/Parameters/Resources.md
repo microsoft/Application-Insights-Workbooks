@@ -40,6 +40,10 @@ Values from resource pickers can come from the workbook context, static list or 
 
 ![Image showing the creation of a resource parameter using Azure Resource Graph](../Images/Parameters-Resource-Query.png)
 
+> Note that Azure Resource Graph is not yet available in all clouds. Ensure that it is supported in your target cloud if you choose this approach.
+
+[Azure Resource Graph documentation](https://docs.microsoft.com/en-us/azure/governance/resource-graph/overview)
+
 ## Creating a resource parameter a JSON list
 1. Start with an empty workbook in edit mode.
 2. Choose _Add parameters_ from the links within the workbook.
