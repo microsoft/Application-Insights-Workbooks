@@ -6,7 +6,7 @@ Workbooks support these kinds of visual components:
 * [Text](Text.md)
 * [Charts](Chart.md)
 * [Grids](Grid.md)
-* Tiles
+* [Tiles](Tiles.md)
 * Trees
 * Graphs
 
