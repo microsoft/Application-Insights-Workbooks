@@ -29,7 +29,7 @@ Workbook tiles support showing a title, subtitle, large text, icons, metric base
 
 This is how the tiles will look like in read mode:
 
-![Image showing the creation of a tile visualization in workbooks](../Images/Tiles-ReadMode.png)
+![Image showing a tile visualization in read mode](../Images/Tiles-ReadMode.png)
 
 ## Spark lines in Tiles
 1. Create a query control using steps 1-3 above.
