@@ -10,7 +10,7 @@ The workbook will created in the desired sub/resource-group and with the content
 
 ## Creating an ARM template that deploys a Workbook
 1. Open a workbook whose content you want to deploy programmatically.
-2. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+2. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 3. Open the _Advanced Editor_ using the _</>_ button on the toolbar.
 4. In the editor, switch _Template Type_ to _ARM Template_.
 5. The ARM template for creating shows up in the editor. Copy the content and use as-is or merge it with a larger template that also deploys the target resource.

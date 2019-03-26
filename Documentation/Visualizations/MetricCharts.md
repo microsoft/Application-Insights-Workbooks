@@ -7,7 +7,7 @@ The example below shows the number of transactions in a storage account over the
 ![Image showing a metric area chart for Storage transactions in a workbook](../Images/MetricChart-Storage-Area.png)
 
 ## Adding a metric chart
-1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add metric_ link to add a metric control to the workbook. 
 3. Select a resource type (e.g. Storage Account), the resources to target, the metric namespace and name, and the aggregation to use.
 4. Set other parameters if needed - like time range, split-by, visualization, size and color palette. 

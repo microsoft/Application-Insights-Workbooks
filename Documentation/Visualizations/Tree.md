@@ -7,7 +7,7 @@ The example below shows container health metrics (working set size) visualized a
 ![Image showing a tile visualization in workbooks](../Images/TreeExample.png)
 
 ## Adding a Tree Grid
-1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
 4. Use the Query editor to enter the KQL for your analysis
@@ -53,7 +53,7 @@ This is how the tree will look like in read mode:
 Grouping allows you to build hierarchical views similar to the ones above with significantly simpler queries. You do lose aggregation at the inner nodes of the tree, but that may be alright for some scenarios. Use _Group By_ to build tree views when the underlying result set cannot be transformed into a proper tree form - e.g. in the case of alert, health and metric data. If you data source is from KQL, then you should choose to build tree views as described above.
 
 ## Adding a Tree using Grouping
-1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
 4. Use the Query editor to enter the KQL for your analysis
