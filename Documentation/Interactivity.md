@@ -98,7 +98,7 @@ Workbooks allow authors to add interactivity via a special kind of grid column r
 Workbook allows users to make certain controls appear or disappear based on values of a parameters. This allows authors to have reports look different based on user input or telemetry state. An example is showing consumers just a summary when things are good but show full details when something is wrong.
 
 ### Setting up interactivity using conditional visibility
-1. Follow the steps in the `Setting up interactivity on grid row click` section to setup  two interactive controls.
+1. Follow the steps in the `Setting up interactivity on grid row click` section to setup two interactive controls.
 2. Add a new parameter at the top:
     1. Name: `ShowDetails`
     2. Parameter type: `Drop down`
