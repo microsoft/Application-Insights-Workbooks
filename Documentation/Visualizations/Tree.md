@@ -46,7 +46,7 @@ This is how the tree will look like in read mode:
 |:------------- |:-------------|
 | `Id Field` | The unique Id of every row in the grid |
 | `Parent Id Field` | The id of the parent of the current row |
-| `Show the expander on` | The column on which to show the tree expander. It is common for tree grids to hide their id and parent id field because they are no very readable. Instead, the expander appears on a field with a more readable value - like the name of the entity |
+| `Show the expander on` | The column on which to show the tree expander. It is common for tree grids to hide their id and parent id field because they are not very readable. Instead, the expander appears on a field with a more readable value - like the name of the entity |
 | `Expand the top level of the tree` | If checked, the tree grid will be expanded at the top level. Useful if you want to show more information by default |
 
 ## Grouping in a Grid

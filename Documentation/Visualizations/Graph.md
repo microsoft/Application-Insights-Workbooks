@@ -61,8 +61,8 @@ This is how the graph will look like in read mode:
 | Setting | Explanation |
 |:------------- |:-------------|
 | `Node Id` | Selects a column that provides the unique id of nodes on the graph. Value of the column can be string or a number |
-| `Source Id` | Selects a column that provides the ids of source nodes for edges on the graph. Values must map to a value in the  _Node Id_ column |
-| `Source Id` | Selects a column that provides the ids of target nodes for edges on the graph. Values must map to a value in the  _Node Id_ column |
+| `Source Id` | Selects a column that provides the ids of source nodes for edges on the graph. Values must map to a value in the _Node Id_ column |
+| `Source Id` | Selects a column that provides the ids of target nodes for edges on the graph. Values must map to a value in the _Node Id_ column |
 | `Edge Label` | Selects a column that provides edge labels on the graph |
 | `Edge Size` | Selects a column that provides the metric on which the edge widths will be based on |
 | `Node Size` | Selects a column that provides the metric on which the node areas will be based on |
