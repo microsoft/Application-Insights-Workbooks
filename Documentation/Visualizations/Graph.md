@@ -7,7 +7,7 @@ The graph below show data flowing in/out of a computer via various port to/from 
 ![Image showing an example of a graph visualization in workbooks](../Images/Graph-Example2.png)
 
 ## Adding a Tile
-1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
 4. Use the Query editor to enter the KQL for your analysis
@@ -81,7 +81,7 @@ Graph authors can specify what content goes to the different parts of a node - t
 
 ## Field Based Node Coloring
 
-1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
 4. Use the Query editor to enter the KQL for your analysis

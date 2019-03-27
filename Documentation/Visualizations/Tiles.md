@@ -7,7 +7,7 @@ Tiles are a very useful way to present summary data in workbooks. The image belo
 Workbook tiles support showing a title, subtitle, large text, icons, metric based gradients, spark line/bars, footer, etc. 
 
 ## Adding a Tile
-1. Switch the workbook to edit more by clicking on the _Edit_ toolbar item.
+1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
 4. Use the Query editor to enter the KQL for your analysis
