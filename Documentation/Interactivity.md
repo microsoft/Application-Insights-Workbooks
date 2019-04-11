@@ -120,6 +120,6 @@ The image below shows the visible case where `ShowDetails` is `Yes`
 
 The image below shows the hidden case where `ShowDetails` is `No`
 
-![Image showing the conditional visibility where the chart is hidden](Images/Interactivity-ConditionalVisibility-invisible.png)
+![Image showing the conditional visibility where the chart is hidden](Images/Interactivity-ConditionalVisibility-Invisible.png)
 
 
