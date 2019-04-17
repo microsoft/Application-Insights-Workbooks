@@ -1,0 +1,253 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## Sign-ins by Grant Controls"
+      },
+      "conditionalVisibility": null,
+      "name": "text - 0"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "13f56671-7604-4427-a4d8-663f3da0cbc5",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 1209600000
+            },
+            "isHiddenWhenLocked": false,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000
+                },
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 5184000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContextFromParameter": null
+          },
+          {
+            "id": "3b5cc420-8ad8-4523-ba28-a54910756794",
+            "version": "KqlParameterItem/1.0",
+            "name": "Apps",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "SigninLogs\r\n| summarize Count = count() by AppDisplayName\r\n| order by Count desc, AppDisplayName asc\r\n| project Value = AppDisplayName, Label = strcat(AppDisplayName, ' - ', Count, ' sign-ins'), Selected = false\r\n",
+            "value": [
+              "value::all"
+            ],
+            "isHiddenWhenLocked": false,
+            "typeSettings": {
+              "limitSelectTo": 20,
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "*"
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "88102190-0f5c-40ea-96a7-d8f735352fab",
+            "version": "KqlParameterItem/1.0",
+            "name": "Users",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "SigninLogs\r\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| summarize Count = count() by UserDisplayName\r\n| order by Count desc, UserDisplayName asc\r\n| project Value = UserDisplayName, Label = strcat(UserDisplayName, ' - ', Count, ' sign-ins'), Selected = false\r\n",
+            "value": [
+              "value::all"
+            ],
+            "isHiddenWhenLocked": false,
+            "typeSettings": {
+              "limitSelectTo": 20,
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "*"
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": null,
+      "name": "parameters - 1"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let caGrantControlNames = datatable(name:string, rank:int)[\r\n    \"Require MFA\", 1,\r\n    \"Require Terms of Use\", 2,\r\n    \"Require Privacy Statement\", 3,\r\n    \"Require Device Compliant\", 4,\r\n    \"Require Hybird Azure AD Joined Device\", 5,\r\n    \"Require Approved Apps\", 6,\r\n    \"Other\", 10\r\n];\r\nlet data = SigninLogs\r\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n|where UserDisplayName in ({Users}) or '*' in ({Users})\r\n|extend errorCode = toint(Status.errorCode)\r\n|extend Reason = tostring(Status.failureReason)\r\n|extend CAStatus = case(ConditionalAccessStatus ==0,\"Success\",                                     \r\n                        ConditionalAccessStatus == 1, \"Failure\",                                     \r\n                        ConditionalAccessStatus == 2, \"Not Applied\",                                     \r\n                        ConditionalAccessStatus == \"\", \"Not Applied\", \r\n                        \"Disabled\")\r\n|mvexpand ConditionalAccessPolicies\r\n|extend CAGrantControlName = tostring(ConditionalAccessPolicies.enforcedGrantControls[0])\r\n|extend CAGrantControl = case(CAGrantControlName contains \"MFA\", \"Require MFA\", \r\n                            CAGrantControlName contains \"Terms of Use\", \"Require Terms of Use\", \r\n                            CAGrantControlName contains \"Privacy\", \"Require Privacy Statement\", \r\n                            CAGrantControlName contains \"Device\", \"Require Device Compliant\", \r\n                            CAGrantControlName contains \"Azure AD Joined\", \"Require Hybird Azure AD Joined Device\", \r\n                            CAGrantControlName contains \"Apps\", \"Require Approved Apps\",\"Other\");\r\ndata\r\n| summarize Count = dcount(Id) by CAStatus, CAGrantControl\r\n| join kind = inner (data\r\n                    | make-series Trend = dcount(Id) default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by CAStatus, CAGrantControl\r\n                    | project CAStatus, CAGrantControl, Trend\r\n                    ) on CAGrantControl\r\n| join kind = inner (caGrantControlNames) on $left.CAGrantControl == $right.name\r\n| order by rank asc\r\n| project CAStatus, CAGrantControl, Count, Trend\r\n",
+        "size": 3,
+        "exportDefaultValue": "{ \"Name\":\"\", \"Type\":\"*\", \"Parent\":\"*\"}",
+        "showAnalytics": true,
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "CAGrantControl",
+            "formatter": 1,
+            "formatOptions": {
+              "showIcon": true
+            }
+          },
+          "subtitleContent": {
+            "columnMatch": "CAStatus",
+            "formatOptions": {
+              "showIcon": true
+            }
+          },
+          "leftContent": {
+            "columnMatch": "Count",
+            "formatter": 12,
+            "formatOptions": {
+              "min": 0,
+              "showIcon": true
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "style": "decimal",
+                "maximumFractionDigits": 2,
+                "maximumSignificantDigits": 3
+              }
+            }
+          },
+          "secondaryContent": {
+            "columnMatch": "Trend",
+            "formatter": 9,
+            "formatOptions": {
+              "min": 0,
+              "palette": "blue",
+              "showIcon": true
+            }
+          },
+          "showBorder": false
+        }
+      },
+      "conditionalVisibility": null,
+      "showPin": true,
+      "name": "query - 7"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let caGrantControlNames = datatable(name:string, rank:int)[\r\n    \"Require MFA\", 1,\r\n    \"Require Terms of Use\", 2,\r\n    \"Require Privacy Statement\", 3,\r\n    \"Require Device Compliant\", 4,\r\n    \"Require Hybird Azure AD Joined Device\", 5,\r\n    \"Require Approved Apps\", 6,\r\n    \"Other\", 10\r\n];\r\nlet data = SigninLogs\r\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n|where UserDisplayName in ({Users}) or '*' in ({Users})\r\n|extend errorCode = toint(Status.errorCode)\r\n|extend Reason = tostring(Status.failureReason)\r\n|extend CAStatus = case(ConditionalAccessStatus ==0,\"✔️ Success\",                                     \r\n                        ConditionalAccessStatus == 1, \"❌ Failure\",                                     \r\n                        ConditionalAccessStatus == 2, \"⚠️ Not Applied\",                                     \r\n                        ConditionalAccessStatus == \"\", \"⚠️ Not Applied\", \r\n                        \"🚫 Disabled\")\r\n|mvexpand ConditionalAccessPolicies\r\n|extend CAGrantControlName = tostring(ConditionalAccessPolicies.enforcedGrantControls[0])\r\n|extend CAGrantControl = case(CAGrantControlName contains \"MFA\", \"Require MFA\", \r\n                            CAGrantControlName contains \"Terms of Use\", \"Require Terms of Use\", \r\n                            CAGrantControlName contains \"Privacy\", \"Require Privacy Statement\", \r\n                            CAGrantControlName contains \"Device\", \"Require Device Compliant\", \r\n                            CAGrantControlName contains \"Azure AD Joined\", \"Require Hybird Azure AD Joined Device\", \r\n                            CAGrantControlName contains \"Apps\", \"Require Approved Apps\",\r\n                            \"Other\")\r\n|extend CAGrantControlRank = case(CAGrantControlName contains \"MFA\", 1, \r\n                            CAGrantControlName contains \"Terms of Use\", 2, \r\n                            CAGrantControlName contains \"Privacy\", 3, \r\n                            CAGrantControlName contains \"Device\", 4, \r\n                            CAGrantControlName contains \"Azure AD Joined\", 5, \r\n                            CAGrantControlName contains \"Apps\", 6,\r\n                            7);\r\ncaGrantControlNames\r\n| extend Application = '__FilterOut__', ['Sign-in time'] = '', ['CA Status'] = '', ['---'] = ''\r\n| evaluate pivot(name, sum(rank))\r\n| union (data\r\n| order by CAGrantControlRank desc\r\n| summarize CAGrantControls = make_set(CAGrantControl) by AppDisplayName, CAStatus, TimeGenerated, UserDisplayName\r\n| top 200 by TimeGenerated desc\r\n| mv-expand CAGrantControls to typeof(string)\r\n| join kind=inner (caGrantControlNames) on $left.CAGrantControls == $right.name\r\n| order by rank asc\r\n| extend TimeFromNow = now() - TimeGenerated\r\n| extend TimeAgo = strcat(case(TimeFromNow < 2m, strcat(toint(TimeFromNow / 1m), ' seconds'), TimeFromNow < 2h, strcat(toint(TimeFromNow / 1m), ' minutes'), TimeFromNow < 2d, strcat(toint(TimeFromNow / 1h), ' hours'), strcat(toint(TimeFromNow / 1d), ' days')), ' ago')\r\n| project Application = AppDisplayName, ['Sign-in time'] = TimeAgo, ['CA Status'] = CAStatus, TimeGenerated, CAGrantControl = CAGrantControls\r\n| evaluate pivot(CAGrantControl, count())\r\n| order by TimeGenerated desc\r\n| project-away TimeGenerated)\r\n| where Application != '__FilterOut__'\r\n",
+        "size": 0,
+        "showAnalytics": true,
+        "title": "Recent sign-ins",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Application",
+              "formatter": 1,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Require.*|Other",
+              "formatter": 18,
+              "formatOptions": {
+                "showIcon": true,
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "representation": "cancelled",
+                    "operator": "Default",
+                    "thresholdValue": null
+                  },
+                  {
+                    "representation": "success",
+                    "operator": ">=",
+                    "thresholdValue": "1"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": null,
+      "showPin": true,
+      "name": "query - 7 - Copy"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
