@@ -62,3 +62,26 @@ Workbooks supports getting Azure resource health and combining it with other dat
 To make a query control use this data source, use the _Query Type_ drop down to choose _Azure health_ and select the resources to target. Use the health filter drop downs to select an interesting subset of resource issues for your analytic needs.
 
 ![A image of a workbook with Azure resource health data](../Images/ResourceHealthDataSource.png)
+
+## Merge data from different sources
+It is often necessary to bring together data from different sources that enhance the insights experience. An example is augmenting active alert information with related metric data. This allows users to see not just the effect (an active alert), but also potential causes (e.g. high CPU usage). The monitoring domain has numerous such correlatable data sources that are often critical to the triage and diagnostic workflow. 
+
+Workbooks allow not just the querying of different data sources, but also provides simple controls that allow you to merge or join the data to provide rich insights. The `merge` control is the way to achieve it. 
+
+The example below combines alerting data with log analytics VM performance data where available to get a rich insights grid.
+
+![A image of a workbook with a merge control that combines alert and log analytics data](../Images/MergeControl.png)
+
+Workbooks support a variety of merge flavors:
+* Inner unique join
+* Full inner join
+* Full outer join
+* Left outer join
+* Right outer join
+* Left semi-join
+* Right semi-join
+* Left anti-join
+* Right anti-join
+* Union
+* Duplicate table
+
