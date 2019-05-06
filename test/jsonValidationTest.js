@@ -52,7 +52,8 @@ describe('Validating Workbooks...', () => {
         browseDirectory(workbookPath, (error, results) => {
             results.filter(file => file.substr(-9) === '.workbook')
                 .forEach(file => {
-                    validateJsonStringAndGetObject(file)
+                    validateJsonStringAndGetObject(file);
+                    validateNoResourceIds(settings, file);
                 });
 
             done();
@@ -128,6 +129,16 @@ function validateSettingsForWorkbook(settings, file) {
     ["$schema", "name", "author", "galleries"].forEach( field => checkProperty(settings, field, file) );
     if (!Array.isArray(settings.galleries)) {
         assert.fail("The galleries should be an array with '" + file + "'");
+    }
+}
+
+function validateNoResourceIds(settings, file) {
+    // there's probably a better way but this is simplest. make sure there are no strings like '/subscriptions/[guid]` in the whole content
+    // not parsing individual steps/etc at this time
+    let str = JSON.stringify(settings);
+    let regexp = /(\/subscriptions\/[a-z0-9]{8}-)/gi; // just loking for /subscriptions/[first part of guid] 
+    while ((matches = regexp.exec(str)) !== null) {
+        assert.fail(file + ": Found possible resource Id " + matches[0]);
     }
 }
 
