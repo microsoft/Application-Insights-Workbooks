@@ -12,9 +12,13 @@
             "id": "08bdcd8f-68e6-42c1-b82a-7302463d8901",
             "version": "KqlParameterItem/1.0",
             "name": "timeRange",
+            "label": "Time Range",
             "type": 4,
-            "description": "The time range in which you are looking for data",
+            "description": "Filter by time range",
             "isRequired": true,
+            "value": {
+              "durationMs": 7776000000
+            },
             "typeSettings": {
               "selectableValues": [
                 {
@@ -64,21 +68,20 @@
                 }
               ],
               "allowCustom": true
-            },
-            "value": {
-              "durationMs": 21600000
-            },
-            "label": "Time Range"
+            }
           },
           {
             "id": "533ff915-2a03-4da9-8b95-1d743db17e2b",
             "version": "KqlParameterItem/1.0",
             "name": "bin",
-            "label": "Bin",
-            "type": 1,
-            "description": "The interval in minutes used to bin data in teh queries below",
+            "label": "Chart Granularity",
+            "type": 2,
+            "description": "Bin data points by some time interval (min)",
             "isRequired": true,
-            "query": "let durationMs = datetime_diff('millisecond',{timeRange:end},{timeRange:start});\r\nlet idealNumberofDataPoints = 100;\r\nlet scratchPaper = datatable(GranularityOptions: long) [5, 15, 30, 60, 360, 720, 1440];\r\nscratchPaper\r\n| extend DataPointCount = (durationMs/(1000*60))/GranularityOptions\r\n| extend Distance = idealNumberofDataPoints - DataPointCount\r\n| summarize arg_min(Distance, *)\r\n| project GranularityOptions;",
+            "query": "let durationMs = datetime_diff('millisecond',{timeRange:end},{timeRange:start});\r\nlet idealNumberofDataPoints = 100;\r\nlet GranularityOptions = datatable(\r\nGranularityOptionsValue: long, \r\nGranularityOptionsLabel: string\r\n) [\r\n    5, '5 minutes', \r\n    15, '15 minutes', \r\n    30, '30 minutes', \r\n    60, '1 hour', \r\n    360, '6 hours', \r\n    720, '12 hours', \r\n    1440, '24 hours'\r\n];\r\nlet GranularityOptionsExtended = \r\nGranularityOptions\r\n| extend DataPointCount = (durationMs/(1000*60))/GranularityOptionsValue\r\n| extend Distance = abs(idealNumberofDataPoints - DataPointCount);\r\nlet idealGranularityOptionsValue = toscalar(\r\n    GranularityOptionsExtended\r\n    | summarize arg_min(Distance, *)\r\n    | project GranularityOptionsValue\r\n);\r\nGranularityOptionsExtended\r\n| project value = GranularityOptionsValue, label = GranularityOptionsLabel, selected = (GranularityOptionsValue == idealGranularityOptionsValue)\r\n\r\n\r\n\r\n",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
             "queryType": 0,
             "resourceType": "microsoft.containerservice/managedclusters"
           }
@@ -90,9 +93,67 @@
       "name": "parameters - 10"
     },
     {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "bcac2f43-2b37-4bdb-bb31-b2328f6e8ea5",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedNodes1",
+            "label": "Node",
+            "type": 2,
+            "description": "Filter by node",
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "let nodeOptions = \r\nInsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| project hostName = tostring(Tags.hostName)\r\n| distinct hostName\r\n| project value = hostName, label = hostName, selected = false;\r\ndatatable (value: string, label: string, selected: boolean) [ \"*\", \"All\", true ] | union (nodeOptions)\r\n",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.containerservice/managedclusters"
+          },
+          {
+            "id": "cf72db24-3f6b-47c9-939b-20cf0e64cc67",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedDevices1",
+            "label": "Device",
+            "type": 2,
+            "description": "Filter by device",
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "let deviceOptions = \r\nInsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| project HostName = tostring(Tags.hostName), Device = tostring(Tags.device)\r\n| where '*' in ({selectedNodes1}) or HostName in ({selectedNodes1})\r\n| distinct Device\r\n| project value = Device, label = Device, selected = false;\r\ndatatable (value: string, label: string, selected: boolean) [ \"*\", \"All\", true ] | union (deviceOptions)\r\n",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.containerservice/managedclusters"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.containerservice/managedclusters"
+      },
+      "name": "parameters - 6"
+    },
+    {
       "type": 1,
       "content": {
-        "json": "<h3>Used Disk Percentage by Node and Disk</h3>"
+        "json": "<h3>Used Disk Percentage by Node and Device</h3>"
       },
       "name": "text - 5"
     },
@@ -100,7 +161,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "InsightsMetrics\r\n| where Name == 'used_percent'\r\n| where Namespace == 'disk'\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| extend Tags = todynamic(Tags)\r\n| extend Device = tostring(Tags.device)\r\n| extend NodeDisk = strcat(Computer, '/', Device)\r\n| summarize max(Val) by NodeDisk, Timestamp = bin(TimeGenerated, {bin}m)    \r\n| render timechart",
+        "query": "InsightsMetrics\r\n| where Name == 'used_percent'\r\n| where Namespace == 'disk'\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Device = tostring(Tags.device)\r\n| where \"*\" in ({selectedNodes1}) or HostName in ({selectedNodes1})\r\n| where \"*\" in ({selectedDevices1}) or Device in ({selectedDevices1})\r\n| extend NodeDisk = strcat(Computer, '/', Device)\r\n| summarize max(Val) by NodeDisk, Timestamp = bin(TimeGenerated, {bin}m)    \r\n| render timechart",
         "size": 0,
         "aggregation": 2,
         "timeContext": {
@@ -115,7 +176,7 @@
     {
       "type": 1,
       "content": {
-        "json": "<h3>Free Gigabytes by Node and Device</h3>"
+        "json": "<h3>Free Disk Space by Node and Device</h3>"
       },
       "name": "text - 5"
     },
@@ -127,31 +188,74 @@
         "crossComponentResources": [],
         "parameters": [
           {
-            "id": "7d7d136d-1c27-41e9-aed1-4aa5c518cfde",
+            "id": "bcac2f43-2b37-4bdb-bb31-b2328f6e8ea5",
             "version": "KqlParameterItem/1.0",
-            "name": "units",
+            "name": "selectedNodes2",
+            "label": "Node",
             "type": 2,
-            "description": "Units for expressing storage space on disk",
+            "description": "Filter by node",
             "isRequired": true,
-            "value": "1073741824",
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "let nodeOptions = \r\nInsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| project hostName = tostring(Tags.hostName)\r\n| distinct hostName\r\n| project value = hostName, label = hostName, selected = false;\r\ndatatable (value: string, label: string, selected: boolean) [ \"*\", \"All\", true ] | union (nodeOptions)\r\n",
             "typeSettings": {
               "additionalResourceOptions": []
             },
-            "jsonData": "[\r\n    { \"label\": \"Gigabytes\", \"value\": \"1073741824\" },\r\n    { \"label\": \"Megabytes\", \"value\": \"1048576\" },\r\n    { \"label\": \"Kilobytes\", \"value\": \"1024\" }\r\n]",
-            "label": "Units"
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.containerservice/managedclusters"
+          },
+          {
+            "id": "cf72db24-3f6b-47c9-939b-20cf0e64cc67",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedDevices2",
+            "label": "Device",
+            "type": 2,
+            "description": "Filter by device",
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "let deviceOptions = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| project HostName = tostring(Tags.hostName), Device = tostring(Tags.device)\r\n| where '*' in ({selectedNodes2}) or HostName in ({selectedNodes2})\r\n| distinct Device\r\n| project value = Device, label = Device, selected = false;\r\ndatatable (value: string, label: string, selected: boolean) [ \"*\", \"All\", true ] | union (deviceOptions)",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.containerservice/managedclusters"
+          },
+          {
+            "id": "11c55d92-3acf-42fe-bfa7-bbcdd3268df7",
+            "version": "KqlParameterItem/1.0",
+            "name": "units",
+            "label": "Units",
+            "type": 2,
+            "description": "The units disk space is measured by",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "jsonData": "[\r\n    { \"label\": \"Gigabytes\", \"value\": \"1073741824\", \"selected\": \"true\" },\r\n    { \"label\": \"Megabytes\", \"value\": \"1048576\", \"selected\": \"false\" },\r\n    { \"label\": \"Kilobytes\", \"value\": \"1024\", \"selected\": \"false\" }\r\n]"
           }
         ],
         "style": "pills",
         "queryType": 0,
         "resourceType": "microsoft.containerservice/managedclusters"
       },
-      "name": "parameters - 6"
+      "name": "parameters - 6 - Copy"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "InsightsMetrics\r\n| where Name == 'free'\r\n| where Namespace == 'disk'\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| extend Val = Val/{units}\r\n| extend Tags = todynamic(Tags)\r\n| extend Device = tostring(Tags.device)\r\n| extend NodeDisk = strcat(Computer, '/', Device)\r\n| summarize min(Val) by NodeDisk, Timestamp = bin(TimeGenerated, {bin}m)\r\n| render timechart",
+        "query": "InsightsMetrics\r\n| where Name == 'free'\r\n| where Namespace == 'disk'\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| extend Val = Val/{units}\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Device = tostring(Tags.device)\r\n| where \"*\" in ({selectedNodes2}) or HostName in ({selectedNodes2})\r\n| where \"*\" in ({selectedDevices2}) or Device in ({selectedDevices2})\r\n| extend NodeDisk = strcat(Computer, '/', Device)\r\n| summarize min(Val) by NodeDisk, Timestamp = bin(TimeGenerated, {bin}m)\r\n| render timechart",
         "size": 0,
         "aggregation": 1,
         "timeContext": {
