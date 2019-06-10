@@ -11,6 +11,7 @@ Workbooks support these data sources:
 * [Alerts](#alerts)
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
+* [Custom Endpoint](#custom-endpoint)
 
 ## Logs
 Workbooks support getting analytics logs data. Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
@@ -62,6 +63,16 @@ Workbooks supports getting Azure resource health and combining it with other dat
 To make a query control use this data source, use the _Query Type_ drop down to choose _Azure health_ and select the resources to target. Use the health filter drop downs to select an interesting subset of resource issues for your analytic needs.
 
 ![A image of a workbook with Azure resource health data](../Images/ResourceHealthDataSource.png)
+
+## Custom endpoint
+Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
+
+To make a query control use this data source, use the _Query Type_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body.
+
+![A image of a workbook with Custom endpoint data](../Images/CustomEndpointDataSource.png)
+
+To avoid automatically making calls to un-trusted hosts when using templates, you need to mark the used hosts as trusted. You can either do this by clicking on the _Add as trusted_ button, or by adding it as a trusted host in Workbook settings. This settings will be saved in browsers that support IndexDb with web workers, more info [here](https://caniuse.com/#feat=indexeddb).
+
 
 ## Merge data from different sources
 It is often necessary to bring together data from different sources that enhance the insights experience. An example is augmenting active alert information with related metric data. This allows users to see not just the effect (an active alert), but also potential causes (e.g. high CPU usage). The monitoring domain has numerous such correlatable data sources that are often critical to the triage and diagnostic workflow. 
