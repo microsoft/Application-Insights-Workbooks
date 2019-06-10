@@ -69,7 +69,7 @@ Workbooks supports getting data from any external source. If your data lives out
 
 To make a query control use this data source, use the _Query Type_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body.
 
-![A image of a workbook with Custom endpoint data](../Images/CustomEndpointDataSource.png)
+![A image of a workbook with Custom endpoint data](../Images/CustomEndpointsDataSource.png)
 
 To avoid automatically making calls to un-trusted hosts when using templates, you need to mark the used hosts as trusted. You can either do this by clicking on the _Add as trusted_ button, or by adding it as a trusted host in Workbook settings. This settings will be saved in browsers that support IndexDb with web workers, more info [here](https://caniuse.com/#feat=indexeddb).
 
