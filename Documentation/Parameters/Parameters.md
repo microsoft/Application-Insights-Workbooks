@@ -5,13 +5,13 @@ Parameters allow workbook authors to collect input from the consumers and refere
 Workbooks allow you to control how your parameter controls are presented to consumers – text box vs. drop down, single- vs. multi-select, values from text, JSON, KQL or Azure Resource Graph, etc.  
 
 Supported parameter types include:
-* [Time](Time.md)
-* [Drop down](DropDown.md)
-* [Text](Text.md)
-* [Resource](Resources.md)
-* Subscription
-* Resource Type
-* Location
+* [Time](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
+* [Drop down](DropDown.md) - allows a user to select from a value or set of values
+* [Text](Text.md) - allows a user to enter arbitrary text
+* [Resource](Resources.md) - allows a user to select one or more Azure resources
+* [Subscription](Resources.md) - allows a user to select one or more Azure subscription resources
+* Resource Type - allows a user to select one or more Azure resource type values
+* Location - allows a user to select one or more Azure location values
 
 These parameter values can be referenced in other parts of workbooks either via bindings or value expansions.
 
@@ -20,7 +20,8 @@ These parameter values can be referenced in other parts of workbooks either via 
 2. Choose _Add parameters_ from the links within the workbook.
 3. Click on the blue _Add Parameter_ button.
 4. In the new parameter pane that pops up enter:
-    1. Parameter name: `TimeRange`
+    1. Parameter name: `TimeRange` *(note that parameter __names__ can **not** include spaces or special characters)*
+    2. Display name: `Time Range`  *(however, __display names__ can include spaces, special characters, emoji, etc)*
     2. Parameter type: `Time range picker`
     3. Required: `checked`
     4. Available time ranges: Last hour, Last 12 hours, Last 24 hours, Last 48 hours, Last 3 days, Last 7 days and Allow custom time range selection
@@ -28,14 +29,14 @@ These parameter values can be referenced in other parts of workbooks either via 
 
 ![Image showing the creation of a time range parameter](../Images/Parameters-Time-Settings.png)
 
-This is how the workbook will look like in read-mode.
+This is how the workbook will look like in read-mode, in the "Pills" style.
 
 ![Image showing a time range parameter in read mode](../Images/Parameters-Time.png)
 
 ## Referencing a parameter
 ### Via Bindings
 1. Add a query control to the workbook and select an Application Insights resource.
-2. Open the the _Time Range_ drop down and select the `{TimeRange}` at the bottom.
+2. Open the the _Time Range_ drop down and select the `Time Range` option from the Parameters section at the bottom.
 3. This binds the time range parameter to the time range of the chart. The time scope of the sample query is now Last 24 hours.
 4. Run query to see the results
 
