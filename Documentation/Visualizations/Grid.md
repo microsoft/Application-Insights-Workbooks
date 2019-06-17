@@ -237,7 +237,7 @@ Supported icon names include: cancelled | critical | disabled | error | failed |
 ### Sample: using thresholds with links to assign icons and open different workbooks
 
 For example, using the following JSON query inside a workbook on an Application Insights resource:
-```
+```json
 [ 
     { "name": "warning", "link": "Community-Workbooks/Performance/Performance Counter Analysis" },
     { "name": "info", "link": "Community-Workbooks/Performance/Performance Insights" },

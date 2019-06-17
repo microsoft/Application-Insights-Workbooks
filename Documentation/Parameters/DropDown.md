@@ -28,6 +28,20 @@ The easiest way to specify the list by providing a static list in the parameter 
 
 ![Image showing the creation of a static drown down](../Images/Parameters-Dropdown-Create.png)
 
+## Creating a static dropdown with groups of items
+If your query result/json contains an "group" field, the dropdown will display groups of values. Follow the above sample, but use the following json instead:
+```json
+[
+    { "value":"dev", "label":"Development", "group":"Development" },
+    { "value":"dev-cloud", "label":"Development (Cloud)", "group":"Development" },
+    { "value":"ppe", "label":"Pre-production", "group":"Test" },
+    { "value":"ppe-test", "label":"Pre-production (Test)", "group":"Test" },
+    { "value":"prod1", "label":"Prod 1", "selected":true, "group":"Production" },
+    { "value":"prod2", "label":"Prod 2", "group":"Production" }
+]
+```
+![Image showing an example of a grouped dropdown](../Images/Grouped-DropDown.png)
+
 
 ## Creating a dynamic drop down parameter
 1. Start with an empty workbook in edit mode.
