@@ -1,0 +1,513 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# HDInsight Kafka Insights"
+      },
+      "name": "text - 1"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "parameters": [
+          {
+            "id": "741603f6-06d5-431c-b989-7e53c252cda7",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "type": 6,
+            "isRequired": true,
+            "value": "",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "includeAll": true
+            }
+          },
+          {
+            "id": "a810dcd0-f912-4926-9317-a20f24c7c5ce",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "query": "where type =~ 'microsoft.operationalinsights/workspaces'\r\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "value": "",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "sub-workspace-parameters"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "parameters": [
+          {
+            "id": "b40de967-6c19-43e8-a365-e31df5b16c42",
+            "version": "KqlParameterItem/1.0",
+            "name": "KafkaMetricsTableExists",
+            "type": 1,
+            "isRequired": true,
+            "query": "let hasNonEmptyTable = (T:string) \r\n{ \r\n   toscalar( union isfuzzy=true ( table(T) | count as Count ), (print Count=0) | summarize sum(Count) ) > 0\r\n};\r\nprint tolower(hasNonEmptyTable(\"metrics_cluster_alerts_CL\"))",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "hidden_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "metrics_kafka_CL\r\n| where InstanceName_s == \"kafka-KafkaController-ActiveControllerCount-Value\" or InstanceName_s == \"kafka-ReplicaManager-LeaderCount-Value\" or InstanceName_s == \"kafka-ReplicaManager-PartitionCount-Value\" or InstanceName_s == \"kafka-ReplicaManager-UnderReplicatedPartitions-Value\" or InstanceName_s == \"kafka-KafkaController-OfflinePartitionsCount-Value\"\r\n| summarize arg_max(TimeGenerated, *) by InstanceName_s, HostName_s\r\n| summarize \r\nAggControllerCount=avg(kafka_KafkaController_ActiveControllerCount_Value_value_d), \r\nAggLeaderCount=avg(kafka_ReplicaManager_LeaderCount_Value_value_d),\r\nAggPartitionCount=avg(kafka_ReplicaManager_PartitionCount_Value_value_d),\r\nAggUnderReplicatedPartitionCount=avg(kafka_ReplicaManager_UnderReplicatedPartitions_Value_value_d),\r\nAggOfflinePartitionCount=avg(kafka_KafkaController_OfflinePartitionsCount_Value_value_d)\r\nby bin(TimeGenerated, 5m), ClusterName_s, HostName_s\r\n| summarize \r\nActiveControllerCount=sum(AggControllerCount),\r\nLeaderCount=sum(AggLeaderCount),\r\nPartitionCount=sum(AggLeaderCount),\r\nUnderReplicatedPartitionCount=sum(AggUnderReplicatedPartitionCount),\r\nOfflinePartitionCount=sum(AggOfflinePartitionCount)\r\nby ClusterName_s\r\n| join kind=leftouter (\r\n   metrics_kafka_CL\r\n    | where InstanceName_s == \"kafka-ReplicaManager-PartitionCount-Value\"\r\n    | distinct HostName_s, ClusterName_s\r\n    | summarize BrokerCount=count() by ClusterName_s\r\n) on ClusterName_s\r\n| extend first6 = substring(ClusterName_s, 0, 6)\r\n| join kind=leftouter (\r\n    Perf\r\n    | where ObjectName == \"Logical Disk\" and (CounterName == \"Free Megabytes\" or CounterName == \"% Free Space\") and InstanceName contains \"data_disk\" and Computer               startswith_cs \"wn\"\r\n    | summarize arg_max(TimeGenerated, *) by Computer, CounterName, InstanceName\r\n    | extend PercentFree=iff(CounterName == \"% Free Space\", CounterValue, real(0)), FreeMegabytes=iff(CounterName == \"Free Megabytes\", CounterValue, real(0))\r\n    | summarize PercentFree=sum(PercentFree), FreeMegabytes=sum(FreeMegabytes) by Computer, InstanceName\r\n    | extend TotalMegabytes=round(FreeMegabytes / PercentFree * 100)\r\n    | extend first6 = trim_start(\".*-\", Computer)\r\n    | summarize FreeMegabytesPerCluster = sum(FreeMegabytes), TotalMegabytesPerCluster = sum(TotalMegabytes) by first6\r\n    | extend DiskPercentFree = round(FreeMegabytesPerCluster/TotalMegabytesPerCluster*100)\r\n) on first6\r\n| project Name=ClusterName_s, ActiveControllerCount, DiskPercentFree, PartitionsPerBroker=round(PartitionCount/BrokerCount), PartitionCount, UnderReplicatedPartitionCount, OfflinePartitionCount, LeaderCount\r\n\r\n",
+        "size": 3,
+        "aggregation": 5,
+        "title": "Kafka clusters overview - current status",
+        "color": "blue",
+        "noDataMessage": "No HDInsight Kafka clusters found linked to this workspace.",
+        "timeContext": {
+          "durationMs": 1800000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Name",
+              "formatter": 1,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "DiskPercentFree",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": 100,
+                "palette": "redGreen",
+                "showIcon": true
+              },
+              "numberFormat": {
+                "unit": 1,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "ActiveControllerCount",
+              "formatter": 18,
+              "formatOptions": {
+                "showIcon": true,
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "1",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "!=",
+                    "thresholdValue": "1",
+                    "representation": "3",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "LeaderCount",
+              "formatter": 1,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "PartitionsPerBroker",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": 4000,
+                "palette": "greenRed",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "PartitionCount",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "UnderReplicatedPartitionCount",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "OfflinePartitionCount",
+              "formatter": 0,
+              "formatOptions": {
+                "showIcon": true
+              }
+            }
+          ],
+          "sortBy": [
+            {
+              "itemKey": "$gen_heatmap_DiskPercentFree_2",
+              "sortOrder": 2
+            }
+          ]
+        },
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "ClusterName_s",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "ClusterControllerCount",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "ClusterName_s",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "ClusterControllerCount",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "KafkaMetricsTableExists",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "customWidth": "100",
+      "showPin": true,
+      "name": "clusters-grid"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## metrics_kafka_CL table not found\r\nEnsure you have at least 1 HDInsight Kafka cluster with Azure Monitor Logs integration enabled and linked to this workspace. See the documentation<a href=\"https://docs.microsoft.com/en-us/azure/hdinsight/hdinsight-hadoop-oms-log-analytics-tutorial\">, Use Azure Monitor logs to monitor HDInsight clusters</a>."
+      },
+      "conditionalVisibility": {
+        "parameterName": "KafkaMetricsTableExists",
+        "comparison": "isEqualTo",
+        "value": "false"
+      },
+      "name": "text - 10"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "parameters": [
+          {
+            "id": "c43a8974-87d7-49ab-ace0-c15e4e5ec6ca",
+            "version": "KqlParameterItem/1.0",
+            "name": "Clusters",
+            "label": "Cluster(s)",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "metrics_kafka_CL\r\n| summarize by ClusterName_s",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": ""
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "6609fb2f-e23e-4c52-a0dd-c4ce30d9a145",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 14400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "graph-parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "metrics_kafka_CL\r\n| where iff(\"{Clusters}\" == \"\", true, ClusterName_s in ({Clusters}))\r\n| where InstanceName_s == \"kafka-BrokerTopicMetrics-MessagesInPerSec-Count\"\r\n| summarize AggregatedValue = avg(kafka_BrokerTopicMetrics_MessagesInPerSec_Count_value_d) by ClusterName_s, HostName_s, bin(TimeGenerated, 1m)\r\n| summarize IncomingBytesPerSec=sum(AggregatedValue) by TimeGenerated, ClusterName_s\r\n| where TimeGenerated < ago(3m)\r\n| order by TimeGenerated desc",
+        "size": 0,
+        "aggregation": 5,
+        "title": "Incoming messages per second by cluster",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart"
+      },
+      "conditionalVisibility": {
+        "parameterName": "KafkaMetricsTableExists",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "customWidth": "50",
+      "showPin": true,
+      "name": "incoming-messages"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clusters = \"{Clusters}\";\r\nlet oneClusterSelected = indexof(Clusters, \",\") == -1;\r\nlet multipleClusters =\r\nPerf\r\n| extend first6 = trim_start(\".*-\", Computer)\r\n| where indexof(Clusters, first6) >= 0\r\n| where ObjectName == \"Logical Disk\" and CounterName == \"Free Megabytes\" and InstanceName contains \"data_disk\" and Computer startswith_cs \"wn\"\r\n| extend internalRG = extract(\"resourcegroups/(.*?)/\", 1, _ResourceId)\r\n//| extend clusterNameStartIndex=indexof(Clusters, first6)\r\n//| extend clusterName=substring(Clusters, clusterNameStartIndex, indexof(Clusters,\",\",clusterNameStartIndex)-clusterNameStartIndex)\r\n| summarize AggFreeMemoryPerDisk = avg(CounterValue) by bin(TimeGenerated, 1m), Computer, InstanceName, internalRG, first6\r\n| summarize FreeMemoryPerNode = sum(AggFreeMemoryPerDisk) by TimeGenerated, Computer, internalRG, first6\r\n| summarize FreeMemory = sum(FreeMemoryPerNode)/1000 by TimeGenerated, internalRG, first6\r\n| project-rename Name=first6;\r\nlet oneCluster =\r\nPerf\r\n| extend first6 = trim_start(\".*-\", Computer)\r\n| where indexof(Clusters, first6) >= 0\r\n| where ObjectName == \"Logical Disk\" and CounterName == \"Free Megabytes\" and InstanceName contains \"data_disk\" and Computer startswith_cs \"wn\"\r\n| summarize AggFreeMemoryPerDisk = avg(CounterValue) by bin(TimeGenerated, 1m), Computer, InstanceName\r\n| summarize FreeMemory = sum(AggFreeMemoryPerDisk)/1000 by TimeGenerated, Computer\r\n| project-rename Name=Computer;\r\nunion (oneCluster | where oneClusterSelected == true), (multipleClusters | where oneClusterSelected == false)\r\n| where TimeGenerated < ago(3m)\r\n| sort by TimeGenerated desc, Name asc",
+        "size": 0,
+        "aggregation": 5,
+        "title": "Disk usage - free GB",
+        "noDataMessage": "To see disk usage data, enable the \"Logical Disk(*)\\% Free Space\" and \"Logical Disk(*)\\Free Megabytes\" Linux performance counters. See instructions here: https://docs.microsoft.com/en-us/azure/azure-monitor/platform/data-sources-performance-counters <a href=https://docs.microsoft.com/en-us/azure/azure-monitor/platform/data-sources-performance-counters>See instructions here.</a>",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart"
+      },
+      "conditionalVisibility": {
+        "parameterName": "KafkaMetricsTableExists",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "customWidth": "50",
+      "showPin": true,
+      "name": "disk-usage"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "query": "",
+        "crossComponentResources": [],
+        "parameters": [
+          {
+            "id": "c41fe94e-118f-4e1d-a911-f3572db78ea2",
+            "version": "KqlParameterItem/1.0",
+            "name": "Units",
+            "type": 2,
+            "isRequired": true,
+            "value": "1000000",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "jsonData": "[\r\n    {\"label\": \"B\", \"value\": 1},\r\n    {\"label\": \"KB\", \"value\": 1000},\r\n    {\"label\": \"MB\", \"value\": 1000000},\r\n    {\"label\": \"GB\", \"value\": 1000000000}\r\n]"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "parameters - 8"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "metrics_kafka_CL\r\n| where iff(\"{Clusters}\" == \"\", true, ClusterName_s in ({Clusters}))\r\n| where InstanceName_s == \"kafka-BrokerTopicMetrics-BytesInPerSec-Count\"\r\n| summarize AggregatedValue = avg(kafka_BrokerTopicMetrics_BytesInPerSec_Count_value_d) by ClusterName_s, HostName_s, bin(TimeGenerated, 1m)\r\n| summarize IncomingBytesPerSec=sum(AggregatedValue)/toint('{Units}') by TimeGenerated, ClusterName_s\r\n| where TimeGenerated < ago(3m)\r\n| order by TimeGenerated desc",
+        "size": 0,
+        "aggregation": 5,
+        "title": "Incoming data per second by cluster",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "ClusterName_s",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "IncomingBytesPerSec",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "KafkaMetricsTableExists",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "customWidth": "50",
+      "showPin": true,
+      "name": "incoming-data"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "metrics_kafka_CL\r\n| where iff(\"{Clusters}\" == \"\", true, ClusterName_s in ({Clusters}))\r\n| where InstanceName_s == \"kafka-BrokerTopicMetrics-BytesOutPerSec-Count\"\r\n| summarize AggregatedValue = avg(kafka_BrokerTopicMetrics_BytesOutPerSec_Count_value_d) by ClusterName_s, HostName_s, bin(TimeGenerated, 1m)\r\n| summarize IncomingBytesPerSec=sum(AggregatedValue)/toint('{Units}') by TimeGenerated, ClusterName_s\r\n| where TimeGenerated < ago(3m)\r\n| order by TimeGenerated desc",
+        "size": 0,
+        "aggregation": 5,
+        "title": "Outgoing data per second by cluster",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "linechart"
+      },
+      "conditionalVisibility": {
+        "parameterName": "KafkaMetricsTableExists",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "customWidth": "50",
+      "showPin": true,
+      "name": "outgoing-data"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
