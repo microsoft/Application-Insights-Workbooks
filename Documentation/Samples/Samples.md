@@ -11,3 +11,9 @@
 [![Image showing Parameter transformation to get OData Filters](../Images/OData-Parameters-No-Select.png)](ODataFilters.md)
 
 [See instructions](ODataFilters.md)
+
+### Reusing query data in different visualizations
+
+[![Image showing two grids based of the same underlying data](../Images/Reuse-data-two-controls.png)](ReusingQueryData.md)
+
+[See instructions](ReusingQueryData.md)

@@ -13,6 +13,8 @@ Workbooks support these data sources:
 * [Azure Resource Health](#azure-resource-health)
 * [Custom Endpoint](#custom-endpoint)
 
+You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
+
 ## Logs
 Workbooks support getting analytics logs data. Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
 
@@ -98,3 +100,6 @@ Workbooks support a variety of merge flavors:
 * Union
 * Duplicate table
 
+### Merge examples
+
+[Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
