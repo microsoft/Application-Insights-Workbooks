@@ -1,4 +1,5 @@
-# Azure Monitor Workbook Templates
+# Azure Monitor Workbook Templates [![Build Status](https://travis-ci.org/microsoft/Application-Insights-Workbooks.svg?branch=master)](https://travis-ci.org/travis-ci/docs-travis-ci-com)
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a 
@@ -39,6 +40,6 @@ Use these links to learn more about workbooks:
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)
 
 ## How to contribute?
-The template contribution process is as simple creating a PR against this repo. The  templates need to be in a specific format that is documented here: [Contributing](Documentation/Contributing.md). 
+The template contribution process is as simple creating a PR against this repo. The templates need to be in a specific format that is documented here: [Contributing](Documentation/Contributing.md). 
 
 Note that templates in this repo will show up for all users of Azure who open the specified gallery. For this reason, the templates gallery is curated by Microsoft. If the submitted template is useful to the community and it does not place undue stress on the underlying infrastructure, it will be accepted to be part of the gallery.
