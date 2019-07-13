@@ -1,4 +1,5 @@
 # Contributing to the Template Gallery
+
 ## Template Format
 Workbook templates follow a certain folder structure.
 ```
@@ -119,7 +120,7 @@ There are three ways of creating a template.
 
 ## Create from the default template
 1. Go to http://portal.azure.com 
-2. Select Application Insights resource
+2. Select an Application Insights resource
 3. Select "Workbooks"
 4. Select Default Template under Quick Start section.<br/>
     ![Image of default template](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/DefaultTemplate.png)
@@ -128,7 +129,7 @@ There are three ways of creating a template.
 
 ## Create from an existing template
 1. Go to http://portal.azure.com 
-2. Select Application Insights resource
+2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Select a template you are interested.<br/>
     ![Image of default template](https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/_assets/Existing-Template.png)
@@ -138,7 +139,7 @@ There are three ways of creating a template.
 	
 ## Create from an existing report
 1. Go to http://portal.azure.com 
-2. Select Application Insights resource
+2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Click on Open icon from the menu.
 5. Select a desired saved report you want to start with.<br/>
