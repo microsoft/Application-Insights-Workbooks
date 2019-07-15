@@ -43,7 +43,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "SigninLogs\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| top 1 by TimeGenerated\r\n| project CApolicy = parse_json(ConditionalAccessPolicies)\r\n| mv-expand CApolicy\r\n| where tostring(result=parse_json(CApolicy)[\"result\"]) in (\"success\",\"failure\",\"notApplied\",\"interrupt\")\r\n| project name = parse_json(CApolicy)[\"displayName\"]\r\n| project Value = tostring(name), Label = strcat(tostring(name), ' - (Enabled)'), selected = false, displayOrder = \"1\", group = \"Enabled policies\"\r\n| union (\r\nSigninLogs\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| top 1 by TimeGenerated\r\n| project CApolicy = parse_json(ConditionalAccessPolicies)\r\n| mv-expand CApolicy\r\n| where tostring(result=parse_json(CApolicy)[\"result\"]) !in (\"success\",\"failure\",\"notApplied\",\"interrupt\")\r\n| project name = parse_json(CApolicy)[\"displayName\"]\r\n| project Value = tostring(name), Label = strcat(tostring(name), ' - (Report-only)'), selected = false, displayOrder = \"2\", group = \"Report-only policies\"\r\n)\r\n| sort by displayOrder asc, Label asc\r\n\r\n",
+            "query": "SigninLogs\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| top 1 by TimeGenerated\r\n| project CApolicy = parse_json(ConditionalAccessPolicies)\r\n| mv-expand CApolicy\r\n| where tostring(result=parse_json(CApolicy)[\"result\"]) in (\"success\",\"failure\",\"notApplied\",\"interrupt\")\r\n| project name = parse_json(CApolicy)[\"displayName\"]\r\n| project Value = tostring(name), Label = strcat(tostring(name), ' - (Enabled)'), selected = false, displayOrder = \"1\", group = \"Enabled policies\"\r\n| union (\r\nSigninLogs\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| top 1 by TimeGenerated\r\n| project CApolicy = parse_json(ConditionalAccessPolicies)\r\n| mv-expand CApolicy\r\n| where tostring(result=parse_json(CApolicy)[\"result\"]) !in (\"success\",\"failure\",\"notApplied\",\"interrupt\",\"notEnabled\")\r\n| project name = parse_json(CApolicy)[\"displayName\"]\r\n| project Value = tostring(name), Label = strcat(tostring(name), ' - (Report-only)'), selected = false, displayOrder = \"2\", group = \"Report-only policies\"\r\n)\r\n| sort by displayOrder asc, Label asc\r\n\r\n",
             "value": [],
             "typeSettings": {
               "additionalResourceOptions": []
@@ -117,19 +117,19 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "SigninLogs\r\n| summarize Count = count() by UserDisplayName\r\n| order by Count desc, UserDisplayName asc\r\n| project Value = UserDisplayName, Label = strcat(UserDisplayName, ' - ', Count, ' sign-ins'), Selected = false",
+            "query": "SigninLogs\r\n| project UserDisplayName\r\n| summarize Count = count() by UserDisplayName\r\n| order by Count desc, UserDisplayName asc\r\n| project Value = UserDisplayName, Label = strcat(UserDisplayName, ' - ', Count, ' sign-ins'), Selected = false",
             "value": [
               "value::all"
             ],
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::all"
-              ]
+              ],
+              "selectAllValue": "*"
             },
             "timeContext": {
-              "durationMs": 0
+              "durationMs": 604800000
             },
-            "timeContextFromParameter": "TimeRange",
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces"
           },
@@ -142,7 +142,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "SigninLogs\n| summarize Count = count() by AppDisplayName\n| order by Count desc, AppDisplayName asc\n| project Value = AppDisplayName, Label = strcat(AppDisplayName, ' - ', Count, ' sign-ins'), Selected = false",
+            "query": "SigninLogs\n| project AppDisplayName\n| summarize Count = count() by AppDisplayName\n| order by Count desc, AppDisplayName asc\n| project Value = AppDisplayName, Label = strcat(AppDisplayName, ' - ', Count, ' sign-ins'), Selected = false",
             "value": [
               "value::all"
             ],
@@ -692,6 +692,9 @@
         "version": "KqlItem/1.0",
         "query": "SigninLogs\r\n| where TimeGenerated {TimeRange:value}\r\n| project ConditionalAccessPolicies, TimeGenerated, UserDisplayName, AppDisplayName, CorrelationId, Status\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where UserDisplayName in ({Users}) or '*' in ({Users})\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| order by TimeGenerated desc \r\n| extend rowNumber = row_number()\r\n| as hint.materialized = true originalData\r\n| mv-expand CApolicy = ConditionalAccessPolicies\r\n| extend failureReason = tostring(Status[\"failureReason\"]), displayName = tostring(CApolicy[\"displayName\"]), result = tostring(CApolicy[\"result\"])\r\n| where displayName in ({Policy})\r\n| summarize failureCount = countif(result == \"failure\" or result == \"reportOnlyFailure\"), successCount = countif(result == \"success\" or result == \"reportOnlySuccess\"), interruptCount = countif(result == \"interrupt\" or result == \"reportOnlyInterrupted\") by rowNumber, TimeGenerated, UserDisplayName, AppDisplayName, CorrelationId, failureReason\r\n| extend combinedResult = case(failureCount > 0, \"failure\", interruptCount > 0, \"interrupt\", successCount > 0, \"success\", \"notApplied\")\r\n| join kind = leftouter (\r\n    originalData\r\n) on rowNumber\r\n| extend filterResult = case(\"{resultName}\" == \"Total\",\"successfailureinterruptreportOnlySuccessreportOnlyFailurereportOnlyInterruptedreportOnlyNotApplied\", \"{resultName}\" == \"Success\", \"success\", \"{resultName}\" == \"Failure\", \"failure\", \"{resultName}\" == \"User action required\", \"interrupt\",\"notApplied\")\r\n| where filterResult contains combinedResult\r\n| project TimeGenerated, UserDisplayName, AppDisplayName, Signins = combinedResult, CorrelationId, failureReason\r\n| summarize Signins = count() by UserDisplayName\r\n| sort by Signins desc",
         "size": 0,
+        "exportFieldName": "UserDisplayName",
+        "exportParameterName": "user",
+        "exportDefaultValue": "*",
         "showAnalytics": true,
         "title": "User sign-in count",
         "timeContext": {
@@ -706,6 +709,8 @@
               "columnMatch": "UserDisplayName",
               "formatter": 0,
               "formatOptions": {
+                "linkTarget": "CellDetails",
+                "linkIsContextBlade": true,
                 "showIcon": true
               }
             },
@@ -728,7 +733,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "SigninLogs\r\n| where TimeGenerated {TimeRange:value}\r\n| project ConditionalAccessPolicies, TimeGenerated, UserDisplayName, AppDisplayName, CorrelationId, Status\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where UserDisplayName in ({Users}) or '*' in ({Users})\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| order by TimeGenerated desc \r\n| extend rowNumber = row_number()\r\n| as hint.materialized = true originalData\r\n| mv-expand CApolicy = ConditionalAccessPolicies\r\n| extend failureReason = tostring(Status[\"failureReason\"]), displayName = tostring(CApolicy[\"displayName\"]), result = tostring(CApolicy[\"result\"])\r\n| where displayName in ({Policy})\r\n| summarize failureCount = countif(result == \"failure\" or result == \"reportOnlyFailure\"), successCount = countif(result == \"success\" or result == \"reportOnlySuccess\"), interruptCount = countif(result == \"interrupt\" or result == \"reportOnlyInterrupted\") by rowNumber, TimeGenerated, UserDisplayName, AppDisplayName, CorrelationId, failureReason\r\n| extend combinedResult = case(failureCount > 0, \"failure\", interruptCount > 0, \"interrupt\", successCount > 0, \"success\", \"notApplied\")\r\n| join kind = leftouter (\r\n    originalData\r\n) on rowNumber\r\n| extend filterResult = case(\"{resultName}\" == \"Total\",\"successfailureinterruptreportOnlySuccessreportOnlyFailurereportOnlyInterruptedreportOnlyNotApplied\", \"{resultName}\" == \"Success\", \"success\", \"{resultName}\" == \"Failure\", \"failure\", \"{resultName}\" == \"User action required\", \"interrupt\",\"notApplied\")\r\n| where filterResult contains combinedResult\r\n| project TimeGenerated, UserDisplayName, AppDisplayName, Result = combinedResult, failureReason, CorrelationId\r\n// summarize Result = count() by UserDisplayName\r\n// sort by Result desc\r\n",
+        "query": "SigninLogs\r\n| where TimeGenerated {TimeRange:value}\r\n| project ConditionalAccessPolicies, TimeGenerated, UserDisplayName, AppDisplayName, CorrelationId, Status\r\n| where ConditionalAccessPolicies != \"[]\"\r\n//| where UserDisplayName in ({Users}) or '*' in ({Users})\r\n| where '{user}' == '*' or '{user}' == UserDisplayName\r\n| where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| order by TimeGenerated desc \r\n| extend rowNumber = row_number()\r\n| as hint.materialized = true originalData\r\n| mv-expand CApolicy = ConditionalAccessPolicies\r\n| extend failureReason = tostring(Status[\"failureReason\"]), displayName = tostring(CApolicy[\"displayName\"]), result = tostring(CApolicy[\"result\"])\r\n| where displayName in ({Policy})\r\n| summarize failureCount = countif(result == \"failure\" or result == \"reportOnlyFailure\"), successCount = countif(result == \"success\" or result == \"reportOnlySuccess\"), interruptCount = countif(result == \"interrupt\" or result == \"reportOnlyInterrupted\") by rowNumber, TimeGenerated, UserDisplayName, AppDisplayName, CorrelationId, failureReason\r\n| extend combinedResult = case(failureCount > 0, \"failure\", interruptCount > 0, \"interrupt\", successCount > 0, \"success\", \"notApplied\")\r\n| join kind = leftouter (\r\n    originalData\r\n) on rowNumber\r\n| extend filterResult = case(\"{resultName}\" == \"Total\",\"successfailureinterruptreportOnlySuccessreportOnlyFailurereportOnlyInterruptedreportOnlyNotApplied\", \"{resultName}\" == \"Success\", \"success\", \"{resultName}\" == \"Failure\", \"failure\", \"{resultName}\" == \"User action required\", \"interrupt\",\"notApplied\")\r\n| where filterResult contains combinedResult\r\n| project TimeGenerated, UserDisplayName, AppDisplayName, Result = combinedResult, failureReason, CorrelationId\r\n// summarize Result = count() by UserDisplayName\r\n// sort by Result desc\r\n",
         "size": 0,
         "showAnalytics": true,
         "title": "Sign-in events",
