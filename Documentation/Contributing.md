@@ -196,3 +196,19 @@ First, to associate the existing template, we need to create a virtual category 
     }
     ```
     **Note that the second item in the galleries array, it has a "categoryKey". It should be match with a "key" in a virtual category.**
+
+## now that you have your workbook and settings files...
+
+1. clone the repo, if you haen't already.
+2. create a new branch `git checkout -b nameOfNewBranch`
+3. create a folder in the `Workbooks` folder, or find an existing category folder if you are making a new category
+4. within that folder, create a new folder for your new workbook.  Put your .workbook and settings.json file there.
+    * the "id" for your workbook will be the folder path itself, like `Workbooks\My New Category\My New Workbook\my workbook.workbook` would have an id of `My New Category\My New Workbook`
+5. add your new files to the branch with the appropriate `git add` command
+6. commit your changes to your branch with git commit, with a useful message, like `git commit -m "Adding my new workbook to my new category"`
+7. push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
+8. in github, create a pull request for your new branch to master. Again, use useful text for the name of your PR and in the PR, describe what you are changing, what your workbook does, add a screenshot if possible.
+9. A validation build will take place to make sure your workbook is valid json, doesn't have hardcoded resource ids, etc.
+10. if your build passes, and someone else with write access to the repo approves your PR, complete your PR
+11. within a few minutes, you should see your new workbook in the appropriate gallery in the portal.
+
