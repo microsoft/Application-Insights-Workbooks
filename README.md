@@ -1,4 +1,4 @@
-# Azure Monitor Workbook Templates [![Build Status](https://travis-ci.org/microsoft/Application-Insights-Workbooks.svg?branch=master)](https://travis-ci.org/travis-ci/docs-travis-ci-com)
+# Azure Monitor Workbook Templates [![Build Status](https://travis-ci.org/microsoft/Application-Insights-Workbooks.svg?branch=master)](https://travis-ci.org/microsoft/Application-Insights-Workbooks)
 
 ## Contributing
 
@@ -11,7 +11,7 @@ For more information see the [Code of Conduct FAQ](https://opensource.microsoft.
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## What is this repository for?
-This repository contains the templates shown in the workbook galleries of [Azure Monitor Workbooks](https://docs.microsoft.com/azure/application-insights/app-insights-usage-workbooks). Templates added to this repository will show up in the Workbooks for all users of Azure Monitor. By contributing templates, you can help others solve interesting problems using the workbooks you've found helpful on your own team.
+This repository contains the templates shown in the workbook galleries of [Azure Monitor Workbooks](https://docs.microsoft.com/azure/application-insights/app-insights-usage-workbooks). Templates added to this repository will show up in the various Workbook Galleries for users of Azure Monitor Workbooks. By contributing templates, you can help others solve interesting problems using the workbooks you've found helpful on your own team.
 
 ## Azure Monitor Workbooks
 
