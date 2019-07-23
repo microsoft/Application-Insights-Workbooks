@@ -1,6 +1,27 @@
+
+# This script transforms the repo into a json with the following structure:
+
+# Root
+#  |
+#  |- Workbooks (reportFolder)
+#        |- Performance (categoryFolder)
+#             |- Apdex (templateFolder)
+#                 |- en
+#                 |   |- settings.json
+#                 |   |- readme.md
+#                 |   |- Apdex.workbook
+#                 |- ko
+#                     |- settings.json
+#                     |- readme.md
+#                     |- Apdex.workbook
+# 
+# If the transformation is successful the json gets published as artifact
+#
+# There are no parameters required.
+
 $mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
 
-Write-Host "Using Folder $mainPath"
+Write-Host "Using Folder $mainPath as root"
 
 $reports = Get-ChildItem $mainPath
 $reportTypes = @('Cohorts', 'Workbooks')
@@ -48,21 +69,6 @@ Function GetTemplateContainerData() {
 
     return $templateMetadata;
 }
-
-# Root
-#  |
-#  |- Workbooks (reportFolder)
-#        |- Performance (categoryFolder)
-#             |- Apdex (templateFolder)
-#                 |- en
-#                 |   |- settings.json
-#                 |   |- readme.md
-#                 |   |- Apdex.workbook
-#                 |- ko
-#                     |- settings.json
-#                     |- readme.md
-#                     |- Apdex.workbook        
-# -------------------------
 
 Write-Host "Building template's json"
 
