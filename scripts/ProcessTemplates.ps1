@@ -242,6 +242,4 @@ Write-Host "Copying artifacts"
 
 $artifactContent = $payload | ConvertTo-Json -depth 10 -Compress
 
-New-Item -Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY -Name "templates.json" -ItemType "file" -Value $artifactContent
-
-Write-Host "Done"
+$artifactContent | Out-File -FilePath "..\ProcessedTemplates.json"
