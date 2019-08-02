@@ -1,2 +1,2 @@
-cd..
+dir
 npm test
