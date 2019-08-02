@@ -1,2 +1,2 @@
 cd..
-npm test
+npm mocha
