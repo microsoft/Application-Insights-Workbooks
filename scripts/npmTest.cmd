@@ -1,2 +1,0 @@
-cd..
-npm mocha
