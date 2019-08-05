@@ -1,6 +1,8 @@
 
 $mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
 
+Write-Host "MAin path $mainPath"
+
 $reports = Get-ChildItem $mainPath
 $reportTypes = @('Cohorts', 'Workbooks')
 $templateExtensions = @('cohort', 'workbook')
@@ -242,4 +244,4 @@ Write-Host "Copying artifacts"
 
 $artifactContent = $payload | ConvertTo-Json -depth 10 -Compress
 
-$artifactContent | Out-File -FilePath "..\ProcessedTemplates.json"
+$artifactContent | Out-File -FilePath "ProcessedTemplates.json"
