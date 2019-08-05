@@ -6,7 +6,7 @@ The graph below show data flowing in/out of a computer via various port to/from 
 
 ![Image showing an example of a graph visualization in workbooks](../Images/Graph-Example2.png)
 
-## Adding a Tile
+## Adding a Graph
 1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
