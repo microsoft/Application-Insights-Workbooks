@@ -84,7 +84,9 @@ Here is an example that styles the _Request_ column as a bar:
 | `Subscription` | Renders a friendly subscription name and link based on a subscription id.  if the value of the cell is not a subscription, it will be converted to one.  | Option to show the subscription icon.  |
 | `Hidden` | Hides the column in the grid. Useful when the default query returns more columns than needed but a project-away is not desired |  |
 
+<a name="link-actions">
 ### Link Actions
+</a>
 If the `Link` renderer is selected, or the `Make this item a link` checkbox is selected, then the author can  configure a link action that will occur on clicking the cell. This usually is taking the user to some other view with context coming from the cell, or may open up a url.
 
 The list of link actions include:
