@@ -244,8 +244,11 @@ Write-Host "Copying artifacts"
 
 $artifactContent = $payload | ConvertTo-Json -depth 10 -Compress
 
-$artifactContent | Out-File -FilePath "$mainPath\ProcessedTemplates.json"
-
 cd $mainPath
+mkdir "output"
+
+$artifactContent | Out-File -FilePath "$mainPath\output\ProcessedTemplates.json"
+
+
 
 dir
