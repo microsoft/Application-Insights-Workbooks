@@ -8,6 +8,9 @@ $defaultLanguage = 'en-us'
 $payload = @{ }
 $categoryMetadataFileName = 'categoryResources.json'
 
+# This is the name of where the blob that ALM looks for
+$azureBlobFilename = "community-templates-V2.json";
+
 Function GetTemplateContainerData() {
     param(
         [String] $templateFolderPath
@@ -245,6 +248,6 @@ $artifactContent = $payload | ConvertTo-Json -depth 10 -Compress
 cd $mainPath
 mkdir "output"
 
-$artifactContent | Out-File -FilePath "$mainPath\output\ProcessedTemplates.json"
+$artifactContent | Out-File -FilePath "$mainPath\output\$azureBlobFilename"
 
 Write-Host "Done copying artifacts"
