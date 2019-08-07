@@ -246,3 +246,5 @@ cd $mainPath
 mkdir "output"
 
 $artifactContent | Out-File -FilePath "$mainPath\output\ProcessedTemplates.json"
+
+Write-Host "Done copying artifacts"
