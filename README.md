@@ -43,3 +43,11 @@ Use these links to learn more about workbooks:
 The template contribution process is as simple creating a PR against this repo. The templates need to be in a specific format that is documented here: [Contributing](Documentation/Contributing.md). 
 
 Note that templates in this repo will show up for all users of Azure who open the specified gallery. For this reason, the templates gallery is curated by Microsoft. If the submitted template is useful to the community and it does not place undue stress on the underlying infrastructure, it will be accepted to be part of the gallery.
+
+## Status
+This repo is [supported by Microsoft](https://docs.microsoft.com/en-us/azure/azure-monitor).
+* File an issue or submit a pull request on GitHub
+* Request or upvote features on [UserVoice](https://feedback.azure.com/forums/913690-azure-monitor)
+* File a [support](https://docs.microsoft.com/en-us/azure/azure-supportability/how-to-create-azure-support-request) ticket with Azure
+
+We are constantly working to improve, and we value your feedback.
