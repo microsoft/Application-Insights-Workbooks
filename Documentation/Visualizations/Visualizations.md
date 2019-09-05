@@ -8,6 +8,7 @@ Workbooks support these kinds of visual components:
 * [Grids](Grid.md)
 * [Tiles](Tiles.md)
 * [Trees](Tree.md)
+* [Honey Comb](HoneyComb.md)
 * [Graphs](Graph.md)
 
 Use the links to learn more about each type of visualization.
@@ -27,6 +28,9 @@ Use the links to learn more about each type of visualization.
 
 ### Tile
 ![Image showing a tile visualization in workbooks](../Images/TileExample.png)
+
+### Honey Comb
+![Image showing a honey comb visualization in workbooks](../Images/HoneyCombCpuExample.png)
 
 ### Graph
 ![Image showing a graph visualization in workbooks](../Images/GraphExample.png)

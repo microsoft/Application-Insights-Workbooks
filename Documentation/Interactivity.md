@@ -108,8 +108,10 @@ Workbook allows users to make certain controls appear or disappear based on valu
     6. Save to commit changes.
 3. Set parameter value to `Yes`
 4. In the query control with the area chart, click the _Advanced Settings_ icon (gear icon)
-5. Check the setting `Make this item conditionally visible`
-    1. This item is visible if `ShowDetails` parameter value `equals` `Yes`
+5. Check the setting `Make this item conditionally visible`, and select "Add Condition".
+    1. Set the settings to `ShowDetails` for the parameter name,  `equals` for the comparison, and `Yes` for parameter value
+    ![image showing conditional visiblity settings](Images/ConditionalVisibility.png)
+    2. click Save to add the condition
 6. Click _Done Editing_ to commit changes.
 7. Click _Done Editing_ on the workbook tool bar to enter read mode.
 8. Switch the value of parameter `ShowDetails` to `No`. Notice that the chart below disappears.
