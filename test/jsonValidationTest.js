@@ -48,12 +48,12 @@ describe('Validating Workbooks...', () => {
     const workbookPath = './Workbooks';
 
     it('Verifying .workbook files', function (done) {
-        let failedList = [];
         browseDirectory(workbookPath, (error, results) => {
             results.filter(file => file.substr(-9) === '.workbook')
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateNoResourceIds(settings, file);
+                    validateNoFromTemplateId(settings, file);
                 });
 
             done();
@@ -139,6 +139,13 @@ function validateNoResourceIds(settings, file) {
     let regexp = /(\/subscriptions\/[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi; 
     while ((matches = regexp.exec(str)) !== null) {
         assert.fail(file + ": Found probably hardcoded resource Id '" + matches[0] + "'");
+    }
+}
+
+// validate that the template content does not have a "fromTemplateId" field
+function validateNoFromTemplateId(settings, file) {
+    if (settings.fromTemplateId) {
+        assert.fail(file + ": Found prohibited field `fromTemplateId` in template content");
     }
 }
 
