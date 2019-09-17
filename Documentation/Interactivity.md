@@ -85,7 +85,6 @@ Workbooks allow authors to add interactivity via a special kind of grid column r
 |:------------- |:-------------|
 | `Generic Details` | Shows the row values in a property grid context blade |
 | `Cell Details` | Shows the cell value in a property grid context blade. Useful when the cell contains a dynamic type with information (e.g. json with request properties like location, role instance, etc.). |
-| `Cell Details` | Shows the cell value in a property grid context blade. Useful when the cell contains a dynamic type with information (e.g. json with request properties like location, role instance, etc.). |
 | `Custom Event Details` | Opens the Application Insights search details with the custom event id (itemId) in the cell |
 | `* Details` | Similar to Custom Event Details, except for dependencies, exceptions, page views, requests and traces. |
 | `Custom Event User Flows` | Opens the Application Insights User Flows experience pivoted on the custom event name in the cell |
