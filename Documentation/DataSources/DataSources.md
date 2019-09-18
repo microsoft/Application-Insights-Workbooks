@@ -41,41 +41,48 @@ Azure resources emit metrics that can be accessed via workbooks. Examples of met
 ## Azure Resource Graph (ARG)
 Workbooks  support querying for resources and their metadata using Azure Resource Graph (ARG). This is primarily used to build custom query scopes for reports. The resource scope is expressed via a KQL-subset that ARG supports – which is usually enough the common use cases.
 
-To make a query control use this data source, use the _Query Type_ drop down to choose _Azure Resource Graph_ and select the subscriptions to target. Use the _Query_ control to add the ARG KQL-subset that selects an interesting resource subset.
+To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Graph_ and select the subscriptions to target. Use the _Query_ control to add the ARG KQL-subset that selects an interesting resource subset.
 
 ![A image of a workbook with ARG data](../Images/ArgDataSource.png)
 
 ## Alerts
 Workbooks allow users to visualize the active alerts related to their resources. This allows the creation of reports that bring together notification data (alert) and diagnostic information (metrics, logs) into one report. This information can also be joined together to create rich reports that combines insights across these data sources. 
 
-To make a query control use this data source, use the _Query Type_ drop down to choose _Alerts_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
+To make a query control use this data source, use the _Data source_ drop down to choose _Alerts_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
 
 ![A image of a workbook with alert data](../Images/AlertDataSource.png)
 
 ## Workload Health
 Azure Monitor has functionality that proactively monitors the availability and performance of Windows or Linux guest OSes with a model that represent key components and their relationships, criteria that specifies how to measure the health of those components, and which can alert you when an unhealthy condition is detected. Workbooks allow users to use this information to create rich reports.
 
-To make a query control use this data source, use the _Query Type_ drop down to choose _Workload Health_ and select subscription, resource group or VM resources to target. Use the health filter drop downs to select an interesting subset of health incidents for your analytic needs.
+To make a query control use this data source, use the _Data source_ drop down to choose _Workload Health_ and select subscription, resource group or VM resources to target. Use the health filter drop downs to select an interesting subset of health incidents for your analytic needs.
 
 ![A image of a workbook with workload health data](../Images/WorkloadHealthDataSource.png)
 
 ## Azure Resource Health
 Workbooks supports getting Azure resource health and combining it with other data sources to create rich, interactive health reports
 
-To make a query control use this data source, use the _Query Type_ drop down to choose _Azure health_ and select the resources to target. Use the health filter drop downs to select an interesting subset of resource issues for your analytic needs.
+To make a query control use this data source, use the _Data source_ drop down to choose _Azure health_ and select the resources to target. Use the health filter drop downs to select an interesting subset of resource issues for your analytic needs.
 
 ![A image of a workbook with Azure resource health data](../Images/ResourceHealthDataSource.png)
 
-## Custom endpoint
+## Custom endpoint (preview)
 Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
 
-To make a query control use this data source, use the _Query Type_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
+To make a query control use this data source, use the _Data source_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
 
 ![A image of a workbook with Custom endpoint data](../Images/CustomEndpointsDataSource.png)
 
 To avoid automatically making calls to un-trusted hosts when using templates, the users needs to mark the used hosts as trusted. This can be done by either clicking on the _Add as trusted_ button, or by adding it as a trusted host in Workbook settings. This settings will be saved in browsers that support IndexDb with web workers, more info [here](https://caniuse.com/#feat=indexeddb).
 
 `Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
+
+## Azure Data Explorer (preview)
+Workbooks supports quering Azure Data Explorer (ADX).
+
+To make a query control use this data source, use the _Data source_ drop down to choose _Azure Data Explorer_ and enter the ADX cluster and database name.  The database name should be the full https url to the cluster. If not, the cluster is presumed to have a standard name based on the Azure cloud instance. Cluster name and database name support workbook parameters. At the current time, there is no intellisense/completion of table names or column names in the ADX cluster. In order to query the cluster, the current portal user will need read access to that ADX cluster.
+
+![A image of a workbook with an Azure Data Explorer query](../Images/AzureDataExplorerDataSource.png)
 
 
 ## Merge data from different sources
