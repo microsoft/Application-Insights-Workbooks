@@ -1,5 +1,7 @@
 # Contributing to the Template Gallery
 
+If you haven't already read the top level [Contributing](../CONTRIBUTING.md) docs, read that first to find out how to get contributor access to the repo.
+
 ## Template Format
 Workbook templates follow a certain folder structure.
 ```
