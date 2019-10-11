@@ -1,5 +1,7 @@
 # Contributing to the Template Gallery
 
+If you haven't already read the top level [Contributing](../CONTRIBUTING.md) docs, read that first to find out how to get contributor access to the repo.
+
 ## Template Format
 Workbook templates follow a certain folder structure.
 ```
@@ -90,15 +92,16 @@ The optional icon file can be a PNG, SVG, or other common image format. Only one
 Each language folder contains the following files:
 * **.workbook file** - You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.
 * **settings.json file** - This file describes a template with metadata. You can specify a localized version of metadata per a language folder.
-    ```
+    ```json
         {
             "name":"Improving User Retention",
             "description": "Long description goes here",
             "icon": "",
             "tags": ["Foo", "Bar"],
             "author": "Microsoft",
-            "galleries": [{ "type": "workbook", "resourceType": "microsoft.insights/components", "order": 300 }]
-            "order": 100
+            "galleries": [{ "type": "workbook", "resourceType": "microsoft.insights/components", "order": 300 }],
+            "order": 100,
+            "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json"
         }
     ```
     * name: A localized name.
@@ -153,7 +156,7 @@ We are now supporting associating any exiting templates to an additional categor
 First, to associate the existing template, we need to create a virtual category first.
 1. Go to Workbooks folder and locate "resourceCategory.json" file.
 2. Add new category entry under categories array as below:
-    ```
+    ```json
     {
     "categories": [{
             "key": "YourSampleUniqueCategoryKey",
@@ -174,7 +177,7 @@ First, to associate the existing template, we need to create a virtual category 
         * order: The sort order of category.
 3. Now we need to modify template settings to associate it together.
 4. Go to your template and open settings.json file
-    ```
+    ```json
     {
         "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
         "name": "Bracket Retention",
@@ -189,7 +192,7 @@ First, to associate the existing template, we need to create a virtual category 
             {
                 "type": "workbook",
                 "resourceType": "Azure Monitor",
-                "categoryKey": "YourSampleUniqueCategoryKey"
+                "categoryKey": "YourSampleUniqueCategoryKey",
                 "order": 400
             }
         ]
