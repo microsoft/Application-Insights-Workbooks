@@ -5,9 +5,6 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
-        "crossComponentResources": [
-          "{Subscriptions}"
-        ],
         "parameters": [
           {
             "id": "65f81355-b707-45be-b7e1-f8450b537da4",
@@ -52,55 +49,6 @@
             }
           },
           {
-            "id": "d5d7c033-d737-495b-a84c-bdd7e4e78a08",
-            "version": "KqlParameterItem/1.0",
-            "name": "Subscriptions",
-            "type": 6,
-            "isRequired": true,
-            "multiSelect": true,
-            "quote": "'",
-            "delimiter": ",",
-            "query": "where type =~ 'microsoft.keyvault/vaults'\r\n| summarize Count = count() by subscriptionId\r\n| order by Count desc\r\n| summarize Selected = makelist(subscriptionId, 50), All = makelist(subscriptionId, 400)\r\n| mvexpand All limit 400\r\n| project id = tostring(All), selected = iff(Selected contains All, true, false)",
-            "crossComponentResources": [
-              "value::selected"
-            ],
-            "typeSettings": {
-              "additionalResourceOptions": [
-                "value::all"
-              ],
-              "showDefault": false
-            },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
-            "id": "827a53dc-62fe-49ee-88a6-f9f751ed5ab3",
-            "version": "KqlParameterItem/1.0",
-            "name": "Vaults",
-            "type": 5,
-            "isRequired": true,
-            "multiSelect": true,
-            "quote": "'",
-            "delimiter": ",",
-            "query": "where type =~ 'microsoft.keyvault/vaults'\r\n| order by name asc\r\n| summarize Selected = makelist(id, 50), All = makelist(id, 400)\r\n| mvexpand All limit 400\r\n| project id = tostring(All), selected = iff(Selected contains All, true, false)",
-            "crossComponentResources": [
-              "{Subscriptions}"
-            ],
-            "typeSettings": {
-              "additionalResourceOptions": [
-                "value::all"
-              ],
-              "selectAllValue": "",
-              "showDefault": false
-            },
-            "timeContext": {
-              "durationMs": 0
-            },
-            "timeContextFromParameter": "TimeRange",
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
             "id": "86c93d71-ea59-49f1-aac8-556d34ddb6bb",
             "version": "KqlParameterItem/1.0",
             "name": "Operations",
@@ -110,9 +58,6 @@
             "quote": "'",
             "delimiter": ",",
             "query": "AzureDiagnostics\r\n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\r\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\r\n| distinct OperationName\r\n| sort by OperationName asc",
-            "crossComponentResources": [
-              "{Vaults}"
-            ],
             "value": [
               "value::all"
             ],
@@ -131,8 +76,8 @@
           }
         ],
         "style": "above",
-        "queryType": 1,
-        "resourceType": "microsoft.resourcegraph/resources"
+        "queryType": 0,
+        "resourceType": "microsoft.keyvault/vaults"
       },
       "name": "KeyVault-Parameters"
     },
@@ -157,6 +102,7 @@
         "exportFieldName": "ResultStatus",
         "exportParameterName": "ResultStatus",
         "exportDefaultValue": "All",
+        "showAnalytics": true,
         "showExportToExcel": true,
         "exportToExcelOptions": "visible",
         "title": "Operations by Result Status",
@@ -166,9 +112,6 @@
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
         "resourceType": "microsoft.keyvault/vaults",
-        "crossComponentResources": [
-          "{Vaults}"
-        ],
         "visualization": "tiles",
         "tileSettings": {
           "titleContent": {
@@ -264,38 +207,27 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let data = AzureDiagnostics \r\n| where TimeGenerated {TimeRange}\r\n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\r\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\r\n| where OperationName in ({Operations}) or '*' in ({Operations})\r\n// Create ResultStatus with all the 'success' results bucked as 'Success'\r\n// Certain operations like StorageAccountAutoSyncKey have no ResultSignature, for now set to 'Success' as well\r\n| extend ResultStatus = case ( ResultSignature == \"\", \"Success\",\r\n                               ResultSignature == \"OK\", \"Success\",\r\n                               ResultSignature == \"Accepted\", \"Success\",\r\n                               ResultSignature)\r\n| where ResultStatus == '{ResultStatus}' or '{ResultStatus}' == 'All';\r\n// Data aggregated to the Resource\r\nlet resourceData = data\r\n| summarize OperationCount = count(), SuccessCount = countif(ResultStatus == \"Success\"), FailureCount = countif(ResultStatus != \"Success\"), PDurationMs = percentile(DurationMs, 99) by Resource, ResourceId\r\n| join kind=inner (data \r\n  | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Resource\r\n  | project-away TimeGenerated) on Resource\r\n| order by OperationCount desc\r\n| project Name = strcat('☁️ ', Resource), Id = Resource, Type = Resource, ParentId = '', OperationCount, Trend, SuccessCount, FailureCount, PDurationMs, ResourceId;\r\ndata\r\n// Data aggregated to the Resource, OperationName\r\n| summarize OperationCount = count(), SuccessCount = countif(ResultStatus == \"Success\"), FailureCount = countif(ResultStatus != \"Success\"), PDurationMs = percentile(DurationMs, 99) by Resource, OperationName\r\n| join kind=inner (data\r\n  | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Resource, OperationName\r\n  | project-away TimeGenerated) on Resource, OperationName\r\n| order by OperationCount desc, Resource asc\r\n| project Name = strcat('⚡ ', OperationName), Id = strcat(Resource, '/', OperationName), ParentId = Resource, OperationCount, Trend, SuccessCount, FailureCount, PDurationMs\r\n| union (resourceData)\r\n| project Name, Id, ParentId, ['Operation count'] = OperationCount, ['Operation count trend'] = Trend, ['Success count'] = SuccessCount, ['Failure count'] = FailureCount, ['p99 Duration'] = PDurationMs, ResourceId",
+        "query": "let data = AzureDiagnostics \r\n| where TimeGenerated {TimeRange}\r\n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\r\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\r\n| where OperationName in ({Operations}) or '*' in ({Operations})\r\n// Create ResultStatus with all the 'success' results bucked as 'Success'\r\n// Certain operations like StorageAccountAutoSyncKey have no ResultSignature, for now set to 'Success' as well\r\n| extend ResultStatus = case ( ResultSignature == \"\", \"Success\",\r\n                               ResultSignature == \"OK\", \"Success\",\r\n                               ResultSignature == \"Accepted\", \"Success\",\r\n                               ResultSignature)\r\n| where ResultStatus == '{ResultStatus}' or '{ResultStatus}' == 'All';\r\ndata\r\n// Data aggregated to the OperationName\r\n| summarize OperationCount = count(), SuccessCount = countif(ResultStatus == \"Success\"), FailureCount = countif(ResultStatus != \"Success\"), PDurationMs = percentile(DurationMs, 99) by Resource, OperationName\r\n| join kind=inner (data\r\n  | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by OperationName\r\n  | project-away TimeGenerated) on OperationName\r\n| order by OperationCount desc\r\n| project Name = strcat('⚡ ', OperationName), Id = strcat(Resource, '/', OperationName), ['Operation count'] = OperationCount, ['Operation count trend'] = Trend, ['Success count'] = SuccessCount, ['Failure count'] = FailureCount, ['p99 Duration'] = PDurationMs",
         "size": 1,
         "exportFieldName": "",
         "exportParameterName": "GridRow",
         "exportDefaultValue": "{ \"Id\":\"*\" }",
+        "showAnalytics": true,
         "showExportToExcel": true,
         "exportToExcelOptions": "visible",
         "queryType": 0,
         "resourceType": "microsoft.keyvault/vaults",
-        "crossComponentResources": [
-          "{Vaults}"
-        ],
         "gridSettings": {
           "formatters": [
             {
               "columnMatch": "Name",
               "formatter": 1,
               "formatOptions": {
-                "linkColumn": "ResourceId",
-                "linkTarget": "Resource",
                 "showIcon": true
               }
             },
             {
               "columnMatch": "Id",
-              "formatter": 5,
-              "formatOptions": {
-                "showIcon": true
-              }
-            },
-            {
-              "columnMatch": "ParentId",
               "formatter": 5,
               "formatOptions": {
                 "showIcon": true
@@ -411,6 +343,13 @@
               }
             },
             {
+              "columnMatch": "ParentId",
+              "formatter": 5,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
               "columnMatch": "ResourceId",
               "formatter": 5,
               "formatOptions": {
@@ -421,12 +360,6 @@
           ],
           "rowLimit": 1000,
           "filter": true,
-          "hierarchySettings": {
-            "idColumn": "Id",
-            "parentColumn": "ParentId",
-            "treeType": 0,
-            "expanderColumn": "Name"
-          },
           "labelSettings": [
             {
               "columnId": "Name",
@@ -435,10 +368,6 @@
             {
               "columnId": "Id",
               "label": "Id"
-            },
-            {
-              "columnId": "ParentId",
-              "label": "ParentId"
             },
             {
               "columnId": "Operation count",
@@ -459,10 +388,6 @@
             {
               "columnId": "p99 Duration",
               "label": "p99 Duration"
-            },
-            {
-              "columnId": "ResourceId",
-              "label": "ResourceId"
             }
           ]
         }
@@ -478,15 +403,13 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let gridRowSelected = dynamic({GridRow});\r\nlet resourceName = split(gridRowSelected.Id, \"/\")[0];\r\nlet operationName = split(gridRowSelected.Id, \"/\")[1];\r\nAzureDiagnostics \r\n| where TimeGenerated {TimeRange}\r\n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\r\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\r\n| where OperationName in ({Operations}) or '*' in ({Operations})\r\n| where resourceName == \"*\" or Resource == resourceName\r\n| where operationName == \"\" or OperationName == operationName\r\n// Create ResultStatus with all the 'success' results bucked as 'Success'\r\n// Certain operations like StorageAccountAutoSyncKey have no ResultSignature, for now set to 'Success' as well\r\n| extend ResultStatus = case ( ResultSignature == \"\", \"Success\",\r\n                               ResultSignature == \"OK\", \"Success\",\r\n                               ResultSignature == \"Accepted\", \"Success\",\r\n                               ResultSignature)\r\n| where ResultStatus == '{ResultStatus}' or '{ResultStatus}' == 'All'\r\n| extend p = pack_all()\r\n| mv-apply p on \r\n( \r\n    extend key = tostring(bag_keys(p)[0])\r\n    | where isnotempty(p[key]) and isnotnull(p[key])\r\n    | where key !in (\"SourceSystem\",\"Type\")\r\n    | summarize make_bag(p)\r\n)\r\n| project Time=TimeGenerated, Vault=Resource, Operation=OperationName, Result=ResultSignature, Duration = DurationMs, [\"Details\"]=bag_p\r\n| sort by Time desc",
+        "query": "let gridRowSelected = dynamic({GridRow});\r\nlet resourceName = split(gridRowSelected.Id, \"/\")[0];\r\nlet operationName = split(gridRowSelected.Id, \"/\")[1];\r\nAzureDiagnostics \r\n| where TimeGenerated {TimeRange}\r\n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\r\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\r\n| where OperationName in ({Operations}) or '*' in ({Operations})\r\n| where resourceName == \"*\" or Resource == resourceName\r\n| where operationName == \"\" or OperationName == operationName\r\n// Create ResultStatus with all the 'success' results bucked as 'Success'\r\n// Certain operations like StorageAccountAutoSyncKey have no ResultSignature, for now set to 'Success' as well\r\n| extend ResultStatus = case ( ResultSignature == \"\", \"Success\",\r\n                               ResultSignature == \"OK\", \"Success\",\r\n                               ResultSignature == \"Accepted\", \"Success\",\r\n                               ResultSignature)\r\n| where ResultStatus == '{ResultStatus}' or '{ResultStatus}' == 'All'\r\n| extend p = pack_all()\r\n| mv-apply p on \r\n( \r\n    extend key = tostring(bag_keys(p)[0])\r\n    | where isnotempty(p[key]) and isnotnull(p[key])\r\n    | where key !in (\"SourceSystem\",\"Type\")\r\n    | summarize make_bag(p)\r\n)\r\n| project Time=TimeGenerated, Operation=OperationName, Result=ResultSignature, Duration = DurationMs, [\"Details\"]=bag_p\r\n| sort by Time desc",
         "size": 0,
+        "showAnalytics": true,
         "showExportToExcel": true,
         "exportToExcelOptions": "visible",
         "queryType": 0,
         "resourceType": "microsoft.keyvault/vaults",
-        "crossComponentResources": [
-          "{Vaults}"
-        ],
         "gridSettings": {
           "formatters": [
             {
@@ -597,10 +520,6 @@
               "label": "Time"
             },
             {
-              "columnId": "Vault",
-              "label": "Vault"
-            },
-            {
               "columnId": "Operation",
               "label": "Operation"
             },
@@ -627,6 +546,6 @@
       "name": "KeyVault-EventsTable"
     }
   ],
-  "styleSettings": {},  
+  "styleSettings": {},
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
