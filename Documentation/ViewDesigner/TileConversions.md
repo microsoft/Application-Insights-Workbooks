@@ -19,6 +19,10 @@ Note that the Visualization setting should be set to **Set by query**
 
 For creating a list and enabling sparklines please reference the section on [CommonSteps](./CommonSteps.md)
 
+The following is an example of how the Donut & List tile might be reinterpreted in Workbooks
+
+![Donut List Workbooks](./DonutWorkbooks.png)
+
 ## Linechart & List
 The original Linechart & List in View Designer looks like the following:
  
@@ -45,6 +49,10 @@ _search * | make-series Count = count() default=0 on TimeGenerated from {TimeRan
 
 For creating a list and enabling sparklines please reference the section on [Common Steps](./CommonSteps.md)
 
+The following is an example of how the Linechart & List tile might be reinterpreted in Workbooks
+
+![Linechart List Workbooks](./LineWorkbooks.png)
+
 ## Number & List
 The original View Designer Number & List looks as such:
  ![Tile List](./TileListEx.png)
@@ -68,6 +76,10 @@ Advanced Settings \ Settings \ Chart title:  Computers sending data
  
 For creating a list and enabling sparklines please reference the section on [Common Steps](./CommonSteps.md)
 
+The following is an example of how the Number & List tile might be reinterpreted in Workbooks
+
+![Number List Workbooks](./NumberWorkbooks.png)
+
 ## Timeline & List
 The Timeline & List in View Designer is shown below:
 
@@ -88,3 +100,7 @@ Note that the Visualization setting should be set to Set by query
 
  
 For creating a list and enabling sparklines please reference the section on [Common Steps](./CommonSteps.md)
+
+The following is an example of how the Timeline & List tile might be reinterpreted in Workbooks
+
+![Timeline List Workbooks](./TimeWorkbooks.png)
