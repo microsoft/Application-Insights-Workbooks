@@ -12,7 +12,7 @@ Workbooks allow authors to construct scenarios where clicking a row in a grid up
 
 For instance, a user can have a grid that shows a list of requests and some stats like failure counts. They could setup it up such that clicking a row corresponding to a request, will result in detailed charts below updating to filter down to just that request.
 
-### Setting up interactivity on grid row click
+### Setting up interactivity on grid or chart selections
 1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add query_ link to add a log query control to the workbook. 
 3. Select the query type as _Log_, resource type (e.g. Application Insights) and the resources to target.
@@ -24,13 +24,15 @@ For instance, a user can have a grid that shows a list of requests and some stat
     ```
 5. `Run query` to see the results
 6. Click on the _Advanced Settings_ icon on the query footer (the icon looks like a gear). This opens up the advanced settings pane 
-7. Check the setting: `When an item is selected, export a parameter`
+7. Check the setting: `When an items are selected, export parameters`
+8. Click "Add Parameter".  in the popup that appears, enter:
     1. Field to export: `Request`
     2. Parameter name: `SelectedRequest`
     3. Default value: `All requests`
     
     ![Image showing the advanced editor with settings for exporting fields as parameters](Images/Interactivity-AdvancedSettings.png)
 
+8. Click save
 8. Click `Done Editing`.
 9. Add another query control using steps 2 and 3.
 10. Use the Query editor to enter the KQL for your analysis
@@ -123,7 +125,7 @@ The image below shows the hidden case where `ShowDetails` is `No`
 
 ![Image showing the conditional visibility where the chart is hidden](Images/Interactivity-ConditionalVisibility-Invisible.png)
 
-# Interactivity with selections in grids and charts
+# Interactivity with multiple selections in grids and charts
 Query and Metrics steps can also export one or more parameters when a row (or multiple rows) are selected.
 
 ![Image showing the export parameters settings](Images/Interactivity-ExportParameters.png)
