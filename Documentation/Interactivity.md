@@ -7,10 +7,10 @@ When a workbook user updates a parameter, any control that uses the parameter au
 
 Learn more about [Parameters in Workbooks](Parameters/Parameters.md)
 
-## Grid row clicks
-Workbooks allow authors to construct scenarios where clicking a row in a grid updates subsequent charts based on the content of the row. 
+## Grid, Tile, Chart selections
+Workbooks allow authors to construct scenarios where clicking a row in a grid, or tiles, or charts updates subsequent items on the content of the selected items.
 
-For instance, a user can have a grid that shows a list of requests and some stats like failure counts. They could setup it up such that clicking a row corresponding to a request, will result in detailed charts below updating to filter down to just that request.
+For instance, a user can have a grid that shows a list of requests and some stats like failure counts. They could set it up such that clicking a row corresponding to a request, will result in detailed charts below updating to filter down to just that request.
 
 ### Setting up interactivity on grid or chart selections
 1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
