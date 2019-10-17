@@ -11,7 +11,9 @@ View Designer has a fixed static style of representation, while Workbooks enable
 
 ## <strong> Overview Tile Conversion</strong>
 View Designer utilizes the overview tile feature to represent and summarize the overall state. These are represented in seven tiles, ranging from numbers to charts.
+
 ![Gallery](./Overview.png)
+
 Within Workbooks, users can create similar visualizations and pin them to resemble the original style of overview tiles. 
 
 ## <strong> View Dashboard Conversion </strong>
