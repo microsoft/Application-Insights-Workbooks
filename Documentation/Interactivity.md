@@ -123,4 +123,33 @@ The image below shows the hidden case where `ShowDetails` is `No`
 
 ![Image showing the conditional visibility where the chart is hidden](Images/Interactivity-ConditionalVisibility-Invisible.png)
 
+# Interactivity with selections in grids and charts
+Query and Metrics steps can also export one or more parameters when a row (or multiple rows) are selected.
+
+![Image showing the export parameters settings](Images/Interactivity-ExportParameters.png)
+
+For example, in a query step displaying a grid, go to the advanced settings, and 
+1. check the `When items are selected, export parameters` checkbox.  Additional controls will appear.
+2. if desired, check the "allow selection of multiple values" checkbox.  
+    - If checked, the displayed visualization will allow multi-select, and exported parameter's values will be arrays of values, like when using multi-select dropdown parameters.
+    - if unchecked, the displayed visualization will only respect the last selected item, only exporting a single value at a time
+3. for each parameter you wish to export, use the `+ Add Parameter` button. A popup window will appear, containing the settings for the parameter to be exported.
+
+single-selection | multi-selection
+--|--
+![Image showing the single-selection parameters settings](Images/Interactivity-ExportSingleParameter.png)|![Image showing the multi-selection parameters settings](Images/Interactivity-ExportMultipleParameter.png)
+when single selection is enabled, the author can specify which field of the original data to export, as what parameter name, the parameter type, and the default value to use if nothing is selected (optional) | When multi-selection is enabled, the author specifies which field of the original data to export, as what parameter name, the parameter type, and the quote/delimiter values used when turning the array values into text when being replaced in a query.  In multi-select, the default value is an empty array if no values are selected.
+
+**Note:** you can leave the `Field to export` setting empty in the export settings. If you do, all available fields in the data will be exported as a stringified JSON object of key:value pairs. For grids and tiles, this will be all of the fields in the grid. For charts, the available fields will be `x`, `y`, `series`, `label` (depending on the type of chart).
+
+**Note:** While the default behavior is to export a parameter as text, if you know that the field is a subscription or resource id, use that as the export parameter type.  This will allow the parameter to be used downstream in places that require those types of parameters.
+
+**Note:** For multi-select, only unique values will be exported, you will not see output array values like "1, 1, 2, 1", you'd get "1, 2" as the output values.
+
+## Example
+Given the exported parameters shown above, and a markdown step with parameters in the text, you can create a view like this:
+![Image showing the multi-selection grid](Images/Interactivity-MultipleSelectGrid.png)
+
+As rows are selected in the grid or other visualization, the parameters will be updated below.  
+
 
