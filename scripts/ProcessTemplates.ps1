@@ -234,8 +234,13 @@ Function CopyFromMainIfNotExist() {
         $destinationFile = "$fullName\$fileName"
         if (!(Test-Path $destinationFile)) {
             $fullPath = $enuFile.FullName
-            Write-Host "[MISSING FILE]: copying file $fullPath to $fullName"
+            Write-Host "[#WARNING: missing File]: copying file $fullPath to $fullName"
+            # copy file from enu to localized folder
             Copy-Item -Path $fullPath -Destination $fullName
+            # check and replace "en-us" with the language for any *.json file
+            if (Test-Path $destinationFile -PathType leaf -Include "*.json") {
+                ((Get-Content -Path $destinationFile -Raw) -replace $defaultLanguage, $language) | Set-Content -Path $destinationFile
+            }
         }
     }
 }
@@ -344,8 +349,10 @@ Function BuildingTemplateJson() {
 #----------------------------------------------------------------------------
 # Main
 #----------------------------------------------------------------------------
+# merge the templates file into a json for each language
+#
+# community-templates-V2.json:
 # Root
-#  |
 #  |- Workbooks (reportFolder)
 #        |- Performance (categoryFolder)
 #             |- Apdex (templateFolder)
@@ -353,11 +360,17 @@ Function BuildingTemplateJson() {
 #                 |   |- settings.json
 #                 |   |- readme.md
 #                 |   |- Apdex.workbook
+#
+# community-templates-V2.ko-kr.json:
+# Root
+#  |- Workbooks (reportFolder)
+#        |- Performance (categoryFolder)
+#             |- Apdex (templateFolder)
 #                 |- ko
 #                     |- settings.json
 #                     |- readme.md
 #                     |- Apdex.workbook        
-# -------------------------
+#----------------------------------------------------------------------------
 
 # pull down all the other localized repos
 Write-Host "Get Localized Repos"
@@ -377,7 +390,7 @@ foreach ($locRepo in $docRepos) {
     Set-Location -Path $currentPath
     $jsonFileName = "$azureBlobFileNameBase.$currentLang.json"
 
-    Write-Host " "
+    Write-Host ""
     Write-Host "Processing..."
     Write-Host "...Repo: $currentRepo"
     Write-Host "...Language: $currentLang"
