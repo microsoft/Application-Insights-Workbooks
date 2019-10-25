@@ -11,22 +11,24 @@ $categoryMetadataFileName = 'categoryResources.json'
 $azureBlobFileNameBase = "community-templates-V2";
 
 $docRepos = @(
-#    @{ repo="Application-Insights-Workbooks"; lang="en-us"},
-    @{ repo="Application-Insights-Workbooks.ru-ru"; lang="ru-ru"}, 
     @{ repo="Application-Insights-Workbooks.cs-cz"; lang="cs-cz"}, 
-    @{ repo="Application-Insights-Workbooks.it-it"; lang="it-it"}, 
-    @{ repo="Application-Insights-Workbooks.fr-fr"; lang="fr-fr"}, 
-    @{ repo="Application-Insights-Workbooks.pl-pl"; lang="pl-pl"}, 
-    @{ repo="Application-Insights-Workbooks.zh-tw"; lang="zh-tw"}, 
+    @{ repo="Application-Insights-Workbooks"; lang="en-us"},
+    @{ repo="Application-Insights-Workbooks.de-de"; lang="de-de"}, 
     @{ repo="Application-Insights-Workbooks.es-es"; lang="es-es"}, 
+    @{ repo="Application-Insights-Workbooks.fr-fr"; lang="fr-fr"}, 
     @{ repo="Application-Insights-Workbooks.hu-hu"; lang="hu-hu"}, 
-    @{ repo="Application-Insights-Workbooks.sv-se"; lang="sv-se"}, 
-    @{ repo="Application-Insights-Workbooks.nl-nl"; lang="nl-nl"}, 
+    @{ repo="Application-Insights-Workbooks.it-it"; lang="it-it"}, 
     @{ repo="Application-Insights-Workbooks.ja-jp"; lang="ja-jp"}, 
-    @{ repo="Application-Insights-Workbooks.tr-tr"; lang="tr-tr"}, 
     @{ repo="Application-Insights-Workbooks.ko-kr"; lang="ko-kr"}, 
+    @{ repo="Application-Insights-Workbooks.nl-nl"; lang="nl-nl"}, 
+    @{ repo="Application-Insights-Workbooks.pl-pl"; lang="pl-pl"}, 
+    @{ repo="Application-Insights-Workbooks.pt-br"; lang="pt-br"}, 
+    @{ repo="Application-Insights-Workbooks.pt-pt"; lang="pt-pt"}, 
+    @{ repo="Application-Insights-Workbooks.ru-ru"; lang="ru-ru"}, 
+    @{ repo="Application-Insights-Workbooks.sv-se"; lang="sv-se"}, 
+    @{ repo="Application-Insights-Workbooks.tr-tr"; lang="tr-tr"}, 
     @{ repo="Application-Insights-Workbooks.zh-cn"; lang="zh-cn"}, 
-    @{ repo="Application-Insights-Workbooks.pt-br"; lang="pt-br"}
+    @{ repo="Application-Insights-Workbooks.zh-tw"; lang="zh-tw"} 
 )
 $docGitServer = "https://github.com/MicrosoftDocs/"
 
@@ -37,7 +39,7 @@ Function GetTemplateContainerData() {
     param(
         [String] $templateFolderPath,
         [String] $language
-    )
+    )   
     
     $templateMetadata = @{ }
 
@@ -146,37 +148,39 @@ Function AddTemplatesToVirtualGallery() {
 
     param(
         [Object] $templateMetadata,
-        [string] $language
+        [String] $language
     )
 
-    $virtualGalleries = $templateMetadata.TemplateByLanguage.$language.galleries | Where-Object { ($null -ne $_.categoryKey) -and $payload.$reportType.($_.categoryKey) }
+    $lang = CheckLanguageOrUseDefault $language
+
+    $virtualGalleries = $templateMetadata.TemplateByLanguage.$lang.galleries | Where-Object { ($null -ne $_.categoryKey) -and $payload.$reportType.($_.categoryKey) }
 
     if ($null -ne $virtualGalleries) {
 
         # Only keep non-virtual galleries in path category
-        $nonVirtualGalleries = $templateMetadata.TemplateByLanguage.$language.galleries | Where-Object { $null -eq $_.categoryKey }
+        $nonVirtualGalleries = $templateMetadata.TemplateByLanguage.$lang.galleries | Where-Object { $null -eq $_.categoryKey }
         if ($null -eq $nonVirtualGalleries) {
-            $templateMetadata.TemplateByLanguage.$language.galleries = @()
+            $templateMetadata.TemplateByLanguage.$lang.galleries = @()
         }
         elseif ($null -eq $nonVirtualGalleries.Count) {
-            $templateMetadata.TemplateByLanguage.$language.galleries = @($nonVirtualGalleries)
+            $templateMetadata.TemplateByLanguage.$lang.galleries = @($nonVirtualGalleries)
         }
         else {
-            $templateMetadata.TemplateByLanguage.$language.galleries = $nonVirtualGalleries
+            $templateMetadata.TemplateByLanguage.$lang.galleries = $nonVirtualGalleries
         }
 
         # Means there is only one Virtual gallery, so virtual galleries is an object not a list
         if ($null -eq $virtualGalleries.Count) {
             $newTemplateData = (Copy-Object  $templateMetadata)[0]
 
-            $newTemplateData.TemplateByLanguage.$language.galleries = @($virtualGalleries)
+            $newTemplateData.TemplateByLanguage.$lang.galleries = @($virtualGalleries)
             $payload.$reportType.($virtualGalleries.categoryKey).TemplateContainers += $newTemplateData
         }
         else {
             $virtualGalleries | ForEach-Object {
 
                 $newTemplateData = (Copy-Object  $templateMetadata)[0]
-                $newTemplateData.TemplateByLanguage.$language.galleries = @($_)
+                $newTemplateData.TemplateByLanguage.$lang.galleries = @($_)
                 $payload.$reportType.($_.categoryKey).TemplateContainers += $newTemplateData
             }
         }
@@ -223,6 +227,12 @@ Function CopyFromMainIfNotExist() {
         [string] $language
         )
 
+    # skip if language is not in the supported list
+    $lang = CheckLanguageOrUseDefault $language
+    if ($lang -ne $language) {
+        return
+    }
+
     $enuPath = $fullName.Replace(".$language\", "\")
     if (!(Test-Path $enuPath)) {
         return
@@ -239,9 +249,25 @@ Function CopyFromMainIfNotExist() {
             Copy-Item -Path $fullPath -Destination $fullName
             # check and replace "en-us" with the language for any *.json file
             if (Test-Path $destinationFile -PathType leaf -Include "*.json") {
-                ((Get-Content -Path $destinationFile -Raw) -replace $defaultLanguage, $language) | Set-Content -Path $destinationFile
+                $from = """$defaultLanguage"""
+                $to = """$language"""
+                Write-Host "[#WARNING: missing File]: ...found $destinationFile and replacing $from with $to"
+                ((Get-Content -Path $destinationFile -Raw) -replace $from, $to) | Set-Content -Path $destinationFile
             }
         }
+    }
+}
+
+Function CheckLanguageOrUseDefault() {
+    param(
+        [string] $language
+    )
+
+    $item = $docRepos | Where-Object { $_.Lang -eq $language }
+    if ($item.Length -eq 1) {
+        return $language
+    } else {
+        return $defaultLanguage
     }
 }
 
@@ -258,6 +284,8 @@ Function BuildingTemplateJson() {
     $currentPath = get-location
     Write-Host ">>>>> Building template json: $jsonFileName in directory $currentPath ..."
     
+    $lang = CheckLanguageOrUseDefault $language
+
     $reports = Get-ChildItem $currentPath
     # initialize the payload
     $payload = @{ }
@@ -305,7 +333,7 @@ Function BuildingTemplateJson() {
                         $templateMetadata.Name = $templateFolder.Name
 
                         # First get template populate template data for default language, which is a top level
-                        $templateMetadata.TemplateByLanguage.$language = GetTemplateContainerData $templateFolder.FullName $language
+                        $templateMetadata.TemplateByLanguage.$lang = GetTemplateContainerData $templateFolder.FullName $language
 
                         AddTemplatesToVirtualGallery $templateMetadata $language
 
@@ -376,10 +404,10 @@ Function BuildingTemplateJson() {
 Write-Host "Get Localized Repos"
 CloneLocalizedRepos
 
-# process Enu first
+# process en-us as default template so it's compatible with pre localization changes which can be removed once 
 $enuJsonFile = "$azureBlobFileNameBase.json"
 $outputPath = Convert-Path "$mainPath\output"
-$currentLang = $defaultLanguage
+$currentLang = "base" 
 BuildingTemplateJson $enuJsonFile $currentLang $outputPath
 
 # process localized repo
