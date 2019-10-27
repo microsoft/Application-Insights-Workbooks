@@ -1,6 +1,3 @@
-
-$mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
-
 $reportTypes = @('Cohorts', 'Workbooks')
 $templateExtensions = @('cohort', 'workbook')
 $defaultLanguage = 'en-us'
@@ -10,25 +7,26 @@ $categoryMetadataFileName = 'categoryResources.json'
 # This is the name of where the blob that ALM looks for
 $azureBlobFileNameBase = "community-templates-V2";
 
-$docRepos = @(
-    @{ repo="Application-Insights-Workbooks.cs-cz"; lang="cs-cz"}, 
-    @{ repo="Application-Insights-Workbooks"; lang="en-us"},
-    @{ repo="Application-Insights-Workbooks.de-de"; lang="de-de"}, 
-    @{ repo="Application-Insights-Workbooks.es-es"; lang="es-es"}, 
-    @{ repo="Application-Insights-Workbooks.fr-fr"; lang="fr-fr"}, 
-    @{ repo="Application-Insights-Workbooks.hu-hu"; lang="hu-hu"}, 
-    @{ repo="Application-Insights-Workbooks.it-it"; lang="it-it"}, 
-    @{ repo="Application-Insights-Workbooks.ja-jp"; lang="ja-jp"}, 
-    @{ repo="Application-Insights-Workbooks.ko-kr"; lang="ko-kr"}, 
-    @{ repo="Application-Insights-Workbooks.nl-nl"; lang="nl-nl"}, 
-    @{ repo="Application-Insights-Workbooks.pl-pl"; lang="pl-pl"}, 
-    @{ repo="Application-Insights-Workbooks.pt-br"; lang="pt-br"}, 
-    @{ repo="Application-Insights-Workbooks.pt-pt"; lang="pt-pt"}, 
-    @{ repo="Application-Insights-Workbooks.ru-ru"; lang="ru-ru"}, 
-    @{ repo="Application-Insights-Workbooks.sv-se"; lang="sv-se"}, 
-    @{ repo="Application-Insights-Workbooks.tr-tr"; lang="tr-tr"}, 
-    @{ repo="Application-Insights-Workbooks.zh-cn"; lang="zh-cn"}, 
-    @{ repo="Application-Insights-Workbooks.zh-tw"; lang="zh-tw"} 
+$repoBaseName = "Application-Insights-Workbooks"
+$supportedLanguages = @(
+    "cs-cz", 
+    "de-de", 
+    $defaultLanguage, 
+    "es-es", 
+    "fr-fr", 
+    "hu-hu", 
+    "it-it", 
+    "ja-jp", 
+    "ko-kr",
+    "nl-nl", 
+    "pl-pl", 
+    "pt-br", 
+    "pt-pt", 
+    "ru-ru", 
+    "sv-se", 
+    "tr-tr", 
+    "zh-cn", 
+    "zh-tw" 
 )
 $docGitServer = "https://github.com/MicrosoftDocs/"
 
@@ -51,7 +49,7 @@ Function GetTemplateContainerData() {
     foreach ($templateFile in $templateFiles) {
 
         if ($templateFile.Name -eq 'settings.json') {
-            $templateSettings = Get-Content $templateFile.FullName | Out-String | ConvertFrom-Json 
+            $templateSettings = Get-Content $templateFile.FullName -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
             # Build path of file
             $templateFolderName = Split-Path $templateFolderPath -Leaf
@@ -133,7 +131,7 @@ Function AddVirtualCategories() {
         [string] $categoriesMetadataFilePath
     )
 
-    $virtualCategoriesSettings = Get-Content $categoriesMetadataFilePath | Out-String | ConvertFrom-Json 
+    $virtualCategoriesSettings = Get-Content $categoriesMetadataFilePath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
     foreach ($virtualCategory in $virtualCategoriesSettings.categories) {
 
@@ -202,20 +200,25 @@ function Copy-Object {
 }
 
 #----------------------------------------------------------------------------
-# CloneLocalizedRepos
+# CloneAndPullLocalizedRepos
 #----------------------------------------------------------------------------
-Function CloneLocalizedRepos {
-    $localSrc = Convert-Path "..\.."
+Function CloneAndPullLocalizedRepos {
+    $rootPath = Convert-Path "..\.."
 
-    foreach ($repo in $docRepos) {
-        $currentRepo = $repo.repo
-        if (Test-Path $localSrc$currentRepo) {
-            Write-Host "Trying to clone repo $currentRepo but it already exist on disk, skipping"
+    Push-Location
+    foreach ($lang in $supportedLanguages) {
+        $repoName = "$repoBaseName.$lang"
+        $repoPath = "$rootPath\$repoName"
+        if (Test-Path $repoPath) {
+            Write-Host "Repo exist on disk, performing git pull ..."
+            Set-Location -Path $repoPath
+            git pull
         } else {
-            Write-Host "Cloning $docGitServer$currentRepo.git at $localSrc$currentRepo"
-            git clone $docGitServer$currentRepo".git" $localSrc$currentRepo
+            Write-Host "Cloning $docGitServer$repoName.git at $repoPath ..."
+            git clone "$docGitServer$repoName.git" $repoPath
         }
     }
+    Pop-Location
 }
 
 #----------------------------------------------------------------------------
@@ -258,13 +261,15 @@ Function CopyFromMainIfNotExist() {
     }
 }
 
+#----------------------------------------------------------------------------
+# CheckLanguageOrUseDefault
+#----------------------------------------------------------------------------
 Function CheckLanguageOrUseDefault() {
     param(
         [string] $language
     )
 
-    $item = $docRepos | Where-Object { $_.Lang -eq $language }
-    if ($item.Length -eq 1) {
+    if ($supportedLanguages.Contains($language)) {
         return $language
     } else {
         return $defaultLanguage
@@ -319,7 +324,7 @@ Function BuildingTemplateJson() {
                 $templates = Get-ChildItem $category.FullName
 
                 $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
-                $categorySettings = Get-Content $categorySettingsPath | Out-String | ConvertFrom-Json 
+                $categorySettings = Get-Content $categorySettingsPath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
                 AddCategory $categoryName ($payload.$reportType) $categorySettings
 
@@ -340,8 +345,7 @@ Function BuildingTemplateJson() {
                         #Then look at any subfolders which correspond to localized data
                         foreach ($templateSubfolders in $templateFiles) {
 
-                            if ($templateSubfolders -is [System.IO.DirectoryInfo]) {
-                            
+                            if ($templateSubfolders -is [System.IO.DirectoryInfo]) {                            
                                 $templateMetadata.TemplateByLanguage.($templateSubfolders.name) = GetTemplateContainerData $templateSubfolders.FullName $language
                             }
                         }
@@ -400,35 +404,41 @@ Function BuildingTemplateJson() {
 #                     |- Apdex.workbook        
 #----------------------------------------------------------------------------
 
-# pull down all the other localized repos
-Write-Host "Get Localized Repos"
-CloneLocalizedRepos
-
-# process en-us as default template so it's compatible with pre localization changes which can be removed once 
-$enuJsonFile = "$azureBlobFileNameBase.json"
+$mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
 $outputPath = Convert-Path "$mainPath\output"
-$currentLang = "base" 
-BuildingTemplateJson $enuJsonFile $currentLang $outputPath
+
+# pull down all localized repos
+Write-Host "Get Localized Repos"
+CloneAndPullLocalizedRepos
+
+# save default path
+Push-Location
 
 # process localized repo
-foreach ($locRepo in $docRepos) {
-    $currentRepo = $locRepo.repo
-    $currentLang = $locRepo.lang
-    $currentPath = Convert-Path "$mainPath\..\$currentRepo"
+foreach ($lang in $supportedLanguages) {
+    if ($lang -eq $defaultLanguage) {
+        $repoName = $repoBaseName
+    } else {
+        $repoName = "$repoBaseName.$lang"
+    }
+    $currentPath = Convert-Path "$mainPath\..\$repoName"
     Set-Location -Path $currentPath
-    $jsonFileName = "$azureBlobFileNameBase.$currentLang.json"
+    $jsonFileName = "$azureBlobFileNameBase.$lang.json"
 
     Write-Host ""
     Write-Host "Processing..."
-    Write-Host "...Repo: $currentRepo"
-    Write-Host "...Language: $currentLang"
+    Write-Host "...Repo: $repoName"
+    Write-Host "...Language: $lang"
     Write-Host "...Directory: $currentPath"
     Write-Host "...OutputFile: $jsonFileName"
 
-    BuildingTemplateJson $jsonFileName $currentLang $outputPath
+    BuildingTemplateJson $jsonFileName $lang $outputPath
 }
 
 # restore default path
-Set-Location -Path $mainPath
+Pop-Location
+
+# duplicate json for en-us to be compatible with existing process
+Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
 
 Write-Host "Done copying artifacts Existing"
