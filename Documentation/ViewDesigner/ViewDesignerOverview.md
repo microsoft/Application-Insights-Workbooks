@@ -32,6 +32,6 @@ Workbooks is a platform that unlocks the full potential of your data. Workbooks 
 While this guide offers simple steps to directly recreate several of the commonly used View Designer views, Workbooks allows users to have the freedom to create and design any of their own custom visualizations and metrics. Below is a snapshot of what Workbooks is capable of creating:
 
 [Workspace usage template from Workbooks](https://go.microsoft.com/fwlink/?linkid=874159&resourceId=Azure%20Monitor&featureName=Workbooks&itemId=community-Workbooks%2FAzure%20Monitor%20-%20Workspaces%2FWorkspace%20Usage&workbookTemplateName=Workspace%20Usage&func=NavigateToPortalFeature&type=workbook)
-![Example of Workbooks Application](./WBTemplateEX.jpg)
+![Example of Workbooks Application](./Examples/WBTemplateEX.jpg)
 
 ### [Next Section: Conversion Options](./ConversionOptions.md)
