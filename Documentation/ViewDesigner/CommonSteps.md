@@ -128,4 +128,4 @@ This will insert dropdowns to let you access your various subscriptions and reso
 
 ![Subscription Resource Dropdown](./Examples/SubRes.png)
 
-### [Next Section: Tile Conversions]((./TileConversions.md))
+### [Next Section: Tile Conversions](./TileConversions.md)
