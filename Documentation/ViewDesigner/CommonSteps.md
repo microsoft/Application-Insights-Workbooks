@@ -3,41 +3,44 @@
 ## Enabling Time Range Filter
 View Designer has a built-in default Time Range filter, however, in Workbooks this setting is not enabled by default. Workbooks does allow users to create their own Time Range filters that might be more applicable to their data logs. The steps to generate the filter are listed below:
 
-Select the <strong>Add parameters</strong> option
+Select the **Add parameters** option
+
 ![Add Param](./Examples/AddParam.png)
 
-The default Style is set to <strong>Pills</strong>
+The default Style is set to **Pills**
 
-Select the <strong>Add Parameter</strong> button
+Select the **Add Parameter** button
 
 ![Add Parameter](./Examples/AddParameter.png)
 
-From the sidebar menu, in the <strong>* Parameter name</strong> textbox, type “TimeRange”
+From the sidebar menu, in the **Parameter name** textbox, type “TimeRange”
 
-Set <strong>Parameter Type</strong> as “Time Range Picker”
+Set **Parameter Type** as “Time Range Picker”
 
 Select the “Required?” checkbox
+
 ![Parameter Menu](./Examples/ParamMenu.png)
 
 Save the parameter in the upper left hand corner of the sidebar menu
 
 You can leave the dropdown as “unset” by default or select a default TimeRange value, such as 24 hours.
 
-Select <strong>Done Editing</strong>
+Select **Done Editing**
 
 Parameters can be utilized in queries by adding curly braces {} around your parameter name.
 
 More details on parameters can be found in the [Workbooks Documentation on Parameters](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Parameters/Parameters.md).
 
 ## Updating Queries for with the TimeRange Parameter
-<strong>Option 1: Select TimeRange from the Time Range Dropdown for each query</strong>
+**Option 1: Select TimeRange from the Time Range Dropdown for each query**
 ![Time Parameter](./Examples/TimeParam.png)
 
-<strong>Option 2: Update your KQL queries</strong>
+**Option 2: Update your KQL queries**
 
-Within your query add this line: “_| where TimeGenerated {TimeRange}_ ”
+Within your query add this line: _| where TimeGenerated {TimeRange}_
 
-<strong>Example:</strong>
+**Example:**
+
 **Original:** _search * | summarize count() by Type_
 
 **Updated:** _search * **| where TimeGenerated {TimeRange}** | summarize count() by Type_
