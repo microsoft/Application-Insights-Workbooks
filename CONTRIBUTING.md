@@ -42,6 +42,15 @@ When creating a pull request, please create a good title, fill the description w
 In general, the workbooks team will *not* complete or merge PRs for other teams unless explicitly told to do so.
 After your pull request is approved and merged, please delete your branch.
 
+The github pull request will verify you've signed the CLA agreement, and that your code passes a set of CI build tests.
+
+## Build and Deployment
+After a PR is completed to the `master` branch, an [official build is queued](https://github-private.visualstudio.com/microsoft/_build?definitionId=48) (you might not have access to this), which packages all the templates up into a cacheable format for deployment. This build generally takes ~15 minutes.
+
+After the official build completes, [a staged release deployment takes place to ](https://github-private.visualstudio.com/microsoft/_release?_a=releases&definitionId=1) (again, you might not have access to this), which takes ~15 minutes to work its way through all the stages.
+
+So in the usual case, after successful completion of a PR and deployment, template changes become available in ~30 minutes.
+
 [code-of-conduct]: https://opensource.microsoft.com/codeofconduct/
 [new-issue]: https://github.com/microsoft/Application-Insights-Workbooks/issues/new
 [issue-search]: https://github.com/microsoft/Application-Insights-Workbooks/issues
