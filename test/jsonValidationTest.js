@@ -46,7 +46,7 @@ describe('Validating Cohorts...', () => {
     it('Verifying cohort category or settings json exists', function (done) {
         browseDirectory(cohortPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-9) === '.cohort')
+            results.filter(file => file.substr(-7) === '.cohort')
                 .forEach(folder => {
                     validateJsonExistForWorkbook(cohortPath, results, folder.substr(cohortPath.length+1))
                 });
@@ -124,7 +124,7 @@ function validateJsonExistForWorkbook(rootPath, results, file) {
 }
 
 function getProgressivePaths(rootPath, file) {
-    let paths = file.split("/").filter(folder => folder !== "." && folder !== ".." && folder.indexOf(".workbook") === -1);
+    let paths = file.split("/").filter(folder => folder !== "." && folder !== ".." && folder.indexOf(".workbook") === -1 && folder.indexOf(".cohort") === -1);
     let files = [];
     if (paths && paths.length > 0) {
         var runningPath = rootPath + "/" + paths[0];
