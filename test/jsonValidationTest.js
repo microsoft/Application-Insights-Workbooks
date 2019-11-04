@@ -42,6 +42,18 @@ describe('Validating Cohorts...', () => {
             done();
         });
     });
+    
+    it('Verifying cohort category or settings json exists', function (done) {
+        browseDirectory(cohortPath, (error, results) => {
+            if (error) throw error;
+            results.filter(file => file.substr(-7) === '.cohort')
+                .forEach(folder => {
+                    validateJsonExistForWorkbook(cohortPath, results, folder.substr(cohortPath.length+1))
+                });
+
+            done();
+        });
+    });
 });
 
 describe('Validating Workbooks...', () => {
@@ -85,7 +97,45 @@ describe('Validating Workbooks...', () => {
             done();
         }, true, workbookPath);
     });
+
+    it('Verifying workbook category or settings json exists', function (done) {
+        browseDirectory(workbookPath, (error, results) => {
+            if (error) throw error;
+            results.filter(file => file.substr(-9) === '.workbook')
+                .forEach(folder => {
+                    validateJsonExistForWorkbook(workbookPath, results, folder.substr(workbookPath.length+1))
+                });
+
+            done();
+        }, true, workbookPath);
+    });
 });
+
+function validateJsonExistForWorkbook(rootPath, results, file) {
+    let paths = getProgressivePaths(rootPath, file);
+    paths.forEach(folder => {
+        let result = results.filter(s => {            
+            return s.indexOf(folder + "/categoryResources.json") > -1 || s.indexOf(folder + "/settings.json") > -1;
+        });
+        if (result.length === 0) {
+            assert.fail("categoryResources.json or settings.json doesn't exist in folder '" + folder + "'")
+        }
+    });
+}
+
+function getProgressivePaths(rootPath, file) {
+    let paths = file.split("/").filter(folder => folder !== "." && folder !== ".." && folder.indexOf(".workbook") === -1 && folder.indexOf(".cohort") === -1);
+    let files = [];
+    if (paths && paths.length > 0) {
+        var runningPath = rootPath + "/" + paths[0];
+        files[0] = runningPath;
+        for (let i = 1; i < paths.length; i++) {
+            runningPath += "/" + paths[i];
+            files[i] = runningPath;
+        }
+    }
+    return files;
+}
 
 var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
     var results = [];
