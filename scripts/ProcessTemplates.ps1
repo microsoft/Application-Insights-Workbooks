@@ -1,3 +1,7 @@
+
+$mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
+
+$reports = Get-ChildItem $mainPath
 $reportTypes = @('Cohorts', 'Workbooks')
 $templateExtensions = @('cohort', 'workbook')
 $defaultLanguage = 'en-us'
@@ -5,51 +9,23 @@ $payload = @{ }
 $categoryMetadataFileName = 'categoryResources.json'
 
 # This is the name of where the blob that ALM looks for
-$azureBlobFileNameBase = "community-templates-V2";
+$azureBlobFilename = "community-templates-V2.json";
 
-$repoBaseName = "Application-Insights-Workbooks"
-$supportedLanguages = @(
-    "cs-cz", 
-    "de-de", 
-    $defaultLanguage, 
-    "es-es", 
-    "fr-fr", 
-    "hu-hu", 
-    "it-it", 
-    "ja-jp", 
-    "ko-kr",
-    "nl-nl", 
-    "pl-pl", 
-    "pt-br", 
-    "pt-pt", 
-    "ru-ru", 
-    "sv-se", 
-    "tr-tr", 
-    "zh-cn", 
-    "zh-tw" 
-)
-$docGitServer = "https://github.com/MicrosoftDocs/"
-
-#----------------------------------------------------------------------------
-# GetTemplateContainerData
-#----------------------------------------------------------------------------
 Function GetTemplateContainerData() {
     param(
-        [String] $templateFolderPath,
-        [String] $language
-    )   
+        [String] $templateFolderPath
+    )
     
     $templateMetadata = @{ }
 
-    CopyFromMainIfNotExist $templateFolderPath $language
-    $templateFiles = Get-ChildItem $templateFolderPath
+    $templateFiles = Get-ChildItem $templateFolderPath 
 
     $hasFoundTemplateContent = $false
 
     foreach ($templateFile in $templateFiles) {
 
         if ($templateFile.Name -eq 'settings.json') {
-            $templateSettings = Get-Content $templateFile.FullName -Encoding UTF8 | Out-String | ConvertFrom-Json 
+            $templateSettings = Get-Content $templateFile.FullName | Out-String | ConvertFrom-Json 
 
             # Build path of file
             $templateFolderName = Split-Path $templateFolderPath -Leaf
@@ -89,9 +65,6 @@ Function GetTemplateContainerData() {
     return $templateMetadata;
 }
 
-#----------------------------------------------------------------------------
-# AddCategory
-#----------------------------------------------------------------------------
 Function AddCategory() {
     param(
         [string] $categoryName,
@@ -122,16 +95,13 @@ Function AddCategory() {
     }
 }
 
-#----------------------------------------------------------------------------
-# AddVirtualCategories
-#----------------------------------------------------------------------------
 Function AddVirtualCategories() {
     param(
         [Object] $categories,
         [string] $categoriesMetadataFilePath
     )
 
-    $virtualCategoriesSettings = Get-Content $categoriesMetadataFilePath -Encoding UTF8 | Out-String | ConvertFrom-Json 
+    $virtualCategoriesSettings = Get-Content $categoriesMetadataFilePath | Out-String | ConvertFrom-Json 
 
     foreach ($virtualCategory in $virtualCategoriesSettings.categories) {
 
@@ -139,55 +109,46 @@ Function AddVirtualCategories() {
     }
 }
 
-#----------------------------------------------------------------------------
-# AddTemplatesToVirtualGallery
-#----------------------------------------------------------------------------
 Function AddTemplatesToVirtualGallery() {
 
     param(
-        [Object] $templateMetadata,
-        [String] $language
+        [Object] $templateMetadata
     )
 
-    $lang = CheckLanguageOrUseDefault $language
-
-    $virtualGalleries = $templateMetadata.TemplateByLanguage.$lang.galleries | Where-Object { ($null -ne $_.categoryKey) -and $payload.$reportType.($_.categoryKey) }
+    $virtualGalleries = $templateMetadata.TemplateByLanguage.$defaultLanguage.galleries | Where-Object { ($null -ne $_.categoryKey) -and $payload.$reportType.($_.categoryKey) }
 
     if ($null -ne $virtualGalleries) {
 
         # Only keep non-virtual galleries in path category
-        $nonVirtualGalleries = $templateMetadata.TemplateByLanguage.$lang.galleries | Where-Object { $null -eq $_.categoryKey }
+        $nonVirtualGalleries = $templateMetadata.TemplateByLanguage.$defaultLanguage.galleries | Where-Object { $null -eq $_.categoryKey }
         if ($null -eq $nonVirtualGalleries) {
-            $templateMetadata.TemplateByLanguage.$lang.galleries = @()
+            $templateMetadata.TemplateByLanguage.$defaultLanguage.galleries = @()
         }
         elseif ($null -eq $nonVirtualGalleries.Count) {
-            $templateMetadata.TemplateByLanguage.$lang.galleries = @($nonVirtualGalleries)
+            $templateMetadata.TemplateByLanguage.$defaultLanguage.galleries = @($nonVirtualGalleries)
         }
         else {
-            $templateMetadata.TemplateByLanguage.$lang.galleries = $nonVirtualGalleries
+            $templateMetadata.TemplateByLanguage.$defaultLanguage.galleries = $nonVirtualGalleries
         }
 
         # Means there is only one Virtual gallery, so virtual galleries is an object not a list
         if ($null -eq $virtualGalleries.Count) {
             $newTemplateData = (Copy-Object  $templateMetadata)[0]
 
-            $newTemplateData.TemplateByLanguage.$lang.galleries = @($virtualGalleries)
+            $newTemplateData.TemplateByLanguage.$defaultLanguage.galleries = @($virtualGalleries)
             $payload.$reportType.($virtualGalleries.categoryKey).TemplateContainers += $newTemplateData
         }
         else {
             $virtualGalleries | ForEach-Object {
 
                 $newTemplateData = (Copy-Object  $templateMetadata)[0]
-                $newTemplateData.TemplateByLanguage.$lang.galleries = @($_)
+                $newTemplateData.TemplateByLanguage.$defaultLanguage.galleries = @($_)
                 $payload.$reportType.($_.categoryKey).TemplateContainers += $newTemplateData
             }
         }
     }
 }
 
-#----------------------------------------------------------------------------
-# Copy-Object
-#----------------------------------------------------------------------------
 function Copy-Object {
     param($DeepCopyObject)
     $memStream = new-object IO.MemoryStream
@@ -199,192 +160,8 @@ function Copy-Object {
     return $formatter
 }
 
-#----------------------------------------------------------------------------
-# CloneAndPullLocalizedRepos
-#----------------------------------------------------------------------------
-Function CloneAndPullLocalizedRepos {
-    $rootPath = Convert-Path "..\.."
-
-    Push-Location
-    foreach ($lang in $supportedLanguages) {
-        $repoName = "$repoBaseName.$lang"
-        $repoPath = "$rootPath\$repoName"
-        if (Test-Path $repoPath) {
-            Write-Host "Repo exist on disk, performing git pull ..."
-            Set-Location -Path $repoPath
-            git pull
-        } else {
-            Write-Host "Cloning $docGitServer$repoName.git at $repoPath ..."
-            git clone "$docGitServer$repoName.git" $repoPath
-        }
-    }
-    Pop-Location
-}
-
-#----------------------------------------------------------------------------
-# CopyFromMainIfNotExist
-#----------------------------------------------------------------------------
-Function CopyFromMainIfNotExist() {
-    param(
-        [string] $fullName,
-        [string] $language
-        )
-
-    # skip if language is not in the supported list
-    $lang = CheckLanguageOrUseDefault $language
-    if ($lang -ne $language) {
-        return
-    }
-
-    $enuPath = $fullName.Replace(".$language\", "\")
-    if (!(Test-Path $enuPath)) {
-        return
-    }
-    $enuFiles = Get-ChildItem $enuPath
-
-    foreach($enuFile in $enuFiles) {
-        $fileName = $enuFile.Name
-        $destinationFile = "$fullName\$fileName"
-        if (!(Test-Path $destinationFile)) {
-            $fullPath = $enuFile.FullName
-            Write-Host "[#WARNING: missing File]: copying file $fullPath to $fullName"
-            # copy file from enu to localized folder
-            Copy-Item -Path $fullPath -Destination $fullName
-            # check and replace "en-us" with the language for any *.json file
-            if (Test-Path $destinationFile -PathType leaf -Include "*.json") {
-                $from = """$defaultLanguage"""
-                $to = """$language"""
-                Write-Host "[#WARNING: missing File]: ...found $destinationFile and replacing $from with $to"
-                ((Get-Content -Path $destinationFile -Raw) -replace $from, $to) | Set-Content -Path $destinationFile
-            }
-        }
-    }
-}
-
-#----------------------------------------------------------------------------
-# CheckLanguageOrUseDefault
-#----------------------------------------------------------------------------
-Function CheckLanguageOrUseDefault() {
-    param(
-        [string] $language
-    )
-
-    if ($supportedLanguages.Contains($language)) {
-        return $language
-    } else {
-        return $defaultLanguage
-    }
-}
-
-#----------------------------------------------------------------------------
-# BuildingTemplateJson
-#----------------------------------------------------------------------------
-Function BuildingTemplateJson() {
-    param(
-        [string] $jsonFileName,
-        [string] $language,
-        [string] $outputPath
-        )
-
-    $currentPath = get-location
-    Write-Host ">>>>> Building template json: $jsonFileName in directory $currentPath ..."
-    
-    $lang = CheckLanguageOrUseDefault $language
-
-    $reports = Get-ChildItem $currentPath
-    # initialize the payload
-    $payload = @{ }
-
-    foreach ($report in $reports) {
-        $reportType = $report.Name
-
-        if ($reportTypes.Contains($reportType)) {
-
-            $payload.$reportType = @{ }
-
-            $categories = Get-ChildItem $report.FullName
-
-            #Add virtual categories
-            $virtualCategoriesPath = Join-Path $report.FullName $categoryMetadataFileName 
-            if ([System.IO.File]::Exists($virtualCategoriesPath)) {
-
-                AddVirtualCategories $payload.$reportType  $virtualCategoriesPath
-            }
-
-            foreach ($category in $categories) {
-
-                # Skip if this is the top level categories file (virtual categories), since it was already processed
-                if ($category.Name -eq $categoryMetadataFileName) {
-                    continue
-                }
-
-                $categoryName = $category.Name
-
-                CopyFromMainIfNotExist $category.FullName $language
-                $templates = Get-ChildItem $category.FullName
-
-                $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
-                $categorySettings = Get-Content $categorySettingsPath -Encoding UTF8 | Out-String | ConvertFrom-Json 
-
-                AddCategory $categoryName ($payload.$reportType) $categorySettings
-
-                foreach ($templateFolder in $templates) {
-                    
-                    if ($templateFolder -is [System.IO.DirectoryInfo]) {
-                        CopyFromMainIfNotExist $templateFolder.FullName $language
-                        $templateFiles = Get-ChildItem $templateFolder.FullName
-                        $templateMetadata = @{ }
-                        $templateMetadata.TemplateByLanguage = @{ }
-                        $templateMetadata.Name = $templateFolder.Name
-
-                        # First get template populate template data for default language, which is a top level
-                        $templateMetadata.TemplateByLanguage.$lang = GetTemplateContainerData $templateFolder.FullName $language
-
-                        AddTemplatesToVirtualGallery $templateMetadata $language
-
-                        #Then look at any subfolders which correspond to localized data
-                        foreach ($templateSubfolders in $templateFiles) {
-
-                            if ($templateSubfolders -is [System.IO.DirectoryInfo]) {                            
-                                $templateMetadata.TemplateByLanguage.($templateSubfolders.name) = GetTemplateContainerData $templateSubfolders.FullName $language
-                            }
-                        }
-
-                        # Add Template container
-                        $payload.$reportType.$categoryName.TemplateContainers += $templateMetadata
-
-                    }
-                }
-            }
-        }
-    }
-
-    Write-Host "Done building json"
-
-    Write-Host "Copying artifacts"
-    $artifactContent = $payload | ConvertTo-Json -depth 10 -Compress
-
-    # create output folder if it doesn't exist
-    if (!(Test-Path $outputPath)) {
-        mkdir $outputPath
-    }
-
-    # delete existing json file
-    if (Test-Path "$outputPath\$jsonFileName") {
-        Remove-Item "$outputPath\$jsonFileName"
-    }
-
-    $artifactContent | Out-File -FilePath "$outputPath\$jsonFileName"
-    Write-Host "... DONE building template: $outputPath\$jsonFileName <<<<<"
-}
-
-#----------------------------------------------------------------------------
-# Main
-#----------------------------------------------------------------------------
-# merge the templates file into a json for each language
-#
-# community-templates-V2.json:
 # Root
+#  |
 #  |- Workbooks (reportFolder)
 #        |- Performance (categoryFolder)
 #             |- Apdex (templateFolder)
@@ -392,53 +169,85 @@ Function BuildingTemplateJson() {
 #                 |   |- settings.json
 #                 |   |- readme.md
 #                 |   |- Apdex.workbook
-#
-# community-templates-V2.ko-kr.json:
-# Root
-#  |- Workbooks (reportFolder)
-#        |- Performance (categoryFolder)
-#             |- Apdex (templateFolder)
 #                 |- ko
 #                     |- settings.json
 #                     |- readme.md
 #                     |- Apdex.workbook        
-#----------------------------------------------------------------------------
+# -------------------------
 
-$mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
-$outputPath = Convert-Path "$mainPath\output"
+Write-Host "Building template's json"
 
-# pull down all localized repos
-Write-Host "Get Localized Repos"
-CloneAndPullLocalizedRepos
+foreach ($report in $reports) {
+    $reportType = $report.Name
 
-# save default path
-Push-Location
+    if ($reportTypes.Contains($reportType)) {
 
-# process localized repo
-foreach ($lang in $supportedLanguages) {
-    if ($lang -eq $defaultLanguage) {
-        $repoName = $repoBaseName
-    } else {
-        $repoName = "$repoBaseName.$lang"
+        $payload.$reportType = @{ }
+
+        $categories = Get-ChildItem $report.FullName
+
+        #Add virtual categories
+        $virtualCategoriesPath = Join-Path $report.FullName $categoryMetadataFileName 
+        if ([System.IO.File]::Exists($virtualCategoriesPath)) {
+
+            AddVirtualCategories $payload.$reportType  $virtualCategoriesPath
+        }
+
+        foreach ($category in $categories) {
+
+            # Skip if this is the top level categories file (virtual categories), since it was already processed
+            if ($category.Name -eq $categoryMetadataFileName) {
+                continue
+            }
+
+            $categoryName = $category.Name
+            $templates = Get-ChildItem $category.FullName 
+
+            $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
+            $categorySettings = Get-Content $categorySettingsPath | Out-String | ConvertFrom-Json 
+
+            AddCategory $categoryName ($payload.$reportType) $categorySettings
+
+            foreach ($templateFolder in $templates) {
+                
+                if ($templateFolder -is [System.IO.DirectoryInfo]) {
+                    $templateFiles = Get-ChildItem $templateFolder.FullName
+                    $templateMetadata = @{ }
+                    $templateMetadata.TemplateByLanguage = @{ }
+                    $templateMetadata.Name = $templateFolder.Name
+
+                    # First get template populate template data for default language, which is a top level
+                    $templateMetadata.TemplateByLanguage.$defaultLanguage = GetTemplateContainerData $templateFolder.FullName
+
+                    AddTemplatesToVirtualGallery $templateMetadata
+
+                    #Then look at any subfolders which correspond to localized data
+                    foreach ($templateSubfolders in $templateFiles) {
+
+                        if ($templateSubfolders -is [System.IO.DirectoryInfo]) {
+                         
+                            $templateMetadata.TemplateByLanguage.($templateSubfolders.name) = GetTemplateContainerData $templateSubfolders.FullName
+                        }
+                    }
+
+                    # Add Template container
+                    $payload.$reportType.$categoryName.TemplateContainers += $templateMetadata
+
+                }
+            }
+        }
     }
-    $currentPath = Convert-Path "$mainPath\..\$repoName"
-    Set-Location -Path $currentPath
-    $jsonFileName = "$azureBlobFileNameBase.$lang.json"
-
-    Write-Host ""
-    Write-Host "Processing..."
-    Write-Host "...Repo: $repoName"
-    Write-Host "...Language: $lang"
-    Write-Host "...Directory: $currentPath"
-    Write-Host "...OutputFile: $jsonFileName"
-
-    BuildingTemplateJson $jsonFileName $lang $outputPath
 }
 
-# restore default path
-Pop-Location
+Write-Host "Done building json"
 
-# duplicate json for en-us to be compatible with existing process
-Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
+Write-Host "Copying artifacts"
 
-Write-Host "Done copying artifacts Existing"
+$artifactContent = $payload | ConvertTo-Json -depth 10 -Compress
+
+cd $mainPath
+mkdir "output"
+
+$artifactContent | Out-File -FilePath "$mainPath\output\$azureBlobFilename"
+
+Write-Host "Done copying artifacts"
