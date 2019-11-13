@@ -14,7 +14,7 @@ $azureBlobFileNameBase = "community-templates-V2";
 $repoBaseName = "Application-Insights-Workbooks"
 $supportedLanguages = @(
     "cs-cz", 
-    "de-de", 
+#    "de-de", Germany is a private repo and pipeline does not have access to clone
     $defaultLanguage, 
     "es-es", 
     "fr-fr", 
