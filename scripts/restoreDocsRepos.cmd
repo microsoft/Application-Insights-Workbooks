@@ -1,5 +1,11 @@
 cd /D "%~dp0"
 dir
-git clone https://github.com/MicrosoftDocs/%1.git %1
-dir /s %1
-exit 0
+git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.cs-cz.git Application-Insights-Workbooks.cs-cz
+dir /s Application-Insights-Workbooks.cs-cz
+
+cd /D "%~dp0"
+dir
+git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.de-de.git Application-Insights-Workbooks.de-de
+dir /s Application-Insights-Workbooks.de-de
+
+exit /B 0
