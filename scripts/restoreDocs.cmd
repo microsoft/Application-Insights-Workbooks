@@ -2,7 +2,7 @@ cd /D "%~dp0"
 dir
 git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.cs-cz.git Application-Insights-Workbooks.cs-cz
 git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.es-es.git Application-Insights-Workbooks.es-es
-::git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.de-de.git Application-Insights-Workbooks.de-de
+git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.de-de.git Application-Insights-Workbooks.de-de
 git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.fr-fr.git Application-Insights-Workbooks.fr-fr
 git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.hu-hu.git Application-Insights-Workbooks.hu-hu
 git clone https://github.com/MicrosoftDocs/Application-Insights-Workbooks.it-it.git Application-Insights-Workbooks.it-it
