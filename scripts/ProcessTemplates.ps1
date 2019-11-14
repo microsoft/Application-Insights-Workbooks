@@ -1,3 +1,7 @@
+$mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
+$localizeRoot = Convert-Path "$mainPath\scripts"
+$outputPath = "$mainPath\output"
+
 $reportTypes = @('Cohorts', 'Workbooks')
 $templateExtensions = @('cohort', 'workbook')
 $defaultLanguage = 'en-us'
@@ -10,7 +14,7 @@ $azureBlobFileNameBase = "community-templates-V2";
 $repoBaseName = "Application-Insights-Workbooks"
 $supportedLanguages = @(
     "cs-cz", 
-    "de-de", 
+    "de-de",
     $defaultLanguage, 
     "es-es", 
     "fr-fr", 
@@ -41,7 +45,7 @@ Function GetTemplateContainerData() {
     
     $templateMetadata = @{ }
 
-    CopyFromMainIfNotExist $templateFolderPath $language
+    CopyFromEnuIfNotExist $templateFolderPath $language
     $templateFiles = Get-ChildItem $templateFolderPath
 
     $hasFoundTemplateContent = $false
@@ -203,16 +207,22 @@ function Copy-Object {
 # CloneAndPullLocalizedRepos
 #----------------------------------------------------------------------------
 Function CloneAndPullLocalizedRepos {
-    $rootPath = Convert-Path "..\.."
+    # repros will be downloaded to .\scripts folder
+    # to make this run like pipeline build, we'll only clone the repo and not due a pul
+    # for testing, delete the repos each time
+    $rootPath = $localizeRoot
 
     Push-Location
     foreach ($lang in $supportedLanguages) {
+        if ($lang -eq $defaultLanguage) {
+            continue;
+        }
         $repoName = "$repoBaseName.$lang"
         $repoPath = "$rootPath\$repoName"
         if (Test-Path $repoPath) {
-            Write-Host "Repo exist on disk, performing git pull ..."
-            Set-Location -Path $repoPath
-            git pull
+            Write-Host "Repo exist on disk, skipping $repoPath ..."
+            #Set-Location -Path $repoPath
+            #git pull
         } else {
             Write-Host "Cloning $docGitServer$repoName.git at $repoPath ..."
             git clone "$docGitServer$repoName.git" $repoPath
@@ -222,9 +232,9 @@ Function CloneAndPullLocalizedRepos {
 }
 
 #----------------------------------------------------------------------------
-# CopyFromMainIfNotExist
+# CopyFromEnuIfNotExist
 #----------------------------------------------------------------------------
-Function CopyFromMainIfNotExist() {
+Function CopyFromEnuIfNotExist() {
     param(
         [string] $fullName,
         [string] $language
@@ -236,7 +246,7 @@ Function CopyFromMainIfNotExist() {
         return
     }
 
-    $enuPath = $fullName.Replace(".$language\", "\")
+    $enuPath = $fullName.Replace("$localizeRoot\$repoBaseName.$language", $mainPath)
     if (!(Test-Path $enuPath)) {
         return
     }
@@ -320,7 +330,7 @@ Function BuildingTemplateJson() {
 
                 $categoryName = $category.Name
 
-                CopyFromMainIfNotExist $category.FullName $language
+                CopyFromEnuIfNotExist $category.FullName $language
                 $templates = Get-ChildItem $category.FullName
 
                 $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
@@ -331,7 +341,7 @@ Function BuildingTemplateJson() {
                 foreach ($templateFolder in $templates) {
                     
                     if ($templateFolder -is [System.IO.DirectoryInfo]) {
-                        CopyFromMainIfNotExist $templateFolder.FullName $language
+                        CopyFromEnuIfNotExist $templateFolder.FullName $language
                         $templateFiles = Get-ChildItem $templateFolder.FullName
                         $templateMetadata = @{ }
                         $templateMetadata.TemplateByLanguage = @{ }
@@ -404,10 +414,7 @@ Function BuildingTemplateJson() {
 #                     |- Apdex.workbook        
 #----------------------------------------------------------------------------
 
-$mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
-$outputPath = Convert-Path "$mainPath\output"
-
-# pull down all localized repos
+# pull down all localized repos if run locally
 Write-Host "Get Localized Repos"
 CloneAndPullLocalizedRepos
 
@@ -418,10 +425,11 @@ Push-Location
 foreach ($lang in $supportedLanguages) {
     if ($lang -eq $defaultLanguage) {
         $repoName = $repoBaseName
+        $currentPath = $mainPath
     } else {
         $repoName = "$repoBaseName.$lang"
+        $currentPath = Convert-Path "$localizeRoot\$repoName"
     }
-    $currentPath = Convert-Path "$mainPath\..\$repoName"
     Set-Location -Path $currentPath
     $jsonFileName = "$azureBlobFileNameBase.$lang.json"
 
