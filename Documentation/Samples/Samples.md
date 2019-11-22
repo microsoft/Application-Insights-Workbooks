@@ -17,3 +17,7 @@
 [![Image showing two grids based of the same underlying data](../Images/Reuse-data-two-controls.png)](ReusingQueryData.md)
 
 [See instructions](ReusingQueryData.md)
+
+### Combining data from different sources using the merge control
+
+[![Combining data from different sources in workbooks](http://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
