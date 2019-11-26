@@ -10,6 +10,7 @@ Workbooks support these kinds of visual components:
 * [Trees](Tree.md)
 * [Honey Comb](HoneyComb.md)
 * [Graphs](Graph.md)
+* [Map](Map.md)
 
 Use the links to learn more about each type of visualization.
 
@@ -34,3 +35,6 @@ Use the links to learn more about each type of visualization.
 
 ### Graph
 ![Image showing a graph visualization in workbooks](../Images/GraphExample.png)
+
+### Map
+![Image showing a map visualization in workbooks](../Images/MapExample.png)
