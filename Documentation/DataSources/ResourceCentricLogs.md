@@ -26,6 +26,13 @@ Resources
         x == 'microsoft.resources/subscriptions' and resourceGroups > 3 and resourceCount > 5, true, 
         false)
 ```
+### Static resource scope for querying multiple resource types
+```json
+[
+    { "value":"microsoft.compute/virtualmachines", "label":"Virtual machine", "selected":true },
+    { "value":"microsoft.compute/virtualmachinescaleset", "label":"Virtual machine scale set", "selected":true }
+]
+```
 ### Resource parameter grouped by resource type
 ```
 Resources
