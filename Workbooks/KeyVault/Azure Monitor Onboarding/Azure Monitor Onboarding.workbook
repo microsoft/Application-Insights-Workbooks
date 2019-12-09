@@ -5,6 +5,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
         "parameters": [
           {
             "id": "d5d7c033-d737-495b-a84c-bdd7e4e78a08",
@@ -26,7 +29,37 @@
               "showDefault": false
             },
             "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "/subscriptions/0b88dfdb-55b3-4fb0-b474-5b6dcbe6b2ef",
+              "/subscriptions/60b79d74-f4e4-4867-b631-58a10650b71f",
+              "/subscriptions/d03b04c7-d1d4-467b-aaaa-87b6fcb38b38"
+            ]
+          },
+          {
+            "id": "3be310b0-14a6-416f-ae3c-0a98fda5c729",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceGroups",
+            "label": "Resource groups",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "where type in~('microsoft.keyvault/vaults')\r\n| summarize Count = count() by resourceGroup\r\n| order by Count desc\r\n| extend Rank = row_number()\r\n| project value = resourceGroup, label = resourceGroup, selected = Rank == 1",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ]
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "value::all"
+            ]
           },
           {
             "id": "827a53dc-62fe-49ee-88a6-f9f751ed5ab3",
@@ -38,7 +71,7 @@
             "multiSelect": true,
             "quote": "\"",
             "delimiter": ",",
-            "query": "Resources\r\n| where type =~ 'microsoft.keyvault/vaults'\r\n| project name, id\r\n| union (Resources\r\n| where type =~ 'microsoft.keyvault/vaults'\r\n| order by name asc\r\n| take 5\r\n| project id, name)\r\n| summarize Count = count() by id, name\r\n| order by name asc\r\n| project value = id, label = id, selected = Count > 1",
+            "query": "Resources\r\n| where type =~ 'microsoft.keyvault/vaults' and resourceGroup in~({ResourceGroups}) \r\n| project name, id\r\n| union (Resources\r\n| where type =~ 'microsoft.keyvault/vaults' and resourceGroup in~({ResourceGroups}) \r\n| order by name asc\r\n| take 5\r\n| project id, name)\r\n| summarize Count = count() by id, name\r\n| order by name asc\r\n| project value = id, label = id, selected = Count > 1",
             "crossComponentResources": [
               "{Subscriptions}"
             ],
@@ -46,11 +79,13 @@
               "additionalResourceOptions": [
                 "value::all"
               ],
-              "selectAllValue": "",
-              "showDefault": false
+              "selectAllValue": ""
             },
             "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "value::all"
+            ]
           }
         ],
         "style": "above",
@@ -63,18 +98,62 @@
       }
     },
     {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
+        "parameters": [
+          {
+            "id": "862be1c5-1cd0-42cb-be09-436a38a9d161",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceScope",
+            "label": "Resource scope",
+            "type": 7,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\r\n| take 1\r\n| project x = dynamic([\"microsoft.keyvault/vaults\", \"microsoft.resources/resourcegroups\", \"microsoft.resources/subscriptions\"])\r\n| mvexpand x to typeof(string)\r\n| extend jkey = 1\r\n| join kind = inner (Resources \r\n| where id in~ ({Vaults})\r\n| summarize Subs = dcount(subscriptionId), resourceGroups = dcount(resourceGroup), resourceCount = count()\r\n| extend jkey = 1) on jkey\r\n| project x, label = 'x', selected = case(x in ('microsoft.keyvault/vaults') and resourceCount <= 3, true, x == 'microsoft.resources/resourcegroups' and resourceGroups <= 3 and resourceCount > 3, true, x == 'microsoft.resources/subscriptions' and resourceGroups > 3 and resourceCount > 3, true, false)\r\n",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "2"
+      },
+      "name": "parameters - 13"
+    },
+    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let onboardedResources = union withsource=TableName *\r\n| where TableName == 'AzureDiagnostics'\r\n| extend ResourceId = tolower(column_ifexists('ResourceId', ''))\r\n| summarize by ResourceId;\r\nlet data = range i from 1 to 1 step 1\r\n| project resource = todynamic(tolower(strcat('[', '{Vaults}', ']')))\r\n| mvexpand resource to typeof(string) limit 10000\r\n| join kind = fullouter (onboardedResources) on $left.resource == $right.ResourceId;\r\ndata\r\n| summarize Resources = countif(ResourceId != '')\r\n| extend Rank = 1, Title = 'Enabled'\r\n| union (data\r\n| summarize Resources = countif(ResourceId == '')\r\n| extend Rank = 2, Title = 'Disabled', Footer = 'Change')\r\n| order by Rank asc",
+        "query": "let MissingTable = datatable(ResourceId: string) [];\r\nlet onboardedResources = union isfuzzy=true MissingTable, (AzureDiagnostics\r\n| extend ResourceId = tolower(column_ifexists('ResourceId', ''))\r\n| where ResourceId in~({Vaults})\r\n| summarize by ResourceId);\r\nlet data = range i from 1 to 1 step 1\r\n| project resource = todynamic(tolower(strcat('[', '{Vaults}', ']')))\r\n| mvexpand resource to typeof(string) limit 10000\r\n| join kind = fullouter (onboardedResources) on $left.resource == $right.ResourceId;\r\ndata\r\n| summarize Resources = countif(ResourceId != '')\r\n| extend Rank = 1, Title = 'Enabled'\r\n| union (data\r\n| summarize Resources = countif(ResourceId == '')\r\n| extend Rank = 2, Title = 'Disabled', Footer = 'Change')\r\n| order by Rank asc\r\n| extend Subtitle = '⎯⎯⎯'",
         "size": 4,
         "title": "Key vaults with diagnostic logs collection",
         "timeContext": {
           "durationMs": 86400000
         },
-        "exportToExcelOptions": "visible",
         "queryType": 0,
-        "resourceType": "microsoft.keyvault/vaults",
+        "resourceType": "{ResourceScope}",
         "crossComponentResources": [
           "{Vaults}"
         ],
@@ -83,6 +162,14 @@
           "titleContent": {
             "columnMatch": "Title",
             "formatter": 1,
+            "formatOptions": {
+              "linkColumn": "Resources",
+              "linkTarget": "Resource",
+              "showIcon": true
+            }
+          },
+          "subtitleContent": {
+            "columnMatch": "Subtitle",
             "formatOptions": {
               "showIcon": true
             }
@@ -127,24 +214,21 @@
           "showBorder": false
         }
       },
-      "name": "query - 4",
-      "styleSettings": {
-        "margin": "10px 0 0 0"
-      }
+      "name": "Onboarding status"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let onboardedResources = union withsource=TableName *\r\n| where TableName == 'AzureDiagnostics'\r\n| extend ResourceId = tolower(column_ifexists('ResourceId', ''))\r\n| summarize by ResourceId;\r\nlet data = range i from 1 to 1 step 1\r\n| project resource = todynamic(tolower(strcat('[', '{Vaults}', ']')))\r\n| mvexpand resource to typeof(string) limit 10000\r\n| join kind = fullouter (onboardedResources) on $left.resource == $right.ResourceId;\r\ndata\r\n| project Status = iff(ResourceId != '', 'Collecting', 'Not collecting'), Resource = resource, Action = iff(ResourceId != '', 'View settings', 'Enable')\r\n",
-        "size": 3,
+        "query": "let MissingTable = datatable(ResourceId: string) [];\r\nlet onboardedResources = union isfuzzy=true MissingTable, (AzureDiagnostics\r\n| extend ResourceId = tolower(column_ifexists('ResourceId', ''))\r\n| where ResourceId in~({Vaults})\r\n| summarize by ResourceId);\r\nlet data = range i from 1 to 1 step 1\r\n| project resource = todynamic(tolower(strcat('[', '{Vaults}', ']')))\r\n| mvexpand resource to typeof(string) limit 10000\r\n| join kind = fullouter (onboardedResources) on $left.resource == $right.ResourceId;\r\ndata\r\n| where isnotempty(resource) and isnotnull(resource)\r\n| project Status = iff(ResourceId != '', 'Collecting', 'Not collecting'), Resource = resource, Action = iff(ResourceId != '', 'View settings', 'Enable')\r\n",
+        "size": 0,
         "title": "Key vaults with diagnostic logs collection",
+        "noDataMessage": "No Key Vaults found in the selected subscriptions",
         "timeContext": {
           "durationMs": 86400000
         },
-        "exportToExcelOptions": "visible",
         "queryType": 0,
-        "resourceType": "microsoft.keyvault/vaults",
+        "resourceType": "{ResourceScope}",
         "crossComponentResources": [
           "{Vaults}"
         ],
@@ -167,7 +251,7 @@
                   {
                     "operator": "Default",
                     "thresholdValue": null,
-                    "representation": "2",
+                    "representation": "warning",
                     "text": "{0}{1}"
                   }
                 ]
@@ -189,89 +273,16 @@
                 "linkTarget": "Resource",
                 "subTarget": "diagnostics",
                 "showIcon": true
-              },
-              "tooltipFormat": {}
-            }
-          ],
-          "filter": true,
-          "labelSettings": [
-            {
-              "columnId": "Status",
-              "label": "Status"
-            },
-            {
-              "columnId": "Resource",
-              "label": "Resource"
-            },
-            {
-              "columnId": "Action",
-              "label": "Action"
-            }
-          ]
-        },
-        "tileSettings": {
-          "titleContent": {
-            "columnMatch": "Title",
-            "formatter": 1,
-            "formatOptions": {
-              "showIcon": true
-            }
-          },
-          "leftContent": {
-            "columnMatch": "Resources",
-            "formatter": 12,
-            "formatOptions": {
-              "showIcon": true
-            },
-            "numberFormat": {
-              "unit": 17,
-              "options": {
-                "style": "decimal",
-                "maximumFractionDigits": 2,
-                "maximumSignificantDigits": 3
               }
             }
-          },
-          "rightContent": {
-            "columnMatch": "Title",
-            "formatter": 18,
-            "formatOptions": {
-              "showIcon": true,
-              "thresholdsOptions": "icons",
-              "thresholdsGrid": [
-                {
-                  "operator": "==",
-                  "thresholdValue": "Disabled",
-                  "representation": "2",
-                  "text": ""
-                },
-                {
-                  "operator": "Default",
-                  "thresholdValue": null,
-                  "representation": "success",
-                  "text": ""
-                }
-              ]
-            }
-          },
-          "secondaryContent": {
-            "columnMatch": "Footer",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "Url",
-              "showIcon": true
-            }
-          },
-          "showBorder": false
+          ],
+          "filter": true
         }
       },
       "customWidth": "50",
-      "name": "Key vault onboarding",
-      "styleSettings": {
-        "margin": "-20px 0 0 0"
-      }
+      "name": "query - 4"
     }
   ],
-  "styleSettings": {},
+  "fromTemplateId": "Community-Workbooks/KeyVault/Azure Monitor Onboarding",
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
