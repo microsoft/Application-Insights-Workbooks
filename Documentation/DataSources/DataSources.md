@@ -31,10 +31,7 @@ Authors can also have their queries target more than one resources to get very p
 
 This ability to make arbitrary queries using KQL, along with the visualization and customization capabilities of workbooks provides authors with a powerful toolset for building rich reports and experiences for data analysis. 
 
-Here is a tutorial on making resource centric log queries within workbooks:
-
-[![Making resource centric log queries in workbooks](http://img.youtube.com/vi/8CvjM0VvOA8/1.jpg)](https://youtu.be/8CvjM0VvOA8 "Video showing how to make resource centric log queries in workbooks")
-
+[Tutorial: Making resource centric log queries in workbooks](ResourceCentricLogs.md)
 
 ## Metrics
 Azure resources emit metrics that can be accessed via workbooks. Examples of metrics include CPU utilization and disk read rates of VMs, or DTU % of a database. These metrics can be accessed in workbooks via a specialized control that allows you to specify the target resources, interesting metrics and their aggregation. This data can then be plotted in charts or grids. 
