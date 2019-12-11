@@ -144,9 +144,7 @@ Users may have to update their query settings and subscriptions to their own acc
         "exportToExcelOptions": "visible",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
-        "crossComponentResources": [
-          "/subscriptions/5c038d14-3833-463f-a492-de956f63f12a/resourceGroups/Aul-RG/providers/Microsoft.OperationalInsights/workspaces/AUL-Test"
-        ]
+        "crossComponentResources": []
       },
       "conditionalVisibility": {
         "parameterName": "selectedTab",
