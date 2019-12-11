@@ -94,8 +94,10 @@ For the timeline simple update your query:
 **Updated:** _search * **| summarize Count = count() by Computer, bin(TimeGenerated,{TimeRange:grain})**_
 
 There are two options for visualizing as a bar chart
+
 **Option 1:** Select Bar chart from the Visualization dropdown
  ![Barchart Visualization](./Examples/BarViz.png)
+ 
 **Option 2:** Add a line to the KQL
 Add: | render barchart
 Note that the Visualization setting should be set to Set by query
