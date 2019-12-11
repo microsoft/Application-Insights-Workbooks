@@ -31,6 +31,8 @@ Authors can also have their queries target more than one resources to get very p
 
 This ability to make arbitrary queries using KQL, along with the visualization and customization capabilities of workbooks provides authors with a powerful toolset for building rich reports and experiences for data analysis. 
 
+[Tutorial: Making resource centric log queries in workbooks](ResourceCentricLogs.md)
+
 ## Metrics
 Azure resources emit metrics that can be accessed via workbooks. Examples of metrics include CPU utilization and disk read rates of VMs, or DTU % of a database. These metrics can be accessed in workbooks via a specialized control that allows you to specify the target resources, interesting metrics and their aggregation. This data can then be plotted in charts or grids. 
 
@@ -107,6 +109,10 @@ Workbooks support a variety of merge flavors:
 * Union
 * Duplicate table
 
-### Merge examples
+Here is a tutorial on using the merge control to combine Azure Resource Graph and Log Analytics data:
 
+[![Combining data from different sources in workbooks](http://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
+
+### Merge examples
 [Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
+
