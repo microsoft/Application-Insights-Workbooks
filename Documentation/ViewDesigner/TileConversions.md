@@ -109,3 +109,6 @@ For creating a list and enabling sparklines please reference the section on [Com
 The following is an example of how the Timeline & List tile might be reinterpreted in Workbooks
 
 ![Timeline List Workbooks](./Examples/TimeWorkbooks.png)
+
+
+### [Return to start](./ViewDesignerOverview.md)
