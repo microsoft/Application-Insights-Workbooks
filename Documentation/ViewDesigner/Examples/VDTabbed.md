@@ -16,9 +16,7 @@ Users may have to update their query settings and subscriptions to their own acc
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
-        "crossComponentResources": [
-          "/subscriptions/1f3fa6d2-851c-4a91-9087-1a050f3a9c38/resourcegroups/defaultresourcegroup-eus/providers/microsoft.operationalinsights/workspaces/defaultworkspace-1f3fa6d2-851c-4a91-9087-1a050f3a9c38-eus"
-        ],
+        "crossComponentResources": [],
         "parameters": [
           {
             "id": "81018bf4-b214-4d2f-bfac-9efb30ea7afb",
@@ -26,7 +24,7 @@ Users may have to update their query settings and subscriptions to their own acc
             "name": "Subscription",
             "type": 6,
             "isRequired": true,
-            "value": "/subscriptions/5c038d14-3833-463f-a492-de956f63f12a",
+            "value": "",
             "typeSettings": {
               "additionalResourceOptions": [],
               "includeAll": false
@@ -173,7 +171,6 @@ Users may have to update their query settings and subscriptions to their own acc
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
-          "/subscriptions/5c038d14-3833-463f-a492-de956f63f12a/resourceGroups/Aul-RG/providers/Microsoft.OperationalInsights/workspaces/AUL-Test"
         ],
         "gridSettings": {
           "formatters": [
@@ -238,7 +235,6 @@ Users may have to update their query settings and subscriptions to their own acc
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
-          "/subscriptions/5c038d14-3833-463f-a492-de956f63f12a/resourceGroups/Aul-RG/providers/Microsoft.OperationalInsights/workspaces/AUL-Test"
         ]
       },
       "conditionalVisibility": {
@@ -268,7 +264,6 @@ Users may have to update their query settings and subscriptions to their own acc
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
-          "/subscriptions/5c038d14-3833-463f-a492-de956f63f12a/resourceGroups/Aul-RG/providers/Microsoft.OperationalInsights/workspaces/AUL-Test"
         ],
         "gridSettings": {
           "formatters": [
@@ -332,7 +327,6 @@ Users may have to update their query settings and subscriptions to their own acc
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
-          "/subscriptions/5c038d14-3833-463f-a492-de956f63f12a/resourceGroups/Aul-RG/providers/Microsoft.OperationalInsights/workspaces/AUL-Test"
         ],
         "visualization": "tiles",
         "tileSettings": {
@@ -366,12 +360,8 @@ Users may have to update their query settings and subscriptions to their own acc
     }
   ],
   "defaultResourceIds": [
-    "/subscriptions/1f3fa6d2-851c-4a91-9087-1a050f3a9c38/resourcegroups/defaultresourcegroup-eus/providers/microsoft.operationalinsights/workspaces/defaultworkspace-1f3fa6d2-851c-4a91-9087-1a050f3a9c38-eus",
-    "/subscriptions/1f3fa6d2-851c-4a91-9087-1a050f3a9c38/resourcegroups/defaultresourcegroup-eus/providers/microsoft.operationalinsights/workspaces/defaultworkspace-1f3fa6d2-851c-4a91-9087-1a050f3a9c38-eus"
   ],
   "fallbackResourceIds": [
-    "/subscriptions/1f3fa6d2-851c-4a91-9087-1a050f3a9c38/resourcegroups/defaultresourcegroup-eus/providers/microsoft.operationalinsights/workspaces/defaultworkspace-1f3fa6d2-851c-4a91-9087-1a050f3a9c38-eus",
-    "/subscriptions/1f3fa6d2-851c-4a91-9087-1a050f3a9c38/resourcegroups/defaultresourcegroup-eus/providers/microsoft.operationalinsights/workspaces/defaultworkspace-1f3fa6d2-851c-4a91-9087-1a050f3a9c38-eus"
   ],
   "styleSettings": {},
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
