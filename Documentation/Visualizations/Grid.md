@@ -155,8 +155,8 @@ For each of the above settings, the author must pick where the value in the link
 When the workbook link is opened, the new workbook view will be passed all of the values configured from the settings above, along with the values of any parameters set in the workbook to that point (including any parameters that would be exported from the row selection of the grid). This is commonly used to allow a "downstream" workbook to "inherit" a time range setting from the current workbook. The parameter *names* must be the same in both workbooks for this parameter value inheritance to work. 
 
 
-### Custom Number Formatting
-Workbooks also allows users to set the number formatting of your cell values. They can do so by clicking on the _Custom number formatting_ checkbox when available.
+### Custom Formatting
+Workbooks also allows users to set the number formatting of your cell values. They can do so by clicking on the _Custom formatting_ checkbox when available.
 
 Number formatting options include:
 
@@ -170,6 +170,7 @@ Number formatting options include:
 | `Maximum fractional digits` | Maximum number of fractional digits to use |
 | `Minimum significant digits` | Minimum number of significant digits to use (default 1) |
 | `Maximum significant digits` | Maximum number of significant digits to use |
+| `Custom text for missing values` | When a data point does not have a value, show this custom text instead of a blank |
 
 ### Custom Date Formatting
 When the author has specified that a column is set to the Date/Time renderer, the author can specify custom date formatting options by using the '_Custom date formatting' checkbox.
