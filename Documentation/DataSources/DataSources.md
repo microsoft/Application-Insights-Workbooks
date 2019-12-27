@@ -12,6 +12,8 @@ Workbooks support these data sources:
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
 * [Custom Endpoint](#custom-endpoint)
+* [Azure Data Explorer](#azure-data-explorer)
+* [Azure Resource Manager](#azure-resource-manager)
 
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
 
@@ -41,7 +43,7 @@ Azure resources emit metrics that can be accessed via workbooks. Examples of met
 ![A image of a workbook with metric data for many resources](../Images/MetricDataSource2.png)
 
 ## Azure Resource Graph (ARG)
-Workbooks  support querying for resources and their metadata using Azure Resource Graph (ARG). This is primarily used to build custom query scopes for reports. The resource scope is expressed via a KQL-subset that ARG supports – which is usually enough the common use cases.
+Workbooks supports querying for resources and their metadata using Azure Resource Graph (ARG). This is primarily used to build custom query scopes for reports. The resource scope is expressed via a KQL-subset that ARG supports – which is usually enough the common use cases.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Graph_ and select the subscriptions to target. Use the _Query_ control to add the ARG KQL-subset that selects an interesting resource subset.
 
@@ -80,11 +82,21 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 `Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
 
 ## Azure Data Explorer (preview)
-Workbooks supports quering Azure Data Explorer (ADX).
+Workbooks supports querying Azure Data Explorer (ADX).
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Data Explorer_ and enter the ADX cluster and database name.  The database name should be the full https url to the cluster. If not, the cluster is presumed to have a standard name based on the Azure cloud instance. Cluster name and database name support workbook parameters. At the current time, there is no intellisense/completion of table names or column names in the ADX cluster. In order to query the cluster, the current portal user will need read access to that ADX cluster.
 
 ![A image of a workbook with an Azure Data Explorer query](../Images/AzureDataExplorerDataSource.png)
+
+
+## Azure Resource Manager (preview)
+Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
+
+To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Manager_. Provide the appropriate parameters such as Http method, url path, headers, url parameters and/or body.
+
+`Note: Only GET, POST, and HEAD operations are currently supported.`
+
+![A image of a workbook with an Azure Resource Manager query](../Images/AzureResourceManagerDataSource.PNG)
 
 
 ## Merge data from different sources
