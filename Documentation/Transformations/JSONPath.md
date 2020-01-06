@@ -6,7 +6,7 @@ JSONPath is a query language for JSON that is similar to XPath for XML. Like XPa
 
 Click [here](https://aka.ms/jsonpath) to learn more about JSON Path.
 
-By using JSONPath transformation, Workbook authors are able to convert JSON into a table structure. The table can then be used to plot Workbook [visualizations](Visualizations.md).
+By using JSONPath transformation, Workbook authors are able to convert JSON into a table structure. The table can then be used to plot Workbook [visualizations](../Visualizations/Visualizations.md).
 
 ## Using JSONPath
 
