@@ -1,6 +1,6 @@
 # JSON Path
 
-Workbooks is able to query data from many sources. Some endpoints, such as Azure Resource Manager or custom endpoint, can return results in JSON. If the JSON data returned by the queried enpoint is not configured in a format that you desire, JSONPath can be used to transform the results.
+Workbooks is able to query data from many sources. Some endpoints, such as Azure Resource Manager or custom endpoint, can return results in JSON. If the JSON data returned by the queried endpoint is not configured in a format that you desire, JSONPath can be used to transform the results.
 
 JSONPath is a query language for JSON that is similar to XPath for XML. Like XPath, JSONPath allows for the extraction and filtration of data out of a JSON structure.
 
@@ -14,7 +14,8 @@ By using JSONPath transformation, Workbook authors are able to convert JSON into
 2. Use the _Add query_ link to add a query control to the workbook. 
 3. Select the query type as _JSON_
 4. Use the JSON editor to enter the following JSON snippet
-    ```
+
+```json
 { "store": {
     "books": [ 
       { "category": "reference",
@@ -46,7 +47,7 @@ By using JSONPath transformation, Workbook authors are able to convert JSON into
     }
   }
 }
-    ```
+```
 
 Let’s assume we are given the above JSON object as a representation of a store's inventory. Our task is to create a table of the store's available books by listing their titles, authors, and prices.
 
