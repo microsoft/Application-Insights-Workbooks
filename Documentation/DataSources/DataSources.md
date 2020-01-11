@@ -14,6 +14,8 @@ Workbooks support these data sources:
 * [Custom Endpoint](#custom-endpoint)
 * [Azure Data Explorer](#azure-data-explorer)
 * [Azure Resource Manager](#azure-resource-manager)
+* JSON
+* Custom Provider
 
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
 
@@ -81,6 +83,8 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 
 `Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
 
+This provider supports [JSON Path](../Transformations/JSONPath).
+
 ## Azure Data Explorer (preview)
 Workbooks supports querying Azure Data Explorer (ADX).
 
@@ -98,6 +102,9 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 ![A image of a workbook with an Azure Resource Manager query](../Images/AzureResourceManagerDataSource.PNG)
 
+[Click here to view a walk-through example of this provider](../Samples/AlertDataARM.md)
+
+This provider supports [JSON Path](../Transformations/JSONPath).
 
 ## Merge data from different sources
 It is often necessary to bring together data from different sources that enhance the insights experience. An example is augmenting active alert information with related metric data. This allows users to see not just the effect (an active alert), but also potential causes (e.g. high CPU usage). The monitoring domain has numerous such correlatable data sources that are often critical to the triage and diagnostic workflow. 
