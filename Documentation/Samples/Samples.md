@@ -26,4 +26,4 @@
 
 [![Image showing a grid with alerts data](../Images/ARMAlertsQueryGridFormat.png)](AlertDataARM.md)
 
-[See intrstructions](AlertDataARM.md)
+[See instructions](AlertDataARM.md)

@@ -17,10 +17,12 @@ To get a list of existing alerts for a subscription, we will utilize the [Alerts
 3. Click `Add query` to create a query control.
     1. Data source: `Azure Resource Manager (Preview)`
     2. Http Method: `GET`
-    3. Path: `/subscriptions/{subscription:id}/providers/Microsoft.AlertsManagement/alerts`
+    3. Path: `/subscriptions/{Subscription:id}/providers/Microsoft.AlertsManagement/alerts`
     4. Add the api-version parameter in the `Parameters` tab
         1. Parameter: `api-version`
         2. Value: `2018-05-05`
+        
+        *Note: Supported api-versions are listed in the [Azure REST API Reference](https://docs.microsoft.com/en-us/rest/api/azure/) documentation*
     5. Select a subscription from the created subscription parameter and click the `Run Query` button to see the results.
     
      This is the raw JSON results returned from Azure Resource Manager (ARM).
