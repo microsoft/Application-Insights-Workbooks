@@ -38,7 +38,6 @@ In the image above, the conditions will be evaluated from top to bottom and the 
 
 ![Image showing the first parameter](../Images/Parameters-Criteria-First-Param.png)
 
-
 2. In the table with the 'rand' parameter, click on the blue Add Parameter button.
 3. In the new parameter pane that pops up enter:
     1. Parameter name: randCriteria
@@ -62,6 +61,7 @@ In the image above, the conditions will be evaluated from top to bottom and the 
 6. Click on edit, next to the condition `Click edit to specify a result for the default condition.`, this will edit the default condition.
 
     >Note: For the default condition, everthing should be disabled except for the last `Value from` and `Result is` fields.
+
 7. Enter the data below to populate the default condition, then click 'OK'.
     1. Value from: Static Value
     2. Result is: is 0.25 or under
@@ -75,7 +75,7 @@ In the image above, the conditions will be evaluated from top to bottom and the 
 |Form fields|Description|
 |-----------|----------|
 |First operand| This is a dropdown consisting of parameter names that have already been created. The value of the parameter will be used on the left hand side of the comparison |
-|Operator|The operator used to compare the first and the second operands. Can be a numerical or string evaluation.|
+|Operator|The operator used to compare the first and the second operands. Can be a numerical or string evaluation. The operator `is empty` will disable the `Second operand` as only the `First operand` is required.|
 |Value from|If set to `Parameter`, a dropdown consisting of parameters that have already been created will be shown. The value of that parameter will be used on the right hand side of the comparison.<br/> If set to `Static Value`, a text box will be shown where an author can enter a value for the right hand side of the comparison.|
 |Second Operand| Will be either a dropdown menu consisting of created parameters, or a textbox depending on the above `Value from` selection.|
 |Value from|If set to `Parameter`, a dropdown consisting of parameters that have already been created will be shown. The value of that parameter will be used for the return value of the current parameter.<br/> If set to `Static Value`:<ul><li> a text box will be shown where an author can enter a value for the result.</li> <li>An author can also dereference other parameters by using curly braces around the parameter name.</li><li>It is possible concatenate multiple parameters and create a custom string, for example: "`{paramA}`, `{paramB}`, and some string" </li></ul>If set to `Expression`<ul><li> a text box will be shown where an author can enter a mathematical expression that will be evaluated as the result</li><li>Like the `Static Value` case, multiple parameters may be dereferenced in this text box.</li><li>If the parameter value referenced in the text box is not a number, it will be treated as the value `0`</li></ul> |
