@@ -34,4 +34,15 @@ While this guide offers simple steps to directly recreate several of the commonl
 [Workspace usage template from Workbooks](https://go.microsoft.com/fwlink/?linkid=874159&resourceId=Azure%20Monitor&featureName=Workbooks&itemId=community-Workbooks%2FAzure%20Monitor%20-%20Workspaces%2FWorkspace%20Usage&workbookTemplateName=Workspace%20Usage&func=NavigateToPortalFeature&type=workbook)
 ![Example of Workbooks Application](./Examples/WBTemplateEX.jpg)
 
+
+## How to Start using Workbooks
+Workbooks are enabled in Log Analytics workspaces as an item in the side navigation bar, directly under the View Designer location
+
+![Workbooks Navigation](./Examples/WorkbooksNav.png)
+
+Once selected, a gallery will be displayed listing out all the saved workbooks and templates for your workspace.
+
+![Workbooks Gallery](./Examples/WorkbooksGallery.png)
+
+
 ### [Next Section: Conversion Options](./ConversionOptions.md)
