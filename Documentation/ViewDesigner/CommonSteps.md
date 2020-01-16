@@ -1,5 +1,13 @@
 # Common Steps
 
+## Quick Start with preset View Designer Templates
+
+Workbooks in LA workspaces already have templates made to match some of the views in View Designer. Select the "View Designer Transition Guide" to learn about your options or select one of the many preset templates.
+
+[Click here](https://portal.azure.com/#blade/HubsExtension/BrowseResourceBlade/resourceType/Microsoft.OperationalInsights%2Fworkspaces) to view your Log Analytics workspaces and get started with Workbooks.
+
+![Example Templates](Templates.png)
+
 ## Enabling Time Range Filter
 View Designer has a built-in default Time Range filter, however, in Workbooks this setting is not enabled by default. Workbooks does allow users to create their own Time Range filters that might be more applicable to their data logs. The steps to generate the filter are listed below:
 
