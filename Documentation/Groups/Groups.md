@@ -8,6 +8,9 @@ A group item in a workbook allows you to logically group a set of steps in a wor
 
 3. performance - in cases where you have a very large template, with many tabs, etc, you can use groups to split up a single template into many templates, and each tab of the workbook can be a group that loads all of its content from that other template.  in these cases, the contents of the group won't load or run until a user makes that group visible
 
+## Scoping
+Note: at the current time, a group is treated as a new "scope" in the workbook.  any parameters created in the group are only visible *inside the group*.  This is also true for things like merge, they can only see data inside their group or at the parent level.
+
 ## Group types
 The workbook "group" item allows you to add a group of items to a workbook. As the author of a workbook, you specify which type of group it will be. There are 2 types of groups:
 
@@ -60,8 +63,13 @@ For performance reasons, it is beneficial to break up a large template into many
 
 When splitting a template into parts, you'll effectively need to split the template into many templates (calling them "sub-templates" for the rest of this document) that all work individually. So if the top level template has a `TimeRange` parameter that other steps use, the sub-templates need to also have a parameters step that defines a parameter with that exact name. This lets the sub-templates work independently as their own 100% functional templates, and lets them be loaded inside larger templates in groups.
 
-The simplest way to do this is to temporarily make a top level workbook that contains only a single parameter item with all of the "shared" parameters that all of the templates will use. Then, for each "sub" template you are going to create, start with that temporary workbook, and save a copy and add all the content for the templates to the bottom.
+The simplest way to do this is to:
+1. create a new empty group near the top of the workbook, after the shared parameters. this new group will eventually become a sub-template
+2. create a copy of the shared parameters step, and then use "move into group" to move the copy into the group created in step 1.  this parameters step will allow the sub-template to work independently of the outer template, and will get "merged out" when loaded inside the outer template.
+(*technically*, the sub-templates don't *need* to have these parameters that get merged away, if you *never* intend on the sub-templates being visible by themselves, so you could remove them.  But it will make them very hard to edit or debug if you ever need to edit them later!)
+3. move each item in the workbook you want to be in the sub-template into the group created in step 1.
+4. if the individual steps moved in step 3 had conditional visibilities that will become the visibility of the outer group (like used in tabs), remove them from the items inside the group, and add that visibility setting to the group itself. Save here to avoid losing changes, and/or export and save a copy of the json content.
+5. **If you want that group to be loaded from a template**, you can use the `Edit` toolbar button in the group, which will open *just the contents of that group* as a workbook in a new window.  You can then save it as appropriate and close this workbook view (don't close the browser, just that view, to go back to the previous workbook you were editing.).
+6. you can then change the group step to load from template, and set the template id field to the workbook/template you created in step 5. (To work with workbook ids, the source needs to be a shared workbook resource id).  Press `Load`, and the content of that group will now be loaded from that sub-template instead of saved inside this outer workbook.
 
-It may be easier to do a lot of this splitting manually using a text editor, copying and pasting the sections out into new workbook files.
 
-*technically*, the sub-templates don't *need* to have these parameters that get merged away, if you never intend on the sub-templates being visible by themselves, so you could remove them.  But it will make them very hard to edit if you ever need to edit them later.
