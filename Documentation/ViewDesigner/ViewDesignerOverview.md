@@ -40,7 +40,7 @@ Workbooks are enabled in Log Analytics workspaces as an item in the side navigat
 
 ![Workbooks Navigation](./Examples/WorkbooksNav.png)
 
-Once selected, a gallery will be displayed listing out all the saved workbooks and templates for your workspace.
+While View Designer manages views through the Workspace summary, Workbooks utilizes a gallery that displays saved workbooks and templates for your workspace.
 
 ![Workbooks Gallery](./Examples/WorkbooksGallery.png)
 
