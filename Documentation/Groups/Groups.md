@@ -25,8 +25,6 @@ There are several different ways that the content of a group may be loaded.  As 
     - For groups created from a template, the content of the template is not retrieved and the items in the group are not created until the group becomes visible.  the user will see progress spinners for the whole group while the content is retrieved.
     - for editable groups, the content is loaded, but the items in the group are not created until the item becomes visible
 
-* **delayed** - similar to lazy, except that the contents will be retrieved and created after some delay instead of waiting to become visible. this can be useful if you expect users to always see this content, but not load it immediately. This is useful for "below the fold" scenarios, where a user might not scroll down to see details before leaving, so the load can be delayed and possibly never executed if the user leaves the workbook before the delay expires.
-
 * **explicit** - in this mode, a button is displayed where the group would be, and no content is retrieved or created until the user explicitly clicks the button to load the content. This is useful in "show more" scenarios, where the content might be expensive to compute or rarely used
 
 * **always** - in this mode, the content of the group is always loaded and created as soon as the workbook loads. This mode is most freqently used when using a group only for layout purposes, where the content will always be visible.
