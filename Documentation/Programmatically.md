@@ -8,8 +8,95 @@ This can be useful in scenarios like:
 
 The workbook will created in the desired sub/resource-group and with the content specified in the ARM templates.
 
-## Creating an ARM template that deploys a Workbook
+There are two types of workbook resources that can be managed programmatically:
+1. [Workbook templates](#deploying-a-workbook-template)
+2. [Workbook instances](#deploying-a-workbook-instance)
+
+## Deploying a workbook template
 1. Open a workbook whose content you want to deploy programmatically.
+2. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
+3. Open the _Advanced Editor_ using the _</>_ button on the toolbar.
+4. Ensure you are on the `Gallery Template` tab
+5. Copy the JSON payload to the clipboard for use in the ARM template later.
+6. Start with this sample ARM template that deploys a workbook template to the Azure Monitor workbook gallery:
+    ```json
+    {
+        "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+        "contentVersion": "1.0.0.0",
+        "parameters": {
+            "resourceName": {
+                "type": "string",
+                "defaultValue": "my-workbook-template",
+                "metadata": {
+                    "description": "The unique name for this workbook template instance"
+                }
+            }
+        },
+        "resources": [
+            {
+                "name": "[parameters('resourceName')]",
+                "type": "microsoft.insights/workbooktemplates",
+                "location": "[resourceGroup().location]",
+                "apiVersion": "2019-10-17-preview",
+                "dependsOn": [],
+                "properties": {
+                    "galleries": [
+                        {
+                            "name": "A Workbook Template",
+                            "category": "Deployed Templates",
+                            "order": 100,
+                            "type": "workbook",
+                            "resourceType": "Azure Monitor"
+                        }
+                    ],
+                    "templateData": <PASTE-COPIED-WORKBOOK_TEMPLATE_HERE>
+                }
+            }
+        ]
+    }
+    ```
+    
+7. Paste the workbook payload in place of `<PASTE-COPIED-WORKBOOK_TEMPLATE_HERE>`. An reference ARM template that creates a workbook template can be found [here](ARM-template-for-creating-workbook-template).
+8. Update the gallery to deploy as applicable.
+9. Deploy this ARM template using either the [Azure portal](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-portal#deploy-resources-from-custom-template), [command line interface](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-cli), [powershell](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-powershell), etc.
+10. Open the Azure portal and navigate to the workbook gallery chosen in the ARM template. In the example template, navigate to the Azure Monitor workbook gallery by:
+    1. Open the Azure portal and navigate to Azure Monitor
+    2. Open `Workbooks` from the table of contents
+    3. Find you template in the gallery under category `Deployed Templates` (will be one of the purple items).
+
+### Parameters
+| Parameter | Explanation |
+| :------------- |:-------------|
+| `name` | The name of the workbook template resource in ARM.  |
+| `type` | Always microsoft.insights/workbooktemplates |
+| `location` | The Azure location to create the workbook in |
+| `apiVersion` | 2019-10-17-preview |
+| `type` | Always microsoft.insights/workbooktemplates |
+| `galleries` | The set of galleries to show this workbook template in |
+| `gallery.name` | The friendly name of the workbook template, as shown in the gallery |
+| `gallery.category` | The group in the gallery to place the template in |
+| `gallery.order` | A number that decides the order to show the template within a category in the gallery. Lower order implies higher priority |
+| `gallery.resourceType` | The resource type corresponding to the gallery. This usually the resource type string corresponding to the resource (e.g. microsoft.operationalinsights/workspaces) |
+| `gallery.type` | Referred to as workbook type, this is a unique key that disambiguates the gallery within a resource type. Application Insights for instance has types 'workbook' and 'tsg' corresponding to different workbook galleries. |
+
+
+### Existing galleries
+| Gallery | Resource type | Workbook type |
+| :------------- |:-------------|:-------------|
+| Workbooks in Azure Monitor | `Azure Monitor` | `workbook` |
+| VM Insights in Azure Monitor | `Azure Monitor` | `vm-insights` |
+| Workbooks in Log analytics workspace | `microsoft.operationalinsights/workspaces` | `workbook` |
+| Workbooks in Application Insights | `microsoft.insights/component` | `workbook` |
+| Troubleshooting guides in Application Insights | `microsoft.insights/component` | `tsg` |
+| Usage in Application Insights | `microsoft.insights/component` | `usage` |
+| Workbooks in Kubernetes service | `Microsoft.ContainerService/managedClusters` | `workbook` |
+| Workbooks in Resource groups | `microsoft.resources/subscriptions/resourcegroups` | `workbook` |
+| Workbooks in Azure Active Directory | `microsoft.aadiam/tenant` | `workbook` |
+| VM Insights in Virtual machines | `microsoft.compute/virtualmachines` | `insights` |
+| VM Insights in VM scale sets | `microsoft.compute/virtualmachinescalesets` | `insights` |
+
+## Deploying a workbook instance
+1. Open a workbook whose content you want to deploy as a template.
 2. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 3. Open the _Advanced Editor_ using the _</>_ button on the toolbar.
 4. In the editor, switch _Template Type_ to _ARM Template_.
