@@ -236,8 +236,8 @@ Function CloneAndPullLocalizedRepos {
 #----------------------------------------------------------------------------
 Function CopyFromEnuIfNotExist() {
     param(
-        [string] $fullName,
-        [string] $language
+        [string] $fullName, # location folder
+        [string] $language  # languages to process
         )
 
     # skip if language is not in the supported list
@@ -256,6 +256,9 @@ Function CopyFromEnuIfNotExist() {
         $fileName = $enuFile.Name
         $destinationFile = "$fullName\$fileName"
         if (!(Test-Path $destinationFile)) {
+            # Issue 574: fix rename case where master .workbook has been renamed but loc branch still has the old .workbook name
+            # this check will skip copying over the .workbook file to loc branch. thus, the loc branch will use the old .workbook
+            # file until localization process picks up the new rename file from master
             if ($fileName -like "*.workbook") {
                 $existingWorkbooks = Get-ChildItem -Path "$fullName\*" -Include *.workbook
                 if ($existingWorkbooks.Count -ne 0) {
