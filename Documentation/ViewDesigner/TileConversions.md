@@ -17,6 +17,7 @@ Select **Add query** and paste the original query from View Designer into the ce
 
 **Option 1:** Select Pie Chart from the Visualization Dropdown
  ![Pie Chart Visualization Menu](./Examples/PieChart.png)
+
 **Option 2:** Add a line to the KQL\
 **Add:** _| render piechart_\
 Note that the Visualization setting should be set to **Set by query**
