@@ -34,3 +34,8 @@ To pin individual item, you will need to enable the pin icon for your specific s
 Users may also wish to pin multiple visualizations from the Workbook or the entire Workbook content to a dashboard. To pin the entire workbook, select `🖊️ Edit` in the top toolbar to toggle the `Edit Mode`. A 📌 (pin) icon will appear, allowing you to either pin the entire Workbook item or all of the individual steps and visualizations within the workbook.
 
 ## Sharing and Viewing Permissions <a id="Share"></a>
+Workbooks have the benefit of either being a private or shared document. By default, saved workbooks will be saved under "My Reports", meaning that only the creator can view this workbook.
+
+Users can share their workbooks by selecting the Share icon from the top tool bar while in `Edit Mode`.Users will be prompted to move their workbook to "Shared Reports", which will generate a link that provides direct access to the workbook.
+
+In order for a user to view a shared workbook, they must have access to both the subscription and resource group the workbook is saved under.
