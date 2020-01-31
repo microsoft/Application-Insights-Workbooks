@@ -1,8 +1,11 @@
 # Tile Conversions
 
-[Donut & List](#Donut-&-List)
-## Donut & List
-<a id="Donut-&-List"></a>
+### Jump to a section
+* [Donut & List](#Donut-&-List)
+* [Linechart & List](#Linechart-&-List)
+* [Number & List](#Donut-&-List)
+* [Timeline & List](#Timeline-&-List)
+## Donut & List <a id="Donut-&-List"></a>
 
 
 View Designer has the Donut & List tile as shown below:
@@ -28,7 +31,7 @@ The following is an example of how the Donut & List tile might be reinterpreted 
 
 ![Donut List Workbooks](./Examples/DonutWorkbooks.png)
 
-## Linechart & List
+## Linechart & List <a id="Linechart-&-List"></a>
 The original Linechart & List in View Designer looks like the following:
  
 ![Linechart List](./Examples/LineList.png) 
@@ -58,7 +61,7 @@ The following is an example of how the Linechart & List tile might be reinterpre
 
 ![Linechart List Workbooks](./Examples/LineWorkbooks.png)
 
-## Number & List
+## Number & List <a id="Number-&-List"></a>
 The original View Designer Number & List looks as such:
  ![Tile List](./Examples/TileListEx.png)
 For the number tile, update the query as such:
@@ -87,7 +90,7 @@ The following is an example of how the Number & List tile might be reinterpreted
 
 ![Number List Workbooks](./Examples/NumberWorkbooks.png)
 
-## Timeline & List
+## Timeline & List <a id="Timeline-&-List"></a>
 The Timeline & List in View Designer is shown below:
 
  ![Timeline List](./Examples/TimeList.png)
