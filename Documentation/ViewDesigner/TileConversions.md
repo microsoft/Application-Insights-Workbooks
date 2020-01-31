@@ -26,6 +26,8 @@ Note that the Visualization setting should be set to **Set by query**
 **Original:** search * | summarize AggregatedValue = count() by Type | order by AggregatedValue desc \
 **Updated:** search * | summarize AggregatedValue = count() by Type | order by AggregatedValue desc | render piechart
 
+### Additional Steps
+
 To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
 For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
 To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
@@ -58,6 +60,8 @@ Note that the Visualization setting should be set to Set by query
 **Example:**
 _search * | make-series Count = count() default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Type | render linechart_
 
+### Additional Steps
+
 To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
 For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
 To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
@@ -88,7 +92,9 @@ Leave the Title section blank, and change Left to Use Column: Count, and the Col
 
 ![Tile Settings](./Examples/TileSettings.png)
 Advanced Settings \ Settings \ Chart title:  Computers sending data
- 
+
+### Additional Steps
+
 To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
 For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
 To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
@@ -117,6 +123,7 @@ Add: | render barchart
 Note that the Visualization setting should be set to Set by query
  ![Visualization Menu](./Examples/SetByQuery.png)
 
+ ### Additional Steps
  
 To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
 For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
