@@ -26,7 +26,9 @@ Note that the Visualization setting should be set to **Set by query**
 **Original:** search * | summarize AggregatedValue = count() by Type | order by AggregatedValue desc \
 **Updated:** search * | summarize AggregatedValue = count() by Type | order by AggregatedValue desc | render piechart
 
-For creating a list and enabling sparklines please reference the section on [CommonSteps](./Examples/CommonSteps.md)
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Donut & List tile might be reinterpreted in Workbooks
 
@@ -56,7 +58,9 @@ Note that the Visualization setting should be set to Set by query
 **Example:**
 _search * | make-series Count = count() default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Type | render linechart_
 
-For creating a list and enabling sparklines please reference the section on [Common Steps](./Examples/CommonSteps.md)
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Linechart & List tile might be reinterpreted in Workbooks
 
@@ -85,7 +89,9 @@ Leave the Title section blank, and change Left to Use Column: Count, and the Col
 ![Tile Settings](./Examples/TileSettings.png)
 Advanced Settings \ Settings \ Chart title:  Computers sending data
  
-For creating a list and enabling sparklines please reference the section on [Common Steps](./Examples/CommonSteps.md)
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Number & List tile might be reinterpreted in Workbooks
 
@@ -112,7 +118,9 @@ Note that the Visualization setting should be set to Set by query
  ![Visualization Menu](./Examples/SetByQuery.png)
 
  
-For creating a list and enabling sparklines please reference the section on [Common Steps](./Examples/CommonSteps.md)
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Timeline & List tile might be reinterpreted in Workbooks
 
