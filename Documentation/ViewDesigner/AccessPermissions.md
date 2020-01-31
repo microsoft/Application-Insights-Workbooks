@@ -1,4 +1,11 @@
-## Accessing and Managing Views with Workbooks
+# Accessing Workbooks & Viewing Permissions
+
+### Jump to a section
+* [Accessing and Managing Views with Workbooks](#Access)
+* [Creating your Workspace Summary](#Dashboard)
+* [Sharing and Viewing Permissions](#Share)
+
+## Accessing and Managing Views with Workbooks <a id="Access"></a>
 Workbooks are enabled in Log Analytics workspaces as an item in the side navigation bar, directly under the View Designer location
 
 ![Workbooks Navigation](./Examples/WorkbooksNav.png)
@@ -13,3 +20,17 @@ To save a workbook, you will need to save the report with a specific title, subs
 The workbook will auto-fill to the same settings as the LA workspace, with the same subscription, resource group, however, users may change these report settings. Workbooks are by default saved to 'My Reports', accessible only by the individual user. But can be saved directly to shared reports or shared later on.
 
 ![Workbooks Save](./Examples/WorkbooksSave.png)
+
+## Creating your Workspace Summary <a id="Dashboard"></a>
+To maintain a visual overview like the View Designer Workspace Summary, Workbooks offers pinned steps, which can be pinned to your [Azure Portal Dashboard](https://docs.microsoft.com/en-us/azure/azure-portal/azure-portal-dashboards).
+
+Create a new Azure Dashboard or select an existing Azure Dashboard to begin pinning Workbooks items.
+<br/>
+View Designer users may be familiar with having an overview tile to represent a set of views. Workbooks allows you to pin a single or multiple visualizations to Azure Dashboards to recreate the look and feel of the Workspace Summary.
+
+<br/>
+To pin individual item, you will need to enable the pin icon for your specific step. To do so, select the corresponding `↑ Edit` button for your step, then select the `⚙️` to open the `Advanced Settings`. Check the option to "Always show the pin icon on this step", and a pin icon will appear in the upper right hand corner of your step. This pin enables you to pin specific visualizations to your dashboard, just like the overview tiles.
+<br/>
+Users may also wish to pin multiple visualizations from the Workbook or the entire Workbook content to a dashboard. To pin the entire workbook, select `🖊️ Edit` in the top toolbar to toggle the `Edit Mode`. A 📌 (pin) icon will appear, allowing you to either pin the entire Workbook item or all of the individual steps and visualizations within the workbook.
+
+## Sharing and Viewing Permissions <a id="Share"></a>
