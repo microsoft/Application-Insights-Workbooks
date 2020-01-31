@@ -6,6 +6,24 @@
 - [Common Steps](./CommonSteps.md)
 - [Tile Conversions](./TileConversions.md)
 
+## Why Convert View Designer Dashboards to Workbooks?
+
+View Designer offers the ability to generate different query-based views and visualizations. However, many high-level customizations remain limited, such as formatting the grids and tile layouts or selecting alternative graphics to represent your data. View Designer is restricted to a total of 9 distinct tiles to represent your data.
+
+Workbooks is a platform that unlocks the full potential of your data. Workbooks not only retains all the capabilities, but also supports additional functionality through text, metrics, parameters, and much more. For example, Workbooks allows users to consolidate dense grids and add search bars to easily filter and analyze the data.
+
+
+### Advantages of using Workbooks over View Designer
+
+* Supports both logs AND metrics
+* Allows both personal views for individual access control and shared Workbooks views
+* Custom layout options with tabs, sizing, and scaling controls
+* Support for querying across multiple workspaces, Application Insights applications, and subscriptions
+* Enables custom parameters that dynamically update associated charts and visualizations
+* Template gallery support from public GitHub
+
+<img src = "./Examples/WorkbookViews.png" height = 50%,width =50%>
+
 ## View Designer Overview
 View Designer is a tool offered through Azure Monitor. View Designer allows you to create custom views to help you visualize data in your Log Analytics workspace, with charts, lists, and timelines. 
 
@@ -22,12 +40,6 @@ Workbooks are helpful for scenarios such as:
 -	Reporting the impact of an outage on the usage of your VM, combining data, text explanation, and a discussion of next steps to prevent outages in the future.
 
 Link to additional [Workbook Resources](https://docs.microsoft.com/en-us/azure/azure-monitor/insights/vminsights-workbooks)
-
-## Why Convert View Designer Dashboards to Workbooks?
-
-View Designer offers the ability to generate different query-based views and visualizations. However, many high-level customizations remain limited, such as formatting the grids and tile layouts or selecting alternative graphics to represent your data. View Designer is restricted to a total of 9 distinct tiles to represent your data.
-
-Workbooks is a platform that unlocks the full potential of your data. Workbooks not only retains all the capabilities, but also supports additional functionality through text, metrics, parameters, and much more. For example, Workbooks allows users to consolidate dense grids and add search bars to easily filter and analyze the data. 
 
 While this guide offers simple steps to directly recreate several of the commonly used View Designer views, Workbooks allows users to have the freedom to create and design any of their own custom visualizations and metrics. Below is a snapshot of what Workbooks is capable of creating:
 
