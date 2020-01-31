@@ -27,4 +27,4 @@ With Workbooks, we allow the user to choose to query one or both sections of the
 In general, formulating queries in Workbooks is a simple two-step process. First, the data is generated from the query, and the second, where the data is rendered as a visualization. The next set of sections breakdown commonly utilized steps to recreate View Designer views within workbooks.
 The goal of these next sections is to demonstrate how to re-create 1-1 mappings of View Designer views, however, learning the various options enables users to create their own custom views in Workbooks.
 
-### [Next Section: Common Steps](./CommonSteps.md)
+### [Next Section: Access & Permissions](./AcessPermissions.md)
