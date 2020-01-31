@@ -3,6 +3,7 @@
 ## Table of Contents
 - Overview
 - [Conversion Options](./ConversionOptions.md)
+- [Accessing & Managing Views](./AccessPermissions.md)
 - [Common Steps](./CommonSteps.md)
 - [Tile Conversions](./TileConversions.md)
 
@@ -22,7 +23,7 @@ Workbooks is a platform that unlocks the full potential of your data. Workbooks 
 * Enables custom parameters that dynamically update associated charts and visualizations
 * Template gallery support from public GitHub
 
-<img src = "./Examples/WorkbookViews.png" height = 50%,width =50%>
+<img src = "./Examples/WorkbookViews.png" height = 66%; width =66%>
 
 ## View Designer Overview
 View Designer is a tool offered through Azure Monitor. View Designer allows you to create custom views to help you visualize data in your Log Analytics workspace, with charts, lists, and timelines. 
