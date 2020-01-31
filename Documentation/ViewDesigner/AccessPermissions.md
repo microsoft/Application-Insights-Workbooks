@@ -49,3 +49,5 @@ Users can share their workbooks by selecting the Share icon from the top tool ba
 In order for a user to view a shared workbook, they must have access to both the subscription and resource group the workbook is saved under.
 
 ![Subscription based access](./Examples/SubscriptionAccess.png)
+
+### [Next Section: Common Steps](./CommonSteps.md)
