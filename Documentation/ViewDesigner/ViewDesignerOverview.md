@@ -28,10 +28,10 @@ Workbooks is a platform that unlocks the full potential of your data. Workbooks 
 ## View Designer Overview
 View Designer is a tool offered through Azure Monitor. View Designer allows you to create custom views to help you visualize data in your Log Analytics workspace, with charts, lists, and timelines. 
 
-Link to additional [View Designer Resources](https://docs.microsoft.com/en-us/azure/azure-monitor/platform/view-designer)
+Link to additional [View Designer Resources](https://docs.microsoft.com/azure/azure-monitor/platform/view-designer)
 
 ## Workbooks Overview
-Workbooks combine text, [log queries](https://docs.microsoft.com/en-us/azure/azure-monitor/log-query/query-language), metrics, and parameters into rich interactive reports. Team members with the same access to Azure resources are also able to edit Workbooks.
+Workbooks combine text, [log queries](https://docs.microsoft.com/azure/azure-monitor/log-query/query-language), metrics, and parameters into rich interactive reports. Team members with the same access to Azure resources are also able to edit Workbooks.
 
 Workbooks are helpful for scenarios such as:
 
@@ -40,7 +40,7 @@ Workbooks are helpful for scenarios such as:
 -	Sharing the results of a resizing experiment of your VM with other members of your team. You can explain the goals for the experiment with text, then show each usage metric and analytics queries used to evaluate the experiment, along with clear call-outs for whether each metric was above- or below-target.
 -	Reporting the impact of an outage on the usage of your VM, combining data, text explanation, and a discussion of next steps to prevent outages in the future.
 
-Link to additional [Workbook Resources](https://docs.microsoft.com/en-us/azure/azure-monitor/insights/vminsights-workbooks)
+Link to additional [Workbook Resources](https://docs.microsoft.com/azure/azure-monitor/insights/vminsights-workbooks)
 
 While this guide offers simple steps to directly recreate several of the commonly used View Designer views, Workbooks allows users to have the freedom to create and design any of their own custom visualizations and metrics. Below is a snapshot of what Workbooks is capable of creating:
 
