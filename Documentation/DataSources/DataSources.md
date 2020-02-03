@@ -19,7 +19,7 @@ Workbooks support these data sources:
 
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
 
-### Logs
+## Logs
 Workbooks support getting analytics logs data. Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
 
 Workbooks allows querying logs from these sources:
@@ -37,28 +37,28 @@ This ability to make arbitrary queries using KQL, along with the visualization a
 
 [Tutorial: Making resource centric log queries in workbooks](ResourceCentricLogs.md)
 
-### Metrics
+## Metrics
 Azure resources emit metrics that can be accessed via workbooks. Examples of metrics include CPU utilization and disk read rates of VMs, or DTU % of a database. These metrics can be accessed in workbooks via a specialized control that allows you to specify the target resources, interesting metrics and their aggregation. This data can then be plotted in charts or grids. 
 
 ![A image of a workbook with metric data](../Images/MetricDataSource.png)
 
 ![A image of a workbook with metric data for many resources](../Images/MetricDataSource2.png)
 
-### Azure Resource Graph (ARG)
+## Azure Resource Graph (ARG)
 Workbooks supports querying for resources and their metadata using Azure Resource Graph (ARG). This is primarily used to build custom query scopes for reports. The resource scope is expressed via a KQL-subset that ARG supports – which is usually enough the common use cases.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Graph_ and select the subscriptions to target. Use the _Query_ control to add the ARG KQL-subset that selects an interesting resource subset.
 
 ![A image of a workbook with ARG data](../Images/ArgDataSource.png)
 
-### Alerts
+## Alerts
 Workbooks allow users to visualize the active alerts related to their resources. This allows the creation of reports that bring together notification data (alert) and diagnostic information (metrics, logs) into one report. This information can also be joined together to create rich reports that combines insights across these data sources. 
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Alerts_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
 
 ![A image of a workbook with alert data](../Images/AlertDataSource.png)
 
-### Custom endpoint (preview)
+## Custom endpoint (preview)
 Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
@@ -71,7 +71,7 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 
 This provider supports [JSON Path](../Transformations/JSONPath).
 
-### Azure Resource Manager (preview)
+## Azure Resource Manager (preview)
 Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Manager_. Provide the appropriate parameters such as Http method, url path, headers, url parameters and/or body.
@@ -84,28 +84,28 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 This provider supports [JSON Path](../Transformations/JSONPath).
 
-### Workload Health
+## Workload Health
 Azure Monitor has functionality that proactively monitors the availability and performance of Windows or Linux guest OSes with a model that represent key components and their relationships, criteria that specifies how to measure the health of those components, and which can alert you when an unhealthy condition is detected. Workbooks allow users to use this information to create rich reports.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Workload Health_ and select subscription, resource group or VM resources to target. Use the health filter drop downs to select an interesting subset of health incidents for your analytic needs.
 
 ![A image of a workbook with workload health data](../Images/WorkloadHealthDataSource.png)
 
-### Azure Resource Health
+## Azure Resource Health
 Workbooks supports getting Azure resource health and combining it with other data sources to create rich, interactive health reports
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure health_ and select the resources to target. Use the health filter drop downs to select an interesting subset of resource issues for your analytic needs.
 
 ![A image of a workbook with Azure resource health data](../Images/ResourceHealthDataSource.png)
 
-### Azure Data Explorer (preview)
+## Azure Data Explorer (preview)
 Workbooks supports querying Azure Data Explorer (ADX).
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Data Explorer_ and enter the ADX cluster and database name.  The database name should be the full https url to the cluster. If not, the cluster is presumed to have a standard name based on the Azure cloud instance. Cluster name and database name support workbook parameters. At the current time, there is no intellisense/completion of table names or column names in the ADX cluster. In order to query the cluster, the current portal user will need read access to that ADX cluster.
 
 ![A image of a workbook with an Azure Data Explorer query](../Images/AzureDataExplorerDataSource.png)
 
-### Merge data from different sources
+## Merge data from different sources
 It is often necessary to bring together data from different sources that enhance the insights experience. An example is augmenting active alert information with related metric data. This allows users to see not just the effect (an active alert), but also potential causes (e.g. high CPU usage). The monitoring domain has numerous such correlatable data sources that are often critical to the triage and diagnostic workflow. 
 
 Workbooks allow not just the querying of different data sources, but also provides simple controls that allow you to merge or join the data to provide rich insights. The `merge` control is the way to achieve it. 
@@ -131,6 +131,6 @@ Here is a tutorial on using the merge control to combine Azure Resource Graph an
 
 [![Combining data from different sources in workbooks](http://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
 
-### Merge examples
+## Merge examples
 [Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
 
