@@ -118,8 +118,9 @@ Function AddCategory() {
     $categories.$categoryName.DescriptionByLanguage = @{ }
 
     $categorySettings | Get-Member -type NoteProperty | Foreach-Object {
-        # ignore the $schema field which is needed for localization of categoryResources.json
-        if ($_.name -ne '$schema') {
+        # only process languages field in categoryResources.json
+        $field = $_.name
+        if (($supportedLanguages | Where-Object {$_ -like $field}).Count -eq 1) {
             $languageProperties = $categorySettings.($_.name)
 
             $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
