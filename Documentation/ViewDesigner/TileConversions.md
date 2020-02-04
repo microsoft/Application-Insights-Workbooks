@@ -1,6 +1,13 @@
 # Tile Conversions
 
-## Donut & List
+### Jump to a section
+* [Donut & List](#Donut-&-List)
+* [Linechart & List](#Linechart-&-List)
+* [Number & List](#Donut-&-List)
+* [Timeline & List](#Timeline-&-List)
+## Donut & List <a id="Donut-&-List"></a>
+
+
 View Designer has the Donut & List tile as shown below:
 
 ![Donut List](./Examples/DonutList.png)
@@ -10,6 +17,7 @@ Select **Add query** and paste the original query from View Designer into the ce
 
 **Option 1:** Select Pie Chart from the Visualization Dropdown
  ![Pie Chart Visualization Menu](./Examples/PieChart.png)
+
 **Option 2:** Add a line to the KQL\
 **Add:** _| render piechart_\
 Note that the Visualization setting should be set to **Set by query**
@@ -18,13 +26,17 @@ Note that the Visualization setting should be set to **Set by query**
 **Original:** search * | summarize AggregatedValue = count() by Type | order by AggregatedValue desc \
 **Updated:** search * | summarize AggregatedValue = count() by Type | order by AggregatedValue desc | render piechart
 
-For creating a list and enabling sparklines please reference the section on [CommonSteps](./Examples/CommonSteps.md)
+### Additional Steps
+
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Donut & List tile might be reinterpreted in Workbooks
 
 ![Donut List Workbooks](./Examples/DonutWorkbooks.png)
 
-## Linechart & List
+## Linechart & List <a id="Linechart-&-List"></a>
 The original Linechart & List in View Designer looks like the following:
  
 ![Linechart List](./Examples/LineList.png) 
@@ -48,13 +60,17 @@ Note that the Visualization setting should be set to Set by query
 **Example:**
 _search * | make-series Count = count() default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Type | render linechart_
 
-For creating a list and enabling sparklines please reference the section on [Common Steps](./Examples/CommonSteps.md)
+### Additional Steps
+
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Linechart & List tile might be reinterpreted in Workbooks
 
 ![Linechart List Workbooks](./Examples/LineWorkbooks.png)
 
-## Number & List
+## Number & List <a id="Number-&-List"></a>
 The original View Designer Number & List looks as such:
  ![Tile List](./Examples/TileListEx.png)
 For the number tile, update the query as such:
@@ -76,14 +92,18 @@ Leave the Title section blank, and change Left to Use Column: Count, and the Col
 
 ![Tile Settings](./Examples/TileSettings.png)
 Advanced Settings \ Settings \ Chart title:  Computers sending data
- 
-For creating a list and enabling sparklines please reference the section on [Common Steps](./Examples/CommonSteps.md)
+
+### Additional Steps
+
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Number & List tile might be reinterpreted in Workbooks
 
 ![Number List Workbooks](./Examples/NumberWorkbooks.png)
 
-## Timeline & List
+## Timeline & List <a id="Timeline-&-List"></a>
 The Timeline & List in View Designer is shown below:
 
  ![Timeline List](./Examples/TimeList.png)
@@ -103,8 +123,11 @@ Add: | render barchart
 Note that the Visualization setting should be set to Set by query
  ![Visualization Menu](./Examples/SetByQuery.png)
 
+ ### Additional Steps
  
-For creating a list and enabling sparklines please reference the section on [Common Steps](./Examples/CommonSteps.md)
+To insert the list visualization, follow the steps [here](./CommonSteps.md#List).\
+For enabling sparklines please reference the section on [customizing visualizations](./CommonSteps.md#Sparkline).\
+To scale and resize the steps, change your advanced cell settings with these [instructions](./CommonSteps.md#Advanced).
 
 The following is an example of how the Timeline & List tile might be reinterpreted in Workbooks
 

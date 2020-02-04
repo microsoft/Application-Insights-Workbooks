@@ -256,6 +256,14 @@ Function CopyFromEnuIfNotExist() {
         $fileName = $enuFile.Name
         $destinationFile = "$fullName\$fileName"
         if (!(Test-Path $destinationFile)) {
+            if ($fileName -like "*.workbook") {
+                $existingWorkbooks = Get-ChildItem -Path "$fullName\*" -Include *.workbook
+                if ($existingWorkbooks.Count -ne 0) {
+                    Write-Host ">>>>>> Skipping .workbook in $existingWorkbooks <<<<<<<<"
+                    continue
+                }    
+            }
+
             $fullPath = $enuFile.FullName
             Write-Host "[#WARNING: missing File]: copying file $fullPath to $fullName"
             # copy file from enu to localized folder
