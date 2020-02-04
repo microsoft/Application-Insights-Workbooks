@@ -118,11 +118,14 @@ Function AddCategory() {
     $categories.$categoryName.DescriptionByLanguage = @{ }
 
     $categorySettings | Get-Member -type NoteProperty | Foreach-Object {
-        $languageProperties = $categorySettings.($_.name)
+        # ignore the $schema field which is needed for localization of categoryResources.json
+        if ($_.name -ne '$schema') {
+            $languageProperties = $categorySettings.($_.name)
 
-        $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
-        $categories.$categoryName.NameByLanguage.($_.name) = $languageProperties.name
-        $categories.$categoryName.DescriptionByLanguage.($_.name) = $languageProperties.description
+            $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
+            $categories.$categoryName.NameByLanguage.($_.name) = $languageProperties.name
+            $categories.$categoryName.DescriptionByLanguage.($_.name) = $languageProperties.description
+        }
     }
 }
 
