@@ -2,7 +2,7 @@
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
   "version": "Notebook/1.0",
   "isLocked": true,
-  "items": [
+   "items": [
     {
       "type": 1,
       "content": {
@@ -47,10 +47,10 @@
             "type": 2,
             "description": "A cohort filter can be set at edit mode that is a collection of users, sessions, or operations that are matched by a set of filters specified in the definition of the cohort. When a cohort is used in this report, the result will be the intersection of users, sessions, or operations matched by the cohort and users, sessions, or operations matched by the rest of the query in this report.",
             "isRequired": true,
-            "query": "datatable(value:string, text:string)[\r\n'user_Id', 'All Users', \r\n'user_AuthenticatedId', 'Authenticated Users'\r\n]",
-            "value": "user_Id",
+            "query": "datatable(value:string, text:string, selected: string)[\r\n'user_Id', 'All Users', 'true',\r\n'user_AuthenticatedId', 'Authenticated Users', ''\r\n]",
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
             "queryType": 0,
             "resourceType": "microsoft.insights/components"
@@ -63,13 +63,14 @@
             "type": 2,
             "description": "Choose which custom events, requests and page views the users should have sent for this report.",
             "isRequired": true,
-            "query": "datatable(value:string, text:string)[\r\n'pageViews,customEvents,requests', 'Any Custom Events, Request or Page View', \r\n'pageViews,customEvents', 'Any Custom Events or Page View', \r\n'customEvents','Any Custom Event', \r\n'pageViews','Any Page View', \r\n'requests','Any Request'\r\n]",
-            "value": "pageViews,customEvents,requests",
+            "query": "datatable(value:string, text:string, selected: string)[\r\n'pageViews,customEvents,requests', 'Any Custom Events, Request or Page View', '',\r\n'pageViews,customEvents', 'Any Custom Events or Page View', 'true',\r\n'customEvents','Any Custom Event', '',\r\n'pageViews','Any Page View', '',\r\n'requests','Any Request', ''\r\n]",
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
             "queryType": 0,
-            "resourceType": "microsoft.insights/components"
+            "resourceType": "microsoft.insights/components",
+            "value": "pageViews,customEvents,requests"
           },
           {
             "id": "37b05d6c-ab7c-4190-94d8-4973fcf06c49",
@@ -125,7 +126,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "union {Whoused}\r\n    | where timestamp {TimeRange}\r\n    | project name, itemType\r\n    | order by itemType,name asc\r\n    | summarize test = count() by itemType,name\r\n    | project Id=name, Title=name, Selected=false",
+            "query": "union {Whoused}\r\n    | where timestamp {TimeRange}\r\n    | project name, group = case(itemType == 'pageView', 'Page Views', itemType == 'customEvent', 'Custom Events', 'Requests')\r\n    | summarize test = count() by group, name\r\n    | project value=name, label=name, group, selected=''\r\n    | order by group, label asc",
             "value": [
               "value::all"
             ],
@@ -139,34 +140,52 @@
             "resourceType": "microsoft.insights/components"
           },
           {
-            "id": "7a61f92e-cd11-494a-8790-b2e32f591a11",
-            "version": "KqlParameterItem/1.0",
-            "name": "ByType",
-            "label": "By type",
-            "type": 2,
-            "description": "Choose Time or Property lets you create x-axis bins for users.",
-            "isRequired": true,
-            "value": "Time",
-            "typeSettings": {
-              "additionalResourceOptions": []
-            },
-            "jsonData": "[\"Time\", \"Property\"]"
-          },
-          {
             "id": "8cd9003c-8e76-4d21-8b22-b7a11197f42f",
             "version": "KqlParameterItem/1.0",
             "name": "ByValue",
             "label": "By value",
             "type": 2,
-            "description": "If \"By type\" is Time, choose a time grain to create x-axis bins for users. \"By type\" is Property, choose a property to create x-axis bins for user.",
+            "description": "Choose a time grain or property to create x-axis for users.",
             "isRequired": true,
-            "query": "let byType = \"{ByType}\";\r\nlet getTableSchema = (table: (*), tableName: string) { \r\n\ttable\r\n            | project  column_ifexists(\"customDimensions\",'')\r\n            | evaluate bag_unpack(column_ifexists(\"customDimensions\",''))\r\n            | getschema \r\n            | project ColumnName=strcat(\"customDimensions['\", ColumnName, \"']\"), ColumnType, TableName=tableName};\r\nlet t1 = getTableSchema(pageViews, 'pageViews');\r\nlet t2 = getTableSchema(customEvents, 'customEvents');\r\nlet t3 = getTableSchema(requests, 'requests');\r\nlet grainList = datatable(ColumnName:string, seconds:string, selected: string)[\r\n\t'3m', '3600', 'true',\r\n\t'1h', '86400', 'true',\r\n\t'2h', '172800', 'true',\r\n\t'3h', '259200', 'true',\r\n\t'1d', '604800', 'true',\r\n\t'12h', '604800', '',\r\n\t'1d', '1209600', 'true',\r\n\t'1d', '2592000', 'true',\r\n\t'7d', '2592000', '',\r\n\t'1d', '5184000', 'true',\r\n\t'7d', '5184000', '',\r\n\t'1d', '7776000', 'true',\r\n\t'7d', '7776000', ''\r\n\t];\r\nlet timeTable = grainList\r\n    | where seconds == '{TimeRange:seconds}'\r\n    | extend Type =\"Time\"\r\n    | project Property = ColumnName, ColumnName, Type, selected;\r\nlet customDimension =  union t1, t2, t3\r\n            |  where ColumnType == 'string'\r\n            | where '{Whoused}' contains TableName\r\n            | summarize count() by ColumnName\r\n            | project ColumnName, Type ='Property', selected='';    \r\nlet dimensionList = datatable(Property:string, ColumnName:string, Type: string, selected: string)[\r\n\t'application_Version', 'Application version', 'Property', '',\r\n\t'user_AuthenticatedId', 'Authenticated or anonymous traffic', 'Property', '',\r\n\t'client_Browser', 'Browser version', 'Property', '',\r\n\t'client_City', 'City', 'Property', 'true',\r\n\t'cloud_RoleInstance', 'Cloud role instance', 'Property', '',\r\n\t'cloud_RoleName', 'Cloud role name', 'Property', '',\r\n\t'client_CountryOrRegion', 'Country or region', 'Property', '',\r\n\t'client_Model', 'Device model', 'Property', '',\r\n\t'client_Type', 'Device type', 'Property', '',\r\n\t'operation_SyntheticSource', 'Is real user traffic', 'Property', '',\r\n    'name', 'Name', 'Property', '',\r\n\t'client_OS', 'Operating system', 'Property', '',\r\n\t'operation_Name', 'Operation name', 'Property', '',\r\n\t'performanceBucket', 'Performance', 'Property', '',\r\n\t'tostring(parseurl(url)[\"Host\"])', 'URL host', 'Property', '',\r\n\t'tostring(parseurl(url)[\"Path\"])', 'URL path', 'Property', '',\r\n\t'source', 'Request source', 'Property', '',\r\n\t'resultCode', 'Response code', 'Property', '',\r\n\t'operation_SyntheticSource', 'Source of synthetic traffic', 'Property', '',\r\n\t'client_CountryOrRegion', 'State or province', 'Property', '',\r\n\t'success', 'Successful request', 'Property', ''\r\n\t];\r\nunion dimensionList, customDimension, timeTable \r\n\t| where Type == byType\r\n    | project Property, ColumnName, selected",
+            "query": "let getTableSchema = (table: (*), tableName: string) { \r\n\t  table\r\n      | project  column_ifexists(\"customDimensions\",'')\r\n      | evaluate bag_unpack(column_ifexists(\"customDimensions\",''))\r\n      | getschema \r\n      | project value=strcat(\"customDimensions['\", ColumnName, \"']\"), ColumnType, TableName=tableName};\r\nlet t1 = getTableSchema(pageViews, 'pageViews');\r\nlet t2 = getTableSchema(customEvents, 'customEvents');\r\nlet t3 = getTableSchema(requests, 'requests');\r\nlet grainList = datatable(value:string, label:string, seconds:string, group: string, selected: string)[\r\n\t'3m', '3 minutes', '3600', 'Time Range', 'true',\r\n\t'1h', '1 hour', '86400', 'Time Range', 'true',\r\n\t'2h', '2 hours', '172800', 'Time Range', 'true',\r\n\t'3h', '3 hours', '259200', 'Time Range', 'true',\r\n\t'1d', '1 day', '604800', 'Time Range', 'true',\r\n\t'12h', '12 hours', '604800', 'Time Range', '',\r\n\t'1d', '1 day', '1209600', 'Time Range', 'true',\r\n\t'1d', '1 day', '2592000', 'Time Range', 'true',\r\n\t'7d', '7 days', '2592000', 'Time Range', '',\r\n\t'1d', '1 day', '5184000', 'Time Range', 'true',\r\n\t'7d', '7 days', '5184000', 'Time Range', '',\r\n\t'1d', '1 day', '7776000', 'Time Range', 'true',\r\n\t'7d', '7 days', '7776000', 'Time Range', ''\r\n\t];\r\nlet timeTable = grainList\r\n    | where seconds == '{TimeRange:seconds}'\r\n    | project value, label, group, selected;\r\nlet customDimension =  union t1, t2, t3\r\n    | where ColumnType == 'string'\r\n    | where '{Whoused}' contains TableName\r\n    | summarize count() by value\r\n    | project value, label = value, group='Custom Properties', selected='';    \r\nlet dimensionList = datatable(value:string, label:string, group: string, selected: string)[\r\n\t'application_Version', 'Application version', 'Standard Properties', '',\r\n\t'user_AuthenticatedId', 'Authenticated or anonymous traffic', 'Standard Properties', '',\r\n\t'client_Browser', 'Browser version', 'Standard Properties', '',\r\n\t'client_City', 'City', 'Standard Properties', 'true',\r\n\t'cloud_RoleInstance', 'Cloud role instance', 'Standard Properties', '',\r\n\t'cloud_RoleName', 'Cloud role name', 'Standard Properties', '',\r\n\t'client_CountryOrRegion', 'Country or region', 'Standard Properties', '',\r\n\t'client_Model', 'Device model', 'Standard Properties', '',\r\n\t'client_Type', 'Device type', 'Standard Properties', '',\r\n\t'operation_SyntheticSource', 'Is real user traffic', 'Standard Properties', '',\r\n    'name', 'Name', 'Standard Properties', '',\r\n\t'client_OS', 'Operating system', 'Standard Properties', '',\r\n\t'operation_Name', 'Operation name', 'Standard Properties', '',\r\n\t'performanceBucket', 'Performance', 'Standard Properties', '',\r\n\t'tostring(parseurl(url)[\"Host\"])', 'URL host', 'Standard Properties', '',\r\n\t'tostring(parseurl(url)[\"Path\"])', 'URL path', 'Standard Properties', '',\r\n\t'source', 'Request source', 'Standard Properties', '',\r\n\t'resultCode', 'Response code', 'Standard Properties', '',\r\n\t'operation_SyntheticSource', 'Source of synthetic traffic', 'Standard Properties', '',\r\n\t'client_CountryOrRegion', 'State or province', 'Standard Properties', '',\r\n\t'success', 'Successful request', 'Standard Properties', ''\r\n\t];\r\nunion timeTable, dimensionList, customDimension \r\n    | project value, label, group, selected\r\n",
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
             },
             "queryType": 0,
             "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "7a61f92e-cd11-494a-8790-b2e32f591a11",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsTimeRange",
+            "type": 1,
+            "description": "Is x-axis created by Time bins or not?",
+            "isRequired": true,
+            "value": "true",
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "condition": "if (ByValue regex '[1,2,3,7,12][m|h|d]'), result = 'true'",
+                "criteriaContext": {
+                  "leftOperand": "ByValue",
+                  "operator": "regex",
+                  "rightValType": "static",
+                  "rightVal": "[1,2,3,7,12][m|h|d]",
+                  "resultValType": "static",
+                  "resultVal": "true"
+                }
+              },
+              {
+                "condition": "else result = 'false'",
+                "criteriaContext": {
+                  "operator": "Default",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "false"
+                }
+              }
+            ]
           },
           {
             "id": "47faf500-a03f-4600-bb6d-973d248fe874",
@@ -176,7 +195,8 @@
             "type": 2,
             "description": "Choose a property lets you segment by users.",
             "isRequired": true,
-            "query": "let getTableSchema = (table: (*), tableName: string) { table\r\n            | project  column_ifexists(\"customDimensions\",'')\r\n            | evaluate bag_unpack(column_ifexists(\"customDimensions\",''))\r\n            | getschema \r\n            | project ColumnName=strcat(\"customDimensions['\", ColumnName, \"']\"), ColumnType, TableName=tableName };\r\n            let t1 = getTableSchema(pageViews, 'pageViews');\r\n            let t2 = getTableSchema(customEvents,'customEvents');\r\n            let t3 = getTableSchema(requests, 'requests');\r\nlet customDimension =  union t1, t2, t3\r\n            |  where ColumnType == 'string'\r\n            | where '{Whoused}' contains TableName or TableName == ''\r\n            | summarize count() by ColumnName \r\n            | project Property = ColumnName, ColumnName\r\n            | order by ColumnName asc;\r\nlet PropertyList = union (datatable(Property:string, ColumnName:string)[\r\n\t'application_Version', 'Application version', \r\n\t'user_AuthenticatedId', 'Authenticated or anonymous traffic', \r\n\t'client_Browser', 'Browser version', \r\n\t'client_City', 'City', \r\n\t'cloud_RoleInstance', 'Cloud role instance', \r\n\t'cloud_RoleName', 'Cloud role name', \r\n\t'client_CountryOrRegion', 'Country or region', \r\n\t'client_Model', 'Device model', \r\n\t'client_Type', 'Device type', \r\n\t'operation_SyntheticSource', 'Is real user traffic', \r\n        'name', 'Name', \r\n\t'client_OS', 'Operating system', \r\n\t'operation_Name', 'Operation name', \r\n\t'performanceBucket', 'Performance', \r\n\t'tostring(parseurl(url)[\"Host\"])', 'URL host', \r\n\t'tostring(parseurl(url)[\"Path\"])', 'URL path', \r\n\t'source', 'Request source', \r\n\t'resultCode', 'Response code', \r\n\t'operation_SyntheticSource', 'Source of synthetic traffic', \r\n\t'client_CountryOrRegion', 'State or province', \r\n\t'success', 'Successful request'\r\n\t]), customDimension\r\n    | extend Type = 'Property'\r\n    | where Type != '{ByType}'\r\n    | project Property, ColumnName, selected ='';\r\nunion (datatable(Property:string, ColumnName:string, selected: string)[\r\n\t'<unset>', 'unset', 'true'\r\n\t]), PropertyList",
+            "query": "let getTableSchema = (table: (*), tableName: string) { table\r\n            | project  column_ifexists(\"customDimensions\",'')\r\n            | evaluate bag_unpack(column_ifexists(\"customDimensions\",''))\r\n            | getschema \r\n            | project ColumnName=strcat(\"customDimensions['\", ColumnName, \"']\"), ColumnType, TableName=tableName };\r\n            let t1 = getTableSchema(pageViews, 'pageViews');\r\n            let t2 = getTableSchema(customEvents,'customEvents');\r\n            let t3 = getTableSchema(requests, 'requests');\r\nlet customDimension =  union t1, t2, t3\r\n            |  where ColumnType == 'string'\r\n            | where '{Whoused}' contains TableName or TableName == ''\r\n            | summarize count() by ColumnName \r\n            | project Property = ColumnName, ColumnName, group='Custom Properties'\r\n            | order by ColumnName asc;\r\nlet PropertyList = union (datatable(Property:string, ColumnName:string, group: string)[\r\n\t'application_Version', 'Application version', 'Standard Properties',\r\n\t'user_AuthenticatedId', 'Authenticated or anonymous traffic', 'Standard Properties', \r\n\t'client_Browser', 'Browser version', 'Standard Properties',\r\n\t'client_City', 'City', 'Standard Properties',\r\n\t'cloud_RoleInstance', 'Cloud role instance', 'Standard Properties',\r\n\t'cloud_RoleName', 'Cloud role name', 'Standard Properties',\r\n\t'client_CountryOrRegion', 'Country or region', 'Standard Properties',\r\n\t'client_Model', 'Device model', 'Standard Properties',\r\n\t'client_Type', 'Device type', 'Standard Properties',\r\n\t'operation_SyntheticSource', 'Is real user traffic', 'Standard Properties',\r\n        'name', 'Name', 'Standard Properties',\r\n\t'client_OS', 'Operating system', 'Standard Properties',\r\n\t'operation_Name', 'Operation name', 'Standard Properties',\r\n\t'performanceBucket', 'Performance', 'Standard Properties',\r\n\t'tostring(parseurl(url)[\"Host\"])', 'URL host', 'Standard Properties',\r\n\t'tostring(parseurl(url)[\"Path\"])', 'URL path', 'Standard Properties',\r\n\t'source', 'Request source', 'Standard Properties',\r\n\t'resultCode', 'Response code', 'Standard Properties',\r\n\t'operation_SyntheticSource', 'Source of synthetic traffic', 'Standard Properties',\r\n\t'client_CountryOrRegion', 'State or province', 'Standard Properties',\r\n\t'success', 'Successful request', 'Standard Properties'\r\n\t]), customDimension\r\n    | where '{IsTimeRange}' == 'true'\r\n    | project Property, ColumnName, group, selected ='';\r\nunion (datatable(Property:string, ColumnName:string, group: string, selected: string)[\r\n\t'<unset>', 'unset', '', 'true'\r\n\t]), PropertyList",
+            "value": "<unset>",
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
@@ -284,9 +304,9 @@
           "value": "<unset>"
         },
         {
-          "parameterName": "ByType",
+          "parameterName": "IsTimeRange",
           "comparison": "isEqualTo",
-          "value": "Time"
+          "value": "true"
         }
       ],
       "conditionalVisibility": {
@@ -317,9 +337,9 @@
           "value": "<unset>"
         },
         {
-          "parameterName": "ByType",
-          "comparison": "isNotEqualTo",
-          "value": "Time"
+          "parameterName": "IsTimeRange",
+          "comparison": "isEqualTo",
+          "value": "false"
         }
       ],
       "conditionalVisibility": {
@@ -422,9 +442,9 @@
           "value": "<unset>"
         },
         {
-          "parameterName": "ByType",
+          "parameterName": "IsTimeRange",
           "comparison": "isEqualTo",
-          "value": "Time"
+          "value": "true"
         }
       ],
       "conditionalVisibility": {
@@ -533,12 +553,10 @@
         "gridSettings": {
           "formatters": [
             {
-              "columnMatch": "Counrty or region",
+              "columnMatch": "Country or region",
               "formatter": 0,
               "formatOptions": {
-                "palette": "turquoise",
-                "showIcon": true,
-                "aggregation": "Count"
+                "showIcon": true
               }
             },
             {
@@ -547,6 +565,13 @@
               "formatOptions": {
                 "palette": "turquoise",
                 "showIcon": true
+              },
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal",
+                  "maximumFractionDigits": 2
+                }
               }
             }
           ]
@@ -579,6 +604,13 @@
               "formatOptions": {
                 "palette": "turquoise",
                 "showIcon": true
+              },
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal",
+                  "maximumFractionDigits": 2
+                }
               }
             }
           ]
@@ -611,6 +643,14 @@
               "formatOptions": {
                 "palette": "turquoise",
                 "showIcon": true
+              },
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": false,
+                  "maximumFractionDigits": 2
+                }
               }
             }
           ]
