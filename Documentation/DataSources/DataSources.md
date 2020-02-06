@@ -9,11 +9,11 @@ Workbooks support these data sources:
 * [Metrics](#metrics)
 * [Azure Resource Graph](#azure-resource-graph)
 * [Alerts](#alerts)
+* [Custom Endpoint](#custom-endpoint-(preview))
+* [Azure Resource Manager](#azure-resource-manager-(preview))
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
-* [Custom Endpoint](#custom-endpoint)
 * [Azure Data Explorer](#azure-data-explorer)
-* [Azure Resource Manager](#azure-resource-manager)
 * JSON
 * Custom Provider
 
@@ -58,6 +58,32 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 ![A image of a workbook with alert data](../Images/AlertDataSource.png)
 
+## Custom endpoint (preview)
+Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
+
+To make a query control use this data source, use the _Data source_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
+
+![A image of a workbook with Custom endpoint data](../Images/CustomEndpointsDataSource.png)
+
+To avoid automatically making calls to un-trusted hosts when using templates, the users needs to mark the used hosts as trusted. This can be done by either clicking on the _Add as trusted_ button, or by adding it as a trusted host in Workbook settings. This settings will be saved in browsers that support IndexDb with web workers, more info [here](https://caniuse.com/#feat=indexeddb).
+
+`Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
+
+This provider supports [JSON Path](../Transformations/JSONPath).
+
+## Azure Resource Manager (preview)
+Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
+
+To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Manager_. Provide the appropriate parameters such as Http method, url path, headers, url parameters and/or body.
+
+`Note: Only GET, POST, and HEAD operations are currently supported.`
+
+![A image of a workbook with an Azure Resource Manager query](../Images/AzureResourceManagerDataSource.PNG)
+
+[Click here to view a walk-through example of this provider](../Samples/AlertDataARM.md)
+
+This provider supports [JSON Path](../Transformations/JSONPath).
+
 ## Workload Health
 Azure Monitor has functionality that proactively monitors the availability and performance of Windows or Linux guest OSes with a model that represent key components and their relationships, criteria that specifies how to measure the health of those components, and which can alert you when an unhealthy condition is detected. Workbooks allow users to use this information to create rich reports.
 
@@ -72,39 +98,12 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 ![A image of a workbook with Azure resource health data](../Images/ResourceHealthDataSource.png)
 
-## Custom endpoint (preview)
-Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
-
-To make a query control use this data source, use the _Data source_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
-
-![A image of a workbook with Custom endpoint data](../Images/CustomEndpointsDataSource.png)
-
-To avoid automatically making calls to un-trusted hosts when using templates, the users needs to mark the used hosts as trusted. This can be done by either clicking on the _Add as trusted_ button, or by adding it as a trusted host in Workbook settings. This settings will be saved in browsers that support IndexDb with web workers, more info [here](https://caniuse.com/#feat=indexeddb).
-
-`Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
-
-This provider supports [JSON Path](../Transformations/JSONPath).
-
 ## Azure Data Explorer (preview)
 Workbooks supports querying Azure Data Explorer (ADX).
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Data Explorer_ and enter the ADX cluster and database name.  The database name should be the full https url to the cluster. If not, the cluster is presumed to have a standard name based on the Azure cloud instance. Cluster name and database name support workbook parameters. At the current time, there is no intellisense/completion of table names or column names in the ADX cluster. In order to query the cluster, the current portal user will need read access to that ADX cluster.
 
 ![A image of a workbook with an Azure Data Explorer query](../Images/AzureDataExplorerDataSource.png)
-
-
-## Azure Resource Manager (preview)
-Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
-
-To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Manager_. Provide the appropriate parameters such as Http method, url path, headers, url parameters and/or body.
-
-`Note: Only GET, POST, and HEAD operations are currently supported.`
-
-![A image of a workbook with an Azure Resource Manager query](../Images/AzureResourceManagerDataSource.PNG)
-
-[Click here to view a walk-through example of this provider](../Samples/AlertDataARM.md)
-
-This provider supports [JSON Path](../Transformations/JSONPath).
 
 ## Merge data from different sources
 It is often necessary to bring together data from different sources that enhance the insights experience. An example is augmenting active alert information with related metric data. This allows users to see not just the effect (an active alert), but also potential causes (e.g. high CPU usage). The monitoring domain has numerous such correlatable data sources that are often critical to the triage and diagnostic workflow. 

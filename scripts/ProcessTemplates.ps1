@@ -100,7 +100,8 @@ Function AddCategory() {
     param(
         [string] $categoryName,
         [Object] $categories,
-        [Object] $categorySettings
+        [Object] $categorySettings,
+        [string] $language
     )
 
     if ($categories.$categoryName) {
@@ -118,11 +119,14 @@ Function AddCategory() {
     $categories.$categoryName.DescriptionByLanguage = @{ }
 
     $categorySettings | Get-Member -type NoteProperty | Foreach-Object {
-        $languageProperties = $categorySettings.($_.name)
+        # only process language in categoryResources.json
+        if ($_.name -eq $language) {
+            $languageProperties = $categorySettings.($_.name)
 
-        $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
-        $categories.$categoryName.NameByLanguage.($_.name) = $languageProperties.name
-        $categories.$categoryName.DescriptionByLanguage.($_.name) = $languageProperties.description
+            $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
+            $categories.$categoryName.NameByLanguage.($_.name) = $languageProperties.name
+            $categories.$categoryName.DescriptionByLanguage.($_.name) = $languageProperties.description
+        }
     }
 }
 
@@ -132,14 +136,15 @@ Function AddCategory() {
 Function AddVirtualCategories() {
     param(
         [Object] $categories,
-        [string] $categoriesMetadataFilePath
+        [string] $categoriesMetadataFilePath,
+        [string] $language
     )
 
     $virtualCategoriesSettings = Get-Content $categoriesMetadataFilePath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
     foreach ($virtualCategory in $virtualCategoriesSettings.categories) {
 
-        AddCategory $virtualCategory.key $categories $virtualCategory.settings
+        AddCategory $virtualCategory.key $categories $virtualCategory.settings $language
     }
 }
 
@@ -256,6 +261,14 @@ Function CopyFromEnuIfNotExist() {
         $fileName = $enuFile.Name
         $destinationFile = "$fullName\$fileName"
         if (!(Test-Path $destinationFile)) {
+            if ($fileName -like "*.workbook") {
+                $existingWorkbooks = Get-ChildItem -Path "$fullName\*" -Include *.workbook
+                if ($existingWorkbooks.Count -ne 0) {
+                    Write-Host ">>>>>> Skipping .workbook in $existingWorkbooks <<<<<<<<"
+                    continue
+                }    
+            }
+
             $fullPath = $enuFile.FullName
             Write-Host "[#WARNING: missing File]: copying file $fullPath to $fullName"
             # copy file from enu to localized folder
@@ -318,7 +331,7 @@ Function BuildingTemplateJson() {
             $virtualCategoriesPath = Join-Path $report.FullName $categoryMetadataFileName 
             if ([System.IO.File]::Exists($virtualCategoriesPath)) {
 
-                AddVirtualCategories $payload.$reportType  $virtualCategoriesPath
+                AddVirtualCategories $payload.$reportType $virtualCategoriesPath $lang
             }
 
             foreach ($category in $categories) {
@@ -336,7 +349,7 @@ Function BuildingTemplateJson() {
                 $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
                 $categorySettings = Get-Content $categorySettingsPath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
-                AddCategory $categoryName ($payload.$reportType) $categorySettings
+                AddCategory $categoryName ($payload.$reportType) $categorySettings $lang
 
                 foreach ($templateFolder in $templates) {
                     
