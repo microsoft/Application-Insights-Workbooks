@@ -90,5 +90,8 @@ Values from resource pickers can come from the workbook context, static list or 
 | `{Applications:resourceGroup}` | The resource group of the selected resource | _acmegroup_ |
 | `{Applications:resourceType}` | The type of the selected resource | _microsoft.insights/components_ |
 | `{Applications:subscription}` | The subscription of the selected resource |  |
+| `{Applications:subscriptionid}` | The subscription guid id of a subscription or resource |  |
+| `{Applications:subid}` | The subscription guid id of a subscription or resource with ' quote |  |
+| `{Applications:id}` | The guid id of a subscription |  |
 | `{Applications:grid}` | A grid showing the resource properties. Useful to render in a text block while debugging  |  |
 
