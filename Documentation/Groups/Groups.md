@@ -4,7 +4,7 @@ A group item in a workbook allows you to logically group a set of steps in a wor
 
 ![group in reading mode](../Images/groups-view.png)
 
-When editing the workbook, you can see those 2 items are acutally inside a group item:
+When editing the workbook, you can see those 2 items are actually inside a group item:
 
 ![group in reading mode](../Images/groups-edit.png)
 
@@ -15,9 +15,9 @@ Groups in workbooks are useful for several things:
 
 1. layout - in scenarios where you want items to "stack up" vertically, you can create a group of items that will all stack up, and set the styling of the *group* to be a percentage width, instead of setting percentage width on all the individual items.
 
-2. visibility - in scenarios where you want many items to hide/show together, you can set the visibility of the entire group of items, isntead of setting visibility settings on each individual item. This can be very useful in templates that use tabs, as you can use a group as the content of the tab, and the entire group can be hidden/shown based on a parameter set by the selected tab.
+2. visibility - in scenarios where you want many items to hide/show together, you can set the visibility of the entire group of items, instead of setting visibility settings on each individual item. This can be very useful in templates that use tabs, as you can use a group as the content of the tab, and the entire group can be hidden/shown based on a parameter set by the selected tab.
 
-3. performance - in cases where you have a very large template, with many tabs, etc, you can use groups to split up a single template into many templates, and each tab of the workbook can be a group that loads all of its content from that other template. In these cases, the contents of the group won't load or run until a user makes that group visible
+3. performance - in cases where you have a very large templates with many sections or tabs, you can convert each section into it's own sub-template and use groups to load all the sub-templates within the top level template. In these cases, the contents of the sub-templates won't load or run until a user makes those groups visible. See [How to split a large template into many templates](#how-to-split-a-large-template-into-many-templates) for more information.
 
 ## Scoping
 Note: at the current time, a group is treated as a new "scope" in the workbook. Any parameters created in the group are only visible *inside the group*. This is also true for things like merge, they can only see data inside their group or at the parent level.
@@ -52,8 +52,8 @@ There are several different ways that the content of a group may be loaded. As t
 
 * **always** - in this mode, the content of the group is always loaded and created as soon as the workbook loads. This mode is most freqently used when using a group only for layout purposes, where the content will always be visible.
 
-## using templates inside a group
-When a group is configured to load from a template, that by default, that content will only be loaded "lazily", in that it will only load when the group is visible. 
+## Using templates inside a group
+When a group is configured to load from a template, that content will be loaded "lazily" by default, in that it will only load when the group is visible.
 
 When a template is loaded into a group, the workbook attempts to "merge" any parameters declared in the template being loaded with parameters already existing in the group. Any parameters that already exist in the workbook with identical names will be "merged out" of the template being loaded (and if all parameters in a parameters step are merged out, the entire paramters step will disappear)
 
