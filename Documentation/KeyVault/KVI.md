@@ -141,7 +141,7 @@ The time range will depend on the dashboard settings.
 
 To view your logs-based data, you will need to enable logs for each of the key vaults you want to monitor. This can be done under the diagnostic settings for each key vault. You will need to send your data to a designated Log Analytics workspace.
 
-### I have already enabled logs for my Key Vaults, why am I still unable to see my data under Operations & Latench?
+### I have already enabled logs for my Key Vaults, why am I still unable to see my data under Operations & Latency?
 
 Currently, diagnostic logs do not work retroactively, so the data will only start appearing once there have been actions taken to your key vaults. Therefore, it may take some time, ranging from hours to a day, depending on how active your key vault is.
 
