@@ -3,6 +3,9 @@
 ## Use the smallest possible time ranges by default
 The longer the time ranges, the slower the queries, and the more data returned. For longer time ranges, the query might have to go to slower "cold" storage, making the query even slower. Default to the shortest useful time range, but allow the user to pick a larger time range that may be slower.
 
+## Use "All" special value in dropdowns.
+The dropdown parameter settings includes the ability to [add an "All" special item](../Parameters/DropDown.md#special-casing-all) to parameter dropdowns.  it also includes another setting to use a special value. Using an "All" special item correctly can dramatically simplify queries.
+
 ## Protect against columns that might not exist
 If you are using custom table or custom columns, you should generally author your templates so that they work if the column is missing in a workspace.
 
