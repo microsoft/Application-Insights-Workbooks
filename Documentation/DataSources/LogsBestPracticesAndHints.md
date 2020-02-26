@@ -9,11 +9,11 @@ If you are using custom table or custom columns, you should generally author you
 See the [column_ifexists](https://docs.microsoft.com/en-us/azure/kusto/query/columnifexists) function.
 
 ## Protect against a table that might not exist
-If your template is installed as part of a solution, or other case where the tables are guaranteed to exist, this is unecessary, but if you are creating generic templates that might be visible on any resource or workspace, it is a good idea to protect for tables that don't exist.
+If your template is installed as part of a solution, or other case where the tables are guaranteed to exist, this is unnecessary, but if you are creating generic templates that might be visible on any resource or workspace, it is a good idea to protect for tables that don't exist.
 
 The log analytics query language does not have a `table_ifexists` function like exists for testing for columns. 
 
-However, there are some ways to do it, tone of the simplest being a "[fuzzy union](https://docs.microsoft.com/en-us/azure/kusto/query/unionoperator?pivots=azuredataexplorer)".  When doing a union, you can use the `isfuzzy=true` setting to let the union continue if some of the tables do not exist.  You can take advantage of this by adding a parameter query in your workbook that checks for existance of the table, and hides other content if it does not.  A subtle bonus here is that items that are not visible are not run, so other query steps in the workbook that could fail if the table does not exist would not run until after the test verifies their existance, avoiding unecessary failed queries.
+However, there are some ways to do it, one of the simplest being a "[fuzzy union](https://docs.microsoft.com/en-us/azure/kusto/query/unionoperator?pivots=azuredataexplorer)".  When doing a union, you can use the `isfuzzy=true` setting to let the union continue if some of the tables do not exist.  You can take advantage of this by adding a parameter query in your workbook that checks for existence of the table, and hides other content if it does not.  A subtle bonus here is that items that are not visible are not run, so other query steps in the workbook that could fail if the table does not exist would not run until after the test verifies their existence, avoiding unnecessary failed queries.
 
 for example:
 
@@ -23,7 +23,7 @@ union isfuzzy=true MissingTable, (AzureDiagnostics | getschema | summarize c=cou
 | top 1 by isMissing asc
 ```
 
-This query will return `1` if the `AzureDiagnostics` table doesn't exist in the workspace. If the real table doesn't exist, the "fake" row of the MissingTable will be returned. If any columns exist in the schema for the `AzureDiagnostics` table, a `0` will be returned.  You could use this as a parameter value, and [conditionally hide](../Interactivity.md#conditional-visibility) your query steps unless the parameter value is 0.  You could also use the optional conditional visibility to show a text step to say that the current workspace does not hve the missing table, and send the user to documentation on how to onboard.
+This query will return `1` if the `AzureDiagnostics` table doesn't exist in the workspace. If the real table doesn't exist, the "fake" row of the MissingTable will be returned. If any columns exist in the schema for the `AzureDiagnostics` table, a `0` will be returned.  You could use this as a parameter value, and [conditionally hide](../Interactivity.md#conditional-visibility) your query steps unless the parameter value is 0.  You could also use the optional conditional visibility to show a text step to say that the current workspace does not have the missing table, and send the user to documentation on how to onboard.
 
 Instead of hiding steps, you may just want to have no rows as a result.  In that case, you can change the `MissingTable` to be an empty datatable with the appropriate matching schema:
 
