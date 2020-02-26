@@ -145,7 +145,7 @@ Map can be visualized if the underlying data/metrics has Latitude/Longitude info
 | `Opacity of items on Map` | This field specifies how transparent are the items shown on the map. Opacity of 1 means, no transparency, where opacity of 0 means, items won't be visible on the map. If there are too many items on the map, opacity can be set to low value so that all the overlapping items are visible.|
 
 
-## Color Settings
+### Color Settings
 
 | Coloring Type | Explanation |
 |:------------- |:-------------|
@@ -154,7 +154,7 @@ Map can be visualized if the underlying data/metrics has Latitude/Longitude info
 | `Heatmap` | In this type, the cells are colored based on the color palette and Color by field. This will also have same **Color by** and **Aggregation for color** options as in the case of thresholds. |
 
 
-## Metric Settings
+### Metric Settings
 | Setting | Explanation |
 |:------------- |:-------------|
 | `Metric Label` | This option will be visible if Location Info field value is: Latitude/Longitude. Using this feature, user can pick the label to show for metrics shown below the map. |
