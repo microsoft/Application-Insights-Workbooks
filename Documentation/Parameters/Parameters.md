@@ -56,11 +56,29 @@ This is how the workbook will look like in read-mode, in the "Pills" style.
 3. Choose _Done Editing_
 4. The text control will show text: _The chosen time range is Last 24 hours_
 
-## Parameter options
+## Parameter formatting
 The _In Text_ section used the `label` of the parameter instead of its value. Parameters expose various such options depending on its type - e.g. time range pickers allow value, label, query, start, end and grain.
 
 Use the `Previews` section of the _Edit Parameter_ pane to see the expansion options for your parameter:
 
 ![Image showing a time range parameter options](../Images/Parameters-Time-Previews.png)
 
+For more specific examples of formatting times, see [Time formatting](./Time.md#Time-parameter-options)
 
+## Formatting parameters using JSONPath
+For string parameters that are json content, you can use a [JSONPath format](../Transformations/JSONPath.md) in the parameter format string.
+
+For example, you may have a string parameter named `selection` that was the result of a query or selection in a visualization that has the following value
+```json 
+{ "series":"Failures", "x": 5, "y": 10 }
+```
+
+Using JSONPath, you could get individual values from that object:
+
+format | result
+---|---
+`{selection:$.series}` | `Failures`
+`{selection:$.x}` | `5`
+`{selection:$.y}`| `10`
+
+*Note:* If the parameter value is not valid json, the result of the format will be an empty value.
