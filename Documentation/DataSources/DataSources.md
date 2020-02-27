@@ -131,7 +131,7 @@ Workbooks support a variety of merge flavors:
 
 Here is a tutorial on using the merge control to combine Azure Resource Graph and Log Analytics data:
 
-[![Combining data from different sources in workbooks](http://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
+[![Combining data from different sources in workbooks](https://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
 
 ### Merge examples
 [Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
