@@ -115,11 +115,7 @@ Resulting grid will look similar to below:
 ## Advanced Cell Settings <a id="Advanced"></a>
 To mirror View Designer, some common steps such as changing the size of Workbook cells or adding pins and external links to logs might be utilized.
 
-To access Advanced Settings select the gear icon at the bottom of each cell
-
-![Advanced Settings](./Examples/AdvSet.png)
-
-This will bring up a menu with various options
+To access Advanced Settings, use the advanced settings tab in edit mode, which will contain additional settings.
 
 ![Advanced Settings Settings](./Examples/AdvSetSettings.png)
 
@@ -127,7 +123,7 @@ To add a pin and a link to an external query simply select the corresponding che
 
 To add a title to your cell, simply type the desired title into the **Chart title** section.
 
-By default any Workbooks cell is set to take up the entire page width, but users can adjust this by scaling the cell down, by clicking under the **Style** tab of the Advanced Settings menu
+By default any Workbooks cell is set to take up the entire page width, but users can adjust this by scaling the cell down, by clicking under the **Style** tab in edit mode.
 
 ![Advanced Settings Style](./Examples/AdvSetStyle.png)
 

@@ -19,7 +19,7 @@ There are times where you want to visualize the underlying data set in different
     4. Click the `Run Query` button to see the results. This is the result data set that we want to reuse in multiple visualizations.
 
         ![Image showing a result of a query](../Images/Reuse-data-resultset.png)
-    5. Go to `Advanced settings` (click the gear icon at the footer of the control):
+    5. Go to the `Advanced settings` tab:
         1. Step name: `Cpu data` - this gives a friendly name for referencing the data later. 
 
 

@@ -20,7 +20,7 @@ Workbooks support these data sources:
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
 
 ## Logs
-Workbooks support getting analytics logs data. Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
+Workbooks support querying logs data using the [Kusto Query Language (KQL)](https://docs.microsoft.com/en-us/azure/kusto/query/). Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
 
 Workbooks allows querying logs from these sources:
 1.	Log Analytics Workspace (LA)
@@ -34,6 +34,8 @@ Workbook authors can use KQL queries that transform the underlying resource data
 Authors can also have their queries target more than one resources to get very powerful unions and joins across components. For instance, you can union virtual machine performance summaries from two different Log Analytics workspaces in a workbook. 
 
 This ability to make arbitrary queries using KQL, along with the visualization and customization capabilities of workbooks provides authors with a powerful toolset for building rich reports and experiences for data analysis. 
+
+[See also: best practices and hints for logs queries](LogsBestPracticesAndHints.md)
 
 [Tutorial: Making resource centric log queries in workbooks](ResourceCentricLogs.md)
 
@@ -129,7 +131,7 @@ Workbooks support a variety of merge flavors:
 
 Here is a tutorial on using the merge control to combine Azure Resource Graph and Log Analytics data:
 
-[![Combining data from different sources in workbooks](http://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
+[![Combining data from different sources in workbooks](https://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
 
 ### Merge examples
 [Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)

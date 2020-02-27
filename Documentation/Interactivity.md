@@ -23,7 +23,7 @@ For instance, a user can have a grid that shows a list of requests and some stat
     | order by AllRequests desc    
     ```
 5. `Run query` to see the results
-6. Click on the _Advanced Settings_ icon on the query footer (the icon looks like a gear). This opens up the advanced settings pane 
+6. Click on the _Advanced Settings_ tab to see the advanced settings pane 
 7. Check the setting: `When an items are selected, export parameters`
 8. Click "Add Parameter".  in the popup that appears, enter:
     1. Field to export: `Request`
@@ -108,7 +108,7 @@ Workbook allows users to make certain controls appear or disappear based on valu
     5. JSON Input: `["Yes", "No"]`
     6. Save to commit changes.
 3. Set parameter value to `Yes`
-4. In the query control with the area chart, click the _Advanced Settings_ icon (gear icon)
+4. In the query control with the area chart, click the _Advanced Settings_ tab
 5. Check the setting `Make this item conditionally visible`, and select "Add Condition".
     1. Set the settings to `ShowDetails` for the parameter name,  `equals` for the comparison, and `Yes` for parameter value
     ![image showing conditional visiblity settings](Images/ConditionalVisibility.png)
