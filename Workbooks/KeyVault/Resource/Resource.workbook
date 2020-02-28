@@ -5,6 +5,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
         "parameters": [
           {
             "id": "65f81355-b707-45be-b7e1-f8450b537da4",
@@ -73,11 +76,73 @@
             "timeContextFromParameter": "TimeRange",
             "queryType": 0,
             "resourceType": "microsoft.keyvault/vaults"
+          },
+          {
+            "id": "5148ddec-5184-4fc2-aa3a-78797fd2c97c",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "query": "Resources\r\n| where type =~ 'microsoft.keyvault/vaults'\r\n| summarize by subscriptionId\r\n| union (Resources\r\n| where type =~ 'microsoft.keyvault/vaults'\r\n| summarize Count = count() by subscriptionId\r\n| top 1 by Count desc)\r\n| summarize Count = count() by subscriptionId\r\n| project value = subscriptionId, label = subscriptionId, selected = Count > 1",
+            "crossComponentResources": [
+              "value::selected"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "667d8ad3-370d-4f4d-932f-ea741a47246f",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceGroups",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "where type in~('microsoft.keyvault/vaults')\r\n| summarize Count = count() by resourceGroup\r\n| order by Count desc\r\n| extend Rank = row_number()\r\n| project value = resourceGroup, label = resourceGroup, selected = Rank == 1",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "6e52c4a4-5930-4742-b0f3-9462ec5d76a8",
+            "version": "KqlParameterItem/1.0",
+            "name": "Vaults",
+            "type": 5,
+            "isRequired": true,
+            "query": "Resources\r\n| where type =~ 'microsoft.keyvault/vaults' and resourceGroup in~({ResourceGroups}) \r\n| project name, id\r\n| union (Resources\r\n| where type =~ 'microsoft.keyvault/vaults' and resourceGroup in~({ResourceGroups}) \r\n| order by name asc\r\n| take 5\r\n| project id, name)\r\n| summarize Count = count() by id, name\r\n| order by name asc\r\n| project value = id, label = id, selected = Count > 1",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "above",
-        "queryType": 0,
-        "resourceType": "microsoft.keyvault/vaults"
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
       },
       "name": "KeyVault-Parameters"
     },
@@ -99,17 +164,16 @@
         "version": "KqlItem/1.0",
         "query": "let rawData = AzureDiagnostics \n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\n| where OperationName in ({Operations}) or '*' in ({Operations})\n// Create ResultStatus with all the 'success' results bucked as 'Success'\n// Certain operations like StorageAccountAutoSyncKey have no ResultSignature, for now set to 'Success' as well\n| extend ResultStatus = case ( ResultSignature == \"\", \"Success\",\n                               ResultSignature == \"OK\", \"Success\",\n                               ResultSignature == \"Accepted\", \"Success\",\n                               ResultSignature);                            \nrawData \n| make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ResultStatus\n| join kind = inner (rawData\n    | summarize Count = count() by ResultStatus\n    ) on ResultStatus\n| union (rawData\n| summarize Count = count()\n| extend jkey = 1\n| join kind=inner (rawData\n    | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\n    | extend jkey = 1 \n    ) on jkey\n    | extend ResultStatus = 'All'\n)\n| project ResultStatus, Count, Trend\n| order by Count desc;",
         "size": 3,
-        "exportFieldName": "ResultStatus",
-        "exportParameterName": "ResultStatus",
-        "exportDefaultValue": "All",
         "showAnalytics": true,
-        "showExportToExcel": true,
-        "exportToExcelOptions": "visible",
         "title": "Operations by Result Status",
         "timeContext": {
           "durationMs": 0
         },
         "timeContextFromParameter": "TimeRange",
+        "exportFieldName": "ResultStatus",
+        "exportParameterName": "ResultStatus",
+        "exportDefaultValue": "All",
+        "showExportToExcel": true,
         "queryType": 0,
         "resourceType": "microsoft.keyvault/vaults",
         "visualization": "tiles",
@@ -209,12 +273,11 @@
         "version": "KqlItem/1.0",
         "query": "let data = AzureDiagnostics \r\n| where TimeGenerated {TimeRange}\r\n// Ignore Authentication operations with a 401. This is normal when using Key Vault SDK, first an unauthenticated request is done then the response is used for authentication.\r\n| where Category==\"AuditEvent\" and not (OperationName == \"Authentication\" and httpStatusCode_d == 401)\r\n| where OperationName in ({Operations}) or '*' in ({Operations})\r\n// Create ResultStatus with all the 'success' results bucked as 'Success'\r\n// Certain operations like StorageAccountAutoSyncKey have no ResultSignature, for now set to 'Success' as well\r\n| extend ResultStatus = case ( ResultSignature == \"\", \"Success\",\r\n                               ResultSignature == \"OK\", \"Success\",\r\n                               ResultSignature == \"Accepted\", \"Success\",\r\n                               ResultSignature)\r\n| where ResultStatus == '{ResultStatus}' or '{ResultStatus}' == 'All';\r\ndata\r\n// Data aggregated to the OperationName\r\n| summarize OperationCount = count(), SuccessCount = countif(ResultStatus == \"Success\"), FailureCount = countif(ResultStatus != \"Success\"), PDurationMs = percentile(DurationMs, 99) by Resource, OperationName\r\n| join kind=inner (data\r\n  | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by OperationName\r\n  | project-away TimeGenerated) on OperationName\r\n| order by OperationCount desc\r\n| project Name = strcat('⚡ ', OperationName), Id = strcat(Resource, '/', OperationName), ['Operation count'] = OperationCount, ['Operation count trend'] = Trend, ['Success count'] = SuccessCount, ['Failure count'] = FailureCount, ['p99 Duration'] = PDurationMs",
         "size": 1,
+        "showAnalytics": true,
         "exportFieldName": "",
         "exportParameterName": "GridRow",
         "exportDefaultValue": "{ \"Id\":\"*\" }",
-        "showAnalytics": true,
         "showExportToExcel": true,
-        "exportToExcelOptions": "visible",
         "queryType": 0,
         "resourceType": "microsoft.keyvault/vaults",
         "gridSettings": {
@@ -359,37 +422,7 @@
             }
           ],
           "rowLimit": 1000,
-          "filter": true,
-          "labelSettings": [
-            {
-              "columnId": "Name",
-              "label": "Name"
-            },
-            {
-              "columnId": "Id",
-              "label": "Id"
-            },
-            {
-              "columnId": "Operation count",
-              "label": "Operation count"
-            },
-            {
-              "columnId": "Operation count trend",
-              "label": "Operation count trend"
-            },
-            {
-              "columnId": "Success count",
-              "label": "Success count"
-            },
-            {
-              "columnId": "Failure count",
-              "label": "Failure count"
-            },
-            {
-              "columnId": "p99 Duration",
-              "label": "p99 Duration"
-            }
-          ]
+          "filter": true
         }
       },
       "conditionalVisibility": {
@@ -407,7 +440,6 @@
         "size": 0,
         "showAnalytics": true,
         "showExportToExcel": true,
-        "exportToExcelOptions": "visible",
         "queryType": 0,
         "resourceType": "microsoft.keyvault/vaults",
         "gridSettings": {
@@ -513,29 +545,7 @@
               }
             }
           ],
-          "filter": true,
-          "labelSettings": [
-            {
-              "columnId": "Time",
-              "label": "Time"
-            },
-            {
-              "columnId": "Operation",
-              "label": "Operation"
-            },
-            {
-              "columnId": "Result",
-              "label": "Result"
-            },
-            {
-              "columnId": "Duration",
-              "label": "Duration"
-            },
-            {
-              "columnId": "Details",
-              "label": "Details"
-            }
-          ]
+          "filter": true
         }
       },
       "conditionalVisibility": {
@@ -546,6 +556,5 @@
       "name": "KeyVault-EventsTable"
     }
   ],
-  "styleSettings": {},
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
