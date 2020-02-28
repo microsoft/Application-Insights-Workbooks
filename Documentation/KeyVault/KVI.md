@@ -5,8 +5,9 @@ This article will help you understand how to onboard and customize the experienc
 ## Introduction to Azure Monitor for Key Vaults (preview)
 
 Before jumping into the experience, you should understand how it presents and visualizes information.
--	At scale perspective showing a snapshot view of their performance based on the requests, breakdown of failures, and an overview of the operations and latency.
--	Customizable where you can change which metrics you want to see, modify or set thresholds that align with your limits, and save your own workbook. Charts in the workbook can be pinned to Azure dashboard
+-	**At scale perspective** showing a snapshot view of their performance based on the requests, breakdown of failures, and an overview of the operations and latency.
+-   **Drill down analysis** of a particular key vault to perform detailed analysis 
+-	**Customizable** where you can change which metrics you want to see, modify or set thresholds that align with your limits, and save your own workbook. Charts in the workbook can be pinned to Azure dashboard
 
 
 Azure Monitor for Key Vaults combines both logs and metrics to provide a global monitoring solution. All users can access the metrics based monitoring data, however the inclusion of logs based visualizations may require users to [enabling logging of their Azure Key Vaults](https://docs.microsoft.com/azure/key-vault/key-vault-logging).
@@ -65,6 +66,21 @@ You can see how many of your key vaults are enabled for the logging process. If 
 ![](./Images/Logs.png)
 
 If you are not seeing any data for this section, reference the top section on how to enable logs for Azure Key Vault, or check the troubleshooting section below.
+
+## At resource Workbook
+To access Azure Monitor for Key Vaults, select any of the key vault links shown in the view from Azure Monitor.
+
+![](./Images/ResourceLevel.png)
+
+### At Resource Overview
+
+This opens up up a separate workbook providing a resource level view for that specific key vault.
+
+![](./Images/ResourceView.png)
+
+- This view provides a set of summary tiles that capture the Key Vault Availability, Request Counts, and average latency.
+
+- Individual charts showing the most essential details related to vault availability, transactions, and latency
  
 ## Pin and export
 
