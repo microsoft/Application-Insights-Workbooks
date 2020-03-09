@@ -1,0 +1,1 @@
+npm publish ..\output\package --dry-run 
