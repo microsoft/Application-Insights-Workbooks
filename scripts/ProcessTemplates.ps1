@@ -738,16 +738,18 @@ Function SyncWithEnUs() {
     # in the source path, and make sure they exist in the specific language's path
     foreach ($reportType in $reportTypes) {
         $created = 0;
-        Write-Host "INFO: Syncing $lang with en-us from '$sourcePath\$reportType' to '$sourcePath\scripts\$lang\$reporttype'"
-        $files = Get-ChildItem "$sourcePath\$reporttype" -Recurse -file -Include "categoryresources.json", "*.workbook", "*.cohort", "settings.json", "*.svg"
+        $reportPath = Join-Path -Path $sourcePath -ChildPath $reportType
+        $langPath = Join-Path -Path $sourcePath -ChildPath "scripts\$lang\$reporttype"
+        Write-Host "INFO: Syncing $lang with en-us from '$reportPath' to '$langPath'"
+        $files = Get-ChildItem $reportPath -Recurse -file -Include "categoryresources.json", "*.workbook", "*.cohort", "settings.json", "*.svg"
         if ($files.Count -eq 0) {
-            throw "SyncWithEnUs didn't find any files to copy from '$sourcePath\$reportType' to '$sourcePath\scripts\$lang\$reporttype'"
+            throw "SyncWithEnUs didn't find any files to copy from '$reportPath' to '$langPath'"
         }
         foreach ($file in $files) {
             $fullpath = $file.FullName
-            $scriptpath = $fullpath.Replace("$sourcePath\$reporttype", "$sourcePath\scripts\$lang\$reporttype")
+            $scriptpath = $fullpath.Replace($reportPath, $langPath)
             if ($scriptpath -eq $fullpath) {
-                throw "ERROR: $fullpath.Replace('$sourcePath\$reporttype', '$sourcePath\scripts\$lang\$reporttype') replaced nothing!"
+                throw "ERROR: $fullpath.Replace('$reportPath', '$langPath') replaced nothing!"
             }
             #if (![System.IO.File]::Exists($scriptpath)) {
             if ($false -eq (Test-Path -Path $scriptPath -PathType leaf)) {
