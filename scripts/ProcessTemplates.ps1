@@ -2,8 +2,7 @@ $mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
 $localizeRoot = Convert-Path "$mainPath\scripts"
 $outputPath = "$mainPath\output"
 
-#$reportTypes = @('Cohorts', 'Workbooks')
-$reportTypes = @('Cohorts')
+$reportTypes = @('Cohorts', 'Workbooks')
 $templateExtensions = @('cohort', 'workbook')
 $defaultLanguage = 'en-us'
 $payload = @{ }
@@ -760,8 +759,6 @@ Function SyncWithEnUs() {
                 }
                 Copy-Item -Path $fullPath -Destination $scriptpath
                 $created++
-            } else {
-                Write-Host "INFO: exists: '$scriptpath'";
             }
         }
         Write-Host "INFO: $lang - copied $created missing files of $($files.Count) for $reportType"
@@ -825,7 +822,7 @@ foreach ($lang in $supportedLanguages) {
     Write-Host "...OutputFile: $jsonFileName"
 
     # OLD-WAY for ALM Service: build the old template content
-    # BuildingTemplateJson $jsonFileName $lang $outputPath
+    BuildingTemplateJson $jsonFileName $lang $outputPath
 
     # NEW-WAY make content for npm package
     CreatePackageContent $lang $outputPath
