@@ -2,7 +2,8 @@ $mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
 $localizeRoot = Convert-Path "$mainPath\scripts"
 $outputPath = "$mainPath\output"
 
-$reportTypes = @('Cohorts', 'Workbooks')
+#$reportTypes = @('Cohorts', 'Workbooks')
+$reportTypes = @('Cohorts')
 $templateExtensions = @('cohort', 'workbook')
 $defaultLanguage = 'en-us'
 $payload = @{ }
@@ -299,7 +300,7 @@ Function BuildingTemplateJson() {
 
     
                 $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
-                if (![System.IO.File]::Exists($categorySettingsPath)) {
+                if ($false -eq (Test-Path -Path $categorySettingsPath -PathType Leaf)) {
                     # need to use the default language one, why didn't this get copied?
                 }
 
@@ -737,27 +738,28 @@ Function SyncWithEnUs() {
     # in the source path, and make sure they exist in the specific language's path
     foreach ($reportType in $reportTypes) {
         $created = 0;
-        $total = 0
         Write-Host "INFO: Syncing $lang with en-us from '$sourcePath\$reportType' to '$sourcePath\scripts\$lang\$reporttype'"
         $files = Get-ChildItem "$sourcePath\$reporttype" -Recurse -file -Include "categoryresources.json", "*.workbook", "*.cohort", "settings.json", "*.svg"
         if ($files.Count -eq 0) {
             throw "SyncWithEnUs didn't find any files to copy from '$sourcePath\$reportType' to '$sourcePath\scripts\$lang\$reporttype'"
         }
-        $total += $files.Count
         foreach ($file in $files) {
             $fullpath = $file.FullName
             $scriptpath = $fullpath.Replace("$sourcePath\$reporttype", "$sourcePath\scripts\$lang\$reporttype")
-            if (![System.IO.File]::Exists($scriptpath)) {
+            #if (![System.IO.File]::Exists($scriptpath)) {
+            if ($false -eq (Test-Path -Path $scriptPath -PathType leaf)) {
                 Write-Host "INFO: copying missing file $fullPath to $scriptpath"
                 # use newitem force to create the full path structure if it doesn't exist
                 if (!(Test-Path (Split-Path -Path $scriptpath))) {
-                    New-Item -ItemType File -Path $scriptpath -Force | Out-null
+                    New-Item -ItemType File -Path $scriptpath -Force
                 }
                 Copy-Item -Path $fullPath -Destination $scriptpath
                 $created++
+            } else {
+                Write-Host "INFO: exists: '$scriptpath'";
             }
         }
-        Write-Host "INFO: $lang - copied $created missing files of $total for $reportType"
+        Write-Host "INFO: $lang - copied $created missing files of $($files.Count) for $reportType"
     }
 
 }
