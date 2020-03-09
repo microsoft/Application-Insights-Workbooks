@@ -746,6 +746,9 @@ Function SyncWithEnUs() {
         foreach ($file in $files) {
             $fullpath = $file.FullName
             $scriptpath = $fullpath.Replace("$sourcePath\$reporttype", "$sourcePath\scripts\$lang\$reporttype")
+            if ($scriptpath -eq $fullpath) {
+                throw "ERROR: $fullpath.Replace('$sourcePath\$reporttype', '$sourcePath\scripts\$lang\$reporttype') replaced nothing!"
+            }
             #if (![System.IO.File]::Exists($scriptpath)) {
             if ($false -eq (Test-Path -Path $scriptPath -PathType leaf)) {
                 Write-Host "INFO: copying missing file $fullPath to $scriptpath"
