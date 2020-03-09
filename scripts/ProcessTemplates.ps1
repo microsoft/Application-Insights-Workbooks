@@ -214,7 +214,7 @@ function Copy-Object {
 # CloneAndPullLocalizedRepos
 #----------------------------------------------------------------------------
 Function CloneAndPullLocalizedRepos {
-    # repros will be downloaded to .\scripts folder
+    # repos will be downloaded to .\scripts folder
     # to make this run like pipeline build, we'll only clone the repo and not due a pul
     # for testing, delete the repos each time
     $rootPath = $localizeRoot
@@ -225,14 +225,12 @@ Function CloneAndPullLocalizedRepos {
             continue;
         }
         $repoName = "$repoBaseName.$lang"
-        $repoPath = "$rootPath\$repoName"
-        if (Test-Path $lang) {
-            Write-Host "Repo exist on disk, skipping $repoPath ..."
-            #Set-Location -Path $repoPath
-            #git pull
+        $repoPath = "$rootPath\$lang"
+        if (Test-Path $repoPath) {
+            Write-Host "Repo exist on disk, skipping $repoName ..."
         } else {
-            Write-Host "Cloning $docGitServer$repoName.git at $lang ..."
-            git clone --single-branch --branch master --no-tags "$docGitServer$repoName.git" $lang
+            Write-Host "Cloning $docGitServer$repoName.git at $repoPath ..."
+            git clone --single-branch --branch master --no-tags "$docGitServer$repoName.git" $repoPath
         }
     }
     Pop-Location
