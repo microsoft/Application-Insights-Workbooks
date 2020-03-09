@@ -719,7 +719,7 @@ Function CreatePackageContent() {
             $allCategories | ConvertTo-Json -depth 2 -Compress | Out-File -FilePath $categoryFileName -Force
         }
 
-        Write-Host "... DONE building gallery: $galleryFileName $reporttype "
+        Write-Host "... DONE building gallery: $reporttype "
     }
 }
 
@@ -732,18 +732,23 @@ Function SyncWithEnUs() {
         [string] $lang
         )
 
+
     # find all the important files: **/categoryResources.json, *.workbook, *.cohort, **/settings.json, and any svg images
     # in the source path, and make sure they exist in the specific language's path
-    $created = 0;
-    $total = 0
     foreach ($reportType in $reportTypes) {
+        $created = 0;
+        $total = 0
+        Write-Host "INFO: Syncing $lang with en-us from '$sourcePath\$reportType' to '$sourcePath\scripts\$lang\$reporttype'"
         $files = Get-ChildItem "$sourcePath\$reporttype" -Recurse -file -Include "categoryresources.json", "*.workbook", "*.cohort", "settings.json", "*.svg"
+        if ($files.Count -eq 0) {
+            throw "SyncWithEnUs didn't find any files to copy from '$sourcePath\$reportType' to '$sourcePath\scripts\$lang\$reporttype'"
+        }
         $total += $files.Count
         foreach ($file in $files) {
             $fullpath = $file.FullName
             $scriptpath = $fullpath.Replace("$sourcePath\$reporttype", "$sourcePath\scripts\$lang\$reporttype")
             if (![System.IO.File]::Exists($scriptpath)) {
-                Write-Host "[#WARNING: missing File]: copying file $fullPath to $scriptpath"
+                Write-Host "INFO: copying missing file $fullPath to $scriptpath"
                 # use newitem force to create the full path structure if it doesn't exist
                 if (!(Test-Path (Split-Path -Path $scriptpath))) {
                     New-Item -ItemType File -Path $scriptpath -Force | Out-null
@@ -752,11 +757,9 @@ Function SyncWithEnUs() {
                 $created++
             }
         }
+        Write-Host "INFO: $lang - copied $created missing files of $total for $reportType"
     }
 
-    if ($created -ne 0) {
-        Write-Host "WARNING: $lang - copied $created missing files of $total"
-    }
 }
 
 #----------------------------------------------------------------------------
@@ -815,7 +818,7 @@ foreach ($lang in $supportedLanguages) {
     Write-Host "...OutputFile: $jsonFileName"
 
     # OLD-WAY for ALM Service: build the old template content
-    BuildingTemplateJson $jsonFileName $lang $outputPath
+    # BuildingTemplateJson $jsonFileName $lang $outputPath
 
     # NEW-WAY make content for npm package
     CreatePackageContent $lang $outputPath
