@@ -1,6 +1,6 @@
 cd /D "%~dp0"
 dir
-# grab only the master branch, no tags, simplest possible clone of the repos
+REM grab only the master branch, no tags, simplest possible clone of the repos
 git clone --single-branch --branch master --no-tags https://github.com/MicrosoftDocs/Application-Insights-Workbooks.cs-cz.git cs-cz
 git clone --single-branch --branch master --no-tags https://github.com/MicrosoftDocs/Application-Insights-Workbooks.es-es.git es-es
 git clone --single-branch --branch master --no-tags https://github.com/MicrosoftDocs/Application-Insights-Workbooks.de-de.git de-de
