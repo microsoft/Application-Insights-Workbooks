@@ -140,8 +140,6 @@ Function AddVirtualCategories() {
         [string] $language
     )
 
-    Write-Host "Adding virtual caregories from $categoriesMetadataFilepath"
-
     $virtualCategoriesSettings = Get-Content $categoriesMetadataFilePath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
     foreach ($virtualCategory in $virtualCategoriesSettings.categories) {
@@ -299,10 +297,6 @@ Function BuildingTemplateJson() {
 
     
                 $categorySettingsPath = Join-Path $category.FullName $categoryMetadataFileName 
-                if ($false -eq (Test-Path -Path $categorySettingsPath -PathType Leaf)) {
-                    # need to use the default language one, why didn't this get copied?
-                }
-
                 $categorySettings = Get-Content $categorySettingsPath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
                 AddCategory $categoryName ($payload.$reportType) $categorySettings $lang
@@ -323,7 +317,7 @@ Function BuildingTemplateJson() {
                         #Then look at any subfolders which correspond to localized data
                         foreach ($templateSubfolders in $templateFiles) {
 
-                            if ($templateSubfolders -is [System.IO.DirectoryInfo]) {                            
+                            if ($templateSubfolders -is [System.IO.DirectoryInfo]) {
                                 $templateMetadata.TemplateByLanguage.($templateSubfolders.name) = GetTemplateContainerData $templateSubfolders.FullName $language
                             }
                         }
@@ -582,7 +576,7 @@ Function CreatePackageContent() {
         # 1) categoryresources.json - to create virtual galleries
         # 2) settings.json, to find all the workbooks and what galleries they are in
 
-        $categories = Get-ChildItem "$currentPath\$reporttype" -Recurse -file -Include "categoryresources.json"
+        $categories = Get-ChildItem "$currentPath\$reporttype" -Recurse -file -Include $categoryMetadataFileName
         foreach ($categoryFile in $categories) {
             $categoryMetadatas = LoadCategoriesJson $categoryFile $language
             if ($null -eq $categoryMetadatas -or 0 -eq $categoryMetadatas.Count) {
@@ -669,7 +663,7 @@ Function CreatePackageContent() {
                             $existingCategory.order = $categoryInfo.order
                         } else {
                             # shouldn't really be possible based on the work before here, but just in case
-                            Write-Host "ERROR: $($categoryKey) from $($settingFile.FullName) is missing categoryResources.json metadata"
+                            Write-Host "ERROR: $($categoryKey) from $($settingFile.FullName) is missing $categoryMetadataFileName metadata"
                             $existingCategory.name = $categoryKey
                         }
                         $existingGallery.$($categoryKey) = $existingCategory
@@ -732,7 +726,6 @@ Function SyncWithEnUs() {
         [string] $lang
         )
 
-
     # find all the important files: **/categoryResources.json, *.workbook, *.cohort, **/settings.json, and any svg images
     # in the source path, and make sure they exist in the specific language's path
     foreach ($reportType in $reportTypes) {
@@ -740,7 +733,7 @@ Function SyncWithEnUs() {
         $reportPath = Join-Path -Path $sourcePath -ChildPath $reportType
         $langPath = Join-Path -Path $sourcePath -ChildPath "scripts\$lang\$reporttype"
         Write-Host "INFO: Syncing $lang with en-us from '$reportPath' to '$langPath'"
-        $files = Get-ChildItem $reportPath -Recurse -file -Include "categoryresources.json", "*.workbook", "*.cohort", "settings.json", "*.svg"
+        $files = Get-ChildItem $reportPath -Recurse -file -Include $categoryMetadataFileName, "*.workbook", "*.cohort", "settings.json", "*.svg"
         if ($files.Count -eq 0) {
             throw "SyncWithEnUs didn't find any files to copy from '$reportPath' to '$langPath'"
         }
@@ -750,12 +743,12 @@ Function SyncWithEnUs() {
             if ($scriptpath -eq $fullpath) {
                 throw "ERROR: $fullpath.Replace('$reportPath', '$langPath') replaced nothing!"
             }
-            #if (![System.IO.File]::Exists($scriptpath)) {
+
             if ($false -eq (Test-Path -Path $scriptPath -PathType leaf)) {
                 Write-Host "INFO: copying missing file $fullPath to $scriptpath"
                 # use newitem force to create the full path structure if it doesn't exist
                 if (!(Test-Path (Split-Path -Path $scriptpath))) {
-                    New-Item -ItemType File -Path $scriptpath -Force
+                    New-Item -ItemType File -Path $scriptpath -Force | Out-Null
                 }
                 Copy-Item -Path $fullPath -Destination $scriptpath
                 $created++
