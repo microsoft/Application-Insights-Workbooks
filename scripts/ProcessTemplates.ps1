@@ -835,6 +835,6 @@ Pop-Location
 Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
 
 # NEW-WAY: copy package.json into the output/package directory
-Copy-Item -Path $mainPath\package.json -Destination $outputPath\package
+Copy-Item -Path $mainPath\scripts\package.json -Destination $outputPath\package
 
 Write-Host "Done copying artifacts Existing"
