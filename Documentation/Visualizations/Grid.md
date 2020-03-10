@@ -26,8 +26,7 @@ Here is the edit mode version of the log grid above:
 | `Query Type` | The type of query to use | Log, Azure Resource Graph, etc. |
 | `Resource Type` | The resource type to target | Application Insights, Log Analytics, or Azure-first |
 | `Resources` | A set of resources to get the metrics value from | MyApp1 |
-| `Time Range` | The time window to view the log chart | Last hour, Last 24 hours, etc. 
-|
+| `Time Range` | The time window to view the log chart | Last hour, Last 24 hours, etc. |
 | `Visualization` | The visualization to use | Grid |
 | `Size` | The vertical size of the control | Small, medium, large or full |
 | `Query` | Any KQL query that returns data in the format expected by the chart visualization | _requests \| summarize Requests = count() by name_ |
