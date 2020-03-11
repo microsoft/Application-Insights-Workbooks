@@ -1,4 +1,4 @@
 cd /D "%~dp0"
 cd "..\output\package"
-npm pack .
+npm pack . --quiet
 cd /D "%~dp0"
