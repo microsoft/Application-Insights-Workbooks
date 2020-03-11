@@ -526,6 +526,40 @@ Function LoadSettingsJson() {
 }
 
 #----------------------------------------------------------------------------
+# add a given template (settings file) to a given gallery inside a specified category
+#----------------------------------------------------------------------------
+Function AddTemplateToCategory() {
+    param(
+        [object] $gallery,
+        [string] $categoryKey,
+        [object] $categoryInfo,
+        [object] $settingFile,
+        [object] $setting,
+        [int] $order
+    )
+
+    $existingCategory = $gallery.$($categoryKey);
+    if ($null -eq $existingCategory) {
+        $existingCategory = @{};
+        $existingCategory.templates = @();
+        if ($null -ne $categoryInfo) {
+            $existingCategory.name = $categoryInfo.name
+            if (![string]::IsNullOrWhitespace($categoryInfo.description)) {
+                $existingCategory.description = $categoryInfo.description
+            }
+            $existingCategory.order = $categoryInfo.order
+        } else {
+            # shouldn't really be possible based on the work before here, but just in case
+            Write-Host "ERROR: $($categoryKey) from $($settingFile.FullName) is missing $categoryMetadataFileName metadata"
+            $existingCategory.name = $categoryKey
+        }
+        $gallery.$($categoryKey) = $existingCategory
+    }
+
+    $existingCategory.templates += CreateOrderedTemplate $setting $order
+}
+
+#----------------------------------------------------------------------------
 # create the package content for a given language
 # produce an "gallery.json" file that contains all of the templates by type/gallery
 # produce an "index.json" that is a map of every template id to path
@@ -633,7 +667,20 @@ Function CreatePackageContent() {
                 continue;
             }
 
-            if ($null -ne $setting.galleries) {
+            if ($reporttype -eq "Cohorts") {
+                # cohorts don't have "gallery" entries, they're all in the same category based gallery
+                $galleryName = "$($reportType)-microsoft.insights/components"
+                $existingGallery = $fullGallery.$($galleryName)
+                if ($null -eq $existingGallery) {
+                    $existingGallery = @{}
+                    $fullGallery.($galleryName) = $existingGallery
+                }
+
+                $categoryKey = $setting.category
+                $categoryInfo = $allCategories.$($categoryKey)
+
+                AddTemplateToCategory $existingGallery $categoryKey $categoryInfo $settingFile $setting $gallery.order
+            } elseif ($null -ne $setting.galleries) {
                 foreach ($gallery in $setting.galleries) {
                     $galleryName = "$($gallery.type)-$($gallery.resourceType)"
 
@@ -651,25 +698,7 @@ Function CreatePackageContent() {
 
                     $categoryInfo = $allCategories.$($categoryKey);
 
-                    $existingCategory = $existingGallery.$($categoryKey);
-                    if ($null -eq $existingCategory) {
-                        $existingCategory = @{};
-                        $existingCategory.templates = @();
-                        if ($null -ne $categoryInfo) {
-                            $existingCategory.name = $categoryInfo.name
-                            if (![string]::IsNullOrWhitespace($categoryInfo.description)) {
-                                $existingCategory.description = $categoryInfo.description
-                            }
-                            $existingCategory.order = $categoryInfo.order
-                        } else {
-                            # shouldn't really be possible based on the work before here, but just in case
-                            Write-Host "ERROR: $($categoryKey) from $($settingFile.FullName) is missing $categoryMetadataFileName metadata"
-                            $existingCategory.name = $categoryKey
-                        }
-                        $existingGallery.$($categoryKey) = $existingCategory
-                    }
-
-                    $existingCategory.templates += CreateOrderedTemplate $setting $gallery.order
+                    AddTemplateToCategory $existingGallery $categoryKey $categoryInfo $settingFile $setting $gallery.order
                 }
             }
 
