@@ -53,12 +53,14 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 ![A image of a workbook with ARG data](../Images/ArgDataSource.png)
 
-## Alerts
-Workbooks allow users to visualize the active alerts related to their resources. This allows the creation of reports that bring together notification data (alert) and diagnostic information (metrics, logs) into one report. This information can also be joined together to create rich reports that combines insights across these data sources. 
+## Alerts (classic)
+The suggested way to query for Azure Alert information is now by using the Azure Resource Graph data source, by querying the `AlertsManagementResources` table. (See [Azure Resource Graph table reference](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources))
 
-To make a query control use this data source, use the _Data source_ drop down to choose _Alerts_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
+The Alerts data source will remain available for a period of time while authors transition to using ARG, so use of this data source in templates is discouraged.
 
-![A image of a workbook with alert data](../Images/AlertDataSource.png)
+Workbooks allow users to visualize the active alerts related to their resources. Note: the alerts data source requires read access to the Subscription in order to query resources, and may not show newer kinds of alerts. 
+
+To make a query control use this data source, use the _Data source_ drop down to choose _Alerts (preview)_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
 
 ## Custom endpoint (preview)
 Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
