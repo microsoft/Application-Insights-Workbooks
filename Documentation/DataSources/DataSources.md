@@ -7,12 +7,12 @@ Workbooks also allow users to combine data from multiple sources with a single r
 Workbooks support these data sources:
 * [Logs](#logs)
 * [Metrics](#metrics)
-* [Azure Resource Graph](#azure-resource-graph)
+* [Azure Resource Graph](#azure-resource-graph-arg)
 * [Custom Endpoint](#custom-endpoint-preview)
 * [Azure Resource Manager](#azure-resource-manager-preview)
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
-* [Azure Data Explorer](#azure-data-explorer)
+* [Azure Data Explorer](#azure-data-explorer-preview)
 * [JSON](#json)
 * [Alerts](#alerts-preview)
 * Custom Provider
@@ -50,6 +50,8 @@ Azure resources emit metrics that can be accessed via workbooks. Examples of met
 Workbooks supports querying for resources and their metadata using Azure Resource Graph (ARG). This is primarily used to build custom query scopes for reports. The resource scope is expressed via a KQL-subset that ARG supports – which is usually enough the common use cases.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Graph_ and select the subscriptions to target. Use the _Query_ control to add the ARG KQL-subset that selects an interesting resource subset.
+
+The ARG data source allows querying any of [the tables supported by ARG](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources).  If the query does not specify a table, the `Resources` table is presumed by the ARG query service.
 
 ![A image of a workbook with ARG data](../Images/ArgDataSource.png)
 
@@ -106,7 +108,9 @@ To make a query control use this data source, use the _Data source_ drop down to
 ## Azure Data Explorer (preview)
 Workbooks supports querying Azure Data Explorer (ADX).
 
-To make a query control use this data source, use the _Data source_ drop down to choose _Azure Data Explorer_ and enter the ADX cluster and database name.  The database name should be the full https url to the cluster. If not, the cluster is presumed to have a standard name based on the Azure cloud instance. Cluster name and database name support workbook parameters. At the current time, there is no intellisense/completion of table names or column names in the ADX cluster. In order to query the cluster, the current portal user will need read access to that ADX cluster.
+To make a query control use this data source, use the _Data source_ drop down to choose _Azure Data Explorer_ and enter the ADX cluster and database name.  The database name should be the full https url to the cluster. If the cluster name field is not specified as a url, the value is presumed to be a cluster name, and the https and default suffix will be appended for you. (Note that for most ADX clusters, the host name of the cluster is now the name of the cluster and its azure location, like `examplecluster.westus`). Cluster name and database name support workbook parameters. At the current time, there is no intellisense/completion of table names or column names in the ADX cluster. In order to query the cluster, the current portal user will need read access to that ADX cluster.
+
+Note: only query commands are allowed in workbooks.  Control commands (commands starting with a `.`, like `.show`) are not currently permitted in workbooks at this time.
 
 ![A image of a workbook with an Azure Data Explorer query](../Images/AzureDataExplorerDataSource.png)
 
