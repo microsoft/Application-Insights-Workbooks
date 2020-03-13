@@ -53,12 +53,15 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 ![A image of a workbook with ARG data](../Images/ArgDataSource.png)
 
-## Alerts (classic)
-The suggested way to query for Azure Alert information is now by using the Azure Resource Graph data source, by querying the `AlertsManagementResources` table. (See [Azure Resource Graph table reference](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources))
+## Alerts (preview)
+| Note |
+---
+| The suggested way to query for Azure Alert information is by using the Azure Resource Graph data source, by querying the `AlertsManagementResources` table. See [Azure Resource Graph table reference Azure Docs](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources), or the [Alerts template](../../Workbooks/Azure%20Resources/Alerts/Alerts.workbook) for examples. The Alerts data source will remain available for a period of time while authors transition to using ARG. Use of this data source in templates is discouraged. |
 
-The Alerts data source will remain available for a period of time while authors transition to using ARG, so use of this data source in templates is discouraged.
 
-Workbooks allow users to visualize the active alerts related to their resources. Note: the alerts data source requires read access to the Subscription in order to query resources, and may not show newer kinds of alerts. 
+
+Workbooks allow users to visualize the active alerts related to their resources. 
+Limitations: the alerts data source requires read access to the Subscription in order to query resources, and may not show newer kinds of alerts. 
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Alerts (preview)_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
 
