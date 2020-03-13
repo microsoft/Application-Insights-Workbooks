@@ -8,13 +8,13 @@ Workbooks support these data sources:
 * [Logs](#logs)
 * [Metrics](#metrics)
 * [Azure Resource Graph](#azure-resource-graph)
-* [Alerts](#alerts-(preview))
-* [Custom Endpoint](#custom-endpoint-(preview))
-* [Azure Resource Manager](#azure-resource-manager-(preview))
+* [Custom Endpoint](#custom-endpoint-preview)
+* [Azure Resource Manager](#azure-resource-manager-preview)
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
 * [Azure Data Explorer](#azure-data-explorer)
-* JSON
+* [JSON](#json)
+* [Alerts](#alerts-preview)
 * Custom Provider
 
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
@@ -56,9 +56,7 @@ To make a query control use this data source, use the _Data source_ drop down to
 ## Alerts (preview)
 | Note |
 |:---|
-| The suggested way to query for Azure Alert information is by using the Azure Resource Graph data source, by querying the `AlertsManagementResources` table. See [Azure Resource Graph table reference Azure Docs](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources), or the [Alerts template](../../Workbooks/Azure%20Resources/Alerts/Alerts.workbook) for examples. The Alerts data source will remain available for a period of time while authors transition to using ARG. Use of this data source in templates is discouraged. |
-
-
+| The suggested way to query for Azure Alert information is by using the * [Azure Resource Graph](#azure-resource-graph) data source, by querying the `AlertsManagementResources` table. See [Azure Resource Graph table reference Azure Docs](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources), or the [Alerts template](../../Workbooks/Azure%20Resources/Alerts/Alerts.workbook) for examples. The Alerts data source will remain available for a period of time while authors transition to using ARG. Use of this data source in templates is discouraged. |
 
 Workbooks allow users to visualize the active alerts related to their resources. 
 Limitations: the alerts data source requires read access to the Subscription in order to query resources, and may not show newer kinds of alerts. 
@@ -141,3 +139,7 @@ Here is a tutorial on using the merge control to combine Azure Resource Graph an
 ### Merge examples
 [Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
 
+## JSON
+The JSON provider allows you to create a "query" from static JSON content.  Simple JSON arrays or objects will automatically be converted into grid rows and columns.  For more specific behaviors, you can use the Results tab and JSONPath settings to configure columns.
+
+This provider supports [JSON Path](../Transformations/JSONPath).
