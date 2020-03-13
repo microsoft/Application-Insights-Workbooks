@@ -140,6 +140,6 @@ Here is a tutorial on using the merge control to combine Azure Resource Graph an
 [Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
 
 ## JSON
-The JSON provider allows you to create a "query" from static JSON content.  Simple JSON arrays or objects will automatically be converted into grid rows and columns.  For more specific behaviors, you can use the Results tab and JSONPath settings to configure columns.
+The JSON provider allows you to create a query result from static JSON content. It is most commonly used in Parameters to create dropdown parameters of static values. Simple JSON arrays or objects will automatically be converted into grid rows and columns.  For more specific behaviors, you can use the Results tab and JSONPath settings to configure columns.
 
 This provider supports [JSON Path](../Transformations/JSONPath).
