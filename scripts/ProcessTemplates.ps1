@@ -858,5 +858,6 @@ Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destin
 
 # NEW-WAY: copy package.json into the output/package directory
 Copy-Item -Path $mainPath\scripts\package.json -Destination $outputPath\package
+Copy-Item -Path $mainPath\scripts\.npmrc -Destination $outputPath\package
 
 Write-Host "Done copying artifacts Existing"
