@@ -36,7 +36,7 @@ $docGitServer = "https://github.com/MicrosoftDocs/"
 
 # - if "package" is set on the command line, only build the npm package
 # - if "dev" is set on the command line, only build the en-us version of the package (fastest for testing)
-$packageOnly =  -or $args[0] -eq "dev"
+$packageOnly = $false
 if ($args[0] -eq "package") {
     Write-Host "Building only the template package"
     $packageOnly = $true
