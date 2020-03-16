@@ -34,6 +34,18 @@ $supportedLanguages = @(
 )
 $docGitServer = "https://github.com/MicrosoftDocs/"
 
+# - if "package" is set on the command line, only build the npm package
+# - if "dev" is set on the command line, only build the en-us version of the package (fastest for testing)
+$packageOnly =  -or $args[0] -eq "dev"
+if ($args[0] -eq "package") {
+    Write-Host "Building only the template package"
+    $packageOnly = $true
+} elseif ($args[0] -eq "dev") {
+    Write-Host "Building ONLY the dev template package, ONLY for en-us"
+    $supportedLanguages = @( $defaultLanguage )
+    $packageOnly = $true
+}
+
 #----------------------------------------------------------------------------
 # GetTemplateContainerData
 #----------------------------------------------------------------------------
@@ -843,8 +855,10 @@ foreach ($lang in $supportedLanguages) {
     Write-Host "...Directory: $currentPath"
     Write-Host "...OutputFile: $jsonFileName"
 
-    # OLD-WAY for ALM Service: build the old template content
-    BuildingTemplateJson $jsonFileName $lang $outputPath
+    if ($packageOnly -eq $false) {
+        # OLD-WAY for ALM Service: build the old template content
+        BuildingTemplateJson $jsonFileName $lang $outputPath
+    }
 
     # NEW-WAY make content for npm package
     CreatePackageContent $lang $outputPath
@@ -853,8 +867,10 @@ foreach ($lang in $supportedLanguages) {
 # restore default path
 Pop-Location
 
-# OLD-WAY for ALM Service: duplicate json for en-us to be compatible with existing process
-Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
+if ($packageOnly -eq $false) {
+    # OLD-WAY for ALM Service: duplicate json for en-us to be compatible with existing process
+    Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
+}
 
 # NEW-WAY: copy package.json into the output/package directory
 Copy-Item -Path $mainPath\scripts\package.json -Destination $outputPath\package
