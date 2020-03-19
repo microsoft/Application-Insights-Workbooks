@@ -141,7 +141,7 @@ Here is a tutorial on using the merge control to combine Azure Resource Graph an
 [![Combining data from different sources in workbooks](https://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
 
 ### Merge examples
-[Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
+[Using the Duplicate Table option to reuse queried data](../Samples/ReusingQueryData.md)
 
 ## JSON
 The JSON provider allows you to create a query result from static JSON content. It is most commonly used in Parameters to create dropdown parameters of static values. Simple JSON arrays or objects will automatically be converted into grid rows and columns.  For more specific behaviors, you can use the Results tab and JSONPath settings to configure columns.
