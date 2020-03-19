@@ -102,7 +102,6 @@ If the `Link` renderer is selected, or the `Make this item a link` checkbox is s
 | `* User Flows` | Similar to Custom Event User Flows except for exceptions, page views and requests |
 | `User Timeline` | Opens the user timeline with the user id (user_Id) in the cell |
 | `Session Timeline` | Opens the Application Insights search experience for the value in the cell (e.g. search for text 'abc' where abc is the value in the cell) |
-| `Url` | The value of the cell is expected to be a valid http url, and the cell will be a link that opens up that url in a new tab.
 
 #### Azure Resource
 | Link action | Action on click |
