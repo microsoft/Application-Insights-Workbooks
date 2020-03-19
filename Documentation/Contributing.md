@@ -226,7 +226,8 @@ the simplest possible testing is by opening workbooks in the place you expect yo
 2. going to advanced mode
 3. paste the contents of the `.workbook` template file into advanced mode
 4. press apply
-Assuming your template content is valid, your template will appear in the view. If the template content was not valid, you will get an error notification displaying why your content is not valid.
+
+   Assuming your template content is valid, your template will appear in the view. If the template content was not valid, you will get an error notification displaying why your content is not valid.
 
 ## Redirecting the gallery to a github branch
 
@@ -252,6 +253,7 @@ If you are adding new items to a gallery, or adding new gallery entirely, you ca
 1. clone the repo, create your local branch, and make your changes locally
 2. from the `scripts` folder of the repo, run `processDevPackageOnly.cmd` (ideally from a command prompt so you can see any output/errors)
 	- note: repeated runs of this script may generate error lines that files already exist and are being overwritten
+
    you should now have an `outputs\package` folder in the repo that contains the built package of content, but only the en-us version.
 3. every time you update any content, re-run the `processDevPackageOnly` script to repackage your changes.
 4. copy/upload your package content (see below)
@@ -265,18 +267,18 @@ If you are adding new items to a gallery, or adding new gallery entirely, you ca
 If you are already running something like Apache or IIS locally, you don't need to create any kind of storage account.
 1. use your web server settings to expose the `outputs\package` folder as readable.  Ensure it is available via HTTPS.
 2. set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
-   - so you'll end up with something like https://portal.azure.com/?feature.workbookGalleryRedirect=https://localhost/package
+   - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://localhost/package`
 3. as you make changes to your templates, rebuild the package and re-upload changed content.
 
 
 ### setting up a storage account to deploy your package content
 1. create azure storage account
 2. in that storage account create blob container, like "azure_monitor_workbook_templates"
-3. in that storage account, enable CORS rules so your machine(s) can perform cross origin requests (https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services)
-4. upload contents of `outputs\package` directory to the blob container (so you now have a path like "azure_monitor_workbook_templates/package")
+3. in that storage account, [enable CORS rules](https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) so your machine will be able to read fro that storage account
+4. upload contents of `outputs\package` directory to the blob container (so you now have a path like `azure_monitor_workbook_templates/package` in the storage account)
 5. get the url to that folder.  it will be something like `https://[name of storage account].blob.core.windows.net/azure_monitor_workbook_templates/package`
 6. set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
-   - so you'll end up with something like https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package
+   - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
 7. as you make changes to your templates, rebuild the package and re-upload changed content.
 
 
