@@ -102,6 +102,7 @@ If the `Link` renderer is selected, or the `Make this item a link` checkbox is s
 | `* User Flows` | Similar to Custom Event User Flows except for exceptions, page views and requests |
 | `User Timeline` | Opens the user timeline with the user id (user_Id) in the cell |
 | `Session Timeline` | Opens the Application Insights search experience for the value in the cell (e.g. search for text 'abc' where abc is the value in the cell) |
+
 `*` denotes a wildcard for the above table
 
 #### Azure Resource
