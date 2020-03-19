@@ -102,11 +102,12 @@ If the `Link` renderer is selected, or the `Make this item a link` checkbox is s
 | `* User Flows` | Similar to Custom Event User Flows except for exceptions, page views and requests |
 | `User Timeline` | Opens the user timeline with the user id (user_Id) in the cell |
 | `Session Timeline` | Opens the Application Insights search experience for the value in the cell (e.g. search for text 'abc' where abc is the value in the cell) |
+`*` denotes a wildcard for the above table
 
 #### Azure Resource
 | Link action | Action on click |
 |:------------- |:-------------|
-| `ARM Deployment` | Deploy an arm template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings)   |
+| `ARM Deployment` | Deploy an ARM template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings)   |
 | `Create Alert Rule` | Creates an Alert rule for a resource.  |
 | `Metrics` | Opens a metrics view  |
 | `Resource overview` | Open the resource's view in the portal based on the resource id value in the cell.  The author can also optionally set a `submenu` value that will open up a specific menu item in the resource view. |
@@ -143,10 +144,10 @@ This section defines where the template should come from and the parameters used
 | Source | Explanation |
 |:------------- |:-------------|
 |`Resource group id comes from` | The resource id is used to manage deploy resources. The subscription is used to manage deployed resources and costs. The resource groups are used like folders to organize and manage all your resources. If this value is not specified, the deployment will fail. Select from `Cell`, `Column`, or `Parameter` in [Link sources](#link-sources).|
-|`ARM template URI from` | The uri to the ARM template itself. The template uri needs to be accessible to the users who will deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). For starters, take a look at our [Quickstart templates](https://azure.microsoft.com/en-us/resources/templates/).|
-|`ARM Template Parameters` | This section defines the template parameters used for the template uri defined above. These parameters will be used to deploy the template on the run page. The grid contains an expand toolbar button to help fill the parameters using the names defined in the template uri and set it to static empty values. This option can only be used when there are no parameters in the grid and the template uri has been set.|
+|`ARM template URI from` | The URI to the ARM template itself. The template URI needs to be accessible to the users who will deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). For starters, take a look at our [Quickstart templates](https://azure.microsoft.com/en-us/resources/templates/).|
+|`ARM Template Parameters` | This section defines the template parameters used for the template URI defined above. These parameters will be used to deploy the template on the run page. The grid contains an expand toolbar button to help fill the parameters using the names defined in the template URI and set it to static empty values. This option can only be used when there are no parameters in the grid and the template URI has been set.|
 
-![Image showing arm template settings](../Images/ArmTemplateSettings.png)
+![Image showing ARM template settings](../Images/ArmTemplateSettings.png)
 
 ##### UX Settings
 
@@ -158,11 +159,11 @@ This section configures what the users will see before they run the ARM deployme
 |`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can specify parameters using `{paramName}`. Also you can specify columns by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
 |`Run button text from:` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
-![Image showing arm UX settings](../Images/ArmUXSettings.png)
+![Image showing ARM UX settings](../Images/ArmUXSettings.png)
 
 After these configurations are set, when the user clicks on the link, it will open up the blade with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings).
 
-![Image showing run arm blade](../Images/RunArmBlade.png)
+![Image showing run ARM blade](../Images/RunArmBlade.png)
 
 #### Workbook (template) link settings
 If the selected link type is `Workbook (Template)` the author must specify additional settings to open up the correct workbook template. The settings below have options for how the grid will find the appropriate value for each of the settings. 
