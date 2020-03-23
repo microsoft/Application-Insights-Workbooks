@@ -110,6 +110,7 @@ If the `Link` renderer is selected, or the `Make this item a link` checkbox is s
 |:------------- |:-------------|
 | `ARM Deployment` | Deploy an ARM template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings)   |
 | `Create Alert Rule` | Creates an Alert rule for a resource.  |
+| `Custom Blade` | Opens a custom blade. When this item is selected, additional fields are displayed to let the author configure the blade extension, blade name, and any parameters used to open the blade. [See Custom Blade](#ARM-Deployment-link-settings) |
 | `Metrics` | Opens a metrics view  |
 | `Resource overview` | Open the resource's view in the portal based on the resource id value in the cell.  The author can also optionally set a `submenu` value that will open up a specific menu item in the resource view. |
 | `Workbook (template)` | Open a workbook template.  When this item is selected, additional fields are displayed to let the author configure what template to open, etc.  |
@@ -157,14 +158,23 @@ This section configures what the users will see before they run the ARM deployme
 | Source | Explanation |
 |:------------- |:-------------|
 |`Title from` | Title used on the run blade. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can specify parameters using `{paramName}`. Also you can specify columns by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
-|`Run button text from:` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
+|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
+|`Run button text from` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
 ![Image showing ARM UX settings](../Images/ArmUXSettings.png)
 
 After these configurations are set, when the user clicks on the link, it will open up the blade with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings).
 
 ![Image showing run ARM blade](../Images/RunArmBlade.png)
+
+#### Custom blade link settings
+| Source | Explanation |
+|:------------- |:-------------|
+|`Extension name` | The name of the extension that hosts the name of the blade.|
+|`Blade name` | The name of the blade to open. |
+|`Blade Parameters` | These are the inputs for the blade. <ul><li>`Parameter Name`: The name of the blade input parameter</li><li>`Parameter Comes From`: Where the value of the blade parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, you can resolve parameters using brackets like `{paramName}` in the text box. Also you treat columns as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>
+
+![Image showing Custom blade settings link settings](../Images/CustomBladeSettings.png)
 
 #### Workbook (template) link settings
 If the selected link type is `Workbook (Template)` the author must specify additional settings to open up the correct workbook template. The settings below have options for how the grid will find the appropriate value for each of the settings. 
