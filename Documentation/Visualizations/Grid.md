@@ -110,7 +110,7 @@ If the `Link` renderer is selected, or the `Make this item a link` checkbox is s
 |:------------- |:-------------|
 | `ARM Deployment` | Deploy an ARM template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings)   |
 | `Create Alert Rule` | Creates an Alert rule for a resource.  |
-| `Custom Blade` | Opens a custom blade. When this item is selected, additional fields are displayed to let the author configure the blade extension, blade name, and any parameters used to open the blade. [See Custom Blade](#ARM-Deployment-link-settings) |
+| `Custom View` | Opens a custom View. When this item is selected, additional fields are displayed to let the author configure the View extension, View name, and any parameters used to open the View. [See Custom View](#custom-view-link-settings) |
 | `Metrics` | Opens a metrics view  |
 | `Resource overview` | Open the resource's view in the portal based on the resource id value in the cell.  The author can also optionally set a `submenu` value that will open up a specific menu item in the resource view. |
 | `Workbook (template)` | Open a workbook template.  When this item is selected, additional fields are displayed to let the author configure what template to open, etc.  |
@@ -167,14 +167,14 @@ After these configurations are set, when the user clicks on the link, it will op
 
 ![Image showing run ARM blade](../Images/RunArmBlade.png)
 
-#### Custom blade link settings
+#### Custom View link settings
 | Source | Explanation |
 |:------------- |:-------------|
-|`Extension name` | The name of the extension that hosts the name of the blade.|
-|`Blade name` | The name of the blade to open. |
-|`Blade Parameters` | These are the inputs for the blade. <ul><li>`Parameter Name`: The name of the blade input parameter</li><li>`Parameter Comes From`: Where the value of the blade parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, you can resolve parameters using brackets like `{paramName}` in the text box. Also you treat columns as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>
+|`Extension name` | The name of the extension that hosts the name of the View.|
+|`View name` | The name of the View to open. |
+|`View Parameters` | These are the inputs for the View. <ul><li>`Parameter Name`: The name of the View input parameter</li><li>`Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, you can resolve parameters using brackets like `{paramName}` in the text box. Also you treat columns as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>
 
-![Image showing Custom blade settings link settings](../Images/CustomBladeSettings.png)
+![Image showing Custom View settings link settings](../Images/CustomBladeSettings.png)
 
 #### Workbook (template) link settings
 If the selected link type is `Workbook (Template)` the author must specify additional settings to open up the correct workbook template. The settings below have options for how the grid will find the appropriate value for each of the settings. 
