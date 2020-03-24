@@ -23,6 +23,6 @@ To do so, follow this step-by-step guide on how to access the Advanced Editor an
 
 7. (Optional) You can choose to save the template using the `Save` button from the top toolbar
 
-Video Demonstration
+### Video Demonstration
 
 ![](../Images/ImportTemplate.gif)
