@@ -199,6 +199,9 @@ First, to associate the existing template, we need to create a virtual category 
     }
     ```
     **Note that the second item in the galleries array, it has a "categoryKey". It should be match with a "key" in a virtual category.**
+    
+## How to test and import your template
+While creating your template, you can use the advanced editor to import your template, by following this [importing guide](./Templates/ImportingTemplates.md)
 
 ## now that you have your workbook and settings files...
 
