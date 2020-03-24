@@ -54,7 +54,7 @@ Here is the same grid styled as bars.
 
 ### Styling a Grid Column
 1. Click the _Column Settings_ button on the query control toolbar. 
-2. This opens up the _Edit column settings_ context blade.
+2. This opens up the _Edit column settings_ context view.
 3. Select the column to style.
 4. Choose a column renderer (e.g. heatmap, bar, bar underneath, etc.) and related settings to style your column.
 
@@ -89,8 +89,8 @@ If the `Link` renderer is selected, or the `Make this item a link` checkbox is s
 #### General Link Actions
 | Link action | Action on click |
 |:------------- |:-------------|
-| `Generic Details` | Shows the row values in a property grid context blade |
-| `Cell Details` | Shows the cell value in a property grid context blade. Useful when the cell contains a dynamic type with information (e.g. json with request properties like location, role instance, etc.). |
+| `Generic Details` | Shows the row values in a property grid context view |
+| `Cell Details` | Shows the cell value in a property grid context view. Useful when the cell contains a dynamic type with information (e.g. json with request properties like location, role instance, etc.). |
 | `Url` | The value of the cell is expected to be a valid http url, and the cell will be a link that opens up that url in a new tab.|
 
 #### Application Insights
@@ -125,7 +125,7 @@ When using the Link renderer, the following settings are available:
 | `View to open` | Allows the author to select one of the actions enumerated above |
 | `Menu item` | If "Resource Overview" is selected, this is the menu item in the resource's overview to open.  This can be used to open alerts or activity logs instead of the "overview" for the resource. Menu item values are different for each Azure Resourcetype|
 | `Link label` | If specified, this value will be displayed in the grid column. If this value is not specified, the value of the cell will be displayed. If you want another value to be displayed, like a heatmap or icon, do not use the `Link` renderer, instead use the appropriate renderer and select the `Make this item a link` option |
-| `Open link in Context Blade` | If specified, the link will be opened as a popup "context" blade on the right side of the window instead of opening as a full blade. |
+| `Open link in Context Blade` | If specified, the link will be opened as a popup "context" view on the right side of the window instead of opening as a full view. |
 
 When using the `Make this item a link` option, the following settings are available:
 
@@ -157,15 +157,15 @@ This section configures what the users will see before they run the ARM deployme
 
 | Source | Explanation |
 |:------------- |:-------------|
-|`Title from` | Title used on the run blade. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
+|`Title from` | Title used on the run view. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
 |`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
 |`Run button text from` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
 ![Image showing ARM UX settings](../Images/ArmUXSettings.png)
 
-After these configurations are set, when the user clicks on the link, it will open up the blade with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings).
+After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings).
 
-![Image showing run ARM blade](../Images/RunArmBlade.png)
+![Image showing run ARM view](../Images/RunArmBlade.png)
 
 #### Custom View link settings
 | Source | Explanation |
