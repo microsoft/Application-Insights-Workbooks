@@ -1,6 +1,15 @@
 # Common Steps
 
-## Quick Start with preset View Designer Templates
+### Jump to a section
+* [Quick Start](#QuickStart)
+* [Enabling Time Range Filter](#Filter)
+* [Updating Queries with the TimeRange Parameter](#Update)
+* [Including a List](#List)
+* [Enabling Sparklines](#Sparkline)
+* [Advanced Cell Settings](#Advanced)
+* [Additional Parameters](#Additional)
+
+## Quick Start with preset View Designer Templates <a id="QuickStart"></a>
 
 Workbooks in LA workspaces already have templates made to match some of the views in View Designer. Under the View Designer Guides category, select the "View Designer Transition Guide" to learn about your options or select one of the many preset templates.
 
@@ -8,7 +17,7 @@ Workbooks in LA workspaces already have templates made to match some of the view
 
 ![Example Templates](./Examples/Templates.png)
 
-## Enabling Time Range Filter
+## Enabling Time Range Filter <a id="Filter"></a>
 View Designer has a built-in default Time Range filter, however, in Workbooks this setting is not enabled by default. Workbooks does allow users to create their own Time Range filters that might be more applicable to their data logs. The steps to generate the filter are listed below:
 
 Select the **Add parameters** option
@@ -39,7 +48,7 @@ Parameters can be utilized in queries by adding curly braces {} around your para
 
 More details on parameters can be found in the [Workbooks Documentation on Parameters](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Parameters/Parameters.md).
 
-## Updating Queries for with the TimeRange Parameter
+## Updating Queries with the TimeRange Parameter <a id="Update"></a>
 **Option 1: Select TimeRange from the Time Range Dropdown for each query**
 ![Time Parameter](./Examples/TimeParam.png)
 
@@ -53,7 +62,7 @@ Within your query add this line: _| where TimeGenerated {TimeRange}_
 
 **Updated:** _search * **| where TimeGenerated {TimeRange}** | summarize count() by Type_
 
-## Including a List
+## Including a List <a id="List"></a>
 Most of the View Designer views include a list, this standard list can be re-produced utilizing the following steps.
 
 ![Tile List](./Examples/TileList.png)
@@ -71,7 +80,7 @@ This will generate a list that looks similar to the following:
 
 ![List Example](./Examples/ListEx.png)
 
-## Enabling Sparklines
+## Enabling Sparklines <a id="Sparkline"></a>
 A common feature for grids is to add sparklines to summarize various data patterns over time. View Designer offers the Enable Sparklines feature for all lists, as does Workbooks.
 
 To include Sparklines in your data that match View Designer, you will need to join the data with your original query. You will need to add the following line
@@ -98,19 +107,15 @@ _search *\
 **| join kind = inner (search * \
 | make-series Trend = count() default=0 on TimeGenerated from \{TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Type\
 ) on Type\
-| project Type, AggregatedValue, Trend**_\
+| project Type, AggregatedValue, Trend**_
 
 Resulting grid will look similar to below:
 ![Sparkline Example](./Examples/SparkEx.png)
 
-## Advanced Cell Settings
+## Advanced Cell Settings <a id="Advanced"></a>
 To mirror View Designer, some common steps such as changing the size of Workbook cells or adding pins and external links to logs might be utilized.
 
-To access Advanced Settings select the gear icon at the bottom of each cell
-
-![Advanced Settings](./Examples/AdvSet.png)
-
-This will bring up a menu with various options
+To access Advanced Settings, use the advanced settings tab in edit mode, which will contain additional settings.
 
 ![Advanced Settings Settings](./Examples/AdvSetSettings.png)
 
@@ -118,12 +123,12 @@ To add a pin and a link to an external query simply select the corresponding che
 
 To add a title to your cell, simply type the desired title into the **Chart title** section.
 
-By default any Workbooks cell is set to take up the entire page width, but users can adjust this by scaling the cell down, by clicking under the **Style** tab of the Advanced Settings menu
+By default any Workbooks cell is set to take up the entire page width, but users can adjust this by scaling the cell down, by clicking under the **Style** tab in edit mode.
 
 ![Advanced Settings Style](./Examples/AdvSetStyle.png)
 
  
-## Additional Parameters
+## Additional Parameters <a id="Additional"></a>
 
 Similar to the TimeRange Filter, you select **Add Parameter**
 For selecting a Subscription, type “Subscription” into the **Parameter name** field in the side menu and select “Subscription Picker” from the **Parameter type** dropdown
