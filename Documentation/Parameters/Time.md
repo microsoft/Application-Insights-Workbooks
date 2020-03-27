@@ -57,6 +57,7 @@ This is how the workbook will look like in read-mode.
 | `{TimeRange:startDateISO}` | Start date ISO format | 2019-11-02T00:00:00.000Z |
 | `{TimeRange:endDateISO}` | End date ISO format | 2019-12-02T00:00:00.000Z |
 | `{TimeRange:durationISO}` | Time range duration ISO format | PT24H |
+| `{TimeRange:seconds}` | Time range duration in seconds | 86400 |
 
 
 ### Using parameter options in a query
