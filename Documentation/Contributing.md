@@ -51,7 +51,7 @@ Root
 ...       
 ```
 The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
-![Image of category view](..//_assets/CategoryView.png)
+![Image of category view](./Images/CategoryView.png)
 
 To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file may contain localized versions of the category name, and a description if you are performing localization yourself. Here's an example categoryResources.json file.
 ```
@@ -67,22 +67,22 @@ The name of language uses **language culture format.**
 ## Template folder
 Each category folder contains a list of templates.
 ```
-       |- Category A
-             |- categoryResources.json
-             |- Template A
-                    |- A.template
-                    |- settings.json
-                    |- icon.svg
-                    |- ko-kr
-                        |- A.template
-                        |- settings.json
-             |- Template B
-                    |- B.template
-                    |- settings.json
-                    |- icon.svg
-                    |- ko-kr
-                        |- B.template
-                        |- settings.json
+|- Category A
+        |- categoryResources.json
+        |- Template A
+            |- A.template
+            |- settings.json
+            |- icon.svg
+            |- ko-kr
+                |- A.template
+                |- settings.json
+        |- Template B
+            |- B.template
+            |- settings.json
+            |- icon.svg
+            |- ko-kr
+                |- B.template
+                |- settings.json
 ```
 
 Each template folder contains a list of language folders and an optional icon file. Languages are given as language culture format abbreviations, like "en" instead of "en-us".
@@ -125,30 +125,34 @@ There are three ways of creating a template.
 1. Go to http://portal.azure.com 
 2. Select an Application Insights resource
 3. Select "Workbooks"
-4. Select Default Template under Quick Start section.<br/>
-    ![Image of default template](..//_assets/DefaultTemplate.png)
-5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.<br/>
-![Image of toolbar](..//_assets/Toolbar-AdvancedEditor.png)
+4. Select Default Template under Quick Start section.
+
+    ![Image of default template](./Images//DefaultTemplate.png)
+
+5. Modify report as you wish and click "Advanced Editor" button from the menu. 
+
+    ![Image of toolbar](./Images/Toolbar-AdvancedEditor.png)
+
+6. Use the download button or copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
+
+    ![advanced editor](./Images/AdvancedEditor.png)
 
 ## Create from an existing template
 1. Go to http://portal.azure.com 
 2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
-4. Select a template you are interested.<br/>
-    ![Image of default template](..//_assets/Existing-Template.png)
-
-5. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.<br/>
-![Image of toolbar](..//_assets/Toolbar-AdvancedEditor.png)
+4. Select a template you are interested.
+5. Modify report as you wish and click "Advanced Editor" button from the menu. 
+6. Use the download button, or copy contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.>
 	
 ## Create from an existing report
 1. Go to http://portal.azure.com 
 2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Click on Open icon from the menu.
-5. Select a desired saved report you want to start with.<br/>
-    ![Image of default template](..//_assets/SavedList.png)
-
-6. Modify report as you wish and click "Advanced Editor" button from the menu. Copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
+5. Select a desired saved report you want to start with.
+6. Modify report as you wish and click "Advanced Editor" button from the menu. 
+7. Use the download button, or copy contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
 
 ## How to associate any existing template to an additional category in Workbooks
 You may also associate a templates to an virtual categories, not just the folder based categorie above. Previously, a category was always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintenance overhead of updating duplicated templates.
@@ -202,7 +206,7 @@ First, to associate the existing template, we need to create a virtual category 
 
 # How to make changes (add, modify templates)
 
-1. clone the repo, if you haven't already. if you have already, `git checkout master` and `git pull` to make sure you are up to date
+1. clone the repo, if you haven't already. If you have already, `git checkout master` and `git pull` to make sure you are up to date
 2. create a new branch `git checkout -b nameOfNewBranch`
 3. create a folder in the `Workbooks` folder, or find an existing category folder if you are making a new category
 4. within that folder, create a new folder for your new workbook.  Put your .workbook and settings.json file there.
