@@ -322,7 +322,9 @@ Function BuildingTemplateJson() {
                         $templateMetadata.Name = $templateFolder.Name
 
                         # First get template populate template data for default language, which is a top level
-                        $templateMetadata.TemplateByLanguage.$lang = GetTemplateContainerData $templateFolder.FullName $language
+                        # BUG: to fix a strange issue with category text not getting localized right, put the category information into the en-us "bucket" by default,
+                        # the content *inside* will be the right languages
+                        $templateMetadata.TemplateByLanguage.$defaultLanguage = GetTemplateContainerData $templateFolder.FullName $language
 
                         AddTemplatesToVirtualGallery $templateMetadata $language
 
