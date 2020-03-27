@@ -201,7 +201,7 @@ function validateNoFromTemplateId(settings, file) {
 
 function validateCategory(category, file) {
     checkProperty(category, 'en-us', file);
-    ["name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
+    ["$schema", "name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
 }
 
 function checkProperty(obj, name, file) {
