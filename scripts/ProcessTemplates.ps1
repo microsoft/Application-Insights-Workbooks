@@ -14,22 +14,22 @@ $azureBlobFileNameBase = "community-templates-V2";
 $repoBaseName = "Application-Insights-Workbooks"
 $supportedLanguages = @(
     $defaultLanguage,
-    "cs-cz",
-    "de-de",
+#    "cs-cz",
+#    "de-de",
     "es-es", 
-    "fr-fr", 
-    "hu-hu", 
-    "it-it", 
-    "ja-jp", 
-    "ko-kr",
-    "nl-nl", 
-    "pl-pl", 
-    "pt-br", 
-    "pt-pt", 
-    "ru-ru", 
-    "sv-se", 
-    "tr-tr", 
-    "zh-cn", 
+#    "fr-fr", 
+#    "hu-hu", 
+#    "it-it", 
+#    "ja-jp", 
+#    "ko-kr",
+#    "nl-nl", 
+#    "pl-pl", 
+#    "pt-br", 
+#    "pt-pt", 
+#    "ru-ru", 
+#    "sv-se", 
+#    "tr-tr", 
+#    "zh-cn", 
     "zh-tw"
 )
 $docGitServer = "https://github.com/MicrosoftDocs/"
@@ -138,6 +138,16 @@ Function AddCategory() {
             $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
             $categories.$categoryName.NameByLanguage.($_.name) = $languageProperties.name
             $categories.$categoryName.DescriptionByLanguage.($_.name) = $languageProperties.description
+        }
+    }
+
+    # if nothing was found for this language, put the en-us one into it so there is something
+    if ($null -eq $categories.$categoryName.NameByLanguage.($language)) {
+        $languageProperties = $categorySettings.($defaultLanguage)
+        if ($null -ne $languageProperties) {
+            $categories.$categoryName.SortOrderByLanguage.($language) = $languageProperties.order
+            $categories.$categoryName.NameByLanguage.($language) = $languageProperties.name
+            $categories.$categoryName.DescriptionByLanguage.($language) = $languageProperties.description
         }
     }
 }
@@ -322,9 +332,7 @@ Function BuildingTemplateJson() {
                         $templateMetadata.Name = $templateFolder.Name
 
                         # First get template populate template data for default language, which is a top level
-                        # BUG: to fix a strange issue with category text not getting localized right, put the category information into the en-us "bucket" by default,
-                        # the content *inside* will be the right languages
-                        $templateMetadata.TemplateByLanguage.$defaultLanguage = GetTemplateContainerData $templateFolder.FullName $language
+                        $templateMetadata.TemplateByLanguage.$lang = GetTemplateContainerData $templateFolder.FullName $language
 
                         AddTemplatesToVirtualGallery $templateMetadata $language
 
