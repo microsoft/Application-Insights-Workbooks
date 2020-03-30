@@ -21,3 +21,9 @@
 ### Combining data from different sources using the merge control
 
 [![Combining data from different sources in workbooks](http://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
+
+### Retrieving Alert data from Azure Resource Manager
+
+[![Image showing a grid with alerts data](../Images/ARMAlertsQueryGridFormat.png)](AlertDataARM.md)
+
+[See instructions](AlertDataARM.md)

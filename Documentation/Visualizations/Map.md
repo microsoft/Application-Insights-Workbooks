@@ -2,7 +2,7 @@
 
 Map allows visualizing region specific data, hence aiding in pin-pointing issues with specific regions. This also aids in high level aggregated view of the monitoring data by providing capability to aggregate all the data mapped to each location/country/region.
 
-The image below shows the total transactions and E2E latency for different storage accounts. Here size is determined by the total number of transactions and color and metrics shows below the map is E2E latency. The first observation that comes after seeing map visualization is that, however the number of transactions in **West US** region are small compared to **East US**, but E2E latency for **West US** regions is higher than the **East US** region. Probably something to investigate about?
+The image below shows the total transactions and E2E latency for different storage accounts. Here size is determined by the total number of transactions, and the color and metrics below the map shows the E2E latency. Upon the first observation, the number of transactions in the **West US** region are small compared to the **East US** region, but E2E latency for **West US** regions way higher than the **East US** region. This provides initial insight that something is amiss for **West US**.
 
 
 ![Image showing an example of a map visualization in workbooks](../Images/mapPerformanceExample.png)
@@ -121,10 +121,12 @@ Map can be visualized if the underlying data/metrics has Latitude/Longitude info
 
 
 
-## Map Settings has three sub-section:
-![Map Settings](../Images/mapSettings.png)
+## Map Settings has three sub-sections:
+1. [Layout Settings](#layout-settings)
+2. [Color Settings](#color-settings)
+3. [Metrics Settings](#metrics-settings)
 
-## Layout Settings
+### Layout Settings
 
 | Setting | Explanation |
 |:------------- |:-------------|
@@ -133,14 +135,17 @@ Map can be visualized if the underlying data/metrics has Latitude/Longitude info
 | `Azure location field` | This option will be visible if Location Info field value is: Azure location. Select the column which the Azure location information. |
 | `Azure resource field` | This option will be visible if Location Info field value is: Azure resource. Select the column which the Azure resource information. |
 | `Country/Region field` | This option will be visible if Location Info field value is: Country or region. Select the column which the Country/Region information. |
-| `Size by` | This option controls the size of the items shown on the map. Size depends on value in the column specified by the user. Currently, radius of the circle is directly proportional to the square root of the column's value.|
+| `Size by` | This option controls the size of the items shown on the map. Size depends on value in the column specified by the user. Currently, radius of the circle is directly proportional to the square root of the column's value. If 'None...' is selected, all the circles will show the default region size.|
 | `Aggregation for location` | This field specifies how to aggregate the **size by** column's which has same Azure Location/Azure Resource/Country-Region. |
-| `Minimum value of size` | This field specifies what is the minimum radius of the item shown on the map. This is used when there is a big difference between the size by column's values, therefore smaller items are hardly visible on the map. |
-| `Maximum value of size` | This field specifies what is the maximum radius of the item shown on the map. This is used when the size by column's values are extremely large and they are covering huge area of the map.|
+| `Minimum region size` | This field specifies what is the minimum radius of the item shown on the map. This is used when there is a big difference between the size by column's values, therefore smaller items are hardly visible on the map. |
+| `Maximum region size` | This field specifies what is the maximum radius of the item shown on the map. This is used when the size by column's values are extremely large and they are covering huge area of the map.|
+| `Default region size` | This field specifies what is the default radius of the item shown on the map. The default radius is used when the Size By column is 'None...' or the value is 0.|
+| `Minimum value` | The minimum value used to compute region size. If not specified, the minimum value will be the smallest value after aggregation. |
+| `Maximum value` | The maximum value used to compute region size. If not specified, the maximum value will be the largest value after aggregation.|
 | `Opacity of items on Map` | This field specifies how transparent are the items shown on the map. Opacity of 1 means, no transparency, where opacity of 0 means, items won't be visible on the map. If there are too many items on the map, opacity can be set to low value so that all the overlapping items are visible.|
 
 
-## Color Settings
+### Color Settings
 
 | Coloring Type | Explanation |
 |:------------- |:-------------|
@@ -149,13 +154,13 @@ Map can be visualized if the underlying data/metrics has Latitude/Longitude info
 | `Heatmap` | In this type, the cells are colored based on the color palette and Color by field. This will also have same **Color by** and **Aggregation for color** options as in the case of thresholds. |
 
 
-## Metric Settings
+### Metric Settings
 | Setting | Explanation |
 |:------------- |:-------------|
 | `Metric Label` | This option will be visible if Location Info field value is: Latitude/Longitude. Using this feature, user can pick the label to show for metrics shown below the map. |
 | `Metric Value` | This field specifies metric value to be shown below the map. |
 | `Create 'Others' group after` | This field specifies the limit before an "Others" group is created. |
-| `Aggregate other metrics by` | This field specifies the aggregation used for "Others" group if it is shown. |
+| `Aggregate 'Others' metrics by` | This field specifies the aggregation used for "Others" group if it is shown. |
 | `Custom formatting` | This is same as grid's custom formatting. More description [here](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-number-formatting).| 
 
 
