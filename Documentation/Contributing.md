@@ -11,35 +11,23 @@ Root
        |- Category A
              |- categoryResources.json
              |- Template A
-                    |- A.template
+                    |- TemplateA.workbook
                     |- settings.json
                     |- icon.svg
-                    |- ko-kr
-                        |- A.template
-                        |- settings.json
              |- Template B
-                    |- B.template
+                    |- TemplateB.workbook
                     |- settings.json
                     |- icon.svg
-                    |- ko-kr
-                        |- B.template
-                        |- settings.json
        |- Category B
              |- categoryResources.json
              |- Template C
-                    |- C.template
+                    |- TemplateC.workbook
                     |- settings.json
                     |- icon.svg
-                    |- ko-kr
-                        |- C.template
-                        |- settings.json
              |- Template D
-                    |- D.template
+                    |- TemplateD.workbook
                     |- settings.json
                     |- icon.svg
-                    |- ko-kr
-                        |- D.template
-                        |- settings.json
 ```
 ## Category folder
 ```
@@ -56,13 +44,11 @@ The template galleries of the Workbooks tools are organized into categories, lik
 To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file may contain localized versions of the category name, and a description if you are performing localization yourself. Here's an example categoryResources.json file.
 ```
 {
-    "en-us": {"name":"Business Hypotheses", "description": "Long description goes here", "order": 100},
-    "es-mx": {"name":"Hipótesis de negocios", "description": "Descripción larga va aquí", "order": 100},
-    "ko-kr": {"name":"비즈니스 추측", "description": "설명은 여기에...", "order": 100},
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
+    "en-us": {"name":"Business Hypotheses", "description": "Long description goes here", "order": 100}
 }
 ```
 
-The name of language uses **language culture format.**
 
 ## Template folder
 Each category folder contains a list of templates.
@@ -70,28 +56,20 @@ Each category folder contains a list of templates.
 |- Category A
         |- categoryResources.json
         |- Template A
-            |- A.template
+            |- TemplateA.workbook
             |- settings.json
             |- icon.svg
-            |- ko-kr
-                |- A.template
-                |- settings.json
         |- Template B
-            |- B.template
+            |- TemplateB.workbook
             |- settings.json
             |- icon.svg
-            |- ko-kr
-                |- B.template
-                |- settings.json
 ```
-
-Each template folder contains a list of language folders and an optional icon file. Languages are given as language culture format abbreviations, like "en" instead of "en-us".
 
 The optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
 
-Each language folder contains the following files:
+Each template folder contains the following files:
 * **.workbook file** - You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
-* **settings.json file** - This file describes a template with metadata. You can specify a localized version of metadata per a language folder.
+* **settings.json file** - This file describes a template with metadata.
     ```json
         {
             "name":"Improving User Retention",
