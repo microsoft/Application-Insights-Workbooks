@@ -158,7 +158,7 @@ This section configures what the users will see before they run the ARM deployme
 | Source | Explanation |
 |:------------- |:-------------|
 |`Title from` | Title used on the run view. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
+|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
 |`Run button text from` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
 ![Image showing ARM UX settings](../Images/ArmUXSettings.png)
@@ -176,8 +176,8 @@ Use this to open Custom Views in the Azure Portal. Verify all of the configurati
 | Source | Explanation |
 |:------------- |:-------------|
 |`Extension name` | The name of the extension that hosts the name of the View.|
-|`View name` | The name of the View to open. |
-|`View Parameters` | These are the inputs for the View. <ul><li>`Parameter Name`: The name of the View input parameter</li><li>`Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolvedusing brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>
+|`View name` | The name of the View to open.|
+|`View Parameters` | These are the inputs for the View. <ul><li>`Parameter Name`: The name of the View input parameter</li><li>`Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>|
 
 ![Image showing Custom View settings link settings](../Images/CustomBladeSettings.png)
 
