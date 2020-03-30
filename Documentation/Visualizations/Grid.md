@@ -168,13 +168,24 @@ After these configurations are set, when the user clicks on the link, it will op
 ![Image showing run ARM view](../Images/RunArmBlade.png)
 
 #### Custom View link settings
+
+Use this to open Custom Views in the Azure Portal. Verify all of the configuration and settings. Incorrect values will cause errors in the portal, or fail to open the views correctly. There are two ways to configure the settings, via the `Form` or via `URL`.
+
+##### Form
+
 | Source | Explanation |
 |:------------- |:-------------|
 |`Extension name` | The name of the extension that hosts the name of the View.|
 |`View name` | The name of the View to open. |
-|`View Parameters` | These are the inputs for the View. <ul><li>`Parameter Name`: The name of the View input parameter</li><li>`Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, you can resolve parameters using brackets like `{paramName}` in the text box. Also you treat columns as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>
+|`View Parameters` | These are the inputs for the View. <ul><li>`Parameter Name`: The name of the View input parameter</li><li>`Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolvedusing brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>
 
 ![Image showing Custom View settings link settings](../Images/CustomBladeSettings.png)
+
+##### URL
+
+Paste a Portal URL containing the extension, name of the view, and any inputs needed to open the view. After clicking `Initialize Settings`, it will populate the `Form` for the author to add/modify/remove any of the View inputs.
+
+![Image showing Custom View settings link settings](../Images/CustomBladeSettingsURL.png)
 
 #### Workbook (template) link settings
 If the selected link type is `Workbook (Template)` the author must specify additional settings to open up the correct workbook template. The settings below have options for how the grid will find the appropriate value for each of the settings. 
