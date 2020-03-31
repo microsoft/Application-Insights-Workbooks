@@ -1,5 +1,5 @@
 # Link Actions
-Link actions can be accessed through Workbook [link steps](./Links.md#link-actions), or through column settings of a [grid](../Visualizations/Grid.md#link-actions).
+Link actions can be accessed through Workbook [link steps](./Links.md#link-actions), or through column settings of [grids](../Visualizations/Grid.md#link-actions), tiles, or graphs.
 
 ## General Link Actions
 | Link action | Action on click |
