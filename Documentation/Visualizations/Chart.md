@@ -37,9 +37,11 @@ The settings tab controls:
 * legend settings, including showing metrics (series name, colors and numbers) at the bottom, and/or a legend (series names and colors)
 
 ![Image showing chart settings series tab](../Images/ChartSettings.png)
-![Image showing custom format settings](../Images/NumberFormatSettings.png)
 
+#### Custom Formatting
 The custom format settings are same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
+
+![Image showing custom format settings](../Images/NumberFormatSettings.png)
 
 ### The Series tab
 The series settings tab lets you adjust the labels and colors shown for series in the chart.
