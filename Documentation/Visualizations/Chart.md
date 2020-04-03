@@ -32,14 +32,14 @@ Authors can use chart settings to customize which fields are used in the chart a
 
 ### The Settings tab
 The settings tab controls:
-* the axis settings, including which fields, custom formatatting that allows users to set the number formatting to the axis values, and custom ranges.
+* the axis settings, including which fields, custom formating that allows users to set the number formatting to the axis values, and custom ranges.
 * grouping settings, including which field, the limits before an "Others" group is created
 * legend settings, including showing metrics (series name, colors and numbers) at the bottom, and/or a legend (series names and colors)
 
 ![Image showing chart settings series tab](../Images/ChartSettings.png)
 
 #### Custom Formatting
-The custom format settings are same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
+The custom formatting is same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
 
 ![Image showing custom format settings](../Images/NumberFormatSettings.png)
 
