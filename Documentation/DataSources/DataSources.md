@@ -8,8 +8,8 @@ Workbooks support these data sources:
 * [Logs](#logs)
 * [Metrics](#metrics)
 * [Azure Resource Graph](#azure-resource-graph-arg)
-* [Custom Endpoint](#custom-endpoint-preview)
-* [Azure Resource Manager](#azure-resource-manager-preview)
+* [Custom Endpoint](#custom-endpoint)
+* [Azure Resource Manager](#azure-resource-manager)
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
 * [Azure Data Explorer](#azure-data-explorer-preview)
@@ -65,7 +65,7 @@ Limitations: the alerts data source requires read access to the Subscription in 
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Alerts (preview)_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
 
-## Custom endpoint (preview)
+## Custom endpoint
 Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
@@ -76,9 +76,9 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 
 `Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
 
-This provider supports [JSON Path](../Transformations/JSONPath).
+This provider supports [JSON Path](../Transformations/JSONPath.md).
 
-## Azure Resource Manager (preview)
+## Azure Resource Manager
 Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Manager_. Provide the appropriate parameters such as Http method, url path, headers, url parameters and/or body.
@@ -89,7 +89,7 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 [Click here to view a walk-through example of this provider](../Samples/AlertDataARM.md)
 
-This provider supports [JSON Path](../Transformations/JSONPath).
+This provider supports [JSON Path](../Transformations/JSONPath.md).
 
 ## Workload Health
 Azure Monitor has functionality that proactively monitors the availability and performance of Windows or Linux guest OSes with a model that represent key components and their relationships, criteria that specifies how to measure the health of those components, and which can alert you when an unhealthy condition is detected. Workbooks allow users to use this information to create rich reports.
@@ -146,4 +146,4 @@ Here is a tutorial on using the merge control to combine Azure Resource Graph an
 ## JSON
 The JSON provider allows you to create a query result from static JSON content. It is most commonly used in Parameters to create dropdown parameters of static values. Simple JSON arrays or objects will automatically be converted into grid rows and columns.  For more specific behaviors, you can use the Results tab and JSONPath settings to configure columns.
 
-This provider supports [JSON Path](../Transformations/JSONPath).
+This provider supports [JSON Path](../Transformations/JSONPath.md).
