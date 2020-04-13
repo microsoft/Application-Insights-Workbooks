@@ -76,7 +76,7 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 
 `Note:  Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
 
-This provider supports [JSON Path](../Transformations/JSONPath).
+This provider supports [JSON Path](../Transformations/JSONPath.md).
 
 ## Azure Resource Manager (preview)
 Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
@@ -89,7 +89,7 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 [Click here to view a walk-through example of this provider](../Samples/AlertDataARM.md)
 
-This provider supports [JSON Path](../Transformations/JSONPath).
+This provider supports [JSON Path](../Transformations/JSONPath.md).
 
 ## Workload Health
 Azure Monitor has functionality that proactively monitors the availability and performance of Windows or Linux guest OSes with a model that represent key components and their relationships, criteria that specifies how to measure the health of those components, and which can alert you when an unhealthy condition is detected. Workbooks allow users to use this information to create rich reports.
@@ -141,9 +141,9 @@ Here is a tutorial on using the merge control to combine Azure Resource Graph an
 [![Combining data from different sources in workbooks](https://img.youtube.com/vi/7nWP_YRzxHg/0.jpg)](https://www.youtube.com/watch?v=7nWP_YRzxHg "Video showing how to combine data from different sources in workbooks")
 
 ### Merge examples
-[Using the Duplicate Table option to reuse queried data](..\Samples\ReusingQueryData.md)
+[Using the Duplicate Table option to reuse queried data](../Samples/ReusingQueryData.md)
 
 ## JSON
 The JSON provider allows you to create a query result from static JSON content. It is most commonly used in Parameters to create dropdown parameters of static values. Simple JSON arrays or objects will automatically be converted into grid rows and columns.  For more specific behaviors, you can use the Results tab and JSONPath settings to configure columns.
 
-This provider supports [JSON Path](../Transformations/JSONPath).
+This provider supports [JSON Path](../Transformations/JSONPath.md).

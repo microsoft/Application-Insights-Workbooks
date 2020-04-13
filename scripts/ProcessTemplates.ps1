@@ -34,6 +34,18 @@ $supportedLanguages = @(
 )
 $docGitServer = "https://github.com/MicrosoftDocs/"
 
+# - if "package" is set on the command line, only build the npm package
+# - if "dev" is set on the command line, only build the en-us version of the package (fastest for testing)
+$packageOnly = $false
+if ($args[0] -eq "package") {
+    Write-Host "Building only the template package"
+    $packageOnly = $true
+} elseif ($args[0] -eq "dev") {
+    Write-Host "Building ONLY the dev template package, ONLY for en-us"
+    $supportedLanguages = @( $defaultLanguage )
+    $packageOnly = $true
+}
+
 #----------------------------------------------------------------------------
 # GetTemplateContainerData
 #----------------------------------------------------------------------------
@@ -126,6 +138,16 @@ Function AddCategory() {
             $categories.$categoryName.SortOrderByLanguage.($_.name) = $languageProperties.order
             $categories.$categoryName.NameByLanguage.($_.name) = $languageProperties.name
             $categories.$categoryName.DescriptionByLanguage.($_.name) = $languageProperties.description
+        }
+    }
+
+    # if nothing was found for this language, put the en-us one into it so there is something
+    if ($null -eq $categories.$categoryName.NameByLanguage.($language)) {
+        $languageProperties = $categorySettings.($defaultLanguage)
+        if ($null -ne $languageProperties) {
+            $categories.$categoryName.SortOrderByLanguage.($language) = $languageProperties.order
+            $categories.$categoryName.NameByLanguage.($language) = $languageProperties.name
+            $categories.$categoryName.DescriptionByLanguage.($language) = $languageProperties.description
         }
     }
 }
@@ -843,8 +865,10 @@ foreach ($lang in $supportedLanguages) {
     Write-Host "...Directory: $currentPath"
     Write-Host "...OutputFile: $jsonFileName"
 
-    # OLD-WAY for ALM Service: build the old template content
-    BuildingTemplateJson $jsonFileName $lang $outputPath
+    if ($packageOnly -eq $false) {
+        # OLD-WAY for ALM Service: build the old template content
+        BuildingTemplateJson $jsonFileName $lang $outputPath
+    }
 
     # NEW-WAY make content for npm package
     CreatePackageContent $lang $outputPath
@@ -853,8 +877,10 @@ foreach ($lang in $supportedLanguages) {
 # restore default path
 Pop-Location
 
-# OLD-WAY for ALM Service: duplicate json for en-us to be compatible with existing process
-Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
+if ($packageOnly -eq $false) {
+    # OLD-WAY for ALM Service: duplicate json for en-us to be compatible with existing process
+    Copy-Item -Path $outputPath\$azureBlobFileNameBase.$defaultLanguage.json -Destination $outputPath\$azureBlobFileNameBase.json
+}
 
 # NEW-WAY: copy package.json into the output/package directory
 Copy-Item -Path $mainPath\scripts\package.json -Destination $outputPath\package
