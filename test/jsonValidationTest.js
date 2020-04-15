@@ -180,6 +180,10 @@ function validateSettingsForWorkbook(settings, file) {
     if (!Array.isArray(settings.galleries)) {
         assert.fail("The galleries should be an array with '" + file + "'");
     }
+    (settings.galleries.forEach( gallery => {
+        // should have at least type, resourcetype, order.  may have categoryKey
+        ["type", "resourceType", "order"].forEach(field => checkProperty(gallery, field, file, "galleries"));
+    }))
 }
 
 function validateNoResourceIds(settings, file) {
@@ -205,13 +209,13 @@ function validateCategory(category, file) {
     ["name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
 }
 
-function checkProperty(obj, name, file) {
+function checkProperty(obj, name, file, prefix) {
     if (!obj) {
         assert.fail("Can't check a property. The object is undefined.");
     }
 
     if (!obj.hasOwnProperty(name)) {
-        assert.fail("The " + name + " field is missing with '" + file + "'");
+        assert.fail("The " + (prefix ? (prefix+".") : "") + name + " field is missing with '" + file + "'");
     }
 }
 
