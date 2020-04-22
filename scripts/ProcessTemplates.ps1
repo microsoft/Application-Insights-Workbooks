@@ -219,6 +219,7 @@ Function LoadSettingsJson() {
     $templateFolderName = Split-Path $templateFolderPath -Leaf
     $templateCategoryFolderPath = Split-Path $templateFolderPath
     $templateCategory = Split-Path $templateCategoryFolderPath -Leaf
+    $templateCategoryName = $templateCategory # the FIRST folder path found is the category name
     $templateReportTypePath = Split-Path $templateCategoryFolderPath
     $templateReportType = Split-Path $templateReportTypePath -Leaf
     # if there were nested folders, keep working up the hierarchy, prepending folders to template category
@@ -239,7 +240,7 @@ Function LoadSettingsJson() {
     # at some point, we'll need to support aliases or moving of templates so we need to
     # split the id from the filename
     $templateMetadata = @{}
-    $templateMetadata.category = $templateCategory
+    $templateMetadata.category = $templateCategoryName
     $templateMetadata.id = "$templateReportType/$templateCategory/$templateFolderName"
     # for now, all of the template in the package are just .json to simplify deployment and not need special rules for .cohort, .workbook on web services for content type
     # and replace any / in filenames with - to avoid any filesystem issues
