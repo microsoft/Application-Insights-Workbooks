@@ -65,7 +65,7 @@ Each category folder contains a list of templates.
             |- icon.svg
 ```
 
-The optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
+Avoid using special characters (like `/\&?`) in your folder names. An optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
 
 Each template folder contains the following files:
 * **.workbook file** - You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
@@ -111,8 +111,8 @@ There are three ways of creating a template.
 
     ![Image of toolbar](./Images/Toolbar-AdvancedEditor.png)
 
-6. Use the download button or copy all contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
-
+6. Use the download button or copy all contents and create a file like `your custom template name.workbook`. 
+   Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
     ![advanced editor](./Images/AdvancedEditor.png)
 
 ## Create from an existing template
@@ -121,7 +121,8 @@ There are three ways of creating a template.
 3. Select "Workbooks"
 4. Select a template you are interested.
 5. Modify report as you wish and click "Advanced Editor" button from the menu. 
-6. Use the download button, or copy contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.>
+6. Use the download button, or copy contents and create a file like `your custom template name.workbook`. 
+   Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 	
 ## Create from an existing report
 1. Go to http://portal.azure.com 
@@ -130,7 +131,8 @@ There are three ways of creating a template.
 4. Click on Open icon from the menu.
 5. Select a desired saved report you want to start with.
 6. Modify report as you wish and click "Advanced Editor" button from the menu. 
-7. Use the download button, or copy contents and create a file like "your custom template name.template". Please make sure file name ends with '.workbook'.
+7. Use the download button, or copy contents and create a file like `your custom template name.workbook`. 
+   Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 
 ## How to associate any existing template to an additional category in Workbooks
 You may also associate a templates to an virtual categories, not just the folder based categorie above. Previously, a category was always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintenance overhead of updating duplicated templates.
