@@ -209,16 +209,31 @@ Function CreateOrderedTemplate() {
 # loads a settings.json file and returns workbook metadata
 #----------------------------------------------------------------------------
 Function LoadSettingsJson() {
-    param([string] $filepath)
+    param([string] $filepath, 
+    [string] $reportType)
     $templateSettings = Get-Content $filepath -Encoding UTF8 | Out-String | ConvertFrom-Json 
 
-    # Build path of file
+    # Build path of file, working "up" the path until getting to the $reportType folder
+    
     $templateFolderPath = Split-Path $filepath -Parent
     $templateFolderName = Split-Path $templateFolderPath -Leaf
     $templateCategoryFolderPath = Split-Path $templateFolderPath
     $templateCategory = Split-Path $templateCategoryFolderPath -Leaf
     $templateReportTypePath = Split-Path $templateCategoryFolderPath
     $templateReportType = Split-Path $templateReportTypePath -Leaf
+    # if there were nested folders, keep working up the hierarchy, prepending folders to template category
+    while ($templateReportType -ne $reportType) {
+        if ([string]::IsNullOrWhitespace($templateReportType)) {
+            # this was somehow in a folder that was NOT inside the report type folder?
+            throw "LoadSettingsJson had file '$filePath' not inside '$reportType' folder?"
+        }
+        $templateFolderName = "$templateCategory/$templateFolderName"
+        $templateFolderPath = Split-Path $templateFolderPath -Parent
+        $templateCategoryFolderPath = Split-Path $templateFolderPath
+        $templateCategory = Split-Path $templateCategoryFolderPath -Leaf
+        $templateReportTypePath = Split-Path $templateCategoryFolderPath
+        $templateReportType = Split-Path $templateReportTypePath -Leaf
+    }
 
     # path here should really be called "id" as it is the id of the template
     # at some point, we'll need to support aliases or moving of templates so we need to
@@ -389,7 +404,7 @@ Function CreatePackageContent() {
             }
             $template = $templates[0]
 
-            $setting = LoadSettingsJson($settingFile.FullName)
+            $setting = LoadSettingsJson $settingFile.FullName $reporttype
 
             if ($null -eq $setting -or $null -eq $setting.name) {
                 Write-Host "ERROR: ignoring $($settingFile.FullName) because it is not a valid settings.json file "
