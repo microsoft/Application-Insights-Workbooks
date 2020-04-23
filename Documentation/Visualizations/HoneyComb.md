@@ -1,7 +1,7 @@
 
 # Honey Comb Visualization
 
-Honey combs allows high density views of metrics or categories that can optionally be grouped as clusters. It is particularly useful in visually indentifying hotspots and drilling in further.
+Honey combs allows high density views of metrics or categories that can optionally be grouped as clusters. It is particularly useful in visually identifying hotspots and drilling in further.
 
 The image below shows the CPU utilization of virtual machines across two subscriptions. Each cell represents a virtual machine and the color/label represents it's average CPU utilization (reds are hot machines). The virtual machines are clustered by subscription.
 
