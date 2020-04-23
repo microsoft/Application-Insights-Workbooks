@@ -92,17 +92,17 @@ In pills style, the default style, the parameters look like text, and require th
 
 ![Pills style edit mode](../Images/PillsEditMode.png)
 
-### Standard
+#### Standard
 In standard style, the controls are always visible, with a label above the control.
 
 ![Standard style](../Images/Standard.png)
 
-### Form Horizontal
+#### Form Horizontal
 In horizontal style form, the controls are always visible, with label on left side of the control.
 
 ![Form Horizontal style](../Images/FormHorizontal.png)
 
-### Form Vertical
+#### Form Vertical
 In vertical style from, the controls are always visible, with label above the control. Unlike standard style, there is only one label or control in one row. 
 
 ![Form Vertical style](../Images/FormVertical.png)
