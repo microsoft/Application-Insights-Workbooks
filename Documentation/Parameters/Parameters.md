@@ -82,3 +82,29 @@ format | result
 `{selection:$.y}`| `10`
 
 *Note:* If the parameter value is not valid json, the result of the format will be an empty value.
+
+## Parameter Style
+The following styles are available to layout the parameters:
+#### Pills
+In pills style, the default style, the parameters look like text, and require the user to click them once to go into the edit mode.
+
+![Pill style read mode](../Images/PillsReadMode.png)
+
+![Pills style edit mode](../Images/PillsEditMode.png)
+
+### Standard
+In standard style, the controls are always visible, with a label above the control.
+
+![Standard style](../Images/Standard.png)
+
+### Form Horizontal
+In horizontal style form, the controls are always visible, with label on left side of the control.
+
+![Form Horizontal style](../Images/FormHorizontal.png)
+
+### Form Vertical
+In vertical style from, the controls are always visible, with label above the control. Unlike standard style, there is only one label or control in one row. 
+
+![Form Vertical style](../Images/FormVertical.png)
+
+*Note:* In standard, form horizontal, and form vertical layouts, there's no concept of inline editing, the controls are always in edit mode. 
