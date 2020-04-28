@@ -15,9 +15,9 @@ Azure Monitor for Key Vaults combines both logs and metrics to provide a global 
 ## Configuring your Key Vaults for Monitoring
 *Note that enabling logs is a paid-service for monitoring
 
-1. The Operations & Latency tab helps you determine how many and which key vaults are enabled. To begin collecting, select the ‘Enable Full Monitoring’ button, which will bring you to a separate workbook that lists out the key vaults that require enabling diagnostic logs.
+1. The Operations & Latency tab helps you determine how many and which key vaults are enabled. To begin collecting, select the ‘Enable’ button, which will bring you to a separate workbook that lists out the key vaults that require enabling diagnostic logs.
 
-![](./Images/FullMonitorButton.png)
+![](./Images/EnableLogging.png)
 
 2. To enable diagnostic logs, click on the ‘Enable’ link underneath the actions column, and create a new diagnostics setting that sends logs to a Log Analytics workspace. It is recommended to send all the log to the same workspace.
 
@@ -55,6 +55,8 @@ Select Failures at the top of the page and the Failures tab opens. It shows you 
  
 There is conditional color-coding or heatmaps for columns in the workbook that report API hits metrics with a blue value. The deepest color has the highest value and a lighter color is based on the lowest values.
 
+The workbook displays Successes (2xx status codes), Authentication Errors (401/403 status codes), Throttling (429 status codes), and Other Failures (4xx status codes).
+
 To better understand what each of the status codes represent, we recommend reading through the documentation on [Azure Key Vault status and response codes](https://docs.microsoft.com/azure/key-vault/authentication-requests-and-responses).
 
 ## Operations & Latency Workbook
@@ -66,22 +68,6 @@ You can see how many of your key vaults are enabled for the logging process. If 
 ![](./Images/Logs.png)
 
 If you are not seeing any data for this section, reference the top section on how to enable logs for Azure Key Vault, or check the troubleshooting section below.
-
-## At resource Workbook
-To access Azure Monitor for Key Vaults, select any of the key vault links shown in the view from Azure Monitor.
-
-![](./Images/ResourceLevel.png)
-
-### At Resource Overview
-
-This opens up up a separate workbook providing a resource level view for that specific key vault.
-
-![](./Images/ResourceView.png)
-
-- This view provides a set of summary tiles that capture the Key Vault Availability, Request Counts, and average latency.
-
-- Individual charts showing the most essential details related to vault availability, transactions, and latency
- 
 ## Pin and export
 
 You can pin any one of the metric sections to an Azure Dashboard by selecting the pushpin icon at the top right of the section.

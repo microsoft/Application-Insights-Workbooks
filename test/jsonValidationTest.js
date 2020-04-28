@@ -1,6 +1,7 @@
 const assert = require('chai').assert;
 const Mocha = require('mocha');
 const fs = require('fs');
+const path = require('path');
 
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
@@ -8,7 +9,7 @@ describe('Validating Cohorts...', () => {
     it('Verifying .cohort files', function (done) {
         let failedList = [];
         browseDirectory(cohortPath, (error, results) => {
-            results.filter(file => file.substr(-7) === '.cohort')
+            results.filter(file => file.endsWith('.cohort'))
                 .forEach(file => {
                     validateJsonStringAndGetObject(file)
                 });
@@ -20,7 +21,7 @@ describe('Validating Cohorts...', () => {
     it('Verifying cohort settings files', function (done) {
         browseDirectory(cohortPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-13) === 'settings.json')
+            results.filter(file => file.endsWith('settings.json'))
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateSettingsForCohort(settings, file);
@@ -33,7 +34,7 @@ describe('Validating Cohorts...', () => {
     it('Verifying cohort category files', function (done) {
         browseDirectory(cohortPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-22) === 'categoryResources.json')
+            results.filter(file => file.endsWith('categoryResources.json'))
                 .forEach(file => {
                     let category = validateJsonStringAndGetObject(file);
                     validateCategory(category, file);
@@ -46,7 +47,7 @@ describe('Validating Cohorts...', () => {
     it('Verifying cohort category or settings json exists', function (done) {
         browseDirectory(cohortPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-7) === '.cohort')
+            results.filter(file => file.endsWith('.cohort'))
                 .forEach(folder => {
                     validateJsonExistForWorkbook(cohortPath, results, folder.substr(cohortPath.length+1))
                 });
@@ -61,11 +62,12 @@ describe('Validating Workbooks...', () => {
 
     it('Verifying .workbook files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
-            results.filter(file => file.substr(-9) === '.workbook')
+            results.filter(file => file.endsWith('.workbook'))
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateNoResourceIds(settings, file);
                     validateNoFromTemplateId(settings, file);
+                    validateSingleWorkbookFile(settings, file);
                 });
 
             done();
@@ -75,7 +77,7 @@ describe('Validating Workbooks...', () => {
     it('Verifying workbook settings.json files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-13) === 'settings.json')
+            results.filter(file => file.endsWith('settings.json'))
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file)
                     validateSettingsForWorkbook(settings, file);
@@ -88,7 +90,7 @@ describe('Validating Workbooks...', () => {
     it('Verifying workbook category json files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-22) === 'categoryResources.json')
+            results.filter(file => file.endsWith('categoryResources.json'))
                 .forEach(file => {
                     let category = validateJsonStringAndGetObject(file);
                     validateCategory(category, file);
@@ -101,7 +103,7 @@ describe('Validating Workbooks...', () => {
     it('Verifying workbook category or settings json exists', function (done) {
         browseDirectory(workbookPath, (error, results) => {
             if (error) throw error;
-            results.filter(file => file.substr(-9) === '.workbook')
+            results.filter(file => file.endsWith('.workbook'))
                 .forEach(folder => {
                     validateJsonExistForWorkbook(workbookPath, results, folder.substr(workbookPath.length+1))
                 });
@@ -114,7 +116,7 @@ describe('Validating Workbooks...', () => {
 function validateJsonExistForWorkbook(rootPath, results, file) {
     let paths = getProgressivePaths(rootPath, file);
     paths.forEach(folder => {
-        let result = results.filter(s => {            
+        let result = results.filter(s => {
             return s.indexOf(folder + "/categoryResources.json") > -1 || s.indexOf(folder + "/settings.json") > -1;
         });
         if (result.length === 0) {
@@ -166,8 +168,21 @@ var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
 };
 
 function validateJsonStringAndGetObject(file) {
+    // also validate the file name. 
+    // * it can have either / or \ but not both.
+    // * it cannnot have & or ? or #
+    if (file.indexOf("/") !== -1 && file.indexOf("\\") !== -1) {
+        assert.fail("Filename contains both '/' and '\\' characters: '" + file + "'")
+    } else {
+        ["&", "?", "#"].forEach( c => {
+            if (file.indexOf(c) !== -1) {
+                assert.fail("Filename contains invalid '" + c + "' character: '" + file + "'");
+            }
+        });
+    }
+
     let json = fs.readFileSync(file, 'utf8');
-    let obj = TryParseJson(json, file)    
+    let obj = TryParseJson(json, file);
     return obj;
 }
 
@@ -199,7 +214,19 @@ function validateNoFromTemplateId(settings, file) {
     }
 }
 
+// validate that there's only one .workbook file in a folder, as only one is going to get picked up by the processing
+function validateSingleWorkbookFile(settings, file) {
+    let dir = path.dirname(file);
+    fs.readdir(dir, (err, list) => {
+        let workbooks = list.filter(s => s.endsWith(".workbook"));
+        if (workbooks.length > 1) {
+            assert.fail(file + ": Found " + workbooks.length + " .workbook files in folder. Only one is allowed.");
+        }    
+    });
+}
+
 function validateCategory(category, file) {
+    checkProperty(category, "$schema", file);
     checkProperty(category, 'en-us', file);
     ["name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
 }
