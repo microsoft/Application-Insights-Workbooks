@@ -168,8 +168,21 @@ var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
 };
 
 function validateJsonStringAndGetObject(file) {
+    // also validate the file name. 
+    // * it can have either / or \ but not both.
+    // * it cannnot have & or ? or #
+    if (file.indexOf("/") !== -1 && file.indexOf("\\") !== -1) {
+        assert.fail("Filename contains both '/' and '\\' characters: '" + file + "'")
+    } else {
+        ["&", "?", "#"].forEach( c => {
+            if (file.indexOf(c) !== -1) {
+                assert.fail("Filename contains invalid '" + c + "' character: '" + file + "'");
+            }
+        });
+    }
+
     let json = fs.readFileSync(file, 'utf8');
-    let obj = TryParseJson(json, file)    
+    let obj = TryParseJson(json, file);
     return obj;
 }
 
