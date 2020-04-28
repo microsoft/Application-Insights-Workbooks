@@ -140,13 +140,13 @@ If the selected link type is `ARM Deployment` the author must specify additional
 
 ##### Template Settings
 
-This section defines where the template should come from and the parameters used to run the ARM deployment.
+This section defines the ARM template, where the template should come from and the parameters used to run the ARM deployment.
 
 | Source | Explanation |
 |:------------- |:-------------|
-|`Resource group id comes from` | The resource id is used to manage deploy resources. The subscription is used to manage deployed resources and costs. The resource groups are used like folders to organize and manage all your resources. If this value is not specified, the deployment will fail. Select from `Cell`, `Column`, or `Parameter` in [Link sources](#link-sources).|
+|`Resource group id comes from` | The resource group id is used to manage deploy resources. The subscription is used to manage deployed resources and costs. The resource groups are used like folders to organize and manage all your resources. If this value is not specified, the deployment will fail. Select from `Cell`, `Column`, `Static Value` or `Parameter` in [Link sources](#link-sources).|
 |`ARM template URI from` | The URI to the ARM template itself. The template URI needs to be accessible to the users who will deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). For starters, take a look at our [Quickstart templates](https://azure.microsoft.com/en-us/resources/templates/).|
-|`ARM Template Parameters` | This section defines the template parameters used for the template URI defined above. These parameters will be used to deploy the template on the run page. The grid contains an expand toolbar button to help fill the parameters using the names defined in the template URI and set it to static empty values. This option can only be used when there are no parameters in the grid and the template URI has been set.|
+|`ARM Template Parameters` | This section defines the template parameters used for the template URI defined above. These parameters will be used to deploy the template on the run page. The grid contains an expand toolbar button to help fill the parameters using the names defined in the template URI and set it to static empty values. This option can only be used when there are no parameters in the grid and the template URI has been set. The lower section is a preview of what the parameter output looks like. Click on Refresh to update the preview with current changes. Parameters can be `value` or `reference`; typical parameters are values and references are something that could point to a keyvault secrets which the user has access to. **NOTE:** Template Viewer blade limitation - it does not render reference parameters correctly and will show up as null/value, thus users will not be able to correctly deploy reference parameters from Template Viewer blade. |
 
 ![Image showing ARM template settings](../Images/ArmTemplateSettings.png)
 
@@ -157,12 +157,12 @@ This section configures what the users will see before they run the ARM deployme
 | Source | Explanation |
 |:------------- |:-------------|
 |`Title from` | Title used on the run blade. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can specify parameters using `{paramName}`. Also you can specify columns by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
+|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can specify parameters using `{paramName}`. Also you can specify columns by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
 |`Run button text from:` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
 ![Image showing ARM UX settings](../Images/ArmUXSettings.png)
 
-After these configurations are set, when the user clicks on the link, it will open up the blade with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings).
+After these configurations are set, when the user clicks on the link, it will open up the blade with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings). View Template will open up the Template Viewer blade for user to examine the template and the parameters before deploying.
 
 ![Image showing run ARM blade](../Images/RunArmBlade.png)
 
