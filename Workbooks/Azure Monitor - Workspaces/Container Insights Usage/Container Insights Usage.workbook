@@ -20,25 +20,13 @@
           {
             "type": 1,
             "content": {
-              "json": "<div style=\"border: 1px solid grey\"></div>"
+              "json": "---"
             },
             "name": "text - 10"
           }
         ]
       },
       "name": "workbook-explanation"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "`Master node logs` are not enabled. [Learn how to enable](https://docs.microsoft.com/en-us/azure/aks/view-master-logs)"
-      },
-      "conditionalVisibility": {
-        "parameterName": "masterNodeExists",
-        "comparison": "isEqualTo",
-        "value": "no"
-      },
-      "name": "text - 8"
     },
     {
       "type": 9,
@@ -54,7 +42,7 @@
             "description": "Select time-range for data selection",
             "isRequired": true,
             "value": {
-              "durationMs": 43200000
+              "durationMs": 86400000
             },
             "typeSettings": {
               "selectableValues": [
@@ -127,10 +115,22 @@
       "name": "parameters - 6"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "`Master node logs` are not enabled. [Learn how to enable](https://docs.microsoft.com/en-us/azure/aks/view-master-logs)"
+      },
+      "conditionalVisibility": {
+        "parameterName": "masterNodeExists",
+        "comparison": "isEqualTo",
+        "value": "no"
+      },
+      "name": "text - 8"
+    },
+    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "union withsource = tt *\r\n| where TimeGenerated {Time_range}\r\n| where _IsBillable == true\r\n| summarize BillableDataBytes = sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain}), tt\r\n| render piechart",
+        "query": "union withsource = tt *\r\n| where _IsBillable == true\r\n| summarize BillableDataBytes = sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain}), tt\r\n| render piechart",
         "size": 0,
         "showAnnotations": true,
         "showAnalytics": true,
@@ -171,10 +171,14 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "ContainerLog\r\n|join(KubePodInventory) on ContainerID\r\n| where TimeGenerated {Time_range}\r\n| summarize Total= sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain}), Namespace\r\n| render piechart",
+        "query": "let containerLogs = ContainerLog\r\n| where _IsBillable == true\r\n| summarize BillableDataBytes = sum(_BilledSize) by LogEntrySource, ContainerID;\r\nlet kpi = KubePodInventory\r\n| distinct ContainerID, Namespace;\r\ncontainerLogs\r\n| join kpi on $left.ContainerID == $right.ContainerID\r\n| summarize Total=sum(BillableDataBytes) by Namespace\r\n| render piechart\r\n",
         "size": 0,
         "showAnalytics": true,
         "title": "Billable data as per namespace",
+        "timeContext": {
+          "durationMs": 0
+        },
+        "timeContextFromParameter": "Time_range",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "tileSettings": {
@@ -251,12 +255,13 @@
                   "label": "Namespace",
                   "type": 2,
                   "description": "Selecting Namespace",
+                  "isRequired": true,
                   "multiSelect": true,
                   "quote": "'",
                   "delimiter": ",",
                   "query": "ContainerLog\r\n| join(KubePodInventory) on ContainerID\r\n| distinct Namespace\r\n| project value = Namespace, label = Namespace, selected = false\r\n| sort by label asc",
                   "value": [
-                    "all-logs"
+                    "value::all"
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
@@ -282,11 +287,15 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "ContainerLog\r\n|join(KubePodInventory) on ContainerID\r\n| where \"*\" in ({namespace}) or Namespace in ({namespace})\r\n| where TimeGenerated {Time_range}\r\n| summarize Total=sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain}), LogEntrySource\r\n| render barchart\r\n",
+              "query": "let namespace = dynamic([{namespace}]);\r\nlet containerLogs = ContainerLog\r\n| where _IsBillable == true\r\n| summarize BillableDataBytes = sum(_BilledSize) by LogEntrySource, ContainerID;\r\nlet kpi = KubePodInventory\r\n| distinct ContainerID, Namespace;\r\ncontainerLogs\r\n| join kpi on $left.ContainerID == $right.ContainerID\r\n| where \"*\" in ({namespace}) or Namespace in ({namespace}) \r\n| extend sourceNamespace = strcat(LogEntrySource, \"/\", Namespace)\r\n| summarize Total=sum(BillableDataBytes) by sourceNamespace\r\n| render piechart",
               "size": 0,
               "showAnnotations": true,
               "showAnalytics": true,
               "title": "Billable data per log-source type for namespace selected",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "Time_range",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "chartSettings": {
@@ -307,25 +316,35 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "ContainerLog\r\n| join(KubePodInventory) on ContainerID\r\n| where \"*\" in ({namespace}) or Namespace in ({namespace})\r\n| summarize ContainerLogData = sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain})\r\n| render linechart\r\n\r\n",
+              "query": "let namespace = dynamic([{namespace}]);\r\nContainerLog\r\n| join(KubePodInventory) on ContainerID\r\n| where TimeGenerated {Time_range}\r\n| where \"*\" in ({namespace}) or Namespace in ({namespace})\r\n| summarize ContainerLogData = sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain})\r\n| render linechart\r\n\r\n",
               "size": 0,
               "showAnnotations": true,
               "showAnalytics": true,
               "title": "Billable container log data for namespace selected",
+              "noDataMessage": "The query returned no result",
               "timeContext": {
                 "durationMs": 43200000
               },
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "chartSettings": {
+                "xSettings": {},
                 "ySettings": {
-                  "unit": 2,
-                  "min": null,
-                  "max": null
+                  "numberFormatSettings": {
+                    "unit": 2,
+                    "options": {
+                      "style": "decimal"
+                    }
+                  }
                 }
               }
             },
             "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "namespace:label",
+              "comparison": "isNotEqualTo",
+              "value": "<unset>"
+            },
             "name": "query - 2",
             "styleSettings": {
               "showBorder": true
@@ -338,7 +357,7 @@
     {
       "type": 1,
       "content": {
-        "json": "<div style=\"border: 1px solid grey\"></div>"
+        "json": "---"
       },
       "name": "text - 8"
     },
@@ -346,10 +365,10 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "ContainerLog\r\n|join(KubePodInventory) on ContainerID\r\n|where TimeGenerated {Time_range}\r\n| summarize Total= sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain}), ClusterName\r\n| render linechart",
+        "query": "ContainerLog\r\n|join(KubePodInventory) on ContainerID\r\n| summarize Total= sum(_BilledSize) by bin(TimeGenerated, {Time_range:grain}), ClusterName\r\n| render linechart",
         "size": 0,
         "showAnalytics": true,
-        "title": "Billable data per cluster name",
+        "title": "Billable container log data per cluster name",
         "timeContext": {
           "durationMs": 0
         },
