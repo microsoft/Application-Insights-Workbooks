@@ -57,3 +57,13 @@ This is how the tiles will look like in read mode:
 8. Click the _Save and Close_ button at the bottom of the pane.
 
 ![Image showing the creation of a tile visualization with a sparkline](../Images/Tiles-Sparkline.png)
+
+
+## Tile sizes
+The author has an option to set the tile width in the tile settings 
+* `fixed` (default) - The default behavior of tiles is to be the same fixed width, ~160 pixels wide, plus space around the tiles
+  ![image displaying fixed width tiles](../Images/Tiles-fixed.png)
+* `auto` - Each tile will shrink or grow to fit their contents, but being limited to the width of the tiles view (no horizontal scrolling)
+  ![image displaying fixed width tiles](../Images/Tiles-auto.png)
+* `full size` - Each tile will always be the full width of the tiles view, one tile per line.
+  ![image displaying fixed width tiles](../Images/Tiles-full.png)
