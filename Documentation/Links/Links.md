@@ -28,7 +28,7 @@ Styling can be applied to the links step itself, and the style of individual lin
 
 
 ### Link Actions
-Links in the link step can use all of the link actions available in [grids and other visualizations](../Visualizations/Grid.md#link-actions), and have 2 more available actions:
+Links in the link step can use all of the link actions available in [grids and other visualizations](./LinkActions.md), and have 2 more available actions:
 
 | Action | Description |
 |:------------- |:-------------|
