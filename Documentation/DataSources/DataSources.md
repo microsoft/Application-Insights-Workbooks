@@ -8,8 +8,8 @@ Workbooks support these data sources:
 * [Logs](#logs)
 * [Metrics](#metrics)
 * [Azure Resource Graph](#azure-resource-graph-arg)
-* [Custom Endpoint](#custom-endpoint-preview)
-* [Azure Resource Manager](#azure-resource-manager-preview)
+* [Custom Endpoint](#custom-endpoint)
+* [Azure Resource Manager](#azure-resource-manager)
 * [Workload Health](#workload-health)
 * [Azure Resource Health](#azure-resource-health)
 * [Azure Data Explorer](#azure-data-explorer-preview)
@@ -65,7 +65,7 @@ Limitations: the alerts data source requires read access to the Subscription in 
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Alerts (preview)_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
 
-## Custom endpoint (preview)
+## Custom endpoint
 Workbooks supports getting data from any external source. If your data lives outside Azure you can bring it to Workbooks by using this data source type.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Custom Endpoint_. Provide the appropriate parameters such as Http method, url, headers, url parameters and/or body. Make sure your data source supports [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) otherwise the request will fail.
@@ -78,7 +78,7 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 
 This provider supports [JSON Path](../Transformations/JSONPath.md).
 
-## Azure Resource Manager (preview)
+## Azure Resource Manager
 Workbook supports Azure Resource Manager (ARM) REST operations. This allows the ability to query management.azure.com endpoint without the need to provide your own authorization header token.
 
 To make a query control use this data source, use the _Data source_ drop down to choose _Azure Resource Manager_. Provide the appropriate parameters such as Http method, url path, headers, url parameters and/or body.
