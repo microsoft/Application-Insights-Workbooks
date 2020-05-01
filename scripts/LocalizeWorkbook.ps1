@@ -15,22 +15,21 @@ Function ExtractStringsFromWorkbook() {
         [string] $workbookPath,
         [string] $file
     )
-    Get-Content -Raw -Path "$workbookPath\$file" | ConvertFrom-Json
+    $content = Get-Content -Raw -Path "$workbookPath\$file" | ConvertFrom-Json | Select-Object -expand items
+    Write-Host $content
 }
 
 #----------------------------------------------------------------------------
 # Script Starts Here
 #------------------------------------------------------------
 # arg0 expected to be the workbook to extract strings from.
+# TODO: below is just for testing and debugging. Remove this when finished
 $workbookPath = 'C:\src\Application-Insights-Workbooks\Workbooks\Azure Monitor - Getting Started\Resource Picker'
 #  $args[0]
 If (!(test-path $workbookPath)) {
     # Workbook path doesn't exist
     throw "ERROR: Could not find path '$($workbookPath)'"
 }
-
-# Write-Host "Generating directory "$workbookPath 
-# New-Item -ItemType Directory -Force -Path $workbookPath
 
 $files = Get-ChildItem -Path $workbookPath -Name -Include "*.workbook", "*.cohort"
 if ($files.Count -eq 0) {
@@ -44,19 +43,5 @@ if ($files.Count -eq 0) {
 foreach ($file in $files) {
     ExtractStringsFromWorkbook $workbookPath $file
 }
-
-
-
-# $filename = "\newfile.resx"
-# If (!(test-path $workbookPath'\newfile.resx')) {
-#     Write-Host "Generating ResX File..."
-#     CreateNewResXFile
-
-# }
-# else {
-#     ResXFileExists
-# }
-
-# Set-Content -Path $workbookPath'\newfile.resx' -Value 'test string'
 
 Write-Host "Completed."
