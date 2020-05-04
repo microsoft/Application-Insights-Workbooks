@@ -1,7 +1,7 @@
 const fs = require('fs')
 
-// Keys to localize
-const keys = [
+// Keys to localize. Add new keys here.
+const Keys = [
     "json",
     "description",
     "label",
@@ -12,13 +12,17 @@ const keys = [
     "chartTitle",
     "defaultItemsText",
     "loadButtonText",
-    "typeSettings"
+    "typeSettings",
+    "noDataMessage"
 ];
+
+const Encoding = 'utf8';
+const StringFileName = 'strings.json'
 
 // FUNCTIONS
 function testPath(path) {
     if (fs.existsSync(path)) {
-        //file exists
+        // file exists
         console.log("Found file...", path);
         return true;
     } else {
@@ -27,37 +31,52 @@ function testPath(path) {
     }
 }
 
-function getExtension(filename) {
-    const parts = filename.split('.');
-    return parts[parts.length - 1];
-}
 
-function isValidFileType(extension) {
+function isValidFileType(filename) {
+    const parts = filename.split('.');
+    const extension = parts[parts.length - 1];
     return extension === "workbook" || extension === "cohort";
 }
 
 function openWorkbook(file) {
     try {
-        const data = fs.readFileSync(file, 'utf8')
+        const data = fs.readFileSync(file, Encoding);
         return data;
     } catch (err) {
-        console.error(err)
+        console.error(err);
     }
 }
 
-function getObjects(obj) {
-    var objects = [];
+function getObjects(obj, objKey, outputMap) {
+    const key = (objKey || '').concat('.');
     for (var i in obj) {
         if (!obj.hasOwnProperty(i)) {
             continue;
         }
         if (typeof obj[i] == 'object') {
-            objects = objects.concat(getObjects(obj[i]));
-        } else if (keys.includes(i)) {
-            objects.push(obj[i]);
+            getObjects(obj[i], key.concat(i), outputMap);
+        } else if (Keys.includes(i)) {
+            outputMap[key] = obj[i];
         }
     }
-    return objects;
+}
+
+function writeToFile(data, path) {
+    const parts = path.split('\\');
+    var directoryPath = '';
+    for (var i = 0; i < parts.length - 1; i++) {
+        directoryPath = directoryPath.concat(parts[i], '\\');
+    }
+    const fullpath = directoryPath.concat(StringFileName);
+    console.log(directoryPath);
+    const content = JSON.stringify(data, null, "\t");
+    try {
+        fs.writeFileSync(fullpath, content);
+        console.log("Wrote to file... ", fullpath);
+        console.log("String file generated. Please check the file in.")
+    } catch (e) {
+        console.log("Cannot write file ", e);
+    }
 }
 
 // SCRIPT
@@ -69,13 +88,18 @@ if (!process.argv[2]) {
     if (!exists) {
         return;
     }
-    const ext = getExtension(filePath);
-    const isValid = isValidFileType(ext);
+
+    const isValid = isValidFileType(filePath);
     if (!isValid) {
         console.error("The provided path does not contain a workbook. The extension must end with .workbook or .cohort");
         return;
     }
     // Valid workbook, start read the content
     const data = openWorkbook(filePath);
-    console.log(getObjects(JSON.parse(data), "version", ""));
+    var map = {};
+    getObjects(JSON.parse(data), '', map);
+    console.log(map);
+
+    // Write new strings to file
+    writeToFile(map, filePath);
 }
