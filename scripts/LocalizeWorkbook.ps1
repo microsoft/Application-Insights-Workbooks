@@ -16,8 +16,9 @@ Function ExtractStringsFromWorkbook() {
         [string] $file
     )
     $content = Get-Content -Raw -Path "$workbookPath\$file" | ConvertFrom-Json | Select-Object -expand items
-    Write-Host $content
+    Write-Host $content            
 }
+
 
 #----------------------------------------------------------------------------
 # Script Starts Here
@@ -34,9 +35,11 @@ If (!(test-path $workbookPath)) {
 $files = Get-ChildItem -Path $workbookPath -Name -Include "*.workbook", "*.cohort"
 if ($files.Count -eq 0) {
     throw "ERROR: Did not find '.workbook' or '.cohort' files."
-} elseif ($files.Count -ne 1) {
+}
+elseif ($files.Count -ne 1) {
     throw "ERROR: There should be only one '.workbook' or '.cohort' file in this directory."
-} else {
+}
+else {
     Write-Host "Found file(s): '$($files)'"
 }
 
