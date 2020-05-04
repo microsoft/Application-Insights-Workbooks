@@ -1,10 +1,25 @@
 const fs = require('fs')
 
+// Keys to localize
+const keys = [
+    "json",
+    "description",
+    "label",
+    "linkLabel",
+    "preText",
+    "postText",
+    "title",
+    "chartTitle",
+    "defaultItemsText",
+    "loadButtonText",
+    "typeSettings"
+];
+
 // FUNCTIONS
 function testPath(path) {
     if (fs.existsSync(path)) {
         //file exists
-        console.log("file exists", path);
+        console.log("Found file...", path);
         return true;
     } else {
         console.error("File doesn't exist");
@@ -24,17 +39,26 @@ function isValidFileType(extension) {
 function openWorkbook(file) {
     try {
         const data = fs.readFileSync(file, 'utf8')
-        console.log(data)
         return data;
     } catch (err) {
         console.error(err)
     }
 }
 
-function extractStrings(json) {
-
+function getObjects(obj) {
+    var objects = [];
+    for (var i in obj) {
+        if (!obj.hasOwnProperty(i)) {
+            continue;
+        }
+        if (typeof obj[i] == 'object') {
+            objects = objects.concat(getObjects(obj[i]));
+        } else if (keys.includes(i)) {
+            objects.push(obj[i]);
+        }
+    }
+    return objects;
 }
-
 
 // SCRIPT
 if (!process.argv[2]) {
@@ -53,5 +77,5 @@ if (!process.argv[2]) {
     }
     // Valid workbook, start read the content
     const data = openWorkbook(filePath);
-    extractStrings(json);
+    console.log(getObjects(JSON.parse(data), "version", ""));
 }
