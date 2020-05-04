@@ -31,6 +31,7 @@ Use these links to learn more about workbooks:
 * [Data Sources](Documentation/DataSources/DataSources.md)
 * [Visualizations](Documentation/Visualizations/Visualizations.md)
 * [Parameters](Documentation/Parameters/Parameters.md)
+* [Groups](Documentation/Groups/Groups.md)
 * [Interactivity](Documentation/Interactivity.md)
 * [Manage programmatically](Documentation/Programmatically.md)
 * [Sample Gallery](Documentation/Samples/Samples.md)
