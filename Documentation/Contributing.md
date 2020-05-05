@@ -209,7 +209,7 @@ the simplest possible testing is by opening workbooks in the place you expect yo
 1. Create an empty workbook 
 2. Go to advanced mode
 3. Paste the contents of the `.workbook` template file into advanced mode
-4. Press apply
+4. Use the `Apply` button
 
    Assuming your template content is valid, your template will appear in the view. If the template content was not valid, you will get an error notification displaying why your content is not valid.
 

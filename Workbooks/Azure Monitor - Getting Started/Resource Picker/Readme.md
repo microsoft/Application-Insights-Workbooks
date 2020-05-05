@@ -6,7 +6,7 @@ The `Resource Picker` template gets you started with subscription, resource grou
 
 ## Setting up the resource type to pick
 
-1. Hit `Edit` on the workbook toolbar.
+1. Use `Edit` on the workbook toolbar.
 2. You will now be able to see a drop down `Resource type` before `Subscriptions`:
 
     ![Image](Parameter.png)
@@ -17,7 +17,7 @@ The `Resource Picker` template gets you started with subscription, resource grou
 
 ## Selecting more or less than 10 resources by default
 
-1. Hit `Edit` on the workbook toolbar.
+1. Use `Edit` on the workbook toolbar.
 2. Click the `Edit` button at the bottom right of the parameter control.
 3. In the parameters grid, select the row for `Resources`
 4. Click on the `Edit` (or pencil) icon control toolbar.
