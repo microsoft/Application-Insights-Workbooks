@@ -17,7 +17,72 @@ const Keys = [
 ];
 
 const Encoding = 'utf8';
-const StringFileName = 'strings.json'
+const StringFileName = 'strings.json';
+const resxFileName = 'strings.resx';
+
+const resxBegin =
+    `<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>\r\n`;
+
+const resXEnd = `</root>`;
 
 // FUNCTIONS
 function testPath(path) {
@@ -61,7 +126,8 @@ function getObjects(obj, objKey, outputMap) {
     }
 }
 
-function writeToFile(data, path) {
+/** Write string file as JSON */
+function writeToFileJSON(data, path) {
     const parts = path.split('\\');
     var directoryPath = '';
     for (var i = 0; i < parts.length - 1; i++) {
@@ -76,6 +142,51 @@ function writeToFile(data, path) {
         console.log("String file generated. Please check the file in.")
     } catch (e) {
         console.log("Cannot write file ", e);
+    }
+}
+
+/** Write string file as ResX format */
+function writeToFileResX(data, path) {
+    const parts = path.split('\\');
+    var directoryPath = '';
+    for (var i = 0; i < parts.length - 1; i++) {
+        directoryPath = directoryPath.concat(parts[i], '\\');
+    }
+    const fullpath = directoryPath.concat(resxFileName);
+    console.log(directoryPath);
+    try {
+        const writeStream = fs.createWriteStream(fullpath, {
+            flags: 'a'
+        });
+
+        return new Promise((resolve, reject) => {
+            writeStream.on("error", reject);
+            writeStream.on("finish", resolve);
+
+            // Start of resx file
+            writeStream.write(resxBegin);
+
+            // Begin writing definitions
+            for (var key in data) {
+                const val = data[key];
+                const definition = `<data name="${key}" xml:space="preserve">`;
+                const value = `<value>"${val}"</value>`;
+                const endData = '</data>';
+
+                writeStream.write('\t' + definition + '\r\n');
+                writeStream.write('\t\t' + value + '\r\n');
+                writeStream.write('\t' + endData + '\r\n');
+            }
+
+            writeStream.write(resXEnd);
+
+            console.log("Wrote to file... ", fullpath);
+            console.log("String file generated. Please check the file in.");
+            writeStream.close();
+        });
+
+    } catch (e) {
+        console.log("Cannot write file: ", e);
     }
 }
 
@@ -101,5 +212,6 @@ if (!process.argv[2]) {
     console.log(map);
 
     // Write new strings to file
-    writeToFile(map, filePath);
+    // writeToFile(map, filePath);
+    writeToFileResX(map, filePath);
 }
