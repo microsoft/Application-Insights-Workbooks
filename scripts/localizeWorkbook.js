@@ -18,9 +18,9 @@ const Keys = [
 
 const Encoding = 'utf8';
 const StringFileName = 'strings.json';
-const resxFileName = 'strings.resx';
+const ResxFileName = 'strings.resx';
 
-const resxBegin =
+const ResxBegin =
     `<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
@@ -82,7 +82,9 @@ const resxBegin =
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>\r\n`;
 
-const resXEnd = `</root>`;
+const ResXEnd = '</root>';
+
+const ResXEntryEnd = '</data>';
 
 // FUNCTIONS
 function testPath(path) {
@@ -152,7 +154,7 @@ function writeToFileResX(data, path) {
     for (var i = 0; i < parts.length - 1; i++) {
         directoryPath = directoryPath.concat(parts[i], '\\');
     }
-    const fullpath = directoryPath.concat(resxFileName);
+    const fullpath = directoryPath.concat(ResxFileName);
     console.log(directoryPath);
     try {
         const writeStream = fs.createWriteStream(fullpath, {
@@ -164,21 +166,20 @@ function writeToFileResX(data, path) {
             writeStream.on("finish", resolve);
 
             // Start of resx file
-            writeStream.write(resxBegin);
+            writeStream.write(ResxBegin);
 
             // Begin writing definitions
             for (var key in data) {
                 const val = data[key];
                 const definition = `<data name="${key}" xml:space="preserve">`;
                 const value = `<value>"${val}"</value>`;
-                const endData = '</data>';
 
                 writeStream.write('\t' + definition + '\r\n');
                 writeStream.write('\t\t' + value + '\r\n');
-                writeStream.write('\t' + endData + '\r\n');
+                writeStream.write('\t' + ResXEntryEnd + '\r\n');
             }
 
-            writeStream.write(resXEnd);
+            writeStream.write(ResXEnd);
 
             console.log("Wrote to file... ", fullpath);
             console.log("String file generated. Please check the file in.");
