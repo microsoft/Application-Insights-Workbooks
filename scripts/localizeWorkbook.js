@@ -17,7 +17,7 @@ const LocKeys = [
 ];
 
 const Encoding = 'utf8';
-const StringFileName = 'strings.json';
+const ResJsonStringFileName = 'strings.resjson';
 const ResxFileName = 'strings.resx';
 
 const ResxBegin =
@@ -134,7 +134,7 @@ function writeToFileJSON(data, path) {
   for (var i = 0; i < parts.length - 1; i++) {
     directoryPath = directoryPath.concat(parts[i], '\\');
   }
-  const fullpath = directoryPath.concat(StringFileName);
+  const fullpath = directoryPath.concat(ResJsonStringFileName);
   console.log(directoryPath);
   const content = JSON.stringify(data, null, "\t");
   try {
@@ -156,6 +156,8 @@ function writeToFileResX(data, path) {
   const fullpath = directoryPath.concat(ResxFileName);
   console.log(directoryPath);
   try {
+    // start of resx file
+    fs.writeFileSync(fullpath, ResxBegin);
     const writeStream = fs.createWriteStream(fullpath, {
       flags: 'a'
     });
@@ -164,8 +166,6 @@ function writeToFileResX(data, path) {
       writeStream.on("error", reject);
       writeStream.on("finish", resolve);
 
-      // Start of resx file
-      writeStream.write(ResxBegin);
 
       // Begin writing definitions
       for (var key in data) {
@@ -212,6 +212,6 @@ if (!process.argv[2]) {
   console.log(map);
 
   // Write new strings to file
-  // writeToFile(map, filePath);
-  writeToFileResX(map, filePath);
+  writeToFileJSON(map, filePath);
+  // writeToFileResX(map, filePath);
 }
