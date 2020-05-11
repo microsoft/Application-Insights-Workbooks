@@ -107,6 +107,7 @@ function isValidFileType(filename) {
 
 function openWorkbook(file) {
   try {
+    console.log(">>>>> Processing workbook ", file);
     const data = fs.readFileSync(file, Encoding);
     return data;
   } catch (err) {
@@ -135,12 +136,12 @@ function writeToFileJSON(data, path) {
     directoryPath = directoryPath.concat(parts[i], '\\');
   }
   const fullpath = directoryPath.concat(ResJsonStringFileName);
-  console.log(directoryPath);
+  console.log("...Path: ", directoryPath);
   const content = JSON.stringify(data, null, "\t");
   try {
     fs.writeFileSync(fullpath, content);
-    console.log("Wrote to file... ", fullpath);
-    console.log("String file generated. Please check the file in.")
+    console.log(">>>>> Wrote to file: ", fullpath);
+    console.log("Done generating string file. Please check the file in.")
   } catch (e) {
     console.log("Cannot write file ", e);
   }
@@ -192,7 +193,7 @@ function writeToFileResX(data, path) {
 
 // SCRIPT
 if (!process.argv[2]) {
-  console.log('Workbook path not provided. Please provide the path to the workbook to localize.');
+  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize.');
 } else {
   const filePath = process.argv[2];
   const exists = testPath(filePath);
@@ -202,12 +203,15 @@ if (!process.argv[2]) {
 
   const isValid = isValidFileType(filePath);
   if (!isValid) {
-    console.error("The provided path does not contain a workbook. The extension must end with .workbook or .cohort");
+    console.error("ERROR: The provided path does not contain a workbook. The extension must end with .workbook or .cohort");
     return;
   }
+
+  console.log("Processing...")
   // Valid workbook, start read the content
   const data = openWorkbook(filePath);
   var map = {};
+  console.log(">>>>> Looking for localizeable strings")
   getLocalizeableStrings(JSON.parse(data), '', map);
   console.log(map);
 
