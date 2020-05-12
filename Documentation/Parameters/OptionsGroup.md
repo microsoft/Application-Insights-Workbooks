@@ -2,7 +2,7 @@
 
 An options group parameter allows the user to select one values from a known set (e.g. select one of your app’s requests). When there are a small number of values, an options group can be a better choice than a [Drop down](./DropDown.md) parameter, as the user can see all the possible values, and see which one is selected. Options groups are commonly used for yes|no or on|off style choices. When there are large number of possible values, using a drop down is a better choice. Note that unlike drop down parameters, an options group *always* only allows one selected value.
 
-The easiest way to specify the list by providing a static list in the parameter setting. A more interesting way is to get the list dynamically via a KQL query. Parameter setting also allow you to specify whether it is single or multi-select, and if it is multi-select, how the result set should be formatted (delimiter, quotation, etc.).
+The easiest way to specify the list by providing a static list in the parameter setting. A more interesting way is to get the list dynamically via a KQL query.
 
 ## Creating a static options group parameter
 1. Start with an empty workbook in edit mode.
