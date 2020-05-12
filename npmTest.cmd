@@ -1,3 +1,3 @@
 cd /D "%~dp0"
 dir
-npm test
+npm run fullbuildtest
