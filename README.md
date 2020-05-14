@@ -52,4 +52,8 @@ This repo is [supported by Microsoft](https://docs.microsoft.com/en-us/azure/azu
 * Request or upvote features on [UserVoice](https://feedback.azure.com/forums/913690-azure-monitor)
 * File a [support](https://docs.microsoft.com/en-us/azure/azure-supportability/how-to-create-azure-support-request) ticket with Azure
 
+## Pipleline Build
+
+Once checked into master, a [pipeline build](https://github-private.visualstudio.com/microsoft/_build?definitionId=48&_a=summary) will be created and the output will be integrated with [MGMT-AppInsights-InsightsPortal](https://msazure.visualstudio.com/One/_git/MGMT-AppInsights-InsightsPortal) build. [Request to the pipeline build is made here.](https://myaccess/identityiq/ui/rest/redirect?rp1=%2FaccessRequest%2FaccessRequest.jsf&rp2=accessRequest%2Freview%3Frole%3D1BPipelineGHMicrosoft&autoSubmit=true)
+
 We are constantly working to improve, and we value your feedback.
