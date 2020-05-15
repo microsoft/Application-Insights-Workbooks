@@ -54,7 +54,7 @@ Here is the same grid styled as bars.
 
 ### Styling a Grid Column
 1. Click the _Column Settings_ button on the query control toolbar. 
-2. This opens up the _Edit column settings_ context blade.
+2. This opens up the _Edit column settings_ context view.
 3. Select the column to style.
 4. Choose a column renderer (e.g. heatmap, bar, bar underneath, etc.) and related settings to style your column.
 
@@ -86,113 +86,7 @@ Here is an example that styles the _Request_ column as a bar:
 ### Link Actions
 If the `Link` renderer is selected, or the `Make this item a link` checkbox is selected, then the author can  configure a link action that will occur on clicking the cell. This usually is taking the user to some other view with context coming from the cell, or may open up a url.
 
-#### General Link Actions
-| Link action | Action on click |
-|:------------- |:-------------|
-| `Generic Details` | Shows the row values in a property grid context blade |
-| `Cell Details` | Shows the cell value in a property grid context blade. Useful when the cell contains a dynamic type with information (e.g. json with request properties like location, role instance, etc.). |
-| `Url` | The value of the cell is expected to be a valid http url, and the cell will be a link that opens up that url in a new tab.|
-
-#### Application Insights
-| Link action | Action on click |
-|:------------- |:-------------|
-| `Custom Event Details` | Opens the Application Insights search details with the custom event id (itemId) in the cell |
-| `* Details` | Similar to Custom Event Details, except for dependencies, exceptions, page views, requests and traces. |
-| `Custom Event User Flows` | Opens the Application Insights User Flows experience pivoted on the custom event name in the cell |
-| `* User Flows` | Similar to Custom Event User Flows except for exceptions, page views and requests |
-| `User Timeline` | Opens the user timeline with the user id (user_Id) in the cell |
-| `Session Timeline` | Opens the Application Insights search experience for the value in the cell (e.g. search for text 'abc' where abc is the value in the cell) |
-
-`*` denotes a wildcard for the above table
-
-#### Azure Resource
-| Link action | Action on click |
-|:------------- |:-------------|
-| `ARM Deployment` | Deploy an ARM template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings)   |
-| `Create Alert Rule` | Creates an Alert rule for a resource.  |
-| `Metrics` | Opens a metrics view  |
-| `Resource overview` | Open the resource's view in the portal based on the resource id value in the cell.  The author can also optionally set a `submenu` value that will open up a specific menu item in the resource view. |
-| `Workbook (template)` | Open a workbook template.  When this item is selected, additional fields are displayed to let the author configure what template to open, etc.  |
-
-#### Link settings
-When using the Link renderer, the following settings are available:
-
-![Image showing link settings](../Images/LinkSettings.png)
-
-| Setting | Explanation |
-|:------------- |:-------------|
-| `View to open` | Allows the author to select one of the actions enumerated above |
-| `Menu item` | If "Resource Overview" is selected, this is the menu item in the resource's overview to open.  This can be used to open alerts or activity logs instead of the "overview" for the resource. Menu item values are different for each Azure Resourcetype|
-| `Link label` | If specified, this value will be displayed in the grid column. If this value is not specified, the value of the cell will be displayed. If you want another value to be displayed, like a heatmap or icon, do not use the `Link` renderer, instead use the appropriate renderer and select the `Make this item a link` option |
-| `Open link in Context Blade` | If specified, the link will be opened as a popup "context" blade on the right side of the window instead of opening as a full blade. |
-
-When using the `Make this item a link` option, the following settings are available:
-
-| Setting | Explanation |
-|:------------- |:-------------|
-| `Link value comes from` | When displaying a cell as a renderer with a link, this field specifies where the "link" value to be used in the link comes from, allowing the author to select from a dropdown of the other columns in the grid. For example, the cell may be a heatmap value, but you want the link to open up the Resource Overview for the resource id in the row. In that case, you'd set the link value to come from the `Resource Id` field.
-| `View to open` | same as above. |
-| `Menu item` | same as above. |
-| `Open link in Context Blade` | same as above. |
-
-#### ARM Deployment link settings
-If the selected link type is `ARM Deployment` the author must specify additional settings to open an ARM deployment. There are two main tabs for configuration. 
-
-##### Template Settings
-
-This section defines where the template should come from and the parameters used to run the ARM deployment.
-
-| Source | Explanation |
-|:------------- |:-------------|
-|`Resource group id comes from` | The resource id is used to manage deploy resources. The subscription is used to manage deployed resources and costs. The resource groups are used like folders to organize and manage all your resources. If this value is not specified, the deployment will fail. Select from `Cell`, `Column`, or `Parameter` in [Link sources](#link-sources).|
-|`ARM template URI from` | The URI to the ARM template itself. The template URI needs to be accessible to the users who will deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). For starters, take a look at our [Quickstart templates](https://azure.microsoft.com/en-us/resources/templates/).|
-|`ARM Template Parameters` | This section defines the template parameters used for the template URI defined above. These parameters will be used to deploy the template on the run page. The grid contains an expand toolbar button to help fill the parameters using the names defined in the template URI and set it to static empty values. This option can only be used when there are no parameters in the grid and the template URI has been set.|
-
-![Image showing ARM template settings](../Images/ArmTemplateSettings.png)
-
-##### UX Settings
-
-This section configures what the users will see before they run the ARM deployment.
-
-| Source | Explanation |
-|:------------- |:-------------|
-|`Title from` | Title used on the run blade. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE** If `Static Value` is selected, a multi-line text box will appear. In this text box you can specify parameters using `{paramName}`. Also you can specify columns by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`. |
-|`Run button text from:` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
-
-![Image showing ARM UX settings](../Images/ArmUXSettings.png)
-
-After these configurations are set, when the user clicks on the link, it will open up the blade with the UX described in [UX Settings](#UX-settings). From here, if the user clicks on the button specified by `Run button text from` it will deploy an ARM template using the values from [Template Settings](#template-settings).
-
-![Image showing run ARM blade](../Images/RunArmBlade.png)
-
-#### Workbook (template) link settings
-If the selected link type is `Workbook (Template)` the author must specify additional settings to open up the correct workbook template. The settings below have options for how the grid will find the appropriate value for each of the settings. 
-
-![Image showing workbook link settings](../Images/WorkbookLinkSettings.png)
-
-| Setting | Explanation |
-|:------------- |:-------------|
-| `Workbook owner Resource Id` | This is the Resource Id of the Azure Resource that "owns" the workbook. Commonly it is an Application Insights resource, or a Log Analytics Workspace. Inside of Azure Monitor, this may also be the literal string `"Azure Monitor"`. When the workbook is Saved, this is what the workbook will be linked to. |
-| `Workbook resources` | An array of Azure Resource Ids that specify the default resource used in the workbook. For example, if the template being opened shows Virtual Machine metrics, the values here would be Virtual Machine resource ids.  Many times, the owner and resources are set to the same settings. |
-| `Template Id` | Specify the name of the template to be opened. If this is a community template from the gallery (the most common case), prefix the value with `Community-`, like `Community--Workbooks/Performance/Apdex`. |
-| `Workbook Type` | Specify the kind of workbook template to open. The most common cases use the `Default` or `Workbook` option to use the value in the current workbook. |
-| `Gallery Type` | This specifies the gallery type that will be displayed in the "Gallery" view of the template that opens. The most common cases use the `Default` or `Workbook` option to use the value in the current workbook. |
-
-For each of the above settings, the author must pick where the value in the linked workbook will come from. See [Link Sources](#Link-sources).
-
-When the workbook link is opened, the new workbook view will be passed all of the values configured from the settings above, along with the values of any parameters set in the workbook to that point (including any parameters that would be exported from the row selection of the grid). This is commonly used to allow a "downstream" workbook to "inherit" a time range setting from the current workbook. The parameter *names* must be the same in both workbooks for this parameter value inheritance to work. 
-
-#### Link sources
-| Source | Explanation |
-|:------------- |:-------------|
-| `Cell` | This will use the value in that cell in the grid as the link value |
-| `Column` | When selected, another field will be displayed to let the author select another column in the grid.  The value of that column for the row will be used in the link value. This is commonly used to enable each row of a grid to open a different template, by setting `Template Id` field to `column`, or to open up the same workbook template for different resources, if the `Workbook resources` field is set to a column that contains an Azure Resource Id |
-| `Parameter` | When selected, another field will be displayed to let the author select a parameter. The value of that parameter will be used for the value when the link is clicked |
-| `Static value` | When selected, another field will be displayed to let the author type in a static value that will be used in the linked workbook. This is commonly used when all of the rows in the grid will use the same value for a field. |
-| `Step` | Use the value set in the current step of the workbook. This is common in query and metrics steps to set the workbook resources in the linked workbook to those used *in the query/metrics step*, not the current workbook |
-| `Workbook` | Use the value set in the current workbook. |
-| `Default` | Use the default value that would be used if no value was specified. This is common for Gallery Type, where the default gallery would be set by the type of the owner resource |
+For all link actions, see [Link Actions](../Links/LinkActions.md).
 
 ### Custom Formatting
 Workbooks also allows users to set the number formatting of your cell values. They can do so by clicking on the _Custom formatting_ checkbox when available.
