@@ -107,6 +107,9 @@
             "quote": "'",
             "delimiter": ",",
             "query": "union {Whoused}\r\n    | where timestamp {TimeRange}\r\n    | project name, group = case(itemType == 'pageView', 'Page Views', itemType == 'customEvent', 'Custom Events', 'Requests')\r\n    | summarize count() by group, name\r\n    | project value=name, label=name, group, selected=''\r\n    //| union showCohort\r\n    | extend value = replace(@\"\\\\'\", @\"'\\1\",value)\r\n | order by group asc, label asc",
+            "value": [
+              "value::all"
+            ],
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::all"
@@ -115,10 +118,7 @@
               "showDefault": false
             },
             "queryType": 0,
-            "resourceType": "microsoft.insights/components",
-            "value": [
-              "value::all"
-            ]
+            "resourceType": "microsoft.insights/components"
           },
           {
             "id": "e4152b00-9f31-4ac2-b1c9-2f0964513368",
@@ -190,6 +190,7 @@
             "name": "isTimeRange",
             "type": 1,
             "description": "Is x-axis created by time bins or not?",
+            "isRequired": true,
             "value": "true",
             "isHiddenWhenLocked": true,
             "criteriaData": [
@@ -285,12 +286,25 @@
             "name": "durationThreshold",
             "type": 1,
             "description": "Set Threshold for performance tile",
+            "isRequired": true,
             "value": "2000",
             "isHiddenWhenLocked": true,
             "timeContext": {
               "durationMs": 0
             },
             "timeContextFromParameter": "TimeRange",
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "6aa9fe7f-8c73-4871-8b9f-c15014832721",
+            "version": "KqlParameterItem/1.0",
+            "name": "barChartMode",
+            "type": 1,
+            "description": "Get bar Chart mode",
+            "isRequired": true,
+            "query": "print iff('{UsageSplitBy}' == '<unset>' and '{isTimeRange}' == 'true', 'TimeBar', iff('{UsageSplitBy}' == '<unset>' and '{isTimeRange}' == 'false', 'ByValueBar', 'SplitBar'))",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
             "resourceType": "microsoft.insights/components"
           }
         ],
@@ -341,6 +355,7 @@
             "name": "usersType",
             "type": 1,
             "description": "Check user type. It should be user_id if not user_Authenticated_Id",
+            "isRequired": true,
             "value": "user_Id",
             "isHiddenWhenLocked": true,
             "criteriaData": [
@@ -377,6 +392,7 @@
             "name": "labelOfHeadTile",
             "type": 1,
             "description": "Label in head tile",
+            "isRequired": true,
             "value": "users",
             "isHiddenWhenLocked": true,
             "criteriaData": [
@@ -413,6 +429,7 @@
             "name": "mainTableQuery",
             "type": 1,
             "description": "mainTable Query",
+            "isRequired": true,
             "value": "mainTable",
             "isHiddenWhenLocked": true,
             "criteriaData": [
@@ -668,6 +685,7 @@
             "name": "userEventsList",
             "type": 1,
             "description": "Merge cohort and user Events",
+            "isRequired": true,
             "query": "print strcat('{userEventsQuery}', '{processCohortEvents2}')",
             "value": "\"*\"", 
             "isHiddenWhenLocked": true,
@@ -676,6 +694,53 @@
             },
             "timeContextFromParameter": "TimeRange",
             "queryType": 0,
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "7c3949b0-f3f7-40ce-a51d-e3ca186ce57f",
+            "version": "KqlParameterItem/1.0",
+            "name": "barChartQuery",
+            "type": 1,
+            "isRequired": true,
+            "value": "let grain = 1h;  let mainTable = union pageViews,customEvents     | where timestamp > ago(1d)  | where iif('*' in (\"*\"), 1==1, name in (\"*\")); let resultTable = mainTable; resultTable     | summarize Users = dcount(user_Id) by bin(timestamp, grain)      | order by timestamp asc",
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "condition": "if (barChartMode == 'TimeBar'), result = 'let grain = iff({isTimeRange}, {ByValue}, 1h);  let mainTable = union {Whoused}     | where timestamp {TimeRange}  | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList})); let resultTable = {mainTableQuery}; resultTable     | summarize Users = dcount({usersType}) by bin(timestamp, grain)      | order by timestamp asc'",
+                "criteriaContext": {
+                  "leftOperand": "barChartMode",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "TimeBar",
+                  "resultValType": "static",
+                  "resultVal": "let grain = iff({isTimeRange}, {ByValue}, 1h);  let mainTable = union {Whoused}     | where timestamp {TimeRange}  | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList})); let resultTable = {mainTableQuery}; resultTable     | summarize Users = dcount({usersType}) by bin(timestamp, grain)      | order by timestamp asc"
+                }
+              },
+              {
+                "condition": "if (barChartMode == 'ByValueBar'), result = 'let mainTable = union {Whoused}     | where timestamp {TimeRange}  | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList})); let byTable = {mainTableQuery}; let queryTable = {byTableQuery}; let byCohortTable = queryTable     | project dimension, user_Id, session_Id, timestamp, user_AuthenticatedId; let topSegments = byCohortTable     | summarize dcount_user_Id = dcount(user_Id) by dimension     | top 10 by dcount_user_Id      | summarize makelist(dimension);     let topEventMetrics = byCohortTable     | where dimension in (topSegments);     let otherEventUsers = byCohortTable     | where dimension !in (topSegments)      | extend dimension = \"Other\";     otherEventUsers     | union topEventMetrics     | summarize Users = dcount({usersType}) by dimension      | order by dimension asc'",
+                "criteriaContext": {
+                  "leftOperand": "barChartMode",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "ByValueBar",
+                  "resultValType": "static",
+                  "resultVal": "let mainTable = union {Whoused}     | where timestamp {TimeRange}  | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList})); let byTable = {mainTableQuery}; let queryTable = {byTableQuery}; let byCohortTable = queryTable     | project dimension, user_Id, session_Id, timestamp, user_AuthenticatedId; let topSegments = byCohortTable     | summarize dcount_user_Id = dcount(user_Id) by dimension     | top 10 by dcount_user_Id      | summarize makelist(dimension);     let topEventMetrics = byCohortTable     | where dimension in (topSegments);     let otherEventUsers = byCohortTable     | where dimension !in (topSegments)      | extend dimension = \"Other\";     otherEventUsers     | union topEventMetrics     | summarize Users = dcount({usersType}) by dimension      | order by dimension asc"
+                }
+              },
+              {
+                "condition": "else result = 'let mainTable = union {Whoused}     | where timestamp {TimeRange}   | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList})); let queryTable = {mainTableQuery};  let splitTable =  {splitTableQuery}; let cohortedTable = splitTable     | extend byDimension = bin(timestamp, {ByValue})     | summarize metricHll = hll({usersType}) by byDimension, dimension; let topSegments = cohortedTable     | summarize mergedMetricHll = hll_merge(metricHll) by dimension     | project dimension, dcount_user_Id = dcount_hll(mergedMetricHll)     | top 5 by dcount_user_Id desc nulls last     | summarize makelist(dimension); cohortedTable     | extend dimension = iff(dimension in (topSegments), dimension, \"Other\")     | project byDimension, dimension, metricHll     | fork(summarize metric = hll_merge(metricHll) by dimension,byDimension     | project byDimension, dimension, metric = dcount_hll(metric))     (summarize metric = hll_merge(metricHll) by dimension | project dimension, metric = dcount_hll(metric))     (summarize metric = hll_merge(metricHll) | project metric = dcount_hll(metric))'",
+                "criteriaContext": {
+                  "operator": "Default",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "let mainTable = union {Whoused}     | where timestamp {TimeRange}   | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList})); let queryTable = {mainTableQuery};  let splitTable =  {splitTableQuery}; let cohortedTable = splitTable     | extend byDimension = bin(timestamp, {ByValue})     | summarize metricHll = hll({usersType}) by byDimension, dimension; let topSegments = cohortedTable     | summarize mergedMetricHll = hll_merge(metricHll) by dimension     | project dimension, dcount_user_Id = dcount_hll(mergedMetricHll)     | top 5 by dcount_user_Id desc nulls last     | summarize makelist(dimension); cohortedTable     | extend dimension = iff(dimension in (topSegments), dimension, \"Other\")     | project byDimension, dimension, metricHll     | fork(summarize metric = hll_merge(metricHll) by dimension,byDimension     | project byDimension, dimension, metric = dcount_hll(metric))     (summarize metric = hll_merge(metricHll) by dimension | project dimension, metric = dcount_hll(metric))     (summarize metric = hll_merge(metricHll) | project metric = dcount_hll(metric))"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
             "resourceType": "microsoft.insights/components"
           }
         ],
@@ -727,7 +792,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let grain = {ByValue}; \r\nlet mainTable = union {Whoused}\r\n    | where timestamp {TimeRange}\r\n | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList}));\r\nlet resultTable = {mainTableQuery};\r\nresultTable\r\n    | summarize Users = dcount({usersType}) by bin(timestamp, grain) \r\n    | order by timestamp asc",
+        "query": "{barChartQuery}",
         "size": 0,
         "aggregation": 3,
         "showAnalytics": true,
@@ -735,92 +800,10 @@
         "resourceType": "microsoft.insights/components",
         "visualization": "barchart"
       },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "UsageSplitBy",
-          "comparison": "isEqualTo",
-          "value": "<unset>"
-        },
-        {
-          "parameterName": "isTimeRange",
-          "comparison": "isEqualTo",
-          "value": "true"
-        }
-      ],
-      "conditionalVisibility": {
-        "parameterName": "UsageSplitBy",
-        "comparison": "isEqualTo",
-        "value": "<unset>"
-      },
       "showPin": true,
-      "name": "query - generalChart",
+      "name": "query - barChart",
       "styleSettings": {
         "progressStyle": "squares"
-      }
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "let mainTable = union {Whoused}\r\n    | where timestamp {TimeRange}\r\n | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList}));\r\nlet byTable = {mainTableQuery};\r\nlet queryTable = {byTableQuery};\r\nlet byCohortTable = queryTable\r\n    | project dimension, user_Id, session_Id, timestamp, user_AuthenticatedId;\r\nlet topSegments = byCohortTable\r\n    | summarize dcount_user_Id = dcount(user_Id) by dimension\r\n    | top 10 by dcount_user_Id \r\n    | summarize makelist(dimension);\r\n    let topEventMetrics = byCohortTable\r\n    | where dimension in (topSegments);\r\n    let otherEventUsers = byCohortTable\r\n    | where dimension !in (topSegments) \r\n    | extend dimension = \"Other\";\r\n    otherEventUsers\r\n    | union topEventMetrics\r\n    | summarize Users = dcount({usersType}) by dimension \r\n    | order by dimension asc\r\n",
-        "size": 0,
-        "queryType": 0,
-        "resourceType": "microsoft.insights/components",
-        "visualization": "barchart"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "UsageSplitBy",
-          "comparison": "isEqualTo",
-          "value": "<unset>"
-        },
-        {
-          "parameterName": "isTimeRange",
-          "comparison": "isEqualTo",
-          "value": "false"
-        }
-      ],
-      "conditionalVisibility": {
-        "parameterName": "UsageSplitBy",
-        "comparison": "isEqualTo",
-        "value": "<unset>"
-      },
-      "name": "query - byChart"
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "let mainTable = union {Whoused}\r\n    | where timestamp {TimeRange}\r\n  | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList}));\r\nlet queryTable = {mainTableQuery}; \r\nlet splitTable =  {splitTableQuery};\r\nlet cohortedTable = splitTable\r\n    | extend byDimension = bin(timestamp, {ByValue})\r\n    | summarize metricHll = hll({usersType}) by byDimension, dimension;\r\nlet topSegments = cohortedTable\r\n    | summarize mergedMetricHll = hll_merge(metricHll) by dimension\r\n    | project dimension, dcount_user_Id = dcount_hll(mergedMetricHll)\r\n    | top 5 by dcount_user_Id desc nulls last\r\n    | summarize makelist(dimension);\r\ncohortedTable\r\n    | extend dimension = iff(dimension in (topSegments), dimension, \"Other\")\r\n    | project byDimension, dimension, metricHll\r\n    | fork(summarize metric = hll_merge(metricHll) by dimension,byDimension\r\n    | project byDimension, dimension, metric = dcount_hll(metric))\r\n    (summarize metric = hll_merge(metricHll) by dimension | project dimension, metric = dcount_hll(metric))\r\n    (summarize metric = hll_merge(metricHll) | project metric = dcount_hll(metric))",
-        "size": 0,
-        "aggregation": 3,
-        "showAnalytics": true,
-        "title": "Split by dimension (Top 5)",
-        "queryType": 0,
-        "resourceType": "microsoft.insights/components",
-        "visualization": "barchart"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "UsageSplitBy",
-          "comparison": "isNotEqualTo",
-          "value": "<unset>"
-        },
-        {
-          "parameterName": "isTimeRange",
-          "comparison": "isEqualTo",
-          "value": "true"
-        }
-      ],
-      "conditionalVisibility": {
-        "parameterName": "UsageSplitBy",
-        "comparison": "isNotEqualTo",
-        "value": "<unset>"
-      },
-      "showPin": true,
-      "name": "query - splitbyChart",
-      "styleSettings": {
-        "progressStyle": "loader"
       }
     },
     {
@@ -848,6 +831,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "tilesQuery",
                   "type": 1,
+                  "isRequired": true,
                   "query": "let threshold = {durationThreshold}; // Apdex threshold in milliseconds\r\nlet mainTable = union {Whoused}\r\n  | where timestamp {TimeRange}\r\n    | where iif('*' in ({userEventsList}), 1==1, name in ({userEventsList}));\r\nlet resultTable = {mainTableQuery};\r\nresultTable\r\n    | extend Apdex=case(\r\n    columnifexists('duration', 0) <= threshold, \"Satisfied\",\r\n    columnifexists('duration', 0) <= 4*threshold, \"Tolerating\",\r\n    \"Frustrated\")\r\n    | summarize SESSIONS = dcount(session_Id), EVENTS = count() , PERFORMANCE=\"Null\", TotalSatisfied=sumif(itemCount, Apdex == \"Satisfied\"), TotalTolerating=sumif(itemCount, Apdex == \"Tolerating\"), TotalFrustrated=sumif(itemCount, Apdex == \"Frustrated\")\r\n    | project SESSIONS, EVENTS, ApdexScore = (TotalSatisfied + (TotalTolerating / 2)) / todouble(TotalSatisfied + TotalTolerating + TotalFrustrated)\r\n    | extend PERFORMANCE = case(\r\n    ApdexScore <= 0.5, \"Unacceptable\",\r\n    ApdexScore <= 0.7, \"Poor\",\r\n    ApdexScore <= 0.85, \"Fair\",\r\n    ApdexScore <= 0.94, \"Good\",\r\n    \"Excellent\")\r\n    | project data =  strcat('{\"SESSIONS\": \"', SESSIONS,'\", \"EVENTS\": \"',EVENTS, '\", \"PERFORMANCE\": \"', PERFORMANCE, '\"}');",
                   "isHiddenWhenLocked": true,
                   "timeContext": {
