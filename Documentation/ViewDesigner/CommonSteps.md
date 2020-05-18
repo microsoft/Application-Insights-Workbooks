@@ -123,6 +123,8 @@ To add a pin and a link to an external query simply select the corresponding che
 
 To add a title to your cell, simply type the desired title into the **Chart title** section.
 
+When the query succeeded but returned no results, the default message displayed is "The query returned no results". To show a custom message, edit **No data message** field. The default style for this message is "Info". Select a style from dropdown **No data message style** to set custom style to the message.
+
 By default any Workbooks cell is set to take up the entire page width, but users can adjust this by scaling the cell down, by clicking under the **Style** tab in edit mode.
 
 ![Advanced Settings Style](./Examples/AdvSetStyle.png)

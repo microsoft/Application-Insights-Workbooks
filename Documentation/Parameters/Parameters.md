@@ -5,13 +5,15 @@ Parameters allow workbook authors to collect input from the consumers and refere
 Workbooks allow you to control how your parameter controls are presented to consumers – text box vs. drop down, single- vs. multi-select, values from text, JSON, KQL or Azure Resource Graph, etc.  
 
 Supported parameter types include:
-* [Time](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
-* [Drop down](DropDown.md) - allows a user to select from a value or set of values
+* [Time Range](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
+* [Drop down](DropDown.md) - allows a user to select one or more values from a set of values
+* [Options Group](OptionsGroup.md) - allows a user to select a single value from a set of values
 * [Text](Text.md) - allows a user to enter arbitrary text
 * [Resource](Resources.md) - allows a user to select one or more Azure resources
 * [Subscription](Resources.md) - allows a user to select one or more Azure subscription resources
 * Resource Type - allows a user to select one or more Azure resource type values
 * Location - allows a user to select one or more Azure location values
+* [Multi-value](MultiValue.md) - allows a user to add or remove arbitrary text items
 
 These parameter values can be referenced in other parts of workbooks either via bindings or value expansions.
 
@@ -82,3 +84,29 @@ format | result
 `{selection:$.y}`| `10`
 
 *Note:* If the parameter value is not valid json, the result of the format will be an empty value.
+
+## Parameter Style
+The following styles are available to layout the parameters:
+#### Pills
+In pills style, the default style, the parameters look like text, and require the user to click them once to go into the edit mode.
+
+![Pill style read mode](../Images/PillsReadMode.png)
+
+![Pills style edit mode](../Images/PillsEditMode.png)
+
+#### Standard
+In standard style, the controls are always visible, with a label above the control.
+
+![Standard style](../Images/Standard.png)
+
+#### Form Horizontal
+In horizontal style form, the controls are always visible, with label on left side of the control.
+
+![Form Horizontal style](../Images/FormHorizontal.png)
+
+#### Form Vertical
+In vertical style from, the controls are always visible, with label above the control. Unlike standard style, there is only one label or control in one row. 
+
+![Form Vertical style](../Images/FormVertical.png)
+
+*Note:* In standard, form horizontal, and form vertical layouts, there's no concept of inline editing, the controls are always in edit mode. 
