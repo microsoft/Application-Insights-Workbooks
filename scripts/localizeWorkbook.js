@@ -93,7 +93,7 @@ function testPath(path) {
     console.log("Found file...", path);
     return true;
   } else {
-    console.error("File doesn't exist");
+    console.error("File doesn't exist in path: ", path);
     return false;
   }
 }
@@ -191,7 +191,7 @@ function writeToFileResX(data, path) {
   }
 }
 
-// SCRIPT
+// SCRIPT MAIN
 if (!process.argv[2]) {
   console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize.');
 } else {

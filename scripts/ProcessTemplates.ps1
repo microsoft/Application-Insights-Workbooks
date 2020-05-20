@@ -342,11 +342,22 @@ Function CreatePackageContent() {
         Write-Host "Building gallery:$reporttype $language..."
 
         $reportTypePath = "$packagePath\$language\$reporttype"
+        # $localizationReportTypePath = "$packagePath\loc\$language\$reporttype"
 
         if (!(Test-Path $reportTypePath)) {
             mkdir $reportTypePath | Out-Null 
         }
 
+        # if (!(Test-Path $localizationReportTypePath)) {
+        #     mkdir $localizationReportTypePath | Out-Null 
+        # }
+
+        # # create a gallery folder for loc
+        # $locGalleryPath = "$localizationReportTypePath\gallery"
+        
+        # if (!(Test-Path $locGalleryPath)) {
+        #     mkdir $locGalleryPath | Out-Null 
+        # }
 
         $fullGallery = @{}
         $index = @{}
@@ -447,6 +458,16 @@ Function CreatePackageContent() {
                 }
             }
 
+    
+            #create a .resjon loc file for translatable strings in the gallery entry (name and description)
+            # $galleryLocFileName = $setting.fileName -replace '.json', '.resjson'
+            # $locGalleryFilePath = "$locGalleryPath\$galleryLocFileName"
+
+            # $locInfo = @{}
+            # $locInfo.name = $categoryInfo.name;
+            # $locInfo.description = $categoryInfo.description
+            # $locInfo | ConvertTo-Json -depth 10 -Compress | Out-File -FilePath $locGalleryFilePath -Force
+
             # add the item to the full index
             $filename = $setting.filename
             $index.($setting.id) = $filename
@@ -459,6 +480,7 @@ Function CreatePackageContent() {
                  Write-Host "ERROR: duplicate file name $destination"
             }
             Copy-Item -Path $template.FullName -Destination $destination -Force
+            # ExtractStringsFromWorkbook $template.DirectoryName $template.Name
         }
 
         # split this single file up into one file per gallery
@@ -532,6 +554,25 @@ Function SyncWithEnUs() {
     }
 
 }
+
+# ------------------------------
+# for the language provided, make sure all the important files from the source path are accounted for in the language folder
+# ------------------------------
+
+# Function ExtractStringsFromWorkbook() {
+#     param(
+#         [string] $templatePath,
+#         [string] $fileName
+#     )
+#     Try {
+#         $content = Get-Content -Raw -Path "$templatePath\$fileName" | ConvertFrom-Json | Select-Object -expand items
+#     }
+#     Catch {
+#         Write-Host "something went wrong"
+#     }
+#     Write-Host $content            
+# }
+
 
 #----------------------------------------------------------------------------
 # Main
