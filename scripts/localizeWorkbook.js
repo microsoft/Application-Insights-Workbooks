@@ -17,97 +17,34 @@ const LocKeys = [
 ];
 
 const Encoding = 'utf8';
-const ResJsonStringFileName = 'strings.resjson';
+const ResJsonStringFileExtension = '.resjson';
 const ResxFileName = 'strings.resx';
-
-const ResxBegin =
-  `<?xml version="1.0" encoding="utf-8"?>
-<root>
-  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
-    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
-    <xsd:element name="root" msdata:IsDataSet="true">
-      <xsd:complexType>
-        <xsd:choice maxOccurs="unbounded">
-          <xsd:element name="metadata">
-            <xsd:complexType>
-              <xsd:sequence>
-                <xsd:element name="value" type="xsd:string" minOccurs="0" />
-              </xsd:sequence>
-              <xsd:attribute name="name" use="required" type="xsd:string" />
-              <xsd:attribute name="type" type="xsd:string" />
-              <xsd:attribute name="mimetype" type="xsd:string" />
-              <xsd:attribute ref="xml:space" />
-            </xsd:complexType>
-          </xsd:element>
-          <xsd:element name="assembly">
-            <xsd:complexType>
-              <xsd:attribute name="alias" type="xsd:string" />
-              <xsd:attribute name="name" type="xsd:string" />
-            </xsd:complexType>
-          </xsd:element>
-          <xsd:element name="data">
-            <xsd:complexType>
-              <xsd:sequence>
-                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
-                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
-              </xsd:sequence>
-              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
-              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
-              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
-              <xsd:attribute ref="xml:space" />
-            </xsd:complexType>
-          </xsd:element>
-          <xsd:element name="resheader">
-            <xsd:complexType>
-              <xsd:sequence>
-                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
-              </xsd:sequence>
-              <xsd:attribute name="name" type="xsd:string" use="required" />
-            </xsd:complexType>
-          </xsd:element>
-        </xsd:choice>
-      </xsd:complexType>
-    </xsd:element>
-  </xsd:schema>
-  <resheader name="resmimetype">
-    <value>text/microsoft-resx</value>
-  </resheader>
-  <resheader name="version">
-    <value>2.0</value>
-  </resheader>
-  <resheader name="reader">
-    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </resheader>
-  <resheader name="writer">
-    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </resheader>\r\n`;
-
-const ResXEnd = '</root>';
-
-const ResXEntryEnd = '</data>';
 
 // FUNCTIONS
 function testPath(path) {
+  console.log(">>>>> Processing template path: ", path);
   if (fs.existsSync(path)) {
-    // file exists
-    console.log("Found file...", path);
+    console.log("Path verified.");
     return true;
   } else {
-    console.error("File doesn't exist in path: ", path);
+    console.error("Template path does not exist: ", path);
     return false;
   }
 }
 
 
 function isValidFileType(filename) {
-  const parts = filename.split('.');
-  const extension = parts[parts.length - 1];
-  return extension === "workbook" || extension === "cohort";
+  var a = filename.split(".");
+  if (a.length === 1 || (a[0] === "" && a.length === 2)) {
+    return false;
+  }
+  const extension = a.pop();
+  return extension && extension.toLowerCase() === "json";
 }
 
 function openWorkbook(file) {
   try {
-    console.log(">>>>> Processing workbook ", file);
+    console.log(">>>>> Processing workbook: ", file);
     const data = fs.readFileSync(file, Encoding);
     return data;
   } catch (err) {
@@ -128,94 +65,79 @@ function getLocalizeableStrings(obj, key, outputMap) {
   }
 }
 
-/** Write string file as JSON */
-function writeToFileJSON(data, path) {
+/** Write string file as RESJSON */
+function writeToFileRESJSON(data, fileName, path) {
   const parts = path.split('\\');
   var directoryPath = '';
+
   for (var i = 0; i < parts.length - 1; i++) {
     directoryPath = directoryPath.concat(parts[i], '\\');
   }
-  const fullpath = directoryPath.concat(ResJsonStringFileName);
-  console.log("...Path: ", directoryPath);
+
+  const fullpath = directoryPath.concat("strings\\", fileName.replace(".json", ResJsonStringFileExtension));
+
+  console.log("...Path: ", fullpath);
   const content = JSON.stringify(data, null, "\t");
+  if (content === "{}") {
+    console.log("No strings found for: ", fileName);
+    return;
+  }
+
   try {
     fs.writeFileSync(fullpath, content);
     console.log(">>>>> Wrote to file: ", fullpath);
-    console.log("Done generating string file. Please check the file in.")
   } catch (e) {
-    console.log("Cannot write file ", e);
+    console.error("Cannot write file: ", "fullpath", "ERROR: ", e);
   }
 }
 
-/** Write string file as ResX format */
-function writeToFileResX(data, path) {
-  const parts = path.split('\\');
-  var directoryPath = '';
-  for (var i = 0; i < parts.length - 1; i++) {
-    directoryPath = directoryPath.concat(parts[i], '\\');
-  }
-  const fullpath = directoryPath.concat(ResxFileName);
-  console.log(directoryPath);
-  try {
-    // start of resx file
-    fs.writeFileSync(fullpath, ResxBegin);
-    const writeStream = fs.createWriteStream(fullpath, {
-      flags: 'a'
-    });
-
-    return new Promise((resolve, reject) => {
-      writeStream.on("error", reject);
-      writeStream.on("finish", resolve);
-
-
-      // Begin writing definitions
-      for (var key in data) {
-        const val = data[key];
-        const definition = `<data name="${key}" xml:space="preserve">`;
-        const value = `<value>"${val}"</value>`;
-
-        writeStream.write('\t' + definition + '\r\n');
-        writeStream.write('\t\t' + value + '\r\n');
-        writeStream.write('\t' + ResXEntryEnd + '\r\n');
-      }
-
-      writeStream.write(ResXEnd);
-
-      console.log("Wrote to file... ", fullpath);
-      console.log("String file generated. Please check the file in.");
-      writeStream.close();
-    });
-
-  } catch (e) {
-    console.log("Cannot write file: ", e);
-  }
-}
 
 // SCRIPT MAIN
-if (!process.argv[2]) {
-  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize.');
-} else {
-  const filePath = process.argv[2];
-  const exists = testPath(filePath);
-  if (!exists) {
-    return;
-  }
 
+if (!process.argv[2]) { // path to the extracted workbooks
+  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize.');
+  return;
+}
+
+
+// Verify template path
+const templatePath = process.argv[2];
+const exists = testPath(templatePath);
+if (!exists) {
+  return;
+}
+
+console.log("Processing...");
+
+// Valid path, start processing the files.
+var files = fs.readdirSync(templatePath);
+
+// Create string output dir
+const stringOutputDir = templatePath.concat("\\strings");
+if (!fs.existsSync(stringOutputDir)) {
+  fs.mkdirSync(stringOutputDir);
+}
+
+for (var i in files) {
+  const fileName = files[i];
+  // Get the contents of the workbook
+  const filePath = templatePath + "\\" + fileName;
   const isValid = isValidFileType(filePath);
   if (!isValid) {
-    console.error("ERROR: The provided path does not contain a workbook. The extension must end with .workbook or .cohort");
-    return;
+    continue;
   }
 
-  console.log("Processing...")
-  // Valid workbook, start read the content
   const data = openWorkbook(filePath);
-  var map = {};
-  console.log(">>>>> Looking for localizeable strings")
-  getLocalizeableStrings(JSON.parse(data), '', map);
-  console.log(map);
 
-  // Write new strings to file
-  writeToFileJSON(map, filePath);
-  // writeToFileResX(map, filePath);
-}
+  // parse the workbook for strings
+  var extracted = {};
+  getLocalizeableStrings(JSON.parse(data), '', extracted);
+
+  const outPath = templatePath + "\\strings";
+
+  // Write extracted strings to file
+  writeToFileRESJSON(extracted, fileName, outPath);
+};
+
+console.log("String extraction completed.");
+
