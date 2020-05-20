@@ -18,7 +18,6 @@ const LocKeys = [
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = '.resjson';
-const ResxFileName = 'strings.resx';
 
 // FUNCTIONS
 function testPath(path) {
@@ -34,6 +33,9 @@ function testPath(path) {
 
 
 function isValidFileType(filename) {
+  if (filename.startsWith("_gallery") || filename.startsWith("_index")) {
+    return false;
+  }
   var a = filename.split(".");
   if (a.length === 1 || (a[0] === "" && a.length === 2)) {
     return false;
@@ -76,9 +78,8 @@ function writeToFileRESJSON(data, fileName, path) {
 
   const fullpath = directoryPath.concat("strings\\", fileName.replace(".json", ResJsonStringFileExtension));
 
-  console.log("...Path: ", fullpath);
   const content = JSON.stringify(data, null, "\t");
-  if (content === "{}") {
+  if (content.localeCompare("{}") == 0) {
     console.log("No strings found for: ", fileName);
     return;
   }
@@ -121,17 +122,22 @@ if (!fs.existsSync(stringOutputDir)) {
 for (var i in files) {
   const fileName = files[i];
   // Get the contents of the workbook
-  const filePath = templatePath + "\\" + fileName;
-  const isValid = isValidFileType(filePath);
+  const isValid = isValidFileType(fileName);
   if (!isValid) {
     continue;
   }
 
+  const filePath = templatePath + "\\" + fileName;
   const data = openWorkbook(filePath);
 
   // parse the workbook for strings
   var extracted = {};
-  getLocalizeableStrings(JSON.parse(data), '', extracted);
+  try {
+    getLocalizeableStrings(JSON.parse(data), '', extracted);
+  } catch (error) {
+    console.log("ERROR: Cannot extract JSON: ", filePath);
+    continue;
+  }
 
   const outPath = templatePath + "\\strings";
 
