@@ -61,7 +61,7 @@ Values from resource pickers can come from the workbook context, static list or 
         { "value":"/subscriptions/<sub-id>/resourceGroups/<resource-group>/providers/<resource-type>/acmeweb", "label": "acmeweb", "selected":false, "group":"Acme Frontend" }
     ]
     ```
-    2. Hit the blue _Update_ button.
+    2. Use the blue _Update_ button.
 6. Optionally set the `Include only resource types` to _Application Insights_
 7. Choose 'Save' from the toolbar to create the parameter.
 
