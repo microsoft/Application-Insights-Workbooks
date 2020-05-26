@@ -8,7 +8,7 @@ Supported parameter types include:
 * [Time Range](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
 * [Drop down](DropDown.md) - allows a user to select one or more values from a set of values
 * [Options Group](OptionsGroup.md) - allows a user to select a single value from a set of values
-* [Text](Text.md) - allows a user to enter arbitrary text
+* [Text](Text.md) - allows a user to enter arbitrary text. Text support following 
 * [Resource](Resources.md) - allows a user to select one or more Azure resources
 * [Subscription](Resources.md) - allows a user to select one or more Azure subscription resources
 * Resource Type - allows a user to select one or more Azure resource type values
@@ -34,6 +34,36 @@ These parameter values can be referenced in other parts of workbooks either via 
 This is how the workbook will look like in read-mode, in the "Pills" style.
 
 ![Image showing a time range parameter in read mode](../Images/Parameters-Time.png)
+
+## Parameter field style
+### Text
+Text field support following field style:
+
+1. Standard: A single line text box.
+![Image showing standard text field](../Images/StandardText.png)
+
+2. Password: A single line password field. The password value is only hidden on UI when user types. The value is still fully accessible as a param value when referred and it is stored unencrypted when workbook is saved.
+![Image showing password field](../Images/PasswordText.png)
+
+3. Multiline: A multiline text field with support of rich intellisense and syntax colorization for following languages:
+    - Text
+    - Markdown
+    - Json
+    - Sql
+    - TypeScript
+    - Kql
+
+![Image showing multiline text field](../Images/KqlText.png)
+
+### Multi-value
+Multi-value field support following field style:
+1. Standard: Allows a user to add or remove arbitrary text items
+
+![Image showing standard multi-value field](../Images/StandardMultivalue.png)
+
+2. Password:allows a user to add or remove arbitrary password fields. The password values are only hidden on UI when user types. The values are still fully accessible as a param value when referred and they are stored unencrypted when workbook is saved.
+
+![Image showing password multi-value field](../Images/PasswordMultivalue.png)
 
 ## Referencing a parameter
 ### Via Bindings
@@ -84,6 +114,22 @@ format | result
 `{selection:$.y}`| `10`
 
 *Note:* If the parameter value is not valid json, the result of the format will be an empty value.
+
+## Formatting parameters
+### tomltojson
+To convert toml to json, you can use **tomltojson** parameter format string.
+
+![tomltojson format](../Images/TomlToJson.png)
+
+### escapejson
+To escape, you can use **escapejson** parameter format string.
+
+![escapejson format](../Images/EscapeJson.png)
+
+### base64
+To encode text to base64, you can use **base64** parameter format string.
+
+![base64 format](../Images/Base64.png)
 
 ## Parameter Style
 The following styles are available to layout the parameters:
