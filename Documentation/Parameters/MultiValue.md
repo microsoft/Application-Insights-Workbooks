@@ -32,6 +32,16 @@ A multi-value parameter behaves similarly to a multi-select [Drop Down](./DropDo
     | order by Heartbeats desc
 ```
 
+## Parameter field style
+Multi-value parameter supports following field style:
+1. Standard: Allows a user to add or remove arbitrary text items
+
+![Image showing standard multi-value field](../Images/StandardMultivalue.png)
+
+2. Password:Allows a user to add or remove arbitrary password fields. The password values are only hidden on UI when user types. The values are still fully accessible as a param value when referred and they are stored unencrypted when workbook is saved.
+
+![Image showing password multi-value field](../Images/PasswordMultivalue.png)
+
 ## Creating a multi-value with initial values.
 You can use a query to seed the multi-value parameter with initial values. The user can then manually remove values, or add additional values. If a query is used to populate the multi-value parameter, a restore defaults button will appear on the parameter to restore back to the originally queried values.
 
