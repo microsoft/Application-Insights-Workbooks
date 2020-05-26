@@ -8,7 +8,7 @@ Supported parameter types include:
 * [Time Range](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
 * [Drop down](DropDown.md) - allows a user to select one or more values from a set of values
 * [Options Group](OptionsGroup.md) - allows a user to select a single value from a set of values
-* [Text](Text.md) - allows a user to enter arbitrary text.
+* [Text](Text.md) - allows a user to enter arbitrary text
 * [Resource](Resources.md) - allows a user to select one or more Azure resources
 * [Subscription](Resources.md) - allows a user to select one or more Azure subscription resources
 * Resource Type - allows a user to select one or more Azure resource type values
