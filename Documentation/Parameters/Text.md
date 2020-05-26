@@ -25,9 +25,11 @@ This is how the workbook will look like in read-mode.
 Text parameter supports following field style:
 
 1. Standard: A single line text field.
+
 ![Image showing standard text field](../Images/StandardText.png)
 
 2. Password: A single line password field. The password value is only hidden on UI when user types. The value is still fully accessible as a param value when referred and it is stored unencrypted when workbook is saved.
+
 ![Image showing password field](../Images/PasswordText.png)
 
 3. Multiline: A multiline text field with support of rich intellisense and syntax colorization for following languages:
