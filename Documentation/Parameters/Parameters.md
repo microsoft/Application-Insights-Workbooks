@@ -85,22 +85,6 @@ format | result
 
 *Note:* If the parameter value is not valid json, the result of the format will be an empty value.
 
-## Formatting parameters
-### tomltojson
-To convert toml to json, you can use **tomltojson** parameter format string.
-
-![tomltojson format](../Images/TomlToJson.png)
-
-### escapejson
-To escape, you can use **escapejson** parameter format string.
-
-![escapejson format](../Images/EscapeJson.png)
-
-### base64
-To encode text to base64, you can use **base64** parameter format string.
-
-![base64 format](../Images/Base64.png)
-
 ## Parameter Style
 The following styles are available to layout the parameters:
 #### Pills

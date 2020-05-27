@@ -64,3 +64,7 @@ You can use a query to seed the multi-value parameter with initial values. The u
 8. The Filter parameter will be a multi-value parameter with 3 initial values
 
    ![Image showing the creation of a dynamic drop down](../Images/Parameters-MultiValue-InitialValues.png)
+
+See also:
+
+[Parameter Options](formatting.md)

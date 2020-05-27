@@ -87,3 +87,7 @@ Text parameter supports following field style:
 
 ## Setting values using Criteria
 Refer to the [Criteria](Criteria.md) documentation.
+
+See also:
+
+[Parameter Options](formatting.md)
