@@ -5,13 +5,15 @@ Parameters allow workbook authors to collect input from the consumers and refere
 Workbooks allow you to control how your parameter controls are presented to consumers – text box vs. drop down, single- vs. multi-select, values from text, JSON, KQL or Azure Resource Graph, etc.  
 
 Supported parameter types include:
-* [Time](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
-* [Drop down](DropDown.md) - allows a user to select from a value or set of values
+* [Time Range](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
+* [Drop down](DropDown.md) - allows a user to select one or more values from a set of values
+* [Options Group](OptionsGroup.md) - allows a user to select a single value from a set of values
 * [Text](Text.md) - allows a user to enter arbitrary text
 * [Resource](Resources.md) - allows a user to select one or more Azure resources
 * [Subscription](Resources.md) - allows a user to select one or more Azure subscription resources
 * Resource Type - allows a user to select one or more Azure resource type values
 * Location - allows a user to select one or more Azure location values
+* [Multi-value](MultiValue.md) - allows a user to add or remove arbitrary text items
 
 These parameter values can be referenced in other parts of workbooks either via bindings or value expansions.
 
