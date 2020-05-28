@@ -109,6 +109,8 @@ dependencies
 | `{DependencyName:label}` | The selected label | 🌐 GET fabrikamaccount |
 | `{DependencyName:value}` | The selected value | GET fabrikamaccount |
 
+See also: [Parameter Options](formatting.md)
+
 ## Multiple Selection
 The examples so far explicitly set the parameter to select only one value in the drop down. Drop down parameters also support multiple selection - enabling this is as simple as checking the the `Allow multiple selection` option. 
 
