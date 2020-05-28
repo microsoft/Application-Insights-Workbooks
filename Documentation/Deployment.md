@@ -5,7 +5,7 @@ Once content is checked into master, the template content is packaged into an np
 
 1. After a PR is completed to the `master` branch, an [official build is queued](https://github-private.visualstudio.com/microsoft/_build?definitionId=48) (you might not have access to this), which packages all the processed templates into a versioned NPM package
 
-2. After the official build completes, [a relase pipeline](https://github-private.visualstudio.com/microsoft/_release?_a=releases&definitionId=1) (again, you might not have access to this), uploads the built NPM package to an Azure Devops package feed.
+2. After the official build completes, [a release pipeline](https://github-private.visualstudio.com/microsoft/_release?_a=releases&definitionId=1) (again, you might not have access to this), uploads the built NPM package to an Azure Devops package feed.
 
 3. Every weekday @ 3pm (pacific), a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
 

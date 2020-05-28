@@ -22,11 +22,11 @@ The easiest way to specify the list by providing a static list in the parameter 
         { "value":"prod", "label":"Production", "selected":true }
     ]
     ```
-6. Hit the blue `Update` button.
+6. Use the blue `Update` button.
 7. Choose 'Save' from the toolbar to create the parameter.
 8. The Environment parameter will be a drop down with the three values.
 
-![Image showing the creation of a static drown down](../Images/Parameters-Dropdown-Create.png)
+   ![Image showing the creation of a static drown down](../Images/Parameters-Dropdown-Create.png)
 
 ## Creating a static dropdown with groups of items
 If your query result/json contains an "group" field, the dropdown will display groups of values. Follow the above sample, but use the following json instead:
@@ -59,11 +59,11 @@ If your query result/json contains an "group" field, the dropdown will display g
         | summarize by name
         | order by name asc
     ```
-6. Hit the blue `Run Query` button.
+6. Use the blue `Run Query` button.
 7. Choose 'Save' from the toolbar to create the parameter.
 8. The RequestName parameter will be a drop down the names of all requests in the app.
 
-![Image showing the creation of a dynamic drop down](../Images/Parameters-Dropdown-dynamic.png)
+   ![Image showing the creation of a dynamic drop down](../Images/Parameters-Dropdown-dynamic.png)
 
 ## Referencing drop down parameter
 ### In KQL
@@ -84,7 +84,7 @@ If your query result/json contains an "group" field, the dropdown will display g
 
 4. Run query to see the results. Optionally, render it as a chart.
 
-![Image showing a drop down referenced in KQL](../Images/Parameters-Dropdown-Reference.png)
+   ![Image showing a drop down referenced in KQL](../Images/Parameters-Dropdown-Reference.png)
 
 
 ## Parameter Value, Label, Selection and Group
@@ -108,6 +108,8 @@ dependencies
 | `{DependencyName}` | The selected value | GET fabrikamaccount |
 | `{DependencyName:label}` | The selected label | 🌐 GET fabrikamaccount |
 | `{DependencyName:value}` | The selected value | GET fabrikamaccount |
+
+See also: [Parameter Options](formatting.md)
 
 ## Multiple Selection
 The examples so far explicitly set the parameter to select only one value in the drop down. Drop down parameters also support multiple selection - enabling this is as simple as checking the the `Allow multiple selection` option. 
