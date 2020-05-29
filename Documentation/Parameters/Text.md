@@ -21,6 +21,27 @@ This is how the workbook will look like in read-mode.
 
 ![Image showing a text parameter in read mode](../Images/Parameters-Text-Readmode.png)
 
+## Parameter field style
+Text parameter supports following field style:
+
+1. Standard: A single line text field.
+
+![Image showing standard text field](../Images/StandardText.png)
+
+2. Password: A single line password field. The password value is only hidden on UI when user types. The value is still fully accessible as a param value when referred and it is stored unencrypted when workbook is saved.
+
+![Image showing password field](../Images/PasswordText.png)
+
+3. Multiline: A multiline text field with support of rich intellisense and syntax colorization for following languages:
+    - Text
+    - Markdown
+    - Json
+    - Sql
+    - TypeScript
+    - Kql
+
+![Image showing multiline text field](../Images/KqlText.png)
+
 ## Referencing a text parameter
 1. Add a query control to the workbook and select an Application Insights resource.
 2. In the KQL box, add this snippet:
@@ -66,3 +87,7 @@ This is how the workbook will look like in read-mode.
 
 ## Setting values using Criteria
 Refer to the [Criteria](Criteria.md) documentation.
+
+See also:
+
+[Parameter Options](formatting.md)
