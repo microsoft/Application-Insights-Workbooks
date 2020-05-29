@@ -33,5 +33,11 @@ The easiest way to specify the list by providing a static list in the parameter 
 
 Query examples and behaviors of the options group parameter the same as the single select drop down parameter samples.
 
-[See also: samples for using the Drop Down parameter](./DropDown.md#Creating_a_dynamic_drop_down_parameter).
+
+
+See also:
+
+[samples for using the Drop Down parameter](./DropDown.md#Creating_a_dynamic_drop_down_parameter)
+
+[Parameter Options](formatting.md)
 
