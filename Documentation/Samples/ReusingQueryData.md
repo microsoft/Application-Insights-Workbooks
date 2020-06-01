@@ -42,7 +42,7 @@ There are times where you want to visualize the underlying data set in different
 
     2. Use the `Delete` button to remove a column.
         1. Select the `[Cpu data].CpuP95 row
-        2. Hit the `Delete` button in the query control toolbar.
+        2. Use the `Delete` button in the query control toolbar.
         3. Use the `Run Merge` button to see the result set without the CpuP95 column
 
     3. Change the order of the columns using the `Move up` or `Move down` buttons in the toolbar.
