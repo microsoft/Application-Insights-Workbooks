@@ -86,6 +86,8 @@ After these configurations are set, when the user clicks on the link, it will op
 
 Use this to open Custom Views in the Azure Portal. Verify all of the configuration and settings. Incorrect values will cause errors in the portal, or fail to open the views correctly. There are two ways to configure the settings, via the `Form` or via `URL`.
 
+>**_NOTE:_** Views with a menu cannot be opened in a Context Blade. If a view with a menu is configured to open in a Context blade, then no context blade will be shown when the link is clicked.
+
 ### Form
 
 | Source | Explanation |
