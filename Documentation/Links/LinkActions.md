@@ -86,15 +86,29 @@ After these configurations are set, when the user clicks on the link, it will op
 
 Use this to open Custom Views in the Azure Portal. Verify all of the configuration and settings. Incorrect values will cause errors in the portal, or fail to open the views correctly. There are two ways to configure the settings, via the `Form` or via `URL`.
 
+>**_NOTE:_** Views with a menu cannot be opened in a Context Blade. If a view with a menu is configured to open in a Context blade, then no context blade will be shown when the link is clicked.
+
 ### Form
 
 | Source | Explanation |
 |:------------- |:-------------|
 |`Extension name` | The name of the extension that hosts the name of the View.|
 |`View name` | The name of the View to open.|
-|`View Parameters` | These are the inputs for the View. <ul><li>`Parameter Name`: The name of the View input parameter</li><li>`Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.</li><li>`Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.</li>|
+
+#### View Inputs
+There are two types of inputs, Grid and JSON. Use 'Grid' for simple key and value blade inputs or select 'JSON' to specify a nested json input.
+
+- Grid 
+    - `Parameter Name`: The name of the View input parameter
+    - `Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.
+    - `Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.
 
 ![Image showing Custom View settings link settings](../Images/CustomBladeSettings.png)
+
+- JSON
+    - Specify your blade input in a json format on the editor. Like the `Grid` mode, parameters and columns may be referenced by using `{paramName}` for parameters, and `{columnName_column}` for columns. By clicking on the button `Show JSON Sample`, it will show the expected output of all resolved parameters and columns used for the view input.
+
+![Image showing Custom View settings link settings in JSON mode](../Images/CustomBladeJSON.png)
 
 ### URL
 
