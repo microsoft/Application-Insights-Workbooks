@@ -95,3 +95,7 @@ Values from resource pickers can come from the workbook context, static list or 
 | `{Applications:id}` | The guid id of a subscription |  |
 | `{Applications:grid}` | A grid showing the resource properties. Useful to render in a text block while debugging  |  |
 
+See also:
+
+[Parameter Options](formatting.md)
+
