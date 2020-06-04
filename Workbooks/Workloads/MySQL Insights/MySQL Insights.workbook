@@ -149,7 +149,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "Resources\n| where id in~ ({Resources})\n| project ['Virtual machine'] = tolower(id), Name = name, ['Resource group'] = strcat('/subscriptions/', subscriptionId, '/resourceGroups/', resourceGroup), Subscription = subscriptionId, Location = location,  OsType = iff(properties.osProfile.windowsConfiguration == '', 'Linux', 'Windows'), Offer = tostring(properties.storageProfile.imageReference.offer)\n| join kind = inner (Resources\n    | where type =~ 'microsoft.compute/virtualmachines/extensions' and name =~ 'workload.linuxconfigagent'\n    | project Vm = extract(@'(.+)/extensions/.+', 1, tolower(id)), Insight = tostring(tags[\"monitoring-insight\"])\n    | where Vm != '' and Insight == 'nginx'\n    ) on $left.['Virtual machine'] == $right.Vm\n| join kind = inner (Resources\n    | where type =~ 'microsoft.compute/virtualmachines/extensions' and properties.type == 'OmsAgentForLinux' and properties.publisher == 'Microsoft.EnterpriseCloud.Monitoring'\n    | project Vm = extract(@'(.+)/extensions/.+', 1, tolower(id)), WorkspaceId = tostring(properties.settings.workspaceId)\n    | where Vm != ''\n    ) on $left.['Virtual machine'] == $right.Vm\n| project-away Vm, Vm1\n| join kind = leftouter (Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project Workspace = id, location, WorkspaceId = tostring(properties.customerId)) on WorkspaceId\n| summarize by Workspace\n| project value = Workspace, label = Workspace, selected = true\n",
+            "query": "Resources\n| where id in~ ({Resources})\n| project ['Virtual machine'] = tolower(id), Name = name, ['Resource group'] = strcat('/subscriptions/', subscriptionId, '/resourceGroups/', resourceGroup), Subscription = subscriptionId, Location = location,  OsType = iff(properties.osProfile.windowsConfiguration == '', 'Linux', 'Windows'), Offer = tostring(properties.storageProfile.imageReference.offer)\n| join kind = inner (Resources\n    | where type =~ 'microsoft.compute/virtualmachines/extensions' and name =~ 'workload.linuxconfigagent'\n    | project Vm = extract(@'(.+)/extensions/.+', 1, tolower(id)), Insight = tostring(tags[\"monitoring-insight\"])\n    | where Vm != '' and Insight == '{WorkloadTag}'\n    ) on $left.['Virtual machine'] == $right.Vm\n| join kind = inner (Resources\n    | where type =~ 'microsoft.compute/virtualmachines/extensions' and properties.type == 'OmsAgentForLinux' and properties.publisher == 'Microsoft.EnterpriseCloud.Monitoring'\n    | project Vm = extract(@'(.+)/extensions/.+', 1, tolower(id)), WorkspaceId = tostring(properties.settings.workspaceId)\n    | where Vm != ''\n    ) on $left.['Virtual machine'] == $right.Vm\n| project-away Vm, Vm1\n| join kind = leftouter (Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project Workspace = id, location, WorkspaceId = tostring(properties.customerId)) on WorkspaceId\n| summarize by Workspace\n| project value = Workspace, label = Workspace, selected = true\n",
             "crossComponentResources": [
               "value::all"
             ],
@@ -289,7 +289,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == 'mysql' and Name in~ ('queries')\n| order by Computer asc, Name asc, TimeGenerated asc\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null))\n| where isnull(Value) == false;\ndata\n| summarize \n        QueryCount = sumif(Value, Name == 'queries'),\n        QueryRate = avgif(Value, Name == 'queries') / (({TimeRange:end} - {TimeRange:start}) / 1s)\n    by Computer\n| join kind = inner (data\n| where Name == 'queries'\n| make-series QueryTrend = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer) on Computer\n| project Computer, QueryCount, QueryTrend, QueryRate\n",
+              "query": "let data = InsightsMetrics\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == 'mysql' and Name in~ ('queries')\n| order by Computer asc, Name asc, TimeGenerated asc\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null))\n| where isnull(Value) == false;\ndata\n| summarize \n        QueryCount = sumif(Value, Name == 'queries'),\n        QueryRate = sumif(Value, Name == 'queries') / (({TimeRange:end} - {TimeRange:start}) / 1s)\n    by Computer\n| join kind = inner (data\n| where Name == 'queries'\n| make-series QueryTrend = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer) on Computer\n| project Computer, QueryCount, QueryTrend, QueryRate\n",
               "size": 0,
               "showAnalytics": true,
               "timeContext": {
@@ -340,7 +340,8 @@
                       "unit": 31,
                       "options": {
                         "style": "decimal",
-                        "minimumFractionDigits": 1
+                        "minimumFractionDigits": 1,
+                        "maximumFractionDigits": 1
                       }
                     }
                   }
@@ -529,7 +530,8 @@
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
                 "{Workspaces}"
-              ]
+              ],
+              "visualization": "linechart"
             },
             "customWidth": "33",
             "showPin": true,
@@ -630,6 +632,7 @@
               "version": "KqlItem/1.0",
               "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == \"mysql\"\r\n| where Name contains \"connections_errors\"\r\n| order by Computer asc, Name asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null)), Series = strcat(Computer, \"/\", substring(Name,12))\r\n| make-series Connections = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series",
               "size": 0,
+              "showAnalytics": true,
               "title": "Connection Errors",
               "noDataMessage": "No connection errors detected",
               "noDataMessageStyle": 3,
@@ -718,10 +721,13 @@
               "version": "KqlItem/1.0",
               "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == \"mysql\"\r\n| where Name in (\"bytes_sent\",\"bytes_received\")\r\n| order by Computer asc, Name asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null)), Series = strcat(Computer, \"/\", substring(Name,6))\r\n| make-series Connections = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series",
               "size": 0,
+              "showAnalytics": true,
+              "title": "Bytes sent and received",
               "timeContext": {
                 "durationMs": 0
               },
               "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -730,6 +736,7 @@
               "visualization": "linechart"
             },
             "customWidth": "33",
+            "showPin": true,
             "name": "query - 4"
           }
         ]
@@ -753,11 +760,13 @@
               "version": "KqlItem/1.0",
               "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == \"mysql\"\r\n| where Name in (\"innodb_data_writes\",\"innodb_data_read\")\r\n| order by Computer asc, Name asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null)), Series = strcat(Computer, \"/\", substring(Name,12))\r\n| make-series Cache = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series\r\n",
               "size": 0,
+              "showAnalytics": true,
               "title": "InnoDB Data",
               "timeContext": {
                 "durationMs": 0
               },
               "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -766,6 +775,7 @@
               "visualization": "linechart"
             },
             "customWidth": "33",
+            "showPin": true,
             "name": "query - 1"
           },
           {
