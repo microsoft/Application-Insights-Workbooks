@@ -95,6 +95,13 @@ To make a query control use this data source, use the _Data source_ drop down to
 
 ![A image of a workbook with Azure resource health data](../Images/ResourceHealthDataSource.png)
 
+## Change Analysis (preview)
+Workbooks supports [Application Change Analysis](https://docs.microsoft.com/en-us/azure/azure-monitor/app/change-analysis).
+
+To make a query control use this data source, use the _Data source_ drop down to choose _Change Analysis (preview)_ and select a single resource. Changes for up to the last 14 days can be shown. The _Level_ drop down can be used to filter between "Important", "Normal", and "Noisy" changes, and this drop down supports workbook parameters of type [Drop down](../Parameters/DropDown.md).
+
+![An image of a workbook with Change Analysis (preview)](../Images/ChangeAnalysisDataSource.png)
+
 ## Merge data from different sources
 It is often necessary to bring together data from different sources that enhance the insights experience. An example is augmenting active alert information with related metric data. This allows users to see not just the effect (an active alert), but also potential causes (e.g. high CPU usage). The monitoring domain has numerous such correlatable data sources that are often critical to the triage and diagnostic workflow. 
 
