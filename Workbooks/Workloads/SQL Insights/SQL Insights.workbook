@@ -386,7 +386,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\ndata\r\n| summarize arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| extend Val = iff(TimeGenerated < ({TimeRange:end} - 15m), real(null), Val)\r\n| summarize Online = sumif(Val, Name == 'db_online'),\r\n    Offline = sumif(Val, Name == 'db_offline'),\r\n    Unhealthy = sumif(Val, Name in~ ('db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    CPUs = sumif(Val, Name == 'cpu_count'),\r\n    ['Server memory'] = sumif(Val, Name == 'server_memory'),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend jkey = strcat(Instance, '/', Database)\r\n| join kind = inner (data\r\n    | where Name == 'db_online'\r\n    | make-series Trend = min(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Database, Instance\r\n    | extend jkey = strcat(Instance, '/', Database)\r\n   ) on jkey\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Personal',\r\n            EngineEdition == 2, 'Standard',\r\n            EngineEdition == 3, 'Enterprise',\r\n            EngineEdition == 4, 'Express',\r\n            EngineEdition == 5, 'SQL Azure Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            '-')\r\n| extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n| order by Offline desc, Unhealthy desc, Online desc, Instance asc, Database asc, Computer asc\r\n| project ['Sql database'] = strcat(Instance, '/', Database), Online, Trend, Offline, Unhealthy, ['Monitored by'] = Computer, ['Database type'] = Type, CPUs, ['Server memory']\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\nlet engineEdition = data\r\n| summarize Engine = minif(Val, Name == 'engine_edition') by DatabaseKey;\r\nlet dbs = data\r\n| summarize arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| extend Val = iff(TimeGenerated < ({TimeRange:end} - 15m), real(null), Val)\r\n| summarize Online = sumif(Val, Name == 'db_online'),\r\n    Offline = sumif(Val, Name == 'db_offline'),\r\n    Unhealthy = sumif(Val, Name in~ ('db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    CPUs = sumif(Val, Name == 'cpu_count'),\r\n    ['Server memory'] = sumif(Val, Name == 'server_memory'),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend jkey = strcat(Instance, '/', Database)\r\n| join kind = inner (data\r\n    | where Name == 'db_online'\r\n    | summarize Val = min(Val) by bin(TimeGenerated, {TimeRange:grain}), Database, Instance, DatabaseKey\r\n    | join kind = inner (engineEdition) on DatabaseKey\r\n    | extend Val = iff(Engine == 5, 1.0, Val)\r\n    | make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Database, Instance\r\n    | extend jkey = strcat(Instance, '/', Database)\r\n   ) on jkey\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Personal',\r\n            EngineEdition == 2, 'Standard',\r\n            EngineEdition == 3, 'Enterprise',\r\n            EngineEdition == 4, 'Express',\r\n            EngineEdition == 5, 'SQL Azure Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            '-')\r\n| extend Online = iff(EngineEdition == 5, 1.0, Online);\r\ndbs\r\n| where EngineEdition == 5\r\n| project Id = strcat(Computer, '/', Instance, '/', Database), ParentId = Instance, Name = Database, Online, Trend, Offline, Unhealthy, ['Monitored by'] = Computer, ['Database type'] = Type\r\n| union (\r\ndbs\r\n    | where EngineEdition == 5\r\n    | summarize Online = sum(Online), Offline = sum(Offline), Unhealthy = sum(Unhealthy), CPUs = any(CPUs), ['Server memory'] = any(['Server memory']) by Id = Instance, Name = Instance\r\n    | extend ParentId = ''\r\n    | join kind = inner (data\r\n        | where Name == 'db_online'\r\n        | summarize Val = min(Val) by bin(TimeGenerated, {TimeRange:grain}), Instance, Database\r\n        | make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Instance\r\n   ) on $left.Id == $right.Instance\r\n    \r\n    )\r\n| union (dbs\r\n    | where EngineEdition != 5\r\n    | project  Id = strcat(Computer, '/', Instance), ParentId = '', Name = Instance, Online, Trend, Offline, Unhealthy, ['Monitored by'] = Computer, ['Database type'] = Type, CPUs, ['Server memory'] )\r\n| project-away Instance, TimeGenerated\r\n| order by Offline desc, Unhealthy desc, Online desc, Name asc\r\n\r\n",
               "size": 2,
               "showAnalytics": true,
               "title": "Server details",
@@ -403,6 +403,16 @@
               "visualization": "table",
               "gridSettings": {
                 "formatters": [
+                  {
+                    "columnMatch": "Id",
+                    "formatter": 5,
+                    "formatOptions": {}
+                  },
+                  {
+                    "columnMatch": "ParentId",
+                    "formatter": 5,
+                    "formatOptions": {}
+                  },
                   {
                     "columnMatch": "Online",
                     "formatter": 18,
@@ -432,6 +442,13 @@
                     "formatOptions": {
                       "min": 0,
                       "palette": "green"
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal"
+                      },
+                      "emptyValCustomText": "-"
                     }
                   },
                   {
@@ -477,6 +494,43 @@
                     }
                   },
                   {
+                    "columnMatch": "Monitored by",
+                    "formatter": 0,
+                    "formatOptions": {},
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal"
+                      },
+                      "emptyValCustomText": "-"
+                    }
+                  },
+                  {
+                    "columnMatch": "Database type",
+                    "formatter": 0,
+                    "formatOptions": {},
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal"
+                      },
+                      "emptyValCustomText": "-"
+                    }
+                  },
+                  {
+                    "columnMatch": "CPUs",
+                    "formatter": 0,
+                    "formatOptions": {},
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      },
+                      "emptyValCustomText": "-"
+                    }
+                  },
+                  {
                     "columnMatch": "Server memory",
                     "formatter": 0,
                     "formatOptions": {},
@@ -485,7 +539,8 @@
                       "options": {
                         "style": "decimal",
                         "useGrouping": false
-                      }
+                      },
+                      "emptyValCustomText": "-"
                     }
                   },
                   {
@@ -496,16 +551,21 @@
                       "unit": 38,
                       "options": {
                         "style": "decimal"
-                      }
+                      },
+                      "emptyValCustomText": "-"
                     }
                   }
                 ],
                 "rowLimit": 1000,
                 "filter": true,
+                "hierarchySettings": {
+                  "idColumn": "Id",
+                  "parentColumn": "ParentId",
+                  "treeType": 0,
+                  "expanderColumn": "Name",
+                  "expandTopLevel": true
+                },
                 "labelSettings": [
-                  {
-                    "columnId": "Sql database"
-                  },
                   {
                     "columnId": "Online",
                     "label": "Online dbs"
@@ -520,12 +580,6 @@
                   {
                     "columnId": "Unhealthy",
                     "label": "Unhealthy db"
-                  },
-                  {
-                    "columnId": "Monitored by"
-                  },
-                  {
-                    "columnId": "Database type"
                   },
                   {
                     "columnId": "CPUs"
