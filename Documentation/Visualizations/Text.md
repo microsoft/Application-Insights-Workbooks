@@ -22,17 +22,17 @@ Text is added through a markdown control - into which an author can add their co
 6. Click the _Done Editing_ button to complete editing the step
 
 ### Text styles
-The following text styles are avilable for text steps:
+The following text styles are available for text steps:
 style | explanation
 ---|---
-`plain` | no additional formatting is applied
-`info` | the portal's "info" style, with a `ℹ` or similar icon and generally blue background
-`error` | the portal's "error" style, with a `❌` or similar icon and generally red background
-`success` | the portal's "success" style, with a `✔` or similar icon and generally green background
-`upsell` | the portal's "upsell" style, with a `🚀` or similar icon and generally purple background
-`warning` | the portal's "warning" style, with a `⚠` or similar icon and generally blue background
+`plain` | No additional formatting is applied
+`info` | The portal's "info" style, with a `ℹ` or similar icon and generally blue background
+`error` | The portal's "error" style, with a `❌` or similar icon and generally red background
+`success` | The portal's "success" style, with a `✔` or similar icon and generally green background
+`upsell` | The portal's "upsell" style, with a `🚀` or similar icon and generally purple background
+`warning` | The portal's "warning" style, with a `⚠` or similar icon and generally blue background
 
-Instead of picking a specific style, you may also choose a text parameter as the source of the style. the parameter value must be one of the above text values. the absense of a value, or any unrecognized value will be treated as `plain` style.
+Instead of picking a specific style, you may also choose a text parameter as the source of the style. The parameter value must be one of the above text values. The absence of a value, or any unrecognized value will be treated as `plain` style.
 
 #### info style example:
 ![Image showing a text visualization in preview mode showing info style](../Images/TextControlInEditModePreviewInfo.png)
