@@ -4,38 +4,15 @@ pushd "%~dp0"
 
 echo Preparing localization build...
 
-setlocal
-
-rem In this sample, the repo root is identical to the script directory path. Adjust the value of the RepoRoot variable accordingly based on your environment.
-rem Again, ensure the RepoRoot variable is set to the real repo root location, otherwise the localization toolset wouldn't work as intended.
-rem Note that the resolved %~dp0 ends with \.
 set RepoRoot=%~dp0
-set OutDir=%RepoRoot%out
-set NUGET_PACKAGES=%RepoRoot%packages
+set OutDir=%RepoRoot%locout
+set NUGET_PACKAGES=%RepoRoot%locout\.packages
 set LocalizationXLocPkgVer=2.0.0
-
-nuget install Localization.XLoc -Version %LocalizationXLocPkgVer% -OutputDirectory "%NUGET_PACKAGES%" -NonInteractive -Verbosity detailed
-if "%errorlevel%" neq "0" (
-    popd
-    exit /b %errorlevel%
-)
-
-nuget install LSBuild.XLoc -OutputDirectory "%NUGET_PACKAGES%" -NonInteractive -Verbosity detailed
-if "%errorlevel%" neq "0" (
-    popd
-    exit /b %errorlevel%
-)
-
-nuget install Localization.Languages -OutputDirectory "%NUGET_PACKAGES%" -NonInteractive -Verbosity detailed
-if "%errorlevel%" neq "0" (
-    popd
-    exit /b %errorlevel%
-)
 
 echo Running localization build...
 
 set XLocPath=%NUGET_PACKAGES%\Localization.XLoc.%LocalizationXLocPkgVer%
-set LocProject=%RepoRoot%src\Samples\ClassLibrary\LocProject.json
+set LocProject=%RepoRoot%src\LocProject.json
 
 dotnet "%XLocPath%\tools\netcore\Microsoft.Localization.XLoc.dll" /f "%LocProject%"
 
