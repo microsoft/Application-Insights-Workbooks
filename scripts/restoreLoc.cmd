@@ -7,7 +7,7 @@ echo Preparing localization build...
 set RepoRoot=%~dp0
 set OutDir=%RepoRoot%locout
 set NUGET_PACKAGES=%RepoRoot%locout\.packages
-set LocalizationXLocPkgVer=2.0.0
+set LocalizationXLocPkgVer=1.2.3
 
 nuget install Localization.XLoc -Version %LocalizationXLocPkgVer% -OutputDirectory "%NUGET_PACKAGES%" -NonInteractive -Verbosity detailed -PreRelease
 if "%errorlevel%" neq "0" (

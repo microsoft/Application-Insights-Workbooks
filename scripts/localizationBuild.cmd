@@ -7,7 +7,7 @@ echo Preparing localization build...
 set RepoRoot=%~dp0..\
 set OutDir=%RepoRoot%locout
 set NUGET_PACKAGES=%RepoRoot%locout\.packages
-set LocalizationXLocPkgVer=2.0.0
+set LocalizationXLocPkgVer=1.2.3
 
 echo Running localization build...
 
