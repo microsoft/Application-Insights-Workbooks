@@ -4,17 +4,20 @@ pushd "%~dp0"
 
 echo Preparing localization build...
 
-set RepoRoot=%~dp0..\
-set OutDir=%RepoRoot%locout
-set NUGET_PACKAGES=%RepoRoot%locout\.packages
-set LocalizationXLocPkgVer=1.2.3
+setlocal
+
+set RepoRoot=%~dp0
+set OutDir=%RepoRoot%out
+set NUGET_PACKAGES=%RepoRoot%packages
+set LocalizationXLocPkgVer=2.0.0
+
 
 echo Running localization build...
 
 set XLocPath=%NUGET_PACKAGES%\Localization.XLoc.%LocalizationXLocPkgVer%
 set LocProject=%RepoRoot%src\LocProject.json
 
-%XLocPath%\tools\netfx\Microsoft.Localization.XLoc.exe /f "%LocProject%"
+dotnet "%XLocPath%\tools\netcore\Microsoft.Localization.XLoc.dll" /f "%LocProject%"
 
 echo Localization build finished with exit code '%errorlevel%'.
 
