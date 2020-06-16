@@ -4,7 +4,7 @@ pushd "%~dp0"
 
 echo Preparing localization build...
 
-set RepoRoot=%~dp0
+set RepoRoot=%~dp0..\
 set OutDir=%RepoRoot%locout
 set NUGET_PACKAGES=%RepoRoot%locout\.packages
 set LocalizationXLocPkgVer=2.0.0
