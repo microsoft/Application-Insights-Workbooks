@@ -19,6 +19,10 @@ const LocKeys = [
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = '.resjson';
 
+const LCLOutputPath = "Workbooks\\.localization";
+const PathToStringFile = "output\\package\\en-us\\Workbooks\\";
+const PathToLocProjectFile = "..\\src\\LocProject.json";
+
 // FUNCTIONS
 function testPath(path) {
   console.log(">>>>> Processing template path: ", path);
@@ -92,6 +96,25 @@ function writeToFileRESJSON(data, fileName, path) {
   }
 }
 
+/** Write a LocProject.json file needed to point the loc tool to the resjson files + where to output LCL files  */
+function generateLocProjectFile(locItems) {
+  const locProjectJson = {
+    "Projects": [
+      {
+        "LanguageSet": "Azure_Languages",
+        "LocItems": locItems
+      }
+    ]
+  };
+  const content = JSON.stringify(locProjectJson, null, "\t");
+  try {
+    fs.writeFileSync(PathToLocProjectFile, content);
+    console.log(">>>>> Generated LocProject.json file: ", PathToLocProjectFile);
+  } catch (e) {
+    console.error("Cannot write LocProject.json file: ", PathToLocProjectFile, "ERROR: ", e);
+  }
+}
+
 
 // SCRIPT MAIN
 
@@ -99,7 +122,6 @@ if (!process.argv[2]) { // path to the extracted workbooks
   console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize.');
   return;
 }
-
 
 // Verify template path
 const templatePath = process.argv[2];
@@ -109,6 +131,8 @@ if (!exists) {
 }
 
 console.log("Processing...");
+
+const locItems = [];
 
 // Valid path, start processing the files.
 var files = fs.readdirSync(templatePath);
@@ -139,11 +163,25 @@ for (var i in files) {
     continue;
   }
 
-  const outPath = templatePath + "\\strings";
+  if (Object.keys(extracted).length > 0) {
+    const outPath = templatePath + "\\strings";
 
-  // Write extracted strings to file
-  writeToFileRESJSON(extracted, fileName, outPath);
+    locItems.push({
+      "SourceFile": PathToStringFile.concat(fileName),
+      "CopyOption": "LangIDOnPath",
+      "OutputPath": LCLOutputPath
+    });
+
+    // Write extracted strings to file
+    writeToFileRESJSON(extracted, fileName, outPath);
+  } else {
+    console.log(">>>>> No strings found for template: ", path);
+  }
 };
+
+// Generate and push locProject file
+console.log("Generating LocProject.json file...");
+generateLocProjectFile(locItems);
 
 console.log("String extraction completed.");
 
