@@ -5,7 +5,7 @@ pushd "%~dp0"
 echo Preparing localization restore...
 
 setlocal
-set RepoRoot=%~dp0
+set RepoRoot=%~dp0..\
 set OutDir=%RepoRoot%out
 set NUGET_PACKAGES=%RepoRoot%packages
 set LocalizationXLocPkgVer=2.0.0
