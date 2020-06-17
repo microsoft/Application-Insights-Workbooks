@@ -15,7 +15,7 @@ set LocalizationXLocPkgVer=2.0.0
 echo Running localization build...
 
 set XLocPath=%NUGET_PACKAGES%\Localization.XLoc.%LocalizationXLocPkgVer%
-set LocProject=%RepoRoot%LocProject.json
+set LocProject=%RepoRoot%src\LocProject.json
 
 dotnet "%XLocPath%\tools\netcore\Microsoft.Localization.XLoc.dll" /f "%LocProject%"
 
