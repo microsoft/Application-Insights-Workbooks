@@ -18,6 +18,7 @@ const LocKeys = [
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = '.resjson';
+const ResJSonCommentKey = "_{0}.comment";
 
 const LCLOutputPath = "Workbooks\\.localization";
 const PathToStringFile = "output\\package\\en-us\\Workbooks\\";
@@ -66,9 +67,37 @@ function getLocalizeableStrings(obj, key, outputMap) {
     if (typeof obj[i] == 'object') {
       getLocalizeableStrings(obj[i], key.concat(i, '.'), outputMap);
     } else if (LocKeys.includes(i)) {
-      outputMap[key.concat(i)] = obj[i];
+      const jsonKey = key.concat(i);
+      outputMap[jsonKey] = obj[i];
+
+      // Check for parameters that should be locked
+      findAndGenerateLockedStringComment(jsonKey, obj[i], outputMap);
     }
   }
+}
+
+function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
+  const params = findParameterNames(stringToLoc);
+  if (params) {
+    const commentKey = "_" + jsonKey + ".comment";
+    const commentEntry = "{Locked=" + params.join(",") + "}";
+    outputMap[commentKey] = commentEntry;
+  }
+}
+
+
+function findParameterNames(text) {
+  const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
+  const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
+  var _parameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:" + ValidSpecifierRegex + ")?\}", "g");
+  var params = null;
+  try {
+    params = text.match(_parameterRegex);
+  } catch (error) {
+    console.error("Cannot extract parameter. ", "ERROR: ", e);
+  }
+
+  return params;
 }
 
 /** Write string file as RESJSON */
@@ -166,6 +195,7 @@ for (var i in files) {
   if (Object.keys(extracted).length > 0) {
     const outPath = templatePath + "\\strings";
 
+    // Add LocProject entry
     locItems.push({
       "SourceFile": PathToStringFile.concat(fileName),
       "CopyOption": "LangIDOnPath",
