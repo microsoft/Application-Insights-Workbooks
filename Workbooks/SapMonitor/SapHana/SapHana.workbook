@@ -11,7 +11,7 @@
             "version": "KqlParameterItem/1.0",
             "name": "param_host_selected",
             "type": 1,
-            "value": "(none)",
+            "value": "",
             "isHiddenWhenLocked": true
           },
           {
@@ -21,19 +21,115 @@
             "type": 1,
             "value": "1",
             "isHiddenWhenLocked": true
+          },
+          {
+            "id": "731f3dea-e655-4c54-8db1-79e6d4691709",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_error",
+            "type": 1,
+            "query": "// 0 = no error\n// 1 = table does not exist (need to add provider)\n// 2 = table exists, but column v1 does not (need to wait)\n// 3 = table exists, column v1 too, but not column v2 (need to upgrade)\n// 4 = table exists, column v1 and column v2 as well, but no records (need to wait)\nlet t = \"SapHana_LoadHistory_CL\";\nlet c1 = \"HOST_s\";\nlet c2 = \"PROVIDER_INSTANCE_s\";\nlet dummy = \"unmöglicher-wert!\";\nlet MissingTable = view () { print tableMissing = 1, columnV1 = dummy, columnV2 = dummy, records = -1 };\nlet checkRecords =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | summarize records = count()\n    )\n  | project records\n  | top 1 by records desc\n;\nlet checkExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | extend tableMissing = 0\n      | extend columnV1 = column_ifexists(c1, dummy)\n      | extend columnV2 = column_ifexists(c2, dummy)\n    )\n  | project tableMissing, columnV1, columnV2\n  | limit 2\n  | top 1 by tableMissing asc\n;\nlet tableExists = toscalar(checkExists | summarize max(tableMissing) != 1);\nlet columnV1Exists = toscalar(checkExists | summarize max(columnV1) != dummy);\nlet columnV2Exists = toscalar(checkExists | summarize max(columnV2) != dummy);\nlet tableRecords = toscalar(checkRecords | summarize max(records));\nlet x = iif(tableExists, iif(columnV1Exists, iif(columnV2Exists, iif(tableRecords > 0, \"0\", \"2\"), \"3\"), \"2\"), \"1\");\nprint toscalar(x)\n//print tableExists, columnV1Exists, columnV2Exists, tableRecords\n",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "90198a7b-268a-4cd1-99a7-639c1446a43a",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_sid",
+            "type": 1,
+            "value": "*",
+            "isHiddenWhenLocked": true
           }
         ],
         "style": "pills",
-        "queryType": 0
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
       "name": "section_params"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// error 1 = table does not exist (need to add provider)\nprint \"\"\n| take 0",
+              "size": 4,
+              "noDataMessage": "Before you can use this workbook, you need to add an SAP HANA Provider.",
+              "noDataMessageStyle": 4,
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "error_1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// error 2 = table exists, but column v1 does not (need to wait)\nprint \"\"\n| take 0",
+              "size": 4,
+              "noDataMessage": "Initial ingestion in progress: After adding an SAP HANA Provider, it may take a few minutes for metrics to show up.",
+              "noDataMessageStyle": 4,
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error",
+              "comparison": "isEqualTo",
+              "value": "2"
+            },
+            "name": "error_2"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// error 3 = table exists, column v1 too, but not column v2 (need to upgrade)\nprint \"\"\n| take 0",
+              "size": 4,
+              "noDataMessage": "This workbook requires a newer version of SAP Monitor. Please consider upgrading by deleting and re-creating this SAP Monitor.",
+              "noDataMessageStyle": 2,
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error",
+              "comparison": "isEqualTo",
+              "value": "3"
+            },
+            "name": "error_3"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "param_check_error",
+        "comparison": "isNotEqualTo"
+      },
+      "name": "group_error"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
         "query": "SapHana_SystemOverview_CL\n| extend provider = PROVIDER_INSTANCE_s\n| distinct provider\n| join (SapHana_SystemOverview_CL | where NAME_s == \"Instance ID\" | extend sid = VALUE_s)\n    on $left.provider == $right.PROVIDER_INSTANCE_s\n| join (SapHana_SystemOverview_CL | where NAME_s == \"Instance Number\" | extend num = VALUE_s)\n    on $left.provider == $right.PROVIDER_INSTANCE_s\n| join (SapHana_SystemOverview_CL | where NAME_s == \"Version\" | extend version_raw = VALUE_s, \".\")\n    on $left.provider == $right.PROVIDER_INSTANCE_s\n| join kind=leftouter (SapHana_HostConfig_CL\n| project TimeGenerated, PROVIDER_INSTANCE_s, HOST_s, HOST_ACTIVE_s\n| summarize arg_max(TimeGenerated, *) by HOST_s, PROVIDER_INSTANCE_s\n| where HOST_ACTIVE_s == \"NO\"\n| summarize cnt_inactive_hosts=count() by PROVIDER_INSTANCE_s)\non $left.provider == $right.PROVIDER_INSTANCE_s\n| join (SapHana_SystemOverview_CL | where NAME_s == \"Distributed\" | extend distributed = iff(VALUE_s == \"No\", \"Single-node\", replace(@'Yes (.*)', @'Multi-node \\1', VALUE_s)))\n    on $left.provider == $right.PROVIDER_INSTANCE_s\n| extend sid_num = strcat(sid, \" / \", num)\n| extend version_split = split(version_raw, \".\")\n| extend version = strcat(\"SAP HANA \", version_split[0], \".\", version_split[1], \".\", version_split[2])\n| project provider, sid, num, sid_num, version, cnt_inactive_hosts, distributed\n| sort by sid asc",
-        "size": 4,
+        "size": 3,
         "title": "Monitored SAP HANA instances",
         "noDataMessage": "There are currently no SAP HANA providers configured.",
         "exportFieldName": "sid",
@@ -92,12 +188,17 @@
           "sortOrderField": 1
         }
       },
-      "name": "query_instance"
+      "conditionalVisibility": {
+        "parameterName": "param_check_error",
+        "comparison": "isEqualTo",
+        "value": "0"
+      },
+      "name": "query_sid"
     },
     {
       "type": 1,
       "content": {
-        "json": "\n\n---\n<b style=\"color:DodgerBlue;\">You selected host:</b> {host_selected}<br>\n<b style=\"color:DodgerBlue;\">You selected instance:</b> {param_sid}"
+        "json": "\n\n---\n<b style=\"color:DodgerBlue;\">You selected host:</b> {param_host_selected}<br>\n<b style=\"color:DodgerBlue;\">You selected instance:</b> {param_sid}"
       },
       "conditionalVisibility": {
         "parameterName": "dummy_neverset",
@@ -106,30 +207,31 @@
       "name": "text_overview"
     },
     {
-      "type": 11,
+      "type": 3,
       "content": {
-        "version": "LinkItem/1.0",
-        "style": "tabs",
-        "links": [
-          {
-            "cellValue": "param_tab_main",
-            "linkTarget": "parameter",
-            "linkLabel": "Overview",
-            "subTarget": "1",
-            "preText": "abc",
-            "postText": "def",
-            "style": "link"
-          },
-          {
-            "cellValue": "param_tab_main",
-            "linkTarget": "parameter",
-            "linkLabel": "Utilization",
-            "subTarget": "2",
-            "style": "link"
-          }
-        ]
+        "version": "KqlItem/1.0",
+        "query": "print \"\"\n| take 0",
+        "size": 4,
+        "noDataMessage": "Please select an SAP HANA instance from above to see more details.",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "tabs_main"
+      "conditionalVisibilities": [
+        {
+          "parameterName": "param_sid",
+          "comparison": "isEqualTo",
+          "value": "*"
+        },
+        {
+          "parameterName": "param_check_error",
+          "comparison": "isEqualTo",
+          "value": "0"
+        }
+      ],
+      "name": "info_select_sid"
     },
     {
       "type": 12,
@@ -138,936 +240,953 @@
         "groupType": "editable",
         "items": [
           {
-            "type": 9,
+            "type": 11,
             "content": {
-              "version": "KqlParameterItem/1.0",
-              "parameters": [
+              "version": "LinkItem/1.0",
+              "style": "tabs",
+              "links": [
                 {
-                  "id": "2718717f-e363-4010-8feb-1aadda6387c3",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "param_timeframe",
-                  "label": "Timeframe",
-                  "type": 4,
-                  "isRequired": true,
-                  "value": {
-                    "durationMs": 14400000
+                  "cellValue": "param_tab_main",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Overview",
+                  "subTarget": "1",
+                  "style": "link"
+                },
+                {
+                  "cellValue": "param_tab_main",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Utilization",
+                  "subTarget": "2",
+                  "style": "link"
+                }
+              ]
+            },
+            "name": "tabs_main"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "2718717f-e363-4010-8feb-1aadda6387c3",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "param_timeframe",
+                        "label": "Timeframe",
+                        "type": 4,
+                        "isRequired": true,
+                        "value": {
+                          "durationMs": 14400000
+                        },
+                        "typeSettings": {
+                          "selectableValues": [
+                            {
+                              "durationMs": 300000
+                            },
+                            {
+                              "durationMs": 900000
+                            },
+                            {
+                              "durationMs": 1800000
+                            },
+                            {
+                              "durationMs": 3600000
+                            },
+                            {
+                              "durationMs": 14400000
+                            },
+                            {
+                              "durationMs": 43200000
+                            },
+                            {
+                              "durationMs": 86400000
+                            },
+                            {
+                              "durationMs": 172800000
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
                   },
-                  "typeSettings": {
-                    "selectableValues": [
+                  "name": "section_timeframe"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let param_sid = \"{param_sid}\"\n;\nlet table_systemoverview = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(30d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider\n;\nlet table_hostconfig = SapHana_HostConfig_CL\n| where TimeGenerated > ago(24h)\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend timestamp_hostconfig = TimeGenerated\n| extend host = tostring(HOST_s)\n| extend role = tolower(INDEXSERVER_ACTUAL_ROLE_s)\n| extend active = tolower(HOST_ACTIVE_s)\n| summarize arg_max(timestamp_hostconfig, *) by provider, host\n| sort by host asc\n| project timestamp_hostconfig, host, role, active\n;\nlet table_load_host = SapHana_LoadHistory_CL\n| extend timestamp_load = TimeGenerated\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend host = HOST_s\n| extend cpu = CPU_d\n| extend memory = MEMORY_USED_d / MEMORY_SIZE_d * 100\n| extend nw_in = NETWORK_IN_d\n| extend nw_out = NETWORK_OUT_d\n| join kind=inner (table_hostconfig | where active == \"yes\") on host\n| where timestamp_load {param_timeframe}\n;\nlet table_highest_cpu = table_load_host\n| make-series avg(cpu) default=0 on timestamp_load step {param_timeframe:grain} by host\n| extend value = todouble(series_stats_dynamic(avg_cpu)['avg'])\n| extend timeseries = avg_cpu\n| sort by value desc\n| extend type = \"Highest CPU\"\n| project host, value, timeseries, type\n| take 1\n;\nlet table_highest_memory = table_load_host\n| make-series avg(memory) default=0 on timestamp_load step {param_timeframe:grain} by host\n| extend value = todouble(series_stats_dynamic(avg_memory)['avg'])\n| extend timeseries = avg_memory\n| sort by value desc\n| extend type = \"Highest Memory\"\n| project host, value, timeseries, type\n| take 1\n;\ntable_highest_cpu\n| union table_highest_memory\n| sort by type asc",
+                    "size": 3,
+                    "title": "Servers with most load",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "tiles",
+                    "tileSettings": {
+                      "titleContent": {
+                        "columnMatch": "type",
+                        "formatter": 1,
+                        "formatOptions": {}
+                      },
+                      "subtitleContent": {
+                        "columnMatch": "host",
+                        "formatter": 1,
+                        "formatOptions": {}
+                      },
+                      "leftContent": {
+                        "columnMatch": "value",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "min": 0,
+                          "max": 100,
+                          "palette": "greenRed"
+                        },
+                        "numberFormat": {
+                          "unit": 1,
+                          "options": {
+                            "style": "decimal",
+                            "minimumFractionDigits": 1,
+                            "maximumFractionDigits": 1
+                          }
+                        }
+                      },
+                      "secondaryContent": {
+                        "columnMatch": "timeseries",
+                        "formatter": 21,
+                        "formatOptions": {
+                          "min": 0,
+                          "max": 100,
+                          "palette": "blue"
+                        }
+                      },
+                      "showBorder": true
+                    }
+                  },
+                  "showPin": false,
+                  "name": "query_busiest"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let param_sid = \"{param_sid}\"\n;\nlet table_systemoverview = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(30d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider\n;\nlet table_hostconfig = SapHana_HostConfig_CL\n| where TimeGenerated > ago(24h)\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend timestamp_hostconfig = TimeGenerated\n| extend host = tostring(HOST_s)\n| extend role = tolower(INDEXSERVER_ACTUAL_ROLE_s)\n| extend active = tolower(HOST_ACTIVE_s)\n| summarize arg_max(timestamp_hostconfig, *) by provider, host\n| sort by host asc\n| project timestamp_hostconfig, host, role, active\n;\nlet table_load_host = SapHana_LoadHistory_CL\n| extend timestamp_load = TimeGenerated\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend host = HOST_s\n| extend cpu = CPU_d\n| extend memory = MEMORY_USED_d / MEMORY_SIZE_d * 100\n| extend nw_in = NETWORK_IN_d\n| extend nw_out = NETWORK_OUT_d\n| join kind=inner (table_hostconfig | where active == \"yes\") on host\n| where timestamp_load {param_timeframe} //>= timestamp_hostconfig - 5m\n| project cpu, memory, nw_in, nw_out, provider, host\n| summarize cpu=avg(cpu), memory=avg(memory), nw_in=avg(nw_in), nw_out=avg(nw_out) by provider, host\n;\nlet table_systemavailability = SapHana_SystemAvailability_CL\n| where TimeGenerated > ago(365d)\n| extend timestamp_systemavailability = TimeGenerated\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| extend database = DATABASE_NAME_s\n| extend service = SERVICE_NAME_s\n| extend port = PORT_d\n| extend event = tostring(EVENT_NAME_s)\n| extend active = tolower(SERVICE_ACTIVE_s)\n| join kind=leftouter (table_systemoverview) on provider\n| join kind=rightouter (table_hostconfig | where active == \"yes\") on host\n| where sid != \"\" and port != 0\n| summarize arg_max(timestamp_systemavailability, *) by sid, host, database, service\n| project sid, host, database, service, event, port, active\n;\nlet table_disks = SapHana_Disks_CL\n| extend timestamp_disks = TimeGenerated\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend host = HOST_s\n| extend type = USAGE_TYPE_s\n| extend disk_usage = USED_SIZE_d / TOTAL_SIZE_d * 100\n| where type in (\"DATA\", \"LOG\")\n| join kind=inner (table_hostconfig | where active == \"yes\") on host\n| where timestamp_disks {param_timeframe} //>= timestamp_hostconfig - 10m\n| summarize disk_usage=avg(disk_usage) by provider, host, type\n;\ntable_hostconfig\n| extend name = host\n| extend id = host\n| extend type = \"Host\", parentid = \"\"\n| join kind=leftouter (table_load_host | project host, cpu, memory, nw_in, nw_out) on host \n| join kind=leftouter (table_disks | project host, disk_usage, type | where type == \"DATA\" | extend disk_data = disk_usage) on host\n| join kind=leftouter (table_disks | project host, disk_usage, type | where type == \"LOG\" | extend disk_log = disk_usage) on host\n| union (table_systemavailability\n| project sid, port, host, service, database, active, event\n| where sid == param_sid\n| summarize by host, service, database, port, active, event\n| extend type = \"Service\"\n| extend name = strcat(service, \" (:\", tostring(toint(port)), \")\")\n| extend parentid = host, id = strcat(host, \"_\", service)\n)\n| order by host asc, database asc\n| project name, host, type, database, role, active, event, cpu, memory, disk_data, disk_log, nw_in, nw_out, id, parentid",
+                    "size": 3,
+                    "title": "Instance overview",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "host",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "active",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "yes",
+                                "representation": "success",
+                                "text": ""
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "no",
+                                "representation": "4",
+                                "text": ""
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "pending",
+                                "text": ""
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "columnMatch": "event",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "cpu",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "greenRed"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "memory",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "greenRed"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "disk_data",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "greenRed"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "disk_log",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "greenRed"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "nw_in",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 1000,
+                            "palette": "greenRed"
+                          },
+                          "numberFormat": {
+                            "unit": 47,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "nw_out",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 1000,
+                            "palette": "greenRed"
+                          },
+                          "numberFormat": {
+                            "unit": 47,
+                            "options": {
+                              "style": "decimal",
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "id",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "parentid",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        }
+                      ],
+                      "filter": true,
+                      "hierarchySettings": {
+                        "idColumn": "id",
+                        "parentColumn": "parentid",
+                        "treeType": 0,
+                        "expanderColumn": "name",
+                        "expandTopLevel": false
+                      },
+                      "labelSettings": [
+                        {
+                          "columnId": "name",
+                          "label": ""
+                        },
+                        {
+                          "columnId": "host"
+                        },
+                        {
+                          "columnId": "type",
+                          "label": "Kind"
+                        },
+                        {
+                          "columnId": "database",
+                          "label": "Database"
+                        },
+                        {
+                          "columnId": "role",
+                          "label": "Role"
+                        },
+                        {
+                          "columnId": "active",
+                          "label": "Status"
+                        },
+                        {
+                          "columnId": "event"
+                        },
+                        {
+                          "columnId": "cpu",
+                          "label": "CPU"
+                        },
+                        {
+                          "columnId": "memory",
+                          "label": "Memory"
+                        },
+                        {
+                          "columnId": "disk_data",
+                          "label": "Disk (Data)"
+                        },
+                        {
+                          "columnId": "disk_log",
+                          "label": "Disk (Log)"
+                        },
+                        {
+                          "columnId": "nw_in",
+                          "label": "NW (In)"
+                        },
+                        {
+                          "columnId": "nw_out",
+                          "label": "NW (Out)"
+                        },
+                        {
+                          "columnId": "id"
+                        },
+                        {
+                          "columnId": "parentid"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "query_overview"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let table_hostconfig = SapHana_HostConfig_CL\n| where TimeGenerated > ago(24h)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend role = tolower(INDEXSERVER_ACTUAL_ROLE_s)\n| extend status = tolower(HOST_ACTIVE_s)\n| extend timestamp_hostconfig = TimeGenerated\n| summarize arg_max(timestamp_hostconfig, *) by provider, host\n| sort by timestamp_hostconfig, host asc\n| project timestamp_hostconfig, provider, host, role, status;\nlet table_services = SapHana_SystemAvailability_CL\n| extend database = DATABASE_NAME_s\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| extend service = SERVICE_NAME_s\n| summarize arg_max(TimeGenerated, *) by provider, host, service;\nlet table_system = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(7d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider;\nlet table_load_current = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(12h)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend cpu = CPU_d\n| extend memory_used = MEMORY_USED_d\n| summarize arg_max(TimeGenerated, *) by provider, host\n| join kind=inner (table_hostconfig | where status == \"yes\" | where provider == provider) on host\n| sort by TimeGenerated\n| project provider, host, cpu, memory_used;\nlet table_cpu_5m = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(24h)\n| extend timestamp_load = TimeGenerated\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend cpu_5m = CPU_d\n| join kind=inner (table_hostconfig | where status == \"yes\" | where provider == provider) on host\n| where timestamp_load >= timestamp_hostconfig - 5m\n| project cpu_5m, provider, host\n| summarize avg(cpu_5m) by provider, host;\nlet table_cpu_15m = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(24h)\n| extend timestamp_load = TimeGenerated\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend cpu_15m = CPU_d\n| join kind=inner (table_hostconfig | where status == \"yes\" | where provider == provider) on host\n| where timestamp_load >= timestamp_hostconfig - 15m\n| project cpu_15m, provider, host\n| summarize avg(cpu_15m) by provider, host;\nlet table_memory_trend = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(24h)\n| extend memory_used = MEMORY_USED_d / MEMORY_SIZE_d\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| make-series avg(memory_used) default=0 on TimeGenerated from ago(24h) to now() step 30m by provider, host;\nlet table_cpu_trend = SapHana_LoadHistory_CL\n//| where TimeGenerated > ago(24h)\n| extend cpu = CPU_d\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| make-series avg(cpu) default=0 on TimeGenerated from ago(24h) to now() step 30m by provider, host;\ntable_hostconfig\n| join kind=inner (table_system) on provider\n| join kind=leftouter (table_load_current | where provider == provider) on host\n| join kind=leftouter (table_cpu_trend | where provider == provider) on host\n| join kind=leftouter (table_memory_trend | where provider == provider) on host\n| extend instance = strcat(sid, \" (\", provider, \")\")\n| join kind=leftouter (table_cpu_5m | where provider == provider) on host\n| join kind=leftouter (table_cpu_15m | where provider == provider) on host\n//| join kind=inner (table_services | where provider == provider) on host \n| extend cpu_5m = avg_cpu_5m\n| extend cpu_15m = avg_cpu_15m\n| extend cpu_trend = avg_cpu\n| extend memory_current = memory_used\n| extend memory_trend = avg_memory_used\n| extend spacer = \"\"\n| sort by host asc\n| project instance, provider, host, role, status, cpu_5m, cpu_15m, cpu_trend, spacer, memory_current, memory_trend",
+                    "size": 3,
+                    "title": "Databases tenants and their hosts",
+                    "noDataMessageStyle": 4,
+                    "exportedParameters": [
                       {
-                        "durationMs": 300000
+                        "fieldName": "host",
+                        "parameterName": "host_selected",
+                        "parameterType": 1
                       },
                       {
-                        "durationMs": 900000
+                        "fieldName": "",
+                        "parameterName": "param_tab_main",
+                        "parameterType": 1,
+                        "defaultValue": "2"
+                      }
+                    ],
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "instance",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "provider",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "host",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "role",
+                          "formatter": 1,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "status",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "yes",
+                                "representation": "success",
+                                "text": ""
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "no",
+                                "representation": "4",
+                                "text": ""
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "Blank",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "columnMatch": "cpu_5m",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 200,
+                            "palette": "redBright"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "cpu_15m",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 200,
+                            "palette": "redBright"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "cpu_trend",
+                          "formatter": 10,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "turquoise",
+                            "aggregation": "Average"
+                          },
+                          "tooltipFormat": {
+                            "tooltip": "CPU (trend)"
+                          }
+                        },
+                        {
+                          "columnMatch": "memory_current",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "palette": "purple",
+                            "aggregation": "Sum"
+                          },
+                          "numberFormat": {
+                            "unit": 38,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": true,
+                              "minimumFractionDigits": 2,
+                              "maximumFractionDigits": 2
+                            }
+                          },
+                          "tooltipFormat": {
+                            "tooltip": "Memory (current)"
+                          }
+                        },
+                        {
+                          "columnMatch": "memory_trend",
+                          "formatter": 10,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 1,
+                            "palette": "purple",
+                            "aggregation": "Average"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false
+                            }
+                          },
+                          "tooltipFormat": {
+                            "tooltip": "Memory (trend)"
+                          }
+                        },
+                        {
+                          "columnMatch": "cpu_1m",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 200,
+                            "palette": "redBright"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "cpu_current",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "turquoise",
+                            "aggregation": "Average"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "minimumFractionDigits": 1,
+                              "maximumFractionDigits": 1
+                            }
+                          },
+                          "tooltipFormat": {
+                            "tooltip": "CPU (current)"
+                          }
+                        }
+                      ],
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "instance"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "host"
                       },
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_group",
+                          "sortOrder": 1
+                        }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "instance",
+                          "label": "Host"
+                        },
+                        {
+                          "columnId": "provider"
+                        },
+                        {
+                          "columnId": "host"
+                        },
+                        {
+                          "columnId": "role",
+                          "label": "Role"
+                        },
+                        {
+                          "columnId": "status",
+                          "label": "Status"
+                        },
+                        {
+                          "columnId": "cpu_5m",
+                          "label": "CPU (5m)",
+                          "comment": "Shows the rolling CPU average over the last 5 minutes"
+                        },
+                        {
+                          "columnId": "cpu_15m",
+                          "label": "CPU (15m)",
+                          "comment": "Shows the rolling CPU average over the last 15 minutes"
+                        },
+                        {
+                          "columnId": "cpu_trend",
+                          "label": "CPU (trend)"
+                        },
+                        {
+                          "columnId": "spacer",
+                          "label": " "
+                        },
+                        {
+                          "columnId": "memory_current",
+                          "label": "Memory"
+                        },
+                        {
+                          "columnId": "memory_trend",
+                          "label": " Memory (trend)"
+                        }
+                      ]
+                    },
+                    "sortBy": [
                       {
-                        "durationMs": 1800000
-                      },
-                      {
-                        "durationMs": 3600000
-                      },
-                      {
-                        "durationMs": 14400000
-                      },
-                      {
-                        "durationMs": 43200000
-                      },
-                      {
-                        "durationMs": 86400000
-                      },
-                      {
-                        "durationMs": 172800000
+                        "itemKey": "$gen_group",
+                        "sortOrder": 1
                       }
                     ]
                   },
-                  "resourceType": "microsoft.insights/components"
+                  "conditionalVisibility": {
+                    "parameterName": "param_tab_main",
+                    "comparison": "isEqualTo",
+                    "value": "99"
+                  },
+                  "showPin": true,
+                  "name": "section_tree_overview",
+                  "styleSettings": {
+                    "progressStyle": "squares"
+                  }
                 }
-              ],
-              "style": "pills",
-              "queryType": 0,
-              "resourceType": "microsoft.insights/components"
+              ]
             },
-            "name": "section_timeframe"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let param_sid = \"{param_sid}\"\n;\nlet table_systemoverview = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(30d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider\n;\nlet table_hostconfig = SapHana_HostConfig_CL\n| where TimeGenerated > ago(24h)\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend timestamp_hostconfig = TimeGenerated\n| extend host = tostring(HOST_s)\n| extend role = tolower(INDEXSERVER_ACTUAL_ROLE_s)\n| extend active = tolower(HOST_ACTIVE_s)\n| summarize arg_max(timestamp_hostconfig, *) by provider, host\n| sort by host asc\n| project timestamp_hostconfig, host, role, active\n;\nlet table_load_host = SapHana_LoadHistory_CL\n| extend timestamp_load = TimeGenerated\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend host = HOST_s\n| extend cpu = CPU_d\n| extend memory = MEMORY_USED_d / MEMORY_SIZE_d * 100\n| extend nw_in = NETWORK_IN_d\n| extend nw_out = NETWORK_OUT_d\n| join kind=inner (table_hostconfig | where active == \"yes\") on host\n| where timestamp_load {param_timeframe}\n;\nlet table_highest_cpu = table_load_host\n| make-series avg(cpu) default=0 on timestamp_load step {param_timeframe:grain} by host\n| extend value = todouble(series_stats_dynamic(avg_cpu)['avg'])\n| extend timeseries = avg_cpu\n| sort by value desc\n| extend type = \"Highest CPU\"\n| project host, value, timeseries, type\n| take 1\n;\nlet table_highest_memory = table_load_host\n| make-series avg(memory) default=0 on timestamp_load step {param_timeframe:grain} by host\n| extend value = todouble(series_stats_dynamic(avg_memory)['avg'])\n| extend timeseries = avg_memory\n| sort by value desc\n| extend type = \"Highest Memory\"\n| project host, value, timeseries, type\n| take 1\n;\ntable_highest_cpu\n| union table_highest_memory\n| sort by type asc",
-              "size": 3,
-              "title": "Servers with most load",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "visualization": "tiles",
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "type",
-                  "formatter": 1,
-                  "formatOptions": {}
-                },
-                "subtitleContent": {
-                  "columnMatch": "host",
-                  "formatter": 1,
-                  "formatOptions": {}
-                },
-                "leftContent": {
-                  "columnMatch": "value",
-                  "formatter": 12,
-                  "formatOptions": {
-                    "min": 0,
-                    "max": 100,
-                    "palette": "greenRed"
-                  },
-                  "numberFormat": {
-                    "unit": 1,
-                    "options": {
-                      "style": "decimal",
-                      "minimumFractionDigits": 1,
-                      "maximumFractionDigits": 1
-                    }
-                  }
-                },
-                "secondaryContent": {
-                  "columnMatch": "timeseries",
-                  "formatter": 21,
-                  "formatOptions": {
-                    "min": 0,
-                    "max": 100,
-                    "palette": "blue"
-                  }
-                },
-                "showBorder": true
-              }
-            },
-            "showPin": false,
-            "name": "query_busiest"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let param_sid = \"{param_sid}\"\n;\nlet table_systemoverview = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(30d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider\n;\nlet table_hostconfig = SapHana_HostConfig_CL\n| where TimeGenerated > ago(24h)\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend timestamp_hostconfig = TimeGenerated\n| extend host = tostring(HOST_s)\n| extend role = tolower(INDEXSERVER_ACTUAL_ROLE_s)\n| extend active = tolower(HOST_ACTIVE_s)\n| summarize arg_max(timestamp_hostconfig, *) by provider, host\n| sort by host asc\n| project timestamp_hostconfig, host, role, active\n;\nlet table_load_host = SapHana_LoadHistory_CL\n| extend timestamp_load = TimeGenerated\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend host = HOST_s\n| extend cpu = CPU_d\n| extend memory = MEMORY_USED_d / MEMORY_SIZE_d * 100\n| extend nw_in = NETWORK_IN_d\n| extend nw_out = NETWORK_OUT_d\n| join kind=inner (table_hostconfig | where active == \"yes\") on host\n| where timestamp_load {param_timeframe} //>= timestamp_hostconfig - 5m\n| project cpu, memory, nw_in, nw_out, provider, host\n| summarize cpu=avg(cpu), memory=avg(memory), nw_in=avg(nw_in), nw_out=avg(nw_out) by provider, host\n;\nlet table_systemavailability = SapHana_SystemAvailability_CL\n| where TimeGenerated > ago(365d)\n| extend timestamp_systemavailability = TimeGenerated\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| extend database = DATABASE_NAME_s\n| extend service = SERVICE_NAME_s\n| extend port = PORT_d\n| extend event = tostring(EVENT_NAME_s)\n| extend active = tolower(SERVICE_ACTIVE_s)\n| join kind=leftouter (table_systemoverview) on provider\n| join kind=rightouter (table_hostconfig | where active == \"yes\") on host\n| where sid != \"\" and port != 0\n| summarize arg_max(timestamp_systemavailability, *) by sid, host, database, service\n| project sid, host, database, service, event, port, active\n;\nlet table_disks = SapHana_Disks_CL\n| extend timestamp_disks = TimeGenerated\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| extend host = HOST_s\n| extend type = USAGE_TYPE_s\n| extend disk_usage = USED_SIZE_d / TOTAL_SIZE_d * 100\n| where type in (\"DATA\", \"LOG\")\n| join kind=inner (table_hostconfig | where active == \"yes\") on host\n| where timestamp_disks {param_timeframe} //>= timestamp_hostconfig - 10m\n| summarize disk_usage=avg(disk_usage) by provider, host, type\n;\ntable_hostconfig\n| extend name = host\n| extend id = host\n| extend type = \"Host\", parentid = \"\"\n| join kind=leftouter (table_load_host | project host, cpu, memory, nw_in, nw_out) on host \n| join kind=leftouter (table_disks | project host, disk_usage, type | where type == \"DATA\" | extend disk_data = disk_usage) on host\n| join kind=leftouter (table_disks | project host, disk_usage, type | where type == \"LOG\" | extend disk_log = disk_usage) on host\n| union (table_systemavailability\n| project sid, port, host, service, database, active, event\n| where sid == param_sid\n| summarize by host, service, database, port, active, event\n| extend type = \"Service\"\n| extend name = strcat(service, \" (:\", tostring(toint(port)), \")\")\n| extend parentid = host, id = strcat(host, \"_\", service)\n)\n| order by host asc, database asc\n| project name, host, type, database, role, active, event, cpu, memory, disk_data, disk_log, nw_in, nw_out, id, parentid",
-              "size": 3,
-              "title": "Instance overview",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "host",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "active",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "yes",
-                          "representation": "success",
-                          "text": ""
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "no",
-                          "representation": "4",
-                          "text": ""
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "pending",
-                          "text": ""
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "event",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "cpu",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "greenRed"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "memory",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "greenRed"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "disk_data",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "greenRed"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "disk_log",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "greenRed"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "nw_in",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 1000,
-                      "palette": "greenRed"
-                    },
-                    "numberFormat": {
-                      "unit": 47,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "nw_out",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 1000,
-                      "palette": "greenRed"
-                    },
-                    "numberFormat": {
-                      "unit": 47,
-                      "options": {
-                        "style": "decimal",
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "id",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "parentid",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  }
-                ],
-                "filter": true,
-                "hierarchySettings": {
-                  "idColumn": "id",
-                  "parentColumn": "parentid",
-                  "treeType": 0,
-                  "expanderColumn": "name",
-                  "expandTopLevel": false
-                },
-                "labelSettings": [
-                  {
-                    "columnId": "name",
-                    "label": ""
-                  },
-                  {
-                    "columnId": "host"
-                  },
-                  {
-                    "columnId": "type",
-                    "label": "Kind"
-                  },
-                  {
-                    "columnId": "database",
-                    "label": "Database"
-                  },
-                  {
-                    "columnId": "role",
-                    "label": "Role"
-                  },
-                  {
-                    "columnId": "active",
-                    "label": "Status"
-                  },
-                  {
-                    "columnId": "event"
-                  },
-                  {
-                    "columnId": "cpu",
-                    "label": "CPU"
-                  },
-                  {
-                    "columnId": "memory",
-                    "label": "Memory"
-                  },
-                  {
-                    "columnId": "disk_data",
-                    "label": "Disk (Data)"
-                  },
-                  {
-                    "columnId": "disk_log",
-                    "label": "Disk (Log)"
-                  },
-                  {
-                    "columnId": "nw_in",
-                    "label": "NW (In)"
-                  },
-                  {
-                    "columnId": "nw_out",
-                    "label": "NW (Out)"
-                  },
-                  {
-                    "columnId": "id"
-                  },
-                  {
-                    "columnId": "parentid"
-                  }
-                ]
-              }
-            },
-            "name": "query_overview"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let table_hostconfig = SapHana_HostConfig_CL\n| where TimeGenerated > ago(24h)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend role = tolower(INDEXSERVER_ACTUAL_ROLE_s)\n| extend status = tolower(HOST_ACTIVE_s)\n| extend timestamp_hostconfig = TimeGenerated\n| summarize arg_max(timestamp_hostconfig, *) by provider, host\n| sort by timestamp_hostconfig, host asc\n| project timestamp_hostconfig, provider, host, role, status;\nlet table_services = SapHana_SystemAvailability_CL\n| extend database = DATABASE_NAME_s\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| extend service = SERVICE_NAME_s\n| summarize arg_max(TimeGenerated, *) by provider, host, service;\nlet table_system = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(7d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider;\nlet table_load_current = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(12h)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend cpu = CPU_d\n| extend memory_used = MEMORY_USED_d\n| summarize arg_max(TimeGenerated, *) by provider, host\n| join kind=inner (table_hostconfig | where status == \"yes\" | where provider == provider) on host\n| sort by TimeGenerated\n| project provider, host, cpu, memory_used;\nlet table_cpu_5m = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(24h)\n| extend timestamp_load = TimeGenerated\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend cpu_5m = CPU_d\n| join kind=inner (table_hostconfig | where status == \"yes\" | where provider == provider) on host\n| where timestamp_load >= timestamp_hostconfig - 5m\n| project cpu_5m, provider, host\n| summarize avg(cpu_5m) by provider, host;\nlet table_cpu_15m = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(24h)\n| extend timestamp_load = TimeGenerated\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| extend host = tostring(HOST_s)\n| extend cpu_15m = CPU_d\n| join kind=inner (table_hostconfig | where status == \"yes\" | where provider == provider) on host\n| where timestamp_load >= timestamp_hostconfig - 15m\n| project cpu_15m, provider, host\n| summarize avg(cpu_15m) by provider, host;\nlet table_memory_trend = SapHana_LoadHistory_CL\n| where TimeGenerated > ago(24h)\n| extend memory_used = MEMORY_USED_d / MEMORY_SIZE_d\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| make-series avg(memory_used) default=0 on TimeGenerated from ago(24h) to now() step 30m by provider, host;\nlet table_cpu_trend = SapHana_LoadHistory_CL\n//| where TimeGenerated > ago(24h)\n| extend cpu = CPU_d\n| extend provider = PROVIDER_INSTANCE_s\n| extend host = HOST_s\n| make-series avg(cpu) default=0 on TimeGenerated from ago(24h) to now() step 30m by provider, host;\ntable_hostconfig\n| join kind=inner (table_system) on provider\n| join kind=leftouter (table_load_current | where provider == provider) on host\n| join kind=leftouter (table_cpu_trend | where provider == provider) on host\n| join kind=leftouter (table_memory_trend | where provider == provider) on host\n| extend instance = strcat(sid, \" (\", provider, \")\")\n| join kind=leftouter (table_cpu_5m | where provider == provider) on host\n| join kind=leftouter (table_cpu_15m | where provider == provider) on host\n//| join kind=inner (table_services | where provider == provider) on host \n| extend cpu_5m = avg_cpu_5m\n| extend cpu_15m = avg_cpu_15m\n| extend cpu_trend = avg_cpu\n| extend memory_current = memory_used\n| extend memory_trend = avg_memory_used\n| extend spacer = \"\"\n| sort by host asc\n| project instance, provider, host, role, status, cpu_5m, cpu_15m, cpu_trend, spacer, memory_current, memory_trend",
-              "size": 3,
-              "title": "Databases tenants and their hosts",
-              "noDataMessageStyle": 4,
-              "exportedParameters": [
-                {
-                  "fieldName": "host",
-                  "parameterName": "host_selected",
-                  "parameterType": 1
-                },
-                {
-                  "fieldName": "",
-                  "parameterName": "param_tab_main",
-                  "parameterType": 1,
-                  "defaultValue": "2"
-                }
-              ],
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "visualization": "table",
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "instance",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "provider",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "host",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "role",
-                    "formatter": 1,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "status",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "yes",
-                          "representation": "success",
-                          "text": ""
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "no",
-                          "representation": "4",
-                          "text": ""
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "cpu_5m",
-                    "formatter": 8,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 200,
-                      "palette": "redBright"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "cpu_15m",
-                    "formatter": 8,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 200,
-                      "palette": "redBright"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "cpu_trend",
-                    "formatter": 10,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "turquoise",
-                      "aggregation": "Average"
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "CPU (trend)"
-                    }
-                  },
-                  {
-                    "columnMatch": "memory_current",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "palette": "purple",
-                      "aggregation": "Sum"
-                    },
-                    "numberFormat": {
-                      "unit": 38,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": true,
-                        "minimumFractionDigits": 2,
-                        "maximumFractionDigits": 2
-                      }
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "Memory (current)"
-                    }
-                  },
-                  {
-                    "columnMatch": "memory_trend",
-                    "formatter": 10,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 1,
-                      "palette": "purple",
-                      "aggregation": "Average"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false
-                      }
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "Memory (trend)"
-                    }
-                  },
-                  {
-                    "columnMatch": "cpu_1m",
-                    "formatter": 8,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 200,
-                      "palette": "redBright"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "cpu_current",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "turquoise",
-                      "aggregation": "Average"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "minimumFractionDigits": 1,
-                        "maximumFractionDigits": 1
-                      }
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "CPU (current)"
-                    }
-                  }
-                ],
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "instance"
-                  ],
-                  "expandTopLevel": true,
-                  "finalBy": "host"
-                },
-                "sortBy": [
-                  {
-                    "itemKey": "$gen_group",
-                    "sortOrder": 1
-                  }
-                ],
-                "labelSettings": [
-                  {
-                    "columnId": "instance",
-                    "label": "Host"
-                  },
-                  {
-                    "columnId": "provider"
-                  },
-                  {
-                    "columnId": "host"
-                  },
-                  {
-                    "columnId": "role",
-                    "label": "Role"
-                  },
-                  {
-                    "columnId": "status",
-                    "label": "Status"
-                  },
-                  {
-                    "columnId": "cpu_5m",
-                    "label": "CPU (5m)",
-                    "comment": "Shows the rolling CPU average over the last 5 minutes"
-                  },
-                  {
-                    "columnId": "cpu_15m",
-                    "label": "CPU (15m)",
-                    "comment": "Shows the rolling CPU average over the last 15 minutes"
-                  },
-                  {
-                    "columnId": "cpu_trend",
-                    "label": "CPU (trend)"
-                  },
-                  {
-                    "columnId": "spacer",
-                    "label": " "
-                  },
-                  {
-                    "columnId": "memory_current",
-                    "label": "Memory"
-                  },
-                  {
-                    "columnId": "memory_trend",
-                    "label": " Memory (trend)"
-                  }
-                ]
+            "conditionalVisibilities": [
+              {
+                "parameterName": "param_tab_main",
+                "comparison": "isEqualTo",
+                "value": "1"
               },
-              "sortBy": [
+              {
+                "parameterName": "param_sid",
+                "comparison": "isNotEqualTo",
+                "value": "*"
+              }
+            ],
+            "name": "group_overview"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
                 {
-                  "itemKey": "$gen_group",
-                  "sortOrder": 1
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "cdc7ccf5-61a5-4ae4-8397-b35bdfa2a4da",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "param_utilization_timerange",
+                        "label": "Time range",
+                        "type": 4,
+                        "isRequired": true,
+                        "value": {
+                          "durationMs": 172800000
+                        },
+                        "typeSettings": {
+                          "selectableValues": [
+                            {
+                              "durationMs": 86400000
+                            },
+                            {
+                              "durationMs": 172800000
+                            },
+                            {
+                              "durationMs": 259200000
+                            },
+                            {
+                              "durationMs": 604800000
+                            },
+                            {
+                              "durationMs": 1209600000
+                            },
+                            {
+                              "durationMs": 2592000000
+                            }
+                          ],
+                          "allowCustom": true
+                        }
+                      },
+                      {
+                        "id": "378b2e15-9934-4755-b5ae-d7d0bfd26861",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "param_utilization_type",
+                        "label": "Type",
+                        "type": 10,
+                        "isRequired": true,
+                        "typeSettings": {
+                          "additionalResourceOptions": []
+                        },
+                        "jsonData": "[\n    { \"value\":\"cpu\", \"label\":\"CPU\", \"selected\":true },\n    { \"value\":\"memory\", \"label\":\"Memory\" },\n    { \"value\":\"network\", \"label\":\"Network\" },\n    { \"value\":\"disk\", \"label\":\"Disk\" }\n]"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "options_utilization_type",
+                  "styleSettings": {
+                    "padding": "10px"
+                  }
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let param_sid = \"{param_sid}\"\n;\nlet table_systemoverview = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(30d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider\n;\nSapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timerange}\n| extend cpu = CPU_d\n| extend host = HOST_s\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| project TimeGenerated, host, cpu\n| summarize avg(cpu) by host, bin(TimeGenerated, {param_utilization_timerange:grain})\n",
+                          "size": 4,
+                          "aggregation": 2,
+                          "showAnnotations": true,
+                          "title": "CPU timeline",
+                          "noDataMessage": "Please select valid filter criteria.",
+                          "timeBrushParameterName": "param_utilization_timebrush",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "timechart",
+                          "tileSettings": {
+                            "showBorder": false,
+                            "titleContent": {
+                              "columnMatch": "HOST_s",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "avg_CPU_d",
+                              "formatter": 12,
+                              "formatOptions": {
+                                "palette": "auto"
+                              },
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "showMetrics": false,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 1,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumFractionDigits": 2
+                                }
+                              },
+                              "min": 0,
+                              "max": 100
+                            }
+                          }
+                        },
+                        "name": "query_small_cpu"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let param_sid = \"{param_sid}\"\n;\nlet table_systemoverview = SapHana_SystemOverview_CL \n| where TimeGenerated > ago(30d)\n| extend sid = tostring(VALUE_s)\n| extend provider = tostring(PROVIDER_INSTANCE_s)\n| where NAME_s == \"Instance ID\"\n| summarize arg_max(TimeGenerated, *) by sid\n| sort by TimeGenerated\n| project sid, provider\n;\nSapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timebrush}\n| extend cpu = CPU_d\n| extend host = HOST_s\n| extend provider = PROVIDER_INSTANCE_s\n| join kind=leftouter (table_systemoverview) on provider\n| where sid == param_sid\n| project TimeGenerated, host, cpu\n| summarize avg(cpu) by host, bin(TimeGenerated, {param_utilization_timebrush:grain})",
+                          "size": 3,
+                          "aggregation": 2,
+                          "title": "CPU detail",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "linechart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "group": "host",
+                            "createOtherGroup": null,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 1,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumFractionDigits": 2
+                                }
+                              },
+                              "min": 0,
+                              "max": 100
+                            }
+                          }
+                        },
+                        "name": "query_large_cpu"
+                      }
+                    ]
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "param_utilization_type",
+                    "comparison": "isEqualTo",
+                    "value": "cpu"
+                  },
+                  "name": "group_utilization_cpu"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "SapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timerange}\n| extend memory_used = MEMORY_USED_d\n| extend memory_size = MEMORY_SIZE_d\n| extend host = HOST_s\n| extend p = columnifexists(\"PROVIDER_INSTANCE_s\", \"*\")\n| where p == \"*\" or p in ({param_utilization_provider}) or \"*\" in ({param_utilization_provider})\n| project TimeGenerated, host, memory_used, memory_size\n| summarize avg(memory_used / memory_size * 100) by host, bin(TimeGenerated, {param_utilization_timerange:grain})\n",
+                          "size": 4,
+                          "aggregation": 2,
+                          "showAnnotations": true,
+                          "title": "Memory timeline",
+                          "noDataMessage": "Please select valid filter criteria.",
+                          "timeBrushParameterName": "param_utilization_timebrush",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "linechart",
+                          "tileSettings": {
+                            "showBorder": false,
+                            "titleContent": {
+                              "columnMatch": "HOST_s",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "avg_CPU_d",
+                              "formatter": 12,
+                              "formatOptions": {
+                                "palette": "auto"
+                              },
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "showMetrics": false,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 1,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumFractionDigits": 2
+                                }
+                              },
+                              "min": 0,
+                              "max": 100
+                            }
+                          }
+                        },
+                        "name": "query_small_cpu"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "SapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timebrush}\n| extend memory_used = MEMORY_USED_d\n| extend memory_size = MEMORY_SIZE_d\n| extend host = HOST_s\n| extend p = columnifexists(\"PROVIDER_INSTANCE_s\", \"*\")\n| where p == \"*\" or p in ({param_utilization_provider}) or \"*\" in ({param_utilization_provider})\n| project TimeGenerated, host, memory_used, memory_size\n| summarize avg(memory_used) by host, bin(TimeGenerated, {param_utilization_timebrush:grain})",
+                          "size": 3,
+                          "aggregation": 2,
+                          "title": "Memory detail",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "linechart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 38,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumFractionDigits": 2
+                                }
+                              },
+                              "min": 0
+                            }
+                          }
+                        },
+                        "name": "query_large_cpu"
+                      }
+                    ]
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "param_utilization_type",
+                    "comparison": "isEqualTo",
+                    "value": "memory"
+                  },
+                  "name": "group_utilization_memory"
                 }
               ]
             },
             "conditionalVisibility": {
               "parameterName": "param_tab_main",
               "comparison": "isEqualTo",
-              "value": "99"
+              "value": "2"
             },
-            "showPin": true,
-            "name": "section_tree_overview",
-            "styleSettings": {
-              "progressStyle": "squares"
-            }
-          }
-        ]
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "param_tab_main",
-          "comparison": "isEqualTo",
-          "value": "1"
-        },
-        {
-          "parameterName": "param_sid",
-          "comparison": "isNotEqualTo",
-          "value": "*"
-        }
-      ],
-      "name": "group_overview"
-    },
-    {
-      "type": 12,
-      "content": {
-        "version": "NotebookGroup/1.0",
-        "groupType": "editable",
-        "title": "Resource utilization",
-        "items": [
-          {
-            "type": 9,
-            "content": {
-              "version": "KqlParameterItem/1.0",
-              "parameters": [
-                {
-                  "id": "f0bba6a5-c852-4a3d-83c6-c681075858f9",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "param_utilization_provider",
-                  "label": "Provider",
-                  "type": 2,
-                  "isRequired": true,
-                  "multiSelect": true,
-                  "quote": "\"",
-                  "delimiter": ",",
-                  "query": "SapHana_SystemOverview_CL\n| distinct PROVIDER_INSTANCE_s",
-                  "value": [
-                    "hana-ru1a"
-                  ],
-                  "typeSettings": {
-                    "additionalResourceOptions": [
-                      "value::all"
-                    ],
-                    "selectAllValue": "*"
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                },
-                {
-                  "id": "378b2e15-9934-4755-b5ae-d7d0bfd26861",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "param_utilization_type",
-                  "label": "Type",
-                  "type": 10,
-                  "isRequired": true,
-                  "typeSettings": {
-                    "additionalResourceOptions": []
-                  },
-                  "jsonData": "[\n    { \"value\":\"cpu\", \"label\":\"CPU\", \"selected\":true },\n    { \"value\":\"memory\", \"label\":\"Memory\" },\n    { \"value\":\"network\", \"label\":\"Network\" },\n    { \"value\":\"disk\", \"label\":\"Disk\" }\n]"
-                },
-                {
-                  "id": "cdc7ccf5-61a5-4ae4-8397-b35bdfa2a4da",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "param_utilization_timerange",
-                  "label": "Time range",
-                  "type": 4,
-                  "isRequired": true,
-                  "value": {
-                    "durationMs": 172800000
-                  },
-                  "typeSettings": {
-                    "selectableValues": [
-                      {
-                        "durationMs": 86400000
-                      },
-                      {
-                        "durationMs": 172800000
-                      },
-                      {
-                        "durationMs": 259200000
-                      },
-                      {
-                        "durationMs": 604800000
-                      },
-                      {
-                        "durationMs": 1209600000
-                      },
-                      {
-                        "durationMs": 2592000000
-                      }
-                    ],
-                    "allowCustom": true
-                  }
-                }
-              ],
-              "style": "pills",
-              "queryType": 0
-            },
-            "name": "options_utilization_type",
-            "styleSettings": {
-              "padding": "10px"
-            }
-          },
-          {
-            "type": 12,
-            "content": {
-              "version": "NotebookGroup/1.0",
-              "groupType": "editable",
-              "items": [
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "SapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timerange}\n| extend cpu = CPU_d\n| extend host = HOST_s\n| extend p = columnifexists(\"PROVIDER_INSTANCE_s\", \"*\")\n| where p == \"*\" or p in ({param_utilization_provider}) or \"*\" in ({param_utilization_provider})\n| project TimeGenerated, host, cpu\n| summarize avg(cpu) by host, bin(TimeGenerated, {param_utilization_timerange:grain})\n",
-                    "size": 4,
-                    "aggregation": 2,
-                    "showAnnotations": true,
-                    "title": "CPU timeline",
-                    "noDataMessage": "Please select valid filter criteria.",
-                    "timeBrushParameterName": "param_utilization_timebrush",
-                    "queryType": 0,
-                    "visualization": "timechart",
-                    "tileSettings": {
-                      "showBorder": false,
-                      "titleContent": {
-                        "columnMatch": "HOST_s",
-                        "formatter": 1
-                      },
-                      "leftContent": {
-                        "columnMatch": "avg_CPU_d",
-                        "formatter": 12,
-                        "formatOptions": {
-                          "palette": "auto"
-                        },
-                        "numberFormat": {
-                          "unit": 17,
-                          "options": {
-                            "maximumSignificantDigits": 3,
-                            "maximumFractionDigits": 2
-                          }
-                        }
-                      }
-                    },
-                    "chartSettings": {
-                      "xAxis": "TimeGenerated",
-                      "showMetrics": false,
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 1,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true,
-                            "maximumFractionDigits": 2
-                          }
-                        },
-                        "min": 0,
-                        "max": 100
-                      }
-                    }
-                  },
-                  "name": "query_small_cpu"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "SapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timebrush}\n| extend cpu = CPU_d\n| extend host = HOST_s\n| extend p = columnifexists(\"PROVIDER_INSTANCE_s\", \"*\")\n| where p == \"*\" or p in ({param_utilization_provider}) or \"*\" in ({param_utilization_provider})\n| project TimeGenerated, host, cpu\n| summarize avg(cpu) by host, bin(TimeGenerated, {param_utilization_timebrush:grain})",
-                    "size": 3,
-                    "aggregation": 2,
-                    "title": "CPU detail",
-                    "queryType": 0,
-                    "visualization": "linechart",
-                    "chartSettings": {
-                      "xAxis": "TimeGenerated",
-                      "group": "host",
-                      "createOtherGroup": null,
-                      "showLegend": true,
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 1,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true,
-                            "maximumFractionDigits": 2
-                          }
-                        },
-                        "min": 0,
-                        "max": 100
-                      }
-                    }
-                  },
-                  "name": "query_large_cpu"
-                }
-              ]
-            },
-            "conditionalVisibility": {
-              "parameterName": "param_utilization_type",
-              "comparison": "isEqualTo",
-              "value": "cpu"
-            },
-            "name": "group_utilization_cpu"
-          },
-          {
-            "type": 12,
-            "content": {
-              "version": "NotebookGroup/1.0",
-              "groupType": "editable",
-              "items": [
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "SapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timerange}\n| extend memory_used = MEMORY_USED_d\n| extend memory_size = MEMORY_SIZE_d\n| extend host = HOST_s\n| extend p = columnifexists(\"PROVIDER_INSTANCE_s\", \"*\")\n| where p == \"*\" or p in ({param_utilization_provider}) or \"*\" in ({param_utilization_provider})\n| project TimeGenerated, host, memory_used, memory_size\n| summarize avg(memory_used / memory_size * 100) by host, bin(TimeGenerated, {param_utilization_timerange:grain})\n",
-                    "size": 4,
-                    "aggregation": 2,
-                    "showAnnotations": true,
-                    "title": "Memory timeline",
-                    "noDataMessage": "Please select valid filter criteria.",
-                    "timeBrushParameterName": "param_utilization_timebrush",
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
-                    "visualization": "linechart",
-                    "tileSettings": {
-                      "showBorder": false,
-                      "titleContent": {
-                        "columnMatch": "HOST_s",
-                        "formatter": 1
-                      },
-                      "leftContent": {
-                        "columnMatch": "avg_CPU_d",
-                        "formatter": 12,
-                        "formatOptions": {
-                          "palette": "auto"
-                        },
-                        "numberFormat": {
-                          "unit": 17,
-                          "options": {
-                            "maximumSignificantDigits": 3,
-                            "maximumFractionDigits": 2
-                          }
-                        }
-                      }
-                    },
-                    "chartSettings": {
-                      "xAxis": "TimeGenerated",
-                      "showMetrics": false,
-                      "showLegend": true,
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 1,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true,
-                            "maximumFractionDigits": 2
-                          }
-                        },
-                        "min": 0,
-                        "max": 100
-                      }
-                    }
-                  },
-                  "name": "query_small_cpu"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "SapHana_LoadHistory_CL\n| where TimeGenerated {param_utilization_timebrush}\n| extend memory_used = MEMORY_USED_d\n| extend memory_size = MEMORY_SIZE_d\n| extend host = HOST_s\n| extend p = columnifexists(\"PROVIDER_INSTANCE_s\", \"*\")\n| where p == \"*\" or p in ({param_utilization_provider}) or \"*\" in ({param_utilization_provider})\n| project TimeGenerated, host, memory_used, memory_size\n| summarize avg(memory_used) by host, bin(TimeGenerated, {param_utilization_timebrush:grain})",
-                    "size": 3,
-                    "aggregation": 2,
-                    "title": "Memory detail",
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
-                    "visualization": "linechart",
-                    "chartSettings": {
-                      "xAxis": "TimeGenerated",
-                      "showLegend": true,
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 38,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true,
-                            "maximumFractionDigits": 2
-                          }
-                        },
-                        "min": 0
-                      }
-                    }
-                  },
-                  "name": "query_large_cpu"
-                }
-              ]
-            },
-            "conditionalVisibility": {
-              "parameterName": "param_utilization_type",
-              "comparison": "isEqualTo",
-              "value": "memory"
-            },
-            "name": "group_utilization_memory"
+            "name": "group_utilization"
           }
         ]
       },
       "conditionalVisibility": {
-        "parameterName": "param_tab_main",
-        "comparison": "isEqualTo",
-        "value": "2"
+        "parameterName": "param_sid",
+        "comparison": "isNotEqualTo",
+        "value": "*"
       },
-      "name": "group_utilization"
+      "name": "group_details"
     }
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
