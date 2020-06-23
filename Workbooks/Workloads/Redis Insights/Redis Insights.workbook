@@ -16,8 +16,7 @@
             "type": 1,
             "isRequired": true,
             "value": "redis",
-            "isHiddenWhenLocked": true,
-            "resourceType": "microsoft.insights/components"
+            "isHiddenWhenLocked": true
           },
           {
             "id": "1f74ed9a-e3ed-498d-bd5b-f68f3836a117",
@@ -137,8 +136,7 @@
                 }
               ],
               "allowCustom": true
-            },
-            "resourceType": "microsoft.insights/components"
+            }
           },
           {
             "id": "619bf90b-5093-47cc-83a3-bf009257bc7d",
@@ -193,8 +191,7 @@
             "label": "Onboarding template ",
             "type": 1,
             "value": "Community-Workbooks/Workloads/Onboard Redis Insights",
-            "isHiddenWhenLocked": true,
-            "resourceType": "microsoft.insights/components"
+            "isHiddenWhenLocked": true
           }
         ],
         "style": "above",
@@ -208,7 +205,7 @@
       "content": {
         "json": "*Virtual machines*\n# {OnboardedComputerCount} / {TotalComputers}\n*with Redis monitoring*"
       },
-      "name": "text - 8",
+      "name": "Virtual Machines count",
       "styleSettings": {
         "margin": "15px 0 0 0"
       }
@@ -285,11 +282,11 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Name in~ ('total_connections_received','total_commands_processed','calls')\r\n| order by Computer asc, Name asc, Tags asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Tags == prev(Tags) and Val > prev(Val), Val - prev(Val), real(null))\r\n| where isnull(Value) == false;\r\ndata| order by Computer asc, Name asc, TimeGenerated asc\r\n| summarize \r\n        ReceivedConnections = sumif(Value, Name == 'total_connections_received'),\r\n        ReceivedConnectionsRate = avgif(Value, Name == 'total_connections_received') / (({TimeRange:end} - {TimeRange:start}) / 1s),\r\n        Commands = sumif(Value, Name == 'calls'),\r\n        CommandsRate = avgif(Value, Name == 'calls') / (({TimeRange:end} - {TimeRange:start}) / 1s)\r\n    by Computer\r\n| join kind = inner (data\r\n| where Name == 'total_connections_received'\r\n| make-series ConnectionTrend = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer) on Computer\r\n| join kind = inner (InsightsMetrics \r\n    | where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers}))  and  Name == 'used_cpu_sys'\r\n    | order by Computer asc, Name asc, TimeGenerated asc\r\n    | extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null))\r\n    | where isnull(Value) == false\r\n    | summarize Cpu = avg(Value) by Computer\r\n    ) on Computer\r\n| project Computer, ReceivedConnections,ReceivedConnectionsRate, Commands, CommandsRate, Cpu\r\n| join kind = rightouter (datatable(Computer:string)[{OnboardedComputers}]) on Computer\r\n| extend Computer = Computer1\r\n| project-away Computer1\r\n",
+              "query": "let data = InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Name in~ ('total_connections_received','total_commands_processed','calls')\r\n| order by Computer asc, Name asc, Tags asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Tags == prev(Tags) and Val > prev(Val), Val - prev(Val), real(0));\r\ndata| order by Computer asc, Name asc, TimeGenerated asc\r\n| summarize \r\n        ReceivedConnections = sumif(Value, Name == 'total_connections_received'),\r\n        ReceivedConnectionsRate = sumif(Value, Name == 'total_connections_received') / (({TimeRange:end} - {TimeRange:start}) / 1s),\r\n        Commands = sumif(Value, Name == 'calls'),\r\n        CommandsRate = sumif(Value, Name == 'calls') / (({TimeRange:end} - {TimeRange:start}) / 1s)\r\n    by Computer\r\n| join kind = inner (data\r\n| where Name == 'total_connections_received'\r\n| make-series ConnectionTrend = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer) on Computer\r\n| join kind = inner (InsightsMetrics \r\n    | where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\n    and Namespace == \"Processor\" and Name == \"UtilizationPercentage\"     \r\n    | summarize Cpu = avg(Val) by Computer\r\n    ) on Computer\r\n| join kind = inner (InsightsMetrics \r\n    | where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\n    and Namespace == \"Memory\" and Name == \"AvailableMB\" \r\n    | extend TotalMemory = toreal(todynamic(Tags)[\"vm.azm.ms/memorySizeMB\"])\r\n    | extend MemoryUsedPercentage = 100 - (toreal(Val) / TotalMemory) * 100.0 \r\n    | summarize MemoryUtilizationPercent = avg(MemoryUsedPercentage) by Computer\r\n    ) on Computer    \r\n| project Computer, ReceivedConnections,ReceivedConnectionsRate, Commands, CommandsRate, Cpu, MemoryUtilizationPercent\r\n| join kind = rightouter (datatable(Computer:string)[{OnboardedComputers}]) on Computer\r\n| extend Computer = Computer1\r\n| project-away Computer1\r\n",
               "size": 0,
               "showAnalytics": true,
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -374,7 +371,13 @@
                       "thresholdsGrid": [
                         {
                           "operator": ">",
-                          "thresholdValue": "90",
+                          "thresholdValue": "95",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">",
+                          "thresholdValue": "80",
                           "representation": "2",
                           "text": "{0}{1}"
                         },
@@ -397,19 +400,38 @@
                     }
                   },
                   {
-                    "columnMatch": "ProcessedTrend",
-                    "formatter": 9,
+                    "columnMatch": "MemoryUtilizationPercent",
+                    "formatter": 18,
                     "formatOptions": {
-                      "min": 0,
-                      "palette": "blue"
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "95",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
                     },
                     "numberFormat": {
-                      "unit": 0,
+                      "unit": 1,
                       "options": {
                         "style": "decimal",
-                        "maximumFractionDigits": 1
-                      },
-                      "emptyValCustomText": "-"
+                        "useGrouping": false,
+                        "maximumFractionDigits": 2
+                      }
                     }
                   }
                 ],
@@ -434,7 +456,7 @@
                   },
                   {
                     "columnId": "Commands",
-                    "label": "Total commands"
+                    "label": "Commands received"
                   },
                   {
                     "columnId": "CommandsRate",
@@ -442,7 +464,11 @@
                   },
                   {
                     "columnId": "Cpu",
-                    "label": "CPU usage"
+                    "label": "CPU Utilization %"
+                  },
+                  {
+                    "columnId": "MemoryUtilizationPercent",
+                    "label": "Memory Utilization %"
                   }
                 ]
               },
@@ -453,8 +479,84 @@
                 }
               ]
             },
+            "conditionalVisibility": {
+              "parameterName": "OnboardedComputerCount",
+              "comparison": "isNotEqualTo",
+              "value": "0"
+            },
             "showPin": true,
-            "name": "query - 4"
+            "name": "Overview"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "<br />\n### Redis monitoring is not enabled for any virtual machine in this scope.\n"
+                  },
+                  "name": "Empty overview text"
+                }
+              ]
+            },
+            "customWidth": "55",
+            "conditionalVisibility": {
+              "parameterName": "OnboardedComputerCount",
+              "comparison": "isEqualTo",
+              "value": "0"
+            },
+            "name": "Empty overview"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "![Redis logo](https://raw.githubusercontent.com/acearun/managedsolutions/master/Templates/Logos/redis-logo.jpg)\n\n"
+                  },
+                  "name": "Empty overview text - 2",
+                  "styleSettings": {
+                    "margin": "0 0 0 100px"
+                  }
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "OnboardedComputerCount",
+              "comparison": "isEqualTo",
+              "value": "0"
+            },
+            "name": "Empty overview - 2"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "<br />\nUse the **Enable monitoring** tab to configure Redis monitoring."
+                  },
+                  "name": "Empty overview text - 3"
+                }
+              ]
+            },
+            "customWidth": "55",
+            "conditionalVisibility": {
+              "parameterName": "OnboardedComputerCount",
+              "comparison": "isEqualTo",
+              "value": "0"
+            },
+            "name": "Empty overview - 3"
           }
         ]
       },
@@ -475,11 +577,12 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\n| where Name == \"keyspace_hitrate\"\r\n| make-series Ratio = avg(Val) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer",
+              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\n| where Namespace == \"redis\" and Name in(\"keyspace_hits\", \"keyspace_misses\")\r\n| order by Computer asc, Name asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(0))\r\n| summarize keyspace_hits = maxif(Value, Name == 'keyspace_hits'), keyspace_misses = maxif(Value, Name == 'keyspace_misses') by bin(TimeGenerated, 1m), Computer\r\n| extend keyGets = keyspace_hits + keyspace_misses\r\n| where keyGets > 0\r\n| extend KeyGetSuccessPercent = (keyspace_hits / (keyspace_hits + keyspace_misses)) * 100\r\n| extend KeyGetSuccessPercent = iff(isnan(KeyGetSuccessPercent), real(0), KeyGetSuccessPercent)\r\n| make-series Percent = avg(KeyGetSuccessPercent) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer",
               "size": 0,
-              "aggregation": 1,
+              "aggregation": 5,
               "showAnalytics": true,
-              "title": "Cache Hit Ratio",
+              "title": "Key get success percentage",
+              "noDataMessage": "No key get requests in this time range",
               "timeContext": {
                 "durationMs": 0
               },
@@ -492,16 +595,14 @@
               ],
               "visualization": "linechart",
               "chartSettings": {
-                "xSettings": {},
                 "ySettings": {
-                  "min": 0,
-                  "max": 1
+                  "min": 0
                 }
               }
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "query - 1 - Copy"
+            "name": "Key get success percentage"
           },
           {
             "type": 3,
@@ -511,9 +612,9 @@
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
-              "title": "MemoryRSS to Memory Usage Ratio",
+              "title": "Memory fragmentation ratio",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -526,76 +627,20 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "query - 0 - Copy"
+            "name": "Memory fragmentation ratio"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\n| where Name in (\"expired_keys\",\"evicted_keys\")\r\n| order by Computer asc, Name asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null))\r\n| where isnull(Value) == false\r\n| summarize UsedRatio = sumif(Value, Name == 'evicted_keys') / sumif(Value, Name == 'expired_keys') by Computer",
+              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\n  and Name == \"evicted_keys\"\r\n| order by Computer asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Val > prev(Val), Val - prev(Val), real(0))\r\n| make-series evicted_keys = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer",
               "size": 0,
-              "aggregation": 1,
+              "aggregation": 5,
               "showAnalytics": true,
-              "title": "Evicted/Expired Key Ratio",
+              "title": "Evicted keys",
               "noDataMessage": "No available data",
               "timeContext": {
-                "durationMs": 0
-              },
-              "timeContextFromParameter": "TimeRange",
-              "showExportToExcel": true,
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "crossComponentResources": [
-                "{Workspaces}"
-              ],
-              "visualization": "table",
-              "gridSettings": {
-                "sortBy": [
-                  {
-                    "itemKey": "UsedRatio",
-                    "sortOrder": 2
-                  }
-                ],
-                "labelSettings": [
-                  {
-                    "columnId": "Computer",
-                    "label": "Virtual machines"
-                  },
-                  {
-                    "columnId": "UsedRatio",
-                    "label": "Used ratio"
-                  }
-                ]
-              },
-              "sortBy": [
-                {
-                  "itemKey": "UsedRatio",
-                  "sortOrder": 2
-                }
-              ],
-              "chartSettings": {
-                "xSettings": {},
-                "ySettings": {
-                  "min": 0,
-                  "max": 1
-                }
-              }
-            },
-            "customWidth": "50",
-            "showPin": true,
-            "name": "query - 1 - Copy - Copy"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\n| where Name == \"avg_ttl\"\r\n| make-series Ratio = avg(Val) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer",
-              "size": 0,
-              "showAnalytics": true,
-              "title": "Average Time to Live per Key",
-              "noDataMessage": "No available data",
-              "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -609,7 +654,61 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "query - 3"
+            "name": "Evicted keys"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\n| where Name == \"avg_ttl\"\r\n| make-series Ratio = avg(Val) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Average key time to live",
+              "noDataMessage": "No available data",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspaces}"
+              ],
+              "visualization": "linechart",
+              "sortBy": []
+            },
+            "customWidth": "50",
+            "showPin": true,
+            "name": "Average key time to live"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\n  and Name == \"expired_keys\"\r\n| order by Computer asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Val > prev(Val), Val - prev(Val), real(0))\r\n| make-series expired_keys = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Expired keys",
+              "noDataMessage": "No available data",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspaces}"
+              ],
+              "visualization": "linechart",
+              "sortBy": []
+            },
+            "customWidth": "50",
+            "showPin": true,
+            "name": "Expired keys"
           }
         ]
       },
@@ -618,7 +717,7 @@
         "comparison": "isEqualTo",
         "value": "Performance"
       },
-      "name": "group - 6"
+      "name": "Performance Group"
     },
     {
       "type": 12,
@@ -632,12 +731,12 @@
               "version": "KqlItem/1.0",
               "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\n| where Name == \"total_connections_received\" or Name == \"rejected_connections\"\r\n| order by Computer asc, Name asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Val > prev(Val), Val - prev(Val), real(null)), Series = strcat(Computer, \"/\", Name)\r\n| where isnull(Value) == false\r\n| make-series Connections = sum(Value) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series",
               "size": 0,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Connections",
               "noDataMessage": "No connections detected in this time range",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -659,7 +758,7 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "query - 0"
+            "name": "Connections"
           },
           {
             "type": 3,
@@ -669,8 +768,8 @@
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
-              "title": "Connected Slaves",
-              "noDataMessage": "No connected slaves",
+              "title": "Connected replicas",
+              "noDataMessage": "No connected replicas",
               "timeContext": {
                 "durationMs": 0
               },
@@ -685,7 +784,7 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "query - 1"
+            "name": "Connected slaves"
           },
           {
             "type": 3,
@@ -695,10 +794,10 @@
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
-              "title": "Master Replication Offset",
+              "title": "Master replication offset",
               "noDataMessage": "No connected slaves",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -711,7 +810,7 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "query - 2"
+            "name": "Master replication offset"
           }
         ]
       },
@@ -720,7 +819,7 @@
         "comparison": "isEqualTo",
         "value": "Connections"
       },
-      "name": "group - 7"
+      "name": "Connections Group"
     },
     {
       "type": 12,
@@ -745,21 +844,18 @@
                   "multiSelect": true,
                   "quote": "'",
                   "delimiter": ",",
-                  "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == \"redis_cmdstat\"\r\n| where Name == \"usec_per_call\"\r\n| extend Call = tostring(split(Tags,'\"')[3])\r\n| summarize count() by Call\r\n| project Call",
+                  "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \r\nand Namespace == \"redis_cmdstat\" and Name == \"calls\"\r\n| extend Call = tostring(split(Tags,'\"')[3])\r\n| order by Computer asc, Call asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Call == prev(Call) and Val > prev(Val), Val - prev(Val), real(null))\r\n| where isnull(Value) == false\r\n| summarize count() by Call\r\n| project Call",
                   "crossComponentResources": [
                     "{Workspaces}"
                   ],
-                  "value": [
-                    "value::all"
-                  ],
+                  "value": [],
                   "typeSettings": {
                     "additionalResourceOptions": [
                       "value::all"
-                    ],
-                    "selectAllValue": ""
+                    ]
                   },
                   "timeContext": {
-                    "durationMs": 0
+                    "durationMs": 14400000
                   },
                   "timeContextFromParameter": "TimeRange",
                   "queryType": 0,
@@ -770,19 +866,20 @@
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
-            "name": "parameters - 6"
+            "name": "Command Parameter"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == \"redis_cmdstat\"\r\n| where Name == \"usec_per_call\"\r\n| extend Call = tostring(split(Tags,'\"')[3])\r\n| where Call in ({Command})\r\n| extend Series = strcat(Computer, \"/\", Call)\r\n| order by Computer asc, Name asc, Series asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Series == prev(Series) and Val > prev(Val), Val - prev(Val), real(null))\r\n| where isnull(Value) == false\r\n| make-series CallRate = avg(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series",
+              "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\nand Namespace == \"redis_cmdstat\" and Name in (\"calls\", \"usec_per_call\")\r\n| extend Call = tostring(split(Tags,'\"')[3])\r\n| where Call in ({Command})\r\n| extend Series = strcat(Computer, \"/\", Call)\r\n| summarize calls = maxif(Val, Name == 'calls'), usec_per_call = maxif(Val, Name == 'usec_per_call') by bin(TimeGenerated, 1m), Series, Call\r\n| order by Series asc, TimeGenerated asc\r\n| extend Value = iff(Series == prev(Series) and calls > prev(calls), calls - prev(calls), real(null))\r\n| where isnull(Value) == false\r\n| make-series CallTime = avg(usec_per_call) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series",
               "size": 0,
+              "aggregation": 5,
               "showAnalytics": true,
-              "title": "Command Stats (Time per Call)",
+              "title": "Time per command",
               "noDataMessage": "No data found matching the selected command(s)",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -821,7 +918,7 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "microseconds per call"
+            "name": "Commands: Time per call"
           },
           {
             "type": 3,
@@ -829,11 +926,12 @@
               "version": "KqlItem/1.0",
               "query": "InsightsMetrics\r\n| where (Computer in ({OnboardedComputers}) or '*' in ({OnboardedComputers})) and Namespace == \"redis_cmdstat\"\r\n| where Name == \"calls\"\r\n| extend Call = tostring(split(Tags,'\"')[3])\r\n| where Call in ({Command})\r\n| extend Series = strcat(Computer, \"/\", Call)\r\n| order by Computer asc, Name asc, Series asc, TimeGenerated asc\r\n| extend Value = iff(Computer == prev(Computer) and Name == prev(Name) and Series == prev(Series) and Val > prev(Val), Val - prev(Val), real(null))\r\n| where isnull(Value) == false\r\n| make-series CallRate = sum(Value) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Series",
               "size": 0,
+              "aggregation": 5,
               "showAnalytics": true,
-              "title": "Command Stats (# of Call)",
+              "title": "Command counts",
               "noDataMessage": "No data found matching the selected command(s)",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -873,7 +971,7 @@
             },
             "customWidth": "50",
             "showPin": true,
-            "name": "number of calls"
+            "name": "Command counts"
           }
         ]
       },
@@ -906,15 +1004,14 @@
                   "timeContext": {
                     "durationMs": 0
                   },
-                  "timeContextFromParameter": "TimeRange",
-                  "resourceType": "microsoft.insights/components"
+                  "timeContextFromParameter": "TimeRange"
                 }
               ],
               "style": "above",
               "queryType": 0,
               "resourceType": "microsoft.insights/components"
             },
-            "name": "parameters - 0"
+            "name": "SuggestedAlerts Parameter"
           },
           {
             "type": 12,
