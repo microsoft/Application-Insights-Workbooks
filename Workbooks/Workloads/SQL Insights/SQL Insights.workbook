@@ -189,8 +189,7 @@
                 }
               ],
               "allowCustom": true
-            },
-            "resourceType": "microsoft.insights/components"
+            }
           },
           {
             "id": "bb7b9387-0445-4ee2-9fc7-f52cb9f59e8c",
@@ -214,7 +213,6 @@
             "isRequired": true,
             "value": "Community-Workbooks/Workloads/Onboard MSSQL Insights",
             "isHiddenWhenLocked": true,
-            "resourceType": "microsoft.insights/components",
             "label": "Onboarding template"
           }
         ],
@@ -334,7 +332,7 @@
               "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey =  strcat(Computer, '/', Instance, '/', Database)\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers})\r\n| where Name in ('db_online', 'db_offline', 'db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect', 'engine_edition');\r\nlet engineEdition = data\r\n| summarize Engine = minif(Val, Name == 'engine_edition') by DatabaseKey;\r\nlet summary = data\r\n| where Name != 'engine_edition'\r\n| summarize arg_max(TimeGenerated, Name, Val) by Name, DatabaseKey, Computer\r\n| extend Val = iff(TimeGenerated < ({TimeRange:end} - 15m), 0.0, Val)\r\n| join kind = inner (engineEdition) on DatabaseKey\r\n| extend Val = iff(Engine == 5 and Name == 'db_online', 1.0, Val)\r\n| summarize Val = sum(Val) by Name\r\n| project Name, Value = Val;\r\nlet trend = data\r\n| where Name != 'db_online' and Name != 'engine_edition'\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Name\r\n| union (data\r\n| where Name == 'db_online'\r\n| summarize Val = min(Val) by bin(TimeGenerated, {TimeRange:grain}), DatabaseKey, Name\r\n| join kind = inner (engineEdition) on DatabaseKey\r\n| extend Val = iff(Engine == 5, 1.0, Val)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Name);\r\nsummary\r\n| join kind = inner (trend) on Name\r\n| join kind = inner (datatable(Name:string, Rank:int)[\r\n'db_online', 1, 'db_offline', 2, 'db_recovering', 3, 'db_recoveryPending', 4, 'db_restoring', 5, 'db_suspect', 6\r\n]) on Name\r\n| order by Rank asc\r\n| project Name, Value, Trend\r\n| extend Name = case(\r\n   Name == 'db_online', 'Online databases',\r\n   Name == 'db_offline', 'Offline',\r\n   Name == 'db_recovering', 'Recovering',\r\n   Name == 'db_recoveryPending', 'Recovery pending',\r\n   Name == 'db_restoring', 'Restoring',\r\n   Name == 'db_suspect', 'Suspect',\r\n   Name\r\n)\r\n",
               "size": 4,
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
@@ -391,7 +389,7 @@
               "showAnalytics": true,
               "title": "Server details",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -1666,7 +1664,7 @@
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -1801,7 +1799,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace in~ ('sqlserver_azuredb_waitstats', 'sqlserver_waitstats')\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags[\"database_name'\"]), Instance = tostring(Tags.sql_instance), WaitType = tostring(Tags.wait_type)\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\ndata\r\n| summarize arg_max(TimeGenerated, Val) by WaitType, Database, Instance\r\n| extend Val = iff(TimeGenerated < ({TimeRange:end} - 15m), real(null), Val)\r\n| project Database = strcat(Instance, '/', Database), WaitType, Size = Val\r\n| extend jkey = strcat(Database, '/', WaitType)\r\n| join kind = inner (data\r\n    | make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by WaitType, Instance, Database\r\n    | project Database = strcat(Instance, '/', Database), WaitType, Trend\r\n    | extend jkey = strcat(Database, '/', WaitType)\r\n    ) on jkey\r\n| project Database, WaitType, Size, ['Size trend'] = Trend\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace in~ ('sqlserver_azuredb_waitstats', 'sqlserver_waitstats') and Name =~ 'wait_time_ms'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags[\"database_name'\"]), Instance = tostring(Tags.sql_instance), WaitType = tostring(Tags.wait_type)\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers})\r\n| order by Computer asc, Instance asc, Database asc, Namespace asc, Name asc, WaitType asc, TimeGenerated asc\r\n| extend Val = iff(Computer == prev(Computer) and Instance == prev(Instance) and Database == prev(Database) and Namespace == prev(Namespace) and Name == prev(Name) and WaitType == prev(WaitType) and Val > prev(Val), Val - prev(Val), real(null));\r\ndata\r\n| summarize Val = avg(Val) by WaitType, Database, Instance\r\n| extend Val = iff(isnan(Val), real(null), Val)\r\n| project Database = strcat(Instance, '/', Database), WaitType, Size = Val\r\n| extend jkey = strcat(Database, '/', WaitType)\r\n| join kind = inner (data\r\n    | make-series Trend = avg(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by WaitType, Instance, Database\r\n    | project Database = strcat(Instance, '/', Database), WaitType, Trend\r\n    | extend jkey = strcat(Database, '/', WaitType)\r\n    ) on jkey\r\n| project Database, WaitType, Size, ['Size trend'] = Trend\r\n\r\n",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
@@ -1819,17 +1817,11 @@
                 "formatters": [
                   {
                     "columnMatch": "Database",
-                    "formatter": 5,
-                    "formatOptions": {
-                      "showIcon": true
-                    }
+                    "formatter": 5
                   },
                   {
                     "columnMatch": "WaitType",
-                    "formatter": 5,
-                    "formatOptions": {
-                      "showIcon": true
-                    }
+                    "formatter": 5
                   },
                   {
                     "columnMatch": "Size",
@@ -1837,15 +1829,16 @@
                     "formatOptions": {
                       "min": 0,
                       "palette": "blue",
-                      "showIcon": true,
-                      "aggregation": "Sum"
+                      "aggregation": "Max"
                     },
                     "numberFormat": {
-                      "unit": 3,
+                      "unit": 23,
                       "options": {
                         "style": "decimal",
+                        "useGrouping": false,
                         "maximumFractionDigits": 1
-                      }
+                      },
+                      "emptyValCustomText": "-"
                     }
                   },
                   {
@@ -1854,7 +1847,6 @@
                     "formatOptions": {
                       "min": 0,
                       "palette": "blue",
-                      "showIcon": true,
                       "aggregation": "Sum"
                     },
                     "numberFormat": {
@@ -1862,7 +1854,8 @@
                       "options": {
                         "style": "decimal",
                         "useGrouping": false
-                      }
+                      },
+                      "emptyValCustomText": "-"
                     }
                   }
                 ],
@@ -1880,6 +1873,22 @@
                   {
                     "itemKey": "$gen_heatmap_Size_3",
                     "sortOrder": 2
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "Database"
+                  },
+                  {
+                    "columnId": "WaitType"
+                  },
+                  {
+                    "columnId": "Size",
+                    "label": "Wait times"
+                  },
+                  {
+                    "columnId": "Size trend",
+                    "label": "Wait time trend"
                   }
                 ]
               },
