@@ -72,6 +72,7 @@ Here is an example that styles the _Request_ column as a bar:
 | `Heatmap` | Colors the grid cells based on the value of the cell | Color palette and min/max value used for scaling |
 | `Bar` | Renders a bar next to the cell based on the value of the cell | Color palette and min/max value used for scaling |
 | `Bar underneath` | Renders a bar near the bottom of the cell based on the value of the cell | Color palette and min/max value used for scaling |
+| `Composite bar` | Renders a composite bar using the values of the columns in a row. Refer [Composite Bar](./CompositeBar.md) for details | Columns with respective colors and labels for the bar |
 | `Spark bars` | Renders a spark bar in the cell based on the values of a dynamic array in the cell. E.g the Trend column form the image at the top | Color palette and min/max value used for scaling |
 | `Spark lines` | Renders a spark line in the cell based on the values of a dynamic array in the cell | Color palette and min/max value used for scaling |
 | `Icon` | Renders icons based on the text values in the cell. Supported values include: _cancelled, critical, disabled, error, failed, info, none, pending. stopped. question, success, unknown, uninitialized, resource, up, down, left, right, trendup, trenddown, 4, 3, 2, 1, Sev0, Sev1, Sev2, Sev3, Sev4, Fired, Resolved, Available, Unavailable, Degraded, Unknown_ |  |
