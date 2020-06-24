@@ -127,4 +127,4 @@ Graph authors can specify what content goes to the different parts of a node - t
 
 
 
-*Graphs also support Composite bar renderers. Refer [Composite Bar](./CompositeBar.md) for details*
+*Graphs also support Composite bar renderer. Refer [Composite Bar](./CompositeBar.md) for details*

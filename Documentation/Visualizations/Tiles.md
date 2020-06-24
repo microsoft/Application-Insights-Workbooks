@@ -71,4 +71,4 @@ The author has an option to set the tile width in the tile settings
 
 
 
-*Tiles also support Composite bar renderers. Refer [Composite Bar](./CompositeBar.md) for details*
+*Tiles also support Composite bar renderer. Refer [Composite Bar](./CompositeBar.md) for details*
