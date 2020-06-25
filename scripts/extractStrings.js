@@ -12,13 +12,11 @@ const LocKeys = [
   "chartTitle",
   "defaultItemsText",
   "loadButtonText",
-  "typeSettings",
   "noDataMessage"
 ];
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = '.resjson';
-const ResJSonCommentKey = "_{0}.comment";
 
 const LCLOutputPath = "Workbooks\\.localization";
 const PathToStringFile = "output\\package\\en-us\\Workbooks\\";
@@ -31,7 +29,7 @@ function testPath(path) {
     console.log("Path verified.");
     return true;
   } else {
-    console.error("Template path does not exist: ", path);
+    console.error("ERROR: Template path does not exist: ", path);
     return false;
   }
 }

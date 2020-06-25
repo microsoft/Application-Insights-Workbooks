@@ -13,4 +13,4 @@ set ABS_PATH=%CD%
 rem // Restore original directory
 popd
 
-node localizeWorkbook.js %ABS_PATH%
+node extractStrings.js %ABS_PATH%
