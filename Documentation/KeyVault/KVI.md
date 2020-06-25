@@ -76,6 +76,10 @@ The multi-subscription and key vaults overview or failures workbooks support exp
 
 ![](./Images/Pin.png)
 
+You also have the option to pin our recommended workbook item by clicking the pushpin icon in the toolbar
+
+![](./Images/ToolbarPin.png)
+
 ## Customize Azure Monitor for Key Vaults
 
 This section highlights common scenarios for editing the workbook to customize in support of your data analytics needs:
@@ -117,8 +121,8 @@ There is a limit of 200 key vaults that can be selected and viewed. Regardless o
 ### What will happen when a pinned item is clicked?
 
 When a pinned item on the dashboard is clicked, it will open one of two things:
-1.	If the Insights were saved – it will open the insights instance that the pin was saved from
-2.	If the insights were unsaved – it will open a new default insights instance
+1.	If the top blade pin button was used to pin -  It will open a new default insights instance.
+2.	If either the toolbar pin or a workbook item pin button was used to pin - It will open the key vault overview workbook template with the saved insights
 
 ### Why don’t I see all my subscriptions in the subscription picker?
 
