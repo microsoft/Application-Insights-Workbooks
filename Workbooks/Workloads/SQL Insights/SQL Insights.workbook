@@ -329,10 +329,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey =  strcat(Computer, '/', Instance, '/', Database)\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers})\r\n| where Name in ('db_online', 'db_offline', 'db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect', 'engine_edition');\r\nlet engineEdition = data\r\n| summarize Engine = minif(Val, Name == 'engine_edition') by DatabaseKey;\r\nlet summary = data\r\n| where Name != 'engine_edition'\r\n| summarize arg_max(TimeGenerated, Name, Val) by Name, DatabaseKey, Computer\r\n| extend Val = iff(TimeGenerated < ({TimeRange:end} - 15m), 0.0, Val)\r\n| join kind = inner (engineEdition) on DatabaseKey\r\n| extend Val = iff(Engine == 5 and Name == 'db_online', 1.0, Val)\r\n| summarize Val = sum(Val) by Name\r\n| project Name, Value = Val;\r\nlet trend = data\r\n| where Name != 'db_online' and Name != 'engine_edition'\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Name\r\n| union (data\r\n| where Name == 'db_online'\r\n| summarize Val = min(Val) by bin(TimeGenerated, {TimeRange:grain}), DatabaseKey, Name\r\n| join kind = inner (engineEdition) on DatabaseKey\r\n| extend Val = iff(Engine == 5, 1.0, Val)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Name);\r\nsummary\r\n| join kind = inner (trend) on Name\r\n| join kind = inner (datatable(Name:string, Rank:int)[\r\n'db_online', 1, 'db_offline', 2, 'db_recovering', 3, 'db_recoveryPending', 4, 'db_restoring', 5, 'db_suspect', 6\r\n]) on Name\r\n| order by Rank asc\r\n| project Name, Value, Trend\r\n| extend Name = case(\r\n   Name == 'db_online', 'Online databases',\r\n   Name == 'db_offline', 'Offline',\r\n   Name == 'db_recovering', 'Recovering',\r\n   Name == 'db_recoveryPending', 'Recovery pending',\r\n   Name == 'db_restoring', 'Restoring',\r\n   Name == 'db_suspect', 'Suspect',\r\n   Name\r\n)\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5, 1.0, OverallOnline)\r\n| project-away Key, Key1, EngineEdition1\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Sql Servers - Personal ',\r\n            EngineEdition == 2, 'Sql Servers - Standard',\r\n            EngineEdition == 3, 'Sql Servers - Enterprise',\r\n            EngineEdition == 4, 'Sql Servers - Express',\r\n            EngineEdition == 5, 'SQL Azure Databases',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instances',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            '-')\r\n| project Database = strcat(Instance, '/', Database), Green = OverallOnline, Yellow = CurrentOnline - OverallOnline, Red = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Type, Computer\r\n| order by Red desc, Yellow desc, Green desc, Database asc, Computer asc\r\n| summarize Green = sum(Green), Yellow = sum(Yellow), Red = sum(Red), Total = sum(Total) by Type\r\n| extend Subtitle = '━━━'\r\n| order by Red desc, Yellow desc, Green desc, Type asc\r\n",
               "size": 4,
               "timeContext": {
-                "durationMs": 14400000
+                "durationMs": 0
               },
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
@@ -344,24 +344,40 @@
               "sortBy": [],
               "tileSettings": {
                 "titleContent": {
-                  "columnMatch": "Name",
-                  "formatter": 1,
-                  "formatOptions": {
-                    "showIcon": true
-                  }
+                  "columnMatch": "Type",
+                  "formatter": 1
+                },
+                "subtitleContent": {
+                  "columnMatch": "Subtitle",
+                  "formatter": 1
                 },
                 "leftContent": {
-                  "columnMatch": "Value",
-                  "formatter": 12,
+                  "columnMatch": "Green",
+                  "formatter": 22,
                   "formatOptions": {
-                    "min": 0,
-                    "palette": "blue",
-                    "showIcon": true
+                    "compositeBarSettings": {
+                      "labelText": "[\"Green\"] / [\"Total\"] dbs are healthy",
+                      "columnSettings": [
+                        {
+                          "columnName": "Green",
+                          "color": "green"
+                        },
+                        {
+                          "columnName": "Yellow",
+                          "color": "yellow"
+                        },
+                        {
+                          "columnName": "Red",
+                          "color": "redBright"
+                        }
+                      ]
+                    }
                   },
                   "numberFormat": {
                     "unit": 17,
                     "options": {
                       "style": "decimal",
+                      "useGrouping": false,
                       "maximumFractionDigits": 1
                     }
                   }
@@ -371,8 +387,7 @@
                   "formatter": 21,
                   "formatOptions": {
                     "min": 0,
-                    "palette": "blue",
-                    "showIcon": true
+                    "palette": "blue"
                   }
                 },
                 "showBorder": false
@@ -384,12 +399,12 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\ndata\r\n| summarize arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| extend Val = iff(TimeGenerated < ({TimeRange:end} - 15m), real(null), Val)\r\n| summarize Online = sumif(Val, Name == 'db_online'),\r\n    Offline = sumif(Val, Name == 'db_offline'),\r\n    Unhealthy = sumif(Val, Name in~ ('db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    CPUs = sumif(Val, Name == 'cpu_count'),\r\n    ['Server memory'] = sumif(Val, Name == 'server_memory'),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend jkey = strcat(Instance, '/', Database)\r\n| join kind = inner (data\r\n    | where Name == 'db_online'\r\n    | make-series Trend = min(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Database, Instance\r\n    | extend jkey = strcat(Instance, '/', Database)\r\n   ) on jkey\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Personal',\r\n            EngineEdition == 2, 'Standard',\r\n            EngineEdition == 3, 'Enterprise',\r\n            EngineEdition == 4, 'Express',\r\n            EngineEdition == 5, 'SQL Azure Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            '-')\r\n| extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n| order by Offline desc, Unhealthy desc, Online desc, Instance asc, Database asc, Computer asc\r\n| project ['Sql database'] = strcat(Instance, '/', Database), Online, Trend, Offline, Unhealthy, ['Monitored by'] = Computer, ['Database type'] = Type, CPUs, ['Server memory']\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n     CPUs = sumif(Val, Name == 'cpu_count'),\r\n    ['Server memory'] = sumif(Val, Name == 'server_memory'),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| join kind = inner (data\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n//    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Key = strcat(Computer, '/', Instance, '/', Database)\r\n   ) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5, 1.0, OverallOnline)\r\n| project-away Key, Key1, Key2, EngineEdition1\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Personal',\r\n            EngineEdition == 2, 'Standard',\r\n            EngineEdition == 3, 'Enterprise',\r\n            EngineEdition == 4, 'Express',\r\n            EngineEdition == 5, 'SQL Azure Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            '-')\r\n| project Database = strcat(Instance, '/', Database), Green = OverallOnline, Yellow = CurrentOnline - OverallOnline, Red = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Trend, Type, Computer, CPUs, ['Server memory']\r\n| order by Red desc, Yellow desc, Green desc, Database asc, Computer asc\r\n",
               "size": 2,
               "showAnalytics": true,
               "title": "Server details",
               "timeContext": {
-                "durationMs": 14400000
+                "durationMs": 0
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -402,27 +417,39 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "Online",
-                    "formatter": 18,
+                    "columnMatch": "Green",
+                    "formatter": 22,
                     "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "success",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    },
-                    "numberFormat": {
-                      "unit": 17,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "minimumSignificantDigits": 1
+                      "compositeBarSettings": {
+                        "labelText": "[\"Green\"] / [\"Total\"]",
+                        "columnSettings": [
+                          {
+                            "columnName": "Green",
+                            "color": "green"
+                          },
+                          {
+                            "columnName": "Yellow",
+                            "color": "yellow"
+                          },
+                          {
+                            "columnName": "Red",
+                            "color": "redBright"
+                          }
+                        ]
                       }
                     }
+                  },
+                  {
+                    "columnMatch": "Yellow",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Red",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Total",
+                    "formatter": 5
                   },
                   {
                     "columnMatch": "Trend",
@@ -433,53 +460,10 @@
                     }
                   },
                   {
-                    "columnMatch": "Offline",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": ">",
-                          "thresholdValue": "0",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "Unhealthy",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": ">",
-                          "thresholdValue": "0",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  },
-                  {
                     "columnMatch": "Server memory",
                     "formatter": 0,
-                    "formatOptions": {},
                     "numberFormat": {
-                      "unit": 4,
+                      "unit": 3,
                       "options": {
                         "style": "decimal",
                         "useGrouping": false
@@ -487,49 +471,41 @@
                     }
                   },
                   {
-                    "columnMatch": "Total storage",
-                    "formatter": 0,
-                    "formatOptions": {},
-                    "numberFormat": {
-                      "unit": 38,
-                      "options": {
-                        "style": "decimal"
-                      }
-                    }
+                    "columnMatch": "HealthLabel",
+                    "formatter": 5
                   }
                 ],
                 "rowLimit": 1000,
                 "filter": true,
                 "labelSettings": [
                   {
-                    "columnId": "Sql database"
+                    "columnId": "Database",
+                    "label": "Sql Server"
                   },
                   {
-                    "columnId": "Online",
-                    "label": "Online dbs"
+                    "columnId": "Green",
+                    "label": "Healthy dbs"
                   },
                   {
-                    "columnId": "Trend"
+                    "columnId": "Yellow"
                   },
                   {
-                    "columnId": "Offline",
-                    "label": "Offline dbs"
+                    "columnId": "Red"
                   },
                   {
-                    "columnId": "Unhealthy",
-                    "label": "Unhealthy db"
+                    "columnId": "Total"
                   },
                   {
-                    "columnId": "Monitored by"
+                    "columnId": "Trend",
+                    "label": "Online database trend"
                   },
                   {
-                    "columnId": "Database type"
+                    "columnId": "Type",
+                    "label": "Database type"
                   },
                   {
-                    "columnId": "CPUs"
-                  },
-                  {
-                    "columnId": "Server memory"
+                    "columnId": "Computer",
+                    "label": "Monitored by"
                   }
                 ]
               },
