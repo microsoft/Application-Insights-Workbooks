@@ -39,6 +39,7 @@ Text parameter supports following field style:
     - Sql
     - TypeScript
     - Kql
+    - Toml
 
 ![Image showing multiline text field](../Images/KqlText.png)
 
