@@ -15,7 +15,6 @@
             "name": "Subscription",
             "label": "Subscriptions",
             "type": 6,
-            "description": "All subscriptions with virtual machines",
             "isRequired": true,
             "multiSelect": true,
             "quote": "'",
@@ -220,14 +219,10 @@
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "parameters - 0"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "*Virtual machines*\n# {OnboardedComputerCount} / {TotalComputers}\n*Remotely monitoring SQL Servers*"
-      },
-      "name": "text - 11"
+      "name": "Parameter block",
+      "styleSettings": {
+        "margin": "10px 0 15px 0"
+      }
     },
     {
       "type": 11,
@@ -399,7 +394,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer, TenantId\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n     CPUs = sumif(Val, Name == 'cpu_count'),\r\n    ['Server memory'] = sumif(Val, Name == 'server_memory'),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer, TenantId\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| join kind = inner (data\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n//    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Key = strcat(Computer, '/', Instance, '/', Database)\r\n   ) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5, 1.0, OverallOnline)\r\n| project-away Key, Key1, Key2, EngineEdition1\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Personal',\r\n            EngineEdition == 2, 'Standard',\r\n            EngineEdition == 3, 'Enterprise',\r\n            EngineEdition == 4, 'Express',\r\n            EngineEdition == 5, 'SQL Azure Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            '-')\r\n| project Database = strcat(Instance, '/', Database), ['Healthy dbs'] = OverallOnline, ['Previously unhealthy dbs'] = OverallUnhealthy - CurrentUnhealthy, ['Currently unhealthy dbs'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Trend, Type, Computer, CPUs, ['Server memory'], DbId = strcat('/workspace/', TenantId, '/computer/', Computer, '/sqlinstance/', Instance, '/database/', Database)\r\n| order by ['Currently unhealthy dbs'] desc, ['Previously unhealthy dbs'] desc, ['Healthy dbs'] desc, Database asc, Computer asc\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers});\r\nlet results = data\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer, TenantId\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer, TenantId\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5, 1.0, OverallOnline)\r\n;\r\nresults\r\n| where EngineEdition == 5\r\n| summarize \r\n        CurrentOnline = sum(CurrentOnline),\r\n        CurrentUnhealthy = sum(CurrentUnhealthy),\r\n        OverallUnhealthy = sum(OverallUnhealthy),\r\n        OverallOnline = sum(OverallOnline)\r\n    by Id = Instance, Parent = '', Name = Instance, key = Instance, Instance, TenantId, Database = '*'\r\n| extend EngineEdition = 20.0\r\n| union (results\r\n    | where EngineEdition == 5\r\n    | project Id = strcat(Computer, '/', Instance, '/', Database), Parent = Instance, Name = Database, CurrentOnline, CurrentUnhealthy, OverallOnline, OverallUnhealthy, EngineEdition, Computer, Instance, Database, TenantId\r\n    | extend key = Id)\r\n| union (results\r\n    | where EngineEdition != 5\r\n    | project Id = strcat(Computer, '/', Instance), Parent = '', Name = Instance, CurrentOnline, CurrentUnhealthy, OverallOnline, OverallUnhealthy, EngineEdition, Computer, key = strcat(Computer, '/', Instance, '/', Database), Instance, Database, TenantId)\r\n| join kind = inner (\r\ndata\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by key = strcat(Computer, '/', Instance, '/', Database)\r\n| union (\r\ndata\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | where EngineEdition == 5\r\n    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = sum(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by key = Instance\r\n)\r\n) on key\r\n| extend Type = case(\r\n            EngineEdition == 1, 'Personal',\r\n            EngineEdition == 2, 'Standard',\r\n            EngineEdition == 3, 'Enterprise',\r\n            EngineEdition == 4, 'Express',\r\n            EngineEdition == 5, 'SQL Azure Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            EngineEdition == 20, 'SQL Azure Server',            '-')\r\n| project Id, Parent, Name, ['Healthy dbs'] = OverallOnline, ['Previously unhealthy dbs'] = OverallUnhealthy - CurrentUnhealthy, ['Currently unhealthy dbs'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Trend, Type, Computer, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', Instance, '/database/', Database)\r\n| order by ['Currently unhealthy dbs'] desc, ['Previously unhealthy dbs'] desc, ['Healthy dbs'] desc, Name asc, Computer asc",
               "size": 2,
               "showAnalytics": true,
               "title": "Server details",
@@ -417,7 +412,15 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "Database",
+                    "columnMatch": "Id",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Parent",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
                     "formatter": 7,
                     "formatOptions": {
                       "linkTarget": "WorkbookTemplate",
@@ -479,6 +482,10 @@
                     }
                   },
                   {
+                    "columnMatch": "DbId",
+                    "formatter": 5
+                  },
+                  {
                     "columnMatch": "Server memory",
                     "formatter": 0,
                     "numberFormat": {
@@ -490,27 +497,37 @@
                     }
                   },
                   {
-                    "columnMatch": "DbId",
-                    "formatter": 5
-                  },
-                  {
                     "columnMatch": "HealthLabel",
                     "formatter": 5
                   }
                 ],
                 "rowLimit": 1000,
                 "filter": true,
+                "hierarchySettings": {
+                  "idColumn": "Id",
+                  "parentColumn": "Parent",
+                  "treeType": 0,
+                  "expanderColumn": "Name",
+                  "expandTopLevel": true
+                },
                 "labelSettings": [
                   {
-                    "columnId": "Database",
-                    "label": "Sql Server"
+                    "columnId": "Id"
+                  },
+                  {
+                    "columnId": "Parent"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Sql Servers"
                   },
                   {
                     "columnId": "Healthy dbs",
                     "label": "Healthy databases"
                   },
                   {
-                    "columnId": "Previously unhealthy dbs"
+                    "columnId": "Previously unhealthy dbs",
+                    "label": ""
                   },
                   {
                     "columnId": "Currently unhealthy dbs"
@@ -531,10 +548,7 @@
                     "label": "Monitored by"
                   },
                   {
-                    "columnId": "CPUs"
-                  },
-                  {
-                    "columnId": "Server memory"
+                    "columnId": "DbId"
                   }
                 ]
               },
