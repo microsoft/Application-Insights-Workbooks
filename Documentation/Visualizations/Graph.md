@@ -124,3 +124,7 @@ Graph authors can specify what content goes to the different parts of a node - t
 10. Click the _Save and Close_ button at the bottom of the pane.
 
 ![Image showing the creation of a graph visualization in workbooks](../Images/Graph-FieldBased.png)
+
+
+
+*Graphs also support Composite bar renderer. Refer [Composite Bar](./CompositeBar.md) for details*
