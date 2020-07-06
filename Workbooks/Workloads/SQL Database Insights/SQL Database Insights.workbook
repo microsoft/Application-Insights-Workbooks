@@ -147,7 +147,10 @@
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources"
       },
-      "name": "parameters - 0"
+      "name": "Parameter block",
+      "styleSettings": {
+        "margin": "0 0 15px 0"
+      }
     },
     {
       "type": 11,
@@ -160,6 +163,13 @@
             "linkTarget": "parameter",
             "linkLabel": "Overview",
             "subTarget": "Overview",
+            "style": "link"
+          },
+          {
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Activities",
+            "subTarget": "Activities",
             "style": "link"
           },
           {
@@ -190,7 +200,210 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Name =~ 'User connections' and Computer == '{Computer}' and Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "let dbStates = datatable(id:string, name:string, rank:int)[\r\n'db_online', 'Online', 1,\r\n'db_offline', 'Offline', 2,\r\n'db_recovering', 'Recovering', 4,\r\n'db_recoveryPending', 'Pending', 5,\r\n'db_restoring', 'Restoring', 6,\r\n'db_suspect', 'Suspect', 3,];\r\nlet data = InsightsMetrics\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where  (Computer == '{Computer}' or '*' == '{Computer}') and Instance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}') and Name in~ ('db_online', 'db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect', 'engine_edition') ;\r\nlet engineEdition = toscalar(data\r\n| where Name == 'engine_edition'\r\n| summarize  EngineEdition = maxif(Val, Name == 'engine_edition'));\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val)\r\nby Name, Computer\r\n| extend Val = iff(engineEdition == 5 and Val > 0, 1.0, Val)\r\n| summarize Val = sum(Val) by Name\r\n| join kind = inner (data\r\n    | where Name == 'db_online'\r\n    | extend Val = iff(engineEdition == 5 and Val > 0, 1.0, Val)\r\n    | summarize Val = min(Val) by bin(TimeGenerated, {TimeRange:grain}), Name, Instance, Computer\r\n    | make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Name\r\n    | union (data\r\n    | where Name != 'db_online'\r\n    | extend Val = iff(engineEdition == 5 and Val > 0, 1.0, Val)\r\n    | summarize Val = min(Val) by bin(TimeGenerated, {TimeRange:grain}), Name, Instance, Computer\r\n    | make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Name\r\n    )\r\n) on Name\r\n| join kind = inner (dbStates) on $left.Name == $right.id\r\n| order by rank asc\r\n",
+              "size": 4,
+              "title": "Database health",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "name",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Val",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumSignificantDigits": 3
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue"
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "name": "query - 0"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let counterMetadata = datatable(id:string, name:string, rank:int)[\r\n'User Connections', 'User Connections', 1,\r\n'Active Temp Tables', 'Active Temp Tables', 2,\r\n'Memory Grants Pending', 'Memory Grants Pending', 4,\r\n'Processes blocked', 'Processes blocked', 5,\r\n'Number of Deadlocks/sec', 'Deadlocks/sec', 6,\r\n];\r\nlet data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where  (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}');\r\ndata\r\n| where Counter in~ ('User connections', 'Active Temp Tables')\r\n| summarize EndValue = avg(Val) by Counter\r\n| union (data\r\n    | where Counter in~ ('Memory Grants Pending', 'Number of deadlocks/sec', 'Processes blocked')\r\n    | summarize (T, EndValue) = arg_max(TimeGenerated, Val), Max = max(Val) by Counter)\r\n| extend EndValue = toint(EndValue)\r\n| join kind = inner (counterMetadata) on $left.Counter == $right.id\r\n| extend Subtitle = '⎯⎯⎯⎯⎯', Status = case(Counter !in~ ('Memory Grants Pending', 'Processes blocked', 'Number of Deadlocks/sec'), 'Not applicable', EndValue > 0, 'Error', Max > 0, 'Warning', 'Success')\r\n| order by rank asc\r\n",
+              "size": 4,
+              "title": "Key stats",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "name",
+                  "formatter": 1
+                },
+                "subtitleContent": {
+                  "columnMatch": "Subtitle",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "EndValue",
+                  "formatter": 12,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Status",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Not applicable",
+                        "representation": "Blank",
+                        "text": ""
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Error",
+                        "representation": "3",
+                        "text": ""
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Warning",
+                        "representation": "2",
+                        "text": ""
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": ""
+                      }
+                    ]
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Warning icon indicates that this metric is good now, but had a problem in the time window."
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue"
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "name": "Key stats"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let counterMetadata = datatable(id:string, name:string, rank:int)[\r\n'Data File(s) Size (KB)', 'Total data file size', 1,\r\n'Log File(s) Size (KB)', 'Total log file size', 2,\r\n'Log File(s) Used Size (KB)', 'Total log file used size', 4,\r\n'Free Space in tempdb (KB)', 'Free space in tempdb', 5,\r\n'Memory broker clerk size', 'Memory broker clerk size', 6,\r\n];\r\nlet data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where  (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}');\r\ndata\r\n| where tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) =~ 'total' and Counter in~ ('Data File(s) Size (KB)', 'Log File(s) Size (KB)', 'Log File(s) Used Size (KB)')\r\n| summarize (End, EndValue) = arg_max(TimeGenerated, Val) by Counter\r\n| union (data\r\n    | where  Counter =~ 'Free Space in tempdb (KB)'\r\n    | summarize EndValue = avg(Val) by Counter\r\n    | extend EndValue = EndValue)\r\n| union (data\r\n    | where  Counter =~ 'Memory broker clerk size' and DbInstance =~ 'Buffer Pool'\r\n    | summarize (End, EndValue) = arg_max(TimeGenerated, Val) by Counter\r\n    | extend EndValue = EndValue * 8)\r\n| join kind = inner (counterMetadata) on $left.Counter == $right.id\r\n| order by rank asc\r\n| extend Subtitle = '⎯⎯⎯⎯⎯'\r\n",
+              "size": 4,
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "name",
+                  "formatter": 1
+                },
+                "subtitleContent": {
+                  "columnMatch": "Subtitle",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "EndValue",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "green"
+                  },
+                  "numberFormat": {
+                    "unit": 3,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false,
+                      "maximumSignificantDigits": 3
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue"
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "name": "Key sizes"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "Overview"
+      },
+      "name": "Overview group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Name =~ 'User connections' and (Computer == '{Computer}' or '*' == '{Computer}') and Instance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -214,7 +427,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Transactions/sec' and Computer == '{Computer}' and SqlInstance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Transactions/sec' and (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -250,7 +463,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Batch requests/sec' and Computer == '{Computer}' and SqlInstance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Batch requests/sec'  and (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -286,7 +499,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'SQL compilations/sec' and Computer == '{Computer}' and SqlInstance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'SQL compilations/sec' and (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -322,7 +535,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'SQL re-compilations/sec' and Computer == '{Computer}' and SqlInstance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'SQL re-compilations/sec'  and (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -358,7 +571,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Processes blocked' and Computer == '{Computer}' and SqlInstance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Processes blocked'  and (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -393,11 +606,11 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Number of deadlocks/sec' and Computer == '{Computer}' and SqlInstance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance)\r\n| where Name =~ 'Number of deadlocks/sec'  and (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n| extend SeriesName = strcat(SqlInstance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
-              "title": "Processes blocked",
+              "title": "Number of deadlocks per sec",
               "timeContext": {
                 "durationMs": 86400000
               },
@@ -429,9 +642,9 @@
       "conditionalVisibility": {
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
-        "value": "Overview"
+        "value": "Activities"
       },
-      "name": "Overview group"
+      "name": "Activities group"
     },
     {
       "type": 12,
@@ -440,11 +653,40 @@
         "groupType": "editable",
         "items": [
           {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "1645978b-604a-41b1-b7e3-071208af0ec8",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ClerkType",
+                  "label": "Show",
+                  "type": 2,
+                  "isRequired": true,
+                  "value": "Only SQL memory clerks",
+                  "typeSettings": {
+                    "additionalResourceOptions": []
+                  },
+                  "jsonData": "[\n    \"All memory clerks\",\n    \"Only SQL memory clerks\"\n]",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  }
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "parameters - 1"
+          },
+          {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Namespace == 'sqlserver_memory_clerks'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), ClerkType = tostring(Tags.clerk_type)\r\n| where Computer == '{Computer}' and Instance == '{SqlInstance}' and Database == '{SqlDatabase}';\r\ndata\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName, ClerkType\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ClerkType, SeriesName\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Namespace == 'sqlserver_memory_clerks'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), ClerkType = tostring(Tags.clerk_type)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and Instance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}') and (('{ClerkType}' == 'Only SQL memory clerks' and ClerkType startswith 'SQL') or '{ClerkType}' == 'All memory clerks');\r\ndata\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName, ClerkType\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ClerkType, SeriesName\r\n\r\n",
               "size": 0,
+              "aggregation": 3,
               "showAnalytics": true,
               "title": "Memory clerks",
               "timeContext": {
@@ -493,7 +735,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Namespace in~ ('sqlserver_azuredb_waitstats', 'sqlserver_waitstats') and Name =~ 'wait_time_ms'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags[\"database_name'\"]), Instance = tostring(Tags.sql_instance), WaitType = tostring(Tags.wait_type)\r\n| where Computer == '{Computer}' and Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n;\r\ndata\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName, WaitType\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by WaitType\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| where Namespace in~ ('sqlserver_azuredb_waitstats', 'sqlserver_waitstats') and Name =~ 'wait_time_ms'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(iff(Tags[\"database_name'\"] == '', Tags[\"database_name\"], Tags[\"database_name'\"])), Instance = tostring(Tags.sql_instance), WaitType = tostring(Tags.wait_type)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and Instance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}')\r\n;\r\ndata\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName, WaitType\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by WaitType\r\n\r\n",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
