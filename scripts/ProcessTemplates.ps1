@@ -458,16 +458,6 @@ Function CreatePackageContent() {
                 }
             }
 
-    
-            #create a .resjon loc file for translatable strings in the gallery entry (name and description)
-            # $galleryLocFileName = $setting.fileName -replace '.json', '.resjson'
-            # $locGalleryFilePath = "$locGalleryPath\$galleryLocFileName"
-
-            # $locInfo = @{}
-            # $locInfo.name = $categoryInfo.name;
-            # $locInfo.description = $categoryInfo.description
-            # $locInfo | ConvertTo-Json -depth 10 -Compress | Out-File -FilePath $locGalleryFilePath -Force
-
             # add the item to the full index
             $filename = $setting.filename
             $index.($setting.id) = $filename

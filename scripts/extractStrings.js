@@ -15,14 +15,31 @@ const LocKeys = [
   "noDataMessage"
 ];
 
-const Encoding = 'utf8';
-const ResJsonStringFileExtension = '.resjson';
+const GalleryLocKeys = [
+  "name",
+  "label"
+]
 
-const LCLOutputPath = "Workbooks\\.localization";
-const PathToStringFile = "output\\package\\en-us\\Workbooks\\";
+const LocalizableFileTypes = [
+  "workbook",
+  "cohort",
+  "json"
+];
+
+const GalleryFile = "_gallery";
+const IndexFile = "_index";
+
+const CategoryResourcesFile = "categoryResources.json";
+
+const Encoding = 'utf8';
+const ResJsonStringFileExtension = 'resjson';
+
 const PathToLocProjectFile = "..\\src\\LocProject.json";
 
-// FUNCTIONS
+/**
+ * FUNCTIONS 
+ */
+
 function testPath(path) {
   console.log(">>>>> Processing template path: ", path);
   if (fs.existsSync(path)) {
@@ -34,22 +51,25 @@ function testPath(path) {
   }
 }
 
-
 function isValidFileType(filename) {
-  if (filename.startsWith("_gallery") || filename.startsWith("_index")) {
+  console.log("Found file: ", filename);
+  if (filename.startsWith(IndexFile)) { // Don't translate index file
     return false;
+  }
+  if (filename.localeCompare(CategoryResourcesFile) == 0) {
+    return true;
   }
   var a = filename.split(".");
   if (a.length === 1 || (a[0] === "" && a.length === 2)) {
     return false;
   }
   const extension = a.pop();
-  return extension && extension.toLowerCase() === "json";
+  return extension && LocalizableFileTypes.includes(extension.toLowerCase());
 }
 
-function openWorkbook(file) {
+function openFile(file) {
   try {
-    console.log(">>>>> Processing workbook: ", file);
+    console.log(">>>>> Processing workbook or file: ", file);
     const data = fs.readFileSync(file, Encoding);
     return data;
   } catch (err) {
@@ -57,13 +77,18 @@ function openWorkbook(file) {
   }
 }
 
-function getLocalizeableStrings(obj, key, outputMap) {
+function getLocalizeableStrings(obj, key, outputMap, filename) {
   for (var i in obj) {
     if (!obj.hasOwnProperty(i)) {
       continue;
     }
     if (typeof obj[i] == 'object') {
-      getLocalizeableStrings(obj[i], key.concat(i, '.'), outputMap);
+      getLocalizeableStrings(obj[i], key.concat(i, '.'), outputMap, filename);
+    } else if (filename.startsWith(GalleryFile)) {
+      if (GalleryLocKeys.includes(i)) {
+        const jsonKey = key.concat(i);
+        outputMap[jsonKey] = obj[i];
+      }
     } else if (LocKeys.includes(i)) {
       const jsonKey = key.concat(i);
       outputMap[jsonKey] = obj[i];
@@ -83,7 +108,6 @@ function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
   }
 }
 
-
 function findParameterNames(text) {
   const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
   const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
@@ -98,16 +122,16 @@ function findParameterNames(text) {
   return params;
 }
 
+function getResJSONFileName(fileName) {
+  var a = fileName.split(".");
+  const extension = a.pop();
+ return fileName.replace(extension, ResJsonStringFileExtension);
+}
+
 /** Write string file as RESJSON */
-function writeToFileRESJSON(data, fileName, path) {
-  const parts = path.split('\\');
-  var directoryPath = '';
-
-  for (var i = 0; i < parts.length - 1; i++) {
-    directoryPath = directoryPath.concat(parts[i], '\\');
-  }
-
-  const fullpath = directoryPath.concat("strings\\", fileName.replace(".json", ResJsonStringFileExtension));
+function writeToFileRESJSON(data, fileName, outputPath) {
+  const resjsonFileName = getResJSONFileName(fileName);
+  const fullpath = outputPath.concat("\\", resjsonFileName);
 
   const content = JSON.stringify(data, null, "\t");
   if (content.localeCompare("{}") == 0) {
@@ -119,7 +143,7 @@ function writeToFileRESJSON(data, fileName, path) {
     fs.writeFileSync(fullpath, content);
     console.log(">>>>> Wrote to file: ", fullpath);
   } catch (e) {
-    console.error("Cannot write file: ", "fullpath", "ERROR: ", e);
+    console.error("Cannot write to file: ", fullpath , "ERROR: ", e);
   }
 }
 
@@ -143,15 +167,21 @@ function generateLocProjectFile(locItems) {
 }
 
 
-// SCRIPT MAIN
+/**
+ * 
+ * SCRIPT MAIN
+ * 
+ */
 
-if (!process.argv[2]) { // path to the extracted workbooks
-  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize.');
+if (!process.argv[2] || !process.argv[3]) { // path to extract strings from and output path
+  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize and the output path for the extracted strings.');
   return;
 }
 
+// var currentDir = process.cwd();
 // Verify template path
 const templatePath = process.argv[2];
+const outputPath = process.argv[3];
 const exists = testPath(templatePath);
 if (!exists) {
   return;
@@ -161,13 +191,12 @@ console.log("Processing...");
 
 const locItems = [];
 
-// Valid path, start processing the files.
+// Valid args, start processing the files.
 var files = fs.readdirSync(templatePath);
 
 // Create string output dir
-const stringOutputDir = templatePath.concat("\\strings");
-if (!fs.existsSync(stringOutputDir)) {
-  fs.mkdirSync(stringOutputDir);
+if (!fs.existsSync(outputPath)) {
+  fs.mkdirSync(outputPath, { recursive: true });
 }
 
 for (var i in files) {
@@ -178,32 +207,33 @@ for (var i in files) {
     continue;
   }
 
-  const filePath = templatePath + "\\" + fileName;
-  const data = openWorkbook(filePath);
+  var filePath = templatePath + "\\" + fileName;
+  const data = openFile(filePath);
 
   // parse the workbook for strings
   var extracted = {};
   try {
-    getLocalizeableStrings(JSON.parse(data), '', extracted);
+    getLocalizeableStrings(JSON.parse(data), '', extracted, fileName);
   } catch (error) {
     console.log("ERROR: Cannot extract JSON: ", filePath);
     continue;
   }
 
   if (Object.keys(extracted).length > 0) {
-    const outPath = templatePath + "\\strings";
+    const LCLOutputPath = templatePath + "\\strings";
+    const resjsonFileName = getResJSONFileName(fileName);
 
     // Add LocProject entry
     locItems.push({
-      "SourceFile": PathToStringFile.concat(fileName),
+      "SourceFile": outputPath.concat(resjsonFileName),
       "CopyOption": "LangIDOnPath",
       "OutputPath": LCLOutputPath
     });
 
     // Write extracted strings to file
-    writeToFileRESJSON(extracted, fileName, outPath);
+    writeToFileRESJSON(extracted, fileName, outputPath);
   } else {
-    console.log(">>>>> No strings found for template: ", path);
+    console.log(">>>>> No strings found for template: ", filePath);
   }
 };
 
@@ -212,4 +242,3 @@ console.log("Generating LocProject.json file...");
 generateLocProjectFile(locItems);
 
 console.log("String extraction completed.");
-
