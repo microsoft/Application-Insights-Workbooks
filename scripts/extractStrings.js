@@ -66,7 +66,7 @@ function generateRESJSONOutputPath(templatePath) {
 /** Validates file type. Expected to be either workbook/cohort file or settings/categoryjson file */
 function isValidFileType(filename) {
   console.log("Found file: ", filename);
-  if (filename.localeCompare(CategoryResourcesFile) == 0 || filename.localeCompare(SettingsFile) == 0) {
+  if (filename.localeCompare(CategoryResourcesFile) === 0 || filename.localeCompare(SettingsFile) === 0) {
     return true;
   }
   var a = filename.split(".");
@@ -83,7 +83,7 @@ function openFile(file) {
     const data = fs.readFileSync(file, Encoding);
     return data;
   } catch (err) {
-    console.error(err);
+    console.error("Cannot open file: ", file, "ERROR: ", err);
   }
 }
 
@@ -92,9 +92,9 @@ function getLocalizeableStrings(obj, key, outputMap, filename) {
     if (!obj.hasOwnProperty(i)) {
       continue;
     }
-    if (typeof obj[i] == 'object') {
+    if (typeof obj[i] === 'object') {
       getLocalizeableStrings(obj[i], key.concat(i, '.'), outputMap, filename);
-    } else if (filename.localeCompare(SettingsFile) == 0) {
+    } else if (filename.localeCompare(SettingsFile) === 0) {
       // Settings file has different loc keys than template files
       if (SettingsFileLocKeys.includes(i)) {
         const jsonKey = key.concat(i);
@@ -128,7 +128,7 @@ function findParameterNames(text) {
   var params = null;
   try {
     params = text.match(_parameterRegex);
-  } catch (error) {
+  } catch (e) {
     console.error("Cannot extract parameter. ", "ERROR: ", e);
   }
 
@@ -147,7 +147,7 @@ function writeToFileRESJSON(data, fileName, outputPath) {
   const fullpath = outputPath.concat("\\", resjsonFileName);
 
   const content = JSON.stringify(data, null, "\t");
-  if (content.localeCompare("{}") == 0) {
+  if (content.localeCompare("{}") === 0) {
     console.log("No strings found for: ", fileName);
     return;
   }
@@ -242,7 +242,7 @@ for (var i in files) {
   try {
     getLocalizeableStrings(JSON.parse(data), '', extracted, fileName);
   } catch (error) {
-    console.log("ERROR: Cannot extract JSON: ", filePath);
+    console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
     continue;
   }
 
