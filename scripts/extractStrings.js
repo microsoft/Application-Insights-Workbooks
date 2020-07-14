@@ -30,6 +30,11 @@ const SettingsFile = "settings.json";
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = 'resjson';
 
+const WorkbookTemplateFolder = "\\Workbooks\\";
+const CohortsTemplateFolder = "\\Cohorts\\";
+
+const RESJSONOutputFolder = "\\output\\loc\\";
+
 const LocProjectFileName = "LocProject.json";
 const StringOutputPath = "\\strings";
 
@@ -51,10 +56,10 @@ function testPath(path) {
 
 /** Generates a output path for the template path by replacing template directory with output directory */
 function generateRESJSONOutputPath(templatePath) {
-  if (templatePath.includes("\\Cohorts\\")) {
-    return templatePath.replace("\\Cohorts\\", "\\output\\loc\\");
+  if (templatePath.includes(CohortsTemplateFolder)) {
+    return templatePath.replace(CohortsTemplateFolder, RESJSONOutputFolder);
   } else {
-    return templatePath.replace("\\Workbooks\\", "\\output\\loc\\");
+    return templatePath.replace(WorkbookTemplateFolder, RESJSONOutputFolder);
   }
 }
 
@@ -110,7 +115,7 @@ function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
   const params = findParameterNames(stringToLoc);
   if (params) {
     const commentKey = "_" + jsonKey + ".comment";
-    const commentEntry = "{Locked=" + params.join(",") + "}";
+    const commentEntry = "{Locked=" + params.join(",") + "}"; // Add 'locked' comment to keep parameters from being translated
     outputMap[commentKey] = commentEntry;
   }
 }
@@ -157,10 +162,10 @@ function writeToFileRESJSON(data, fileName, outputPath) {
 
 function getLocProjectFilePath(templatePath) {
   var root = "";
-  if (templatePath.includes("\\Cohorts\\")) {
-    root = templatePath.slice(0,templatePath.indexOf("\\Cohorts\\"));
+  if (templatePath.includes(CohortsTemplateFolder)) {
+    root = templatePath.slice(0,templatePath.indexOf(CohortsTemplateFolder));
   } else {
-    root = templatePath.slice(0,templatePath.indexOf("\\Workbooks\\"));
+    root = templatePath.slice(0,templatePath.indexOf(WorkbookTemplateFolder));
   }
   return root.concat("\\src");
 }
