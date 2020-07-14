@@ -67,3 +67,8 @@ The author has an option to set the tile width in the tile settings
   ![image displaying fixed width tiles](../Images/Tiles-auto.png)
 * `full size` - Each tile will always be the full width of the tiles view, one tile per line.
   ![image displaying fixed width tiles](../Images/Tiles-full.png)
+
+
+
+
+*Tiles also support Composite bar renderer. Refer [Composite Bar](./CompositeBar.md) for details*
