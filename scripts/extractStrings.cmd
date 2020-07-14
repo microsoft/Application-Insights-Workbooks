@@ -1,16 +1,11 @@
 cd /D "%~dp0"
-@echo off
-
-set REL_PATH=..\output\package\en-us\Workbooks
+@echo off 
+rem The following path will be hardcoded to test a single workbook file until the workbook is verified by the loc team. Eventually this will be the workbooks/cohort folder
+set REL_PATH= "..\Workbooks\Storage\Overview"
 set ABS_PATH=
 
-rem // Save current directory and change to target directory
 pushd %REL_PATH%
-
-rem // Save value of CD variable (current directory)
 set ABS_PATH=%CD%
-
-rem // Restore original directory
 popd
 
 node extractStrings.js %ABS_PATH%

@@ -14,32 +14,30 @@ const LocKeys = [
   "loadButtonText",
   "noDataMessage"
 ];
-
-const GalleryLocKeys = [
-  "name",
-  "label"
-]
-
 const LocalizableFileTypes = [
   "workbook",
-  "cohort",
-  "json"
+  "cohort"
 ];
 
-const GalleryFile = "_gallery";
-const IndexFile = "_index";
+const SettingsFileLocKeys = [
+  "name",
+  "description"
+]
 
 const CategoryResourcesFile = "categoryResources.json";
+const SettingsFile = "settings.json";
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = 'resjson';
 
-const PathToLocProjectFile = "..\\src\\LocProject.json";
+const LocProjectFileName = "LocProject.json";
+const StringOutputPath = "\\strings";
 
 /**
  * FUNCTIONS 
  */
 
+/** Enure given path is valid */
 function testPath(path) {
   console.log(">>>>> Processing template path: ", path);
   if (fs.existsSync(path)) {
@@ -51,12 +49,19 @@ function testPath(path) {
   }
 }
 
+/** Generates a output path for the template path by replacing template directory with output directory */
+function generateRESJSONOutputPath(templatePath) {
+  if (templatePath.includes("\\Cohorts\\")) {
+    return templatePath.replace("\\Cohorts\\", "\\output\\loc\\");
+  } else {
+    return templatePath.replace("\\Workbooks\\", "\\output\\loc\\");
+  }
+}
+
+/** Validates file type. Expected to be either workbook/cohort file or settings/categoryjson file */
 function isValidFileType(filename) {
   console.log("Found file: ", filename);
-  if (filename.startsWith(IndexFile)) { // Don't translate index file
-    return false;
-  }
-  if (filename.localeCompare(CategoryResourcesFile) == 0) {
+  if (filename.localeCompare(CategoryResourcesFile) == 0 || filename.localeCompare(SettingsFile) == 0) {
     return true;
   }
   var a = filename.split(".");
@@ -84,8 +89,9 @@ function getLocalizeableStrings(obj, key, outputMap, filename) {
     }
     if (typeof obj[i] == 'object') {
       getLocalizeableStrings(obj[i], key.concat(i, '.'), outputMap, filename);
-    } else if (filename.startsWith(GalleryFile)) {
-      if (GalleryLocKeys.includes(i)) {
+    } else if (filename.localeCompare(SettingsFile) == 0) {
+      // Settings file has different loc keys than template files
+      if (SettingsFileLocKeys.includes(i)) {
         const jsonKey = key.concat(i);
         outputMap[jsonKey] = obj[i];
       }
@@ -99,6 +105,7 @@ function getLocalizeableStrings(obj, key, outputMap, filename) {
   }
 }
 
+/** Needed as entry in resjson file to keep parameter names from being translated */
 function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
   const params = findParameterNames(stringToLoc);
   if (params) {
@@ -108,6 +115,7 @@ function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
   }
 }
 
+/** Copied from InsightsPortal to find parameters in strings. TODO: need to handle column name references */
 function findParameterNames(text) {
   const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
   const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
@@ -125,7 +133,7 @@ function findParameterNames(text) {
 function getResJSONFileName(fileName) {
   var a = fileName.split(".");
   const extension = a.pop();
- return fileName.replace(extension, ResJsonStringFileExtension);
+  return fileName.replace(extension, ResJsonStringFileExtension);
 }
 
 /** Write string file as RESJSON */
@@ -143,12 +151,22 @@ function writeToFileRESJSON(data, fileName, outputPath) {
     fs.writeFileSync(fullpath, content);
     console.log(">>>>> Wrote to file: ", fullpath);
   } catch (e) {
-    console.error("Cannot write to file: ", fullpath , "ERROR: ", e);
+    console.error("Cannot write to file: ", fullpath, "ERROR: ", e);
   }
 }
 
+function getLocProjectFilePath(templatePath) {
+  var root = "";
+  if (templatePath.includes("\\Cohorts\\")) {
+    root = templatePath.slice(0,templatePath.indexOf("\\Cohorts\\"));
+  } else {
+    root = templatePath.slice(0,templatePath.indexOf("\\Workbooks\\"));
+  }
+  return root.concat("\\src");
+}
+
 /** Write a LocProject.json file needed to point the loc tool to the resjson files + where to output LCL files  */
-function generateLocProjectFile(locItems) {
+function generateLocProjectFile(locItems, templatePath) {
   const locProjectJson = {
     "Projects": [
       {
@@ -159,13 +177,16 @@ function generateLocProjectFile(locItems) {
   };
   const content = JSON.stringify(locProjectJson, null, "\t");
   try {
-    fs.writeFileSync(PathToLocProjectFile, content);
-    console.log(">>>>> Generated LocProject.json file: ", PathToLocProjectFile);
+    const pathToLocProjectFile = getLocProjectFilePath(templatePath);
+    if (!fs.existsSync(pathToLocProjectFile)) {
+      fs.mkdirSync(pathToLocProjectFile, { recursive: true });
+    }
+    fs.writeFileSync(pathToLocProjectFile.concat("\\", LocProjectFileName), content);
+    console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile);
   } catch (e) {
-    console.error("Cannot write LocProject.json file: ", PathToLocProjectFile, "ERROR: ", e);
+    console.error("Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
   }
 }
-
 
 /**
  * 
@@ -173,30 +194,31 @@ function generateLocProjectFile(locItems) {
  * 
  */
 
-if (!process.argv[2] || !process.argv[3]) { // path to extract strings from and output path
-  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook to localize and the output path for the extracted strings.');
+if (!process.argv[2]) { // path to extract strings from 
+  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook folder.');
   return;
 }
 
-// var currentDir = process.cwd();
 // Verify template path
 const templatePath = process.argv[2];
-const outputPath = process.argv[3];
 const exists = testPath(templatePath);
 if (!exists) {
   return;
 }
 
+// Valid args, start processing the files.
 console.log("Processing...");
+
+// This is where we will output the resjson artifact
+const RESJSONOutputPath = generateRESJSONOutputPath(templatePath);
 
 const locItems = [];
 
-// Valid args, start processing the files.
-var files = fs.readdirSync(templatePath);
+const files = fs.readdirSync(templatePath);
 
 // Create string output dir
-if (!fs.existsSync(outputPath)) {
-  fs.mkdirSync(outputPath, { recursive: true });
+if (!fs.existsSync(RESJSONOutputPath)) {
+  fs.mkdirSync(RESJSONOutputPath, { recursive: true });
 }
 
 for (var i in files) {
@@ -207,7 +229,7 @@ for (var i in files) {
     continue;
   }
 
-  var filePath = templatePath + "\\" + fileName;
+  const filePath = templatePath.concat("\\", fileName);
   const data = openFile(filePath);
 
   // parse the workbook for strings
@@ -220,18 +242,18 @@ for (var i in files) {
   }
 
   if (Object.keys(extracted).length > 0) {
-    const LCLOutputPath = templatePath + "\\strings";
+    const LCLOutputPath = templatePath.concat(StringOutputPath);
     const resjsonFileName = getResJSONFileName(fileName);
 
     // Add LocProject entry
     locItems.push({
-      "SourceFile": outputPath.concat(resjsonFileName),
+      "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
       "CopyOption": "LangIDOnPath",
       "OutputPath": LCLOutputPath
     });
 
     // Write extracted strings to file
-    writeToFileRESJSON(extracted, fileName, outputPath);
+    writeToFileRESJSON(extracted, fileName, RESJSONOutputPath);
   } else {
     console.log(">>>>> No strings found for template: ", filePath);
   }
@@ -239,6 +261,6 @@ for (var i in files) {
 
 // Generate and push locProject file
 console.log("Generating LocProject.json file...");
-generateLocProjectFile(locItems);
+generateLocProjectFile(locItems, templatePath);
 
 console.log("String extraction completed.");
