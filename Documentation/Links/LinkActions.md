@@ -133,7 +133,7 @@ If the selected link type is `Workbook (Template)` the author must specify addit
 
 For each of the above settings, the author must pick where the value in the linked workbook will come from. See [Link Sources](#Link-sources).
 
-When the workbook link is opened, the new workbook view will be passed all of the values configured from the settings above, along with the values of the parameters set in the workbook to that point. 
+When the workbook link is opened, the new workbook view will be passed all of the values configured from the settings above. 
 
 ![Image showing workbook link settings](../Images/WorkbookLinkSettings.png)
 
