@@ -193,6 +193,20 @@ function generateLocProjectFile(locItems, templatePath) {
   }
 }
 
+// function getFiles (dir, files){
+//   files = files|| [];
+//   var dirFiles = fs.readdirSync(dir);
+//   for (var i in dirFiles){
+//       var name = dir + '/' + dirFiles[i];
+//       if (fs.statSync(name).isDirectory()){
+//           getFiles(name, files);
+//       } else {
+//           files.push(name);
+//       }
+//   }
+//   return files;
+// }
+
 /**
  * 
  * SCRIPT MAIN
@@ -200,7 +214,7 @@ function generateLocProjectFile(locItems, templatePath) {
  */
 
 if (!process.argv[2]) { // path to extract strings from 
-  console.log('ERROR: Workbook path not provided. Please provide the path to the workbook folder.');
+  console.error('ERROR: Workbook path not provided. Please provide the path to the workbook folder.');
   return;
 }
 
@@ -210,6 +224,14 @@ const exists = testPath(templatePath);
 if (!exists) {
   return;
 }
+
+// const allFiles = getFiles(templatePath, []);
+// console.log(allFiles);
+// for (var j in allFiles) {
+//   console.log(allFiles[j])
+// }
+
+// return;
 
 // Valid args, start processing the files.
 console.log("Processing...");
