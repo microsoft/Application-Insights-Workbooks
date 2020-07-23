@@ -1,19 +1,17 @@
 var fs = require('fs'), xml2js = require('xml2js');
 // Usage: https://github.com/Leonidas-from-XIV/node-xml2js
-const Encoding = 'utf8';
 
 function readFile(file) {
-    return fs.readFileSync(file, Encoding);
+    return fs.readFileSync(file, 'utf8');
 }
 
 function parseXMLFile(fileData) {
     xml2js.parseStringPromise(fileData /*, options */).then(function (result) {
         parseResult(result);
-    })
-        .catch(function (err) {
-            // Failed
-            console.error(err);
-        });
+    }).catch(function (err) {
+        // Failed
+        console.error(err);
+    });
 }
 
 function parseResult(result) {
@@ -30,9 +28,9 @@ function parseResult(result) {
         console.log(entry);
         parseStringEntry(entry, locStringData);
     });
-    
+
     console.log("Done");
-    const translatedJSON =  replaceText(locStringData);
+    const translatedJSON = replaceText(locStringData);
     writeResultToFile(translatedJSON, "fr");
 
 }
@@ -44,16 +42,16 @@ function writeResultToFile(data, lang) {
     const fullpath = workbookdir.concat("\\", workbookname);
     const content = JSON.stringify(data, null, "\t");
     try {
-    if (!fs.existsSync(workbookdir)) {
-        fs.mkdirSync(workbookdir, { recursive: true });
-    }
-      fs.writeFileSync(fullpath, content);
-      console.log(">>>>> Wrote to file: ", fullpath);
+        if (!fs.existsSync(workbookdir)) {
+            fs.mkdirSync(workbookdir, { recursive: true });
+        }
+        fs.writeFileSync(fullpath, content);
+        console.log(">>>>> Wrote to file: ", fullpath);
     } catch (e) {
-      console.error("Cannot write to file: ", fullpath, "ERROR: ", e);
+        console.error("Cannot write to file: ", fullpath, "ERROR: ", e);
     }
-  }
-  
+}
+
 
 function parseStringEntry(entry, locStringData) {
     var itemId = entry.$.ItemId;
@@ -65,8 +63,8 @@ function parseStringEntry(entry, locStringData) {
     console.log(itemId, originalEngText, translatedText);
 
     locStringData[itemId] = {};
-    locStringData[itemId]["eng"] = originalEngText; // TODO: better name?
-    locStringData[itemId]["val"] = translatedText;
+    locStringData[itemId]["en-us"] = originalEngText;
+    locStringData[itemId]["value"] = translatedText;
 }
 
 function replaceText(stringMap) {
@@ -78,12 +76,11 @@ function replaceText(stringMap) {
     keys.forEach(key => {
         const keyArray = convertStringKeyToPath(key);
         // value in the template
+        const templateVal = getValFromPath(keyArray, parsed); // value in the english template
+        const translatedVal = stringMap[key]["value"]; // translated value in the lcl file
+        const engVal = stringMap[key]["en-us"]; // original english value in the lcl file
 
-        const templateVal = getValFromPath(keyArray, parsed);
-        const translatedVal = stringMap[key]["val"];
-        const engVal = stringMap[key]["eng"];
-
-        if (templateVal === engVal) {
+        if (templateVal.localeCompare(engVal)) { // if the text from the lcl file and template file match, we can go ahead and replace it
             // change the template value
             var source = {};
             assignValueToPath(source, keyArray, translatedVal);
@@ -92,7 +89,6 @@ function replaceText(stringMap) {
     });
     return parsed;
 };
-
 
 function convertStringKeyToPath(key) {
     const vals = key.split(".");

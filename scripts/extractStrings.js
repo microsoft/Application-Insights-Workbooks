@@ -1,4 +1,4 @@
-const fs = require('fs')
+const fs = require('fs'), path = require('path');
 
 // Keys to localize. Add new keys here.
 const LocKeys = [
@@ -54,18 +54,31 @@ function testPath(path) {
   }
 }
 
+function flatten(lists) {
+  return lists.reduce((a, b) => a.concat(b), []);
+}
+
+function getDirectories(srcpath) {
+  return fs.readdirSync(srcpath)
+    .map(file => path.join(srcpath, file))
+    .filter(path => fs.statSync(path).isDirectory());
+}
+
+function getDirectoriesRecursive(srcpath) {
+  return [srcpath, ...flatten(getDirectories(srcpath).map(getDirectoriesRecursive))];
+}
+
 /** Generates a output path for the template path by replacing template directory with output directory */
-function generateRESJSONOutputPath(templatePath) {
-  if (templatePath.includes(CohortsTemplateFolder)) {
-    return templatePath.replace(CohortsTemplateFolder, RESJSONOutputFolder);
+function generateRESJSONOutputPath(dir) {
+  if (dir.includes(CohortsTemplateFolder)) {
+    return dir.replace(CohortsTemplateFolder, RESJSONOutputFolder);
   } else {
-    return templatePath.replace(WorkbookTemplateFolder, RESJSONOutputFolder);
+    return dir.replace(WorkbookTemplateFolder, RESJSONOutputFolder);
   }
 }
 
 /** Validates file type. Expected to be either workbook/cohort file or settings/categoryjson file */
 function isValidFileType(filename) {
-  console.log("Found file: ", filename);
   if (filename.localeCompare(CategoryResourcesFile) === 0 || filename.localeCompare(SettingsFile) === 0) {
     return true;
   }
@@ -113,9 +126,11 @@ function getLocalizeableStrings(obj, key, outputMap, filename) {
 /** Needed as entry in resjson file to keep parameter names from being translated */
 function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
   const params = findParameterNames(stringToLoc);
-  if (params) {
+  const columns = findColumnNameReferences(stringToLoc);
+
+  if (params || columns) {
     const commentKey = "_" + jsonKey + ".comment";
-    const commentEntry = "{Locked=" + params.join(",") + "}"; // Add 'locked' comment to keep parameters from being translated
+    const commentEntry = "{Locked=" + (params || []).join(",") + (params && columns ? "," : "") + (columns || []).join(",") + "}";
     outputMap[commentKey] = commentEntry;
   }
 }
@@ -133,6 +148,18 @@ function findParameterNames(text) {
   }
 
   return params;
+}
+
+function findColumnNameReferences(text) {
+  const ValidColumnNameRegex = "\[\".+\"\]";
+  var _columnRegex = new RegExp(ValidColumnNameRegex, "g");
+  var columnRefs = null;
+  try {
+    columnRefs = text.match(_columnRegex);
+  } catch (e) {
+    console.error("Cannot extract parameter. ", "ERROR: ", e);
+  }
+  return columnRefs;
 }
 
 function getResJSONFileName(fileName) {
@@ -160,52 +187,42 @@ function writeToFileRESJSON(data, fileName, outputPath) {
   }
 }
 
-function getLocProjectFilePath(templatePath) {
+function getLocProjectFilePath(dir) {
   var root = "";
-  if (templatePath.includes(CohortsTemplateFolder)) {
-    root = templatePath.slice(0,templatePath.indexOf(CohortsTemplateFolder));
+  if (dir.includes(CohortsTemplateFolder)) {
+    root = dir.slice(0, dir.indexOf(CohortsTemplateFolder));
   } else {
-    root = templatePath.slice(0,templatePath.indexOf(WorkbookTemplateFolder));
+    root = dir.slice(0, dir.indexOf(WorkbookTemplateFolder));
   }
   return root.concat("\\src");
 }
 
+function addLocProjectEntry(locItems, projectOutputs) {
+  projectOutputs.push(
+    {
+      "LanguageSet": "Azure_Languages",
+      "LocItems": locItems
+    }
+  );
+}
+
 /** Write a LocProject.json file needed to point the loc tool to the resjson files + where to output LCL files  */
-function generateLocProjectFile(locItems, templatePath) {
+function generateLocProjectFile(dir, projectOutputs) {
   const locProjectJson = {
-    "Projects": [
-      {
-        "LanguageSet": "Azure_Languages",
-        "LocItems": locItems
-      }
-    ]
+    "Projects": projectOutputs
   };
   const content = JSON.stringify(locProjectJson, null, "\t");
   try {
-    const pathToLocProjectFile = getLocProjectFilePath(templatePath);
+    const pathToLocProjectFile = getLocProjectFilePath(dir);
     if (!fs.existsSync(pathToLocProjectFile)) {
       fs.mkdirSync(pathToLocProjectFile, { recursive: true });
     }
     fs.writeFileSync(pathToLocProjectFile.concat("\\", LocProjectFileName), content);
-    console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile);
+    console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile, "\\", LocProjectFileName);
   } catch (e) {
     console.error("Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
   }
 }
-
-// function getFiles (dir, files){
-//   files = files|| [];
-//   var dirFiles = fs.readdirSync(dir);
-//   for (var i in dirFiles){
-//       var name = dir + '/' + dirFiles[i];
-//       if (fs.statSync(name).isDirectory()){
-//           getFiles(name, files);
-//       } else {
-//           files.push(name);
-//       }
-//   }
-//   return files;
-// }
 
 /**
  * 
@@ -218,76 +235,82 @@ if (!process.argv[2]) { // path to extract strings from
   return;
 }
 
-// Verify template path
-const templatePath = process.argv[2];
-const exists = testPath(templatePath);
+// Verify directory path
+// TODO: need to include cohorts as well
+const directoryPath = process.argv[2];
+const exists = testPath(directoryPath);
 if (!exists) {
   return;
 }
-
-// const allFiles = getFiles(templatePath, []);
-// console.log(allFiles);
-// for (var j in allFiles) {
-//   console.log(allFiles[j])
-// }
-
-// return;
-
 // Valid args, start processing the files.
 console.log("Processing...");
 
-// This is where we will output the resjson artifact
-const RESJSONOutputPath = generateRESJSONOutputPath(templatePath);
+const directories = getDirectoriesRecursive(directoryPath, []);
+var locProjectOutput = [];
 
-const locItems = [];
+for (var d in directories) {
+  const dir = directories[d];
+  const files = fs.readdirSync(dir);
+  if (!files || files.length === 0) {
+    // No files in directory, continue
+    continue;
+  }
 
-const files = fs.readdirSync(templatePath);
+  // This is where we will output the resjson artifact
+  const RESJSONOutputPath = generateRESJSONOutputPath(dir);
+  const locItems = [];
 
-// Create string output dir
-if (!fs.existsSync(RESJSONOutputPath)) {
-  fs.mkdirSync(RESJSONOutputPath, { recursive: true });
+  // Create string output dir
+  if (!fs.existsSync(RESJSONOutputPath)) {
+    fs.mkdirSync(RESJSONOutputPath, { recursive: true });
+  }
+
+
+  for (var i in files) {
+    const fileName = files[i];
+    // Get the contents of the workbook
+    const isValid = isValidFileType(fileName);
+    if (!isValid) {
+      continue;
+    }
+
+    const filePath = dir.concat("\\", fileName);
+    const data = openFile(filePath);
+
+    // parse the workbook for strings
+    var extracted = {};
+    try {
+      getLocalizeableStrings(JSON.parse(data), '', extracted, fileName);
+    } catch (error) {
+      console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
+      continue;
+    }
+
+    if (Object.keys(extracted).length > 0) {
+      const LCLOutputPath = dir.concat(StringOutputPath);
+      const resjsonFileName = getResJSONFileName(fileName);
+
+      // Add LocProject entry
+      locItems.push({
+        "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
+        "CopyOption": "LangIDOnPath",
+        "OutputPath": LCLOutputPath
+      });
+
+      // Write extracted strings to file
+      writeToFileRESJSON(extracted, fileName, RESJSONOutputPath);
+    } else {
+      console.log(">>>>> No strings found for template: ", filePath);
+    }
+  };
+  // Add an entry to locProject file
+  addLocProjectEntry(locItems, locProjectOutput);
 }
 
-for (var i in files) {
-  const fileName = files[i];
-  // Get the contents of the workbook
-  const isValid = isValidFileType(fileName);
-  if (!isValid) {
-    continue;
-  }
-
-  const filePath = templatePath.concat("\\", fileName);
-  const data = openFile(filePath);
-
-  // parse the workbook for strings
-  var extracted = {};
-  try {
-    getLocalizeableStrings(JSON.parse(data), '', extracted, fileName);
-  } catch (error) {
-    console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
-    continue;
-  }
-
-  if (Object.keys(extracted).length > 0) {
-    const LCLOutputPath = templatePath.concat(StringOutputPath);
-    const resjsonFileName = getResJSONFileName(fileName);
-
-    // Add LocProject entry
-    locItems.push({
-      "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
-      "CopyOption": "LangIDOnPath",
-      "OutputPath": LCLOutputPath
-    });
-
-    // Write extracted strings to file
-    writeToFileRESJSON(extracted, fileName, RESJSONOutputPath);
-  } else {
-    console.log(">>>>> No strings found for template: ", filePath);
-  }
-};
-
 // Generate and push locProject file
-console.log("Generating LocProject.json file...");
-generateLocProjectFile(locItems, templatePath);
+console.log(">>>>> Generating LocProject.json file...");
+if (locProjectOutput.length > 0) {
+  generateLocProjectFile(directoryPath.concat("\\"), locProjectOutput);
+}
 
 console.log("String extraction completed.");
