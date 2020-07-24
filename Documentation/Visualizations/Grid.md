@@ -61,7 +61,7 @@ Here is the same grid styled as bars.
 Here is an example that styles the _Request_ column as a bar:
 ![Image showing a log based grid with columns styled as bars](../Images/LogChart-Grid-ColumnSettingsStart.png)
 
-## Column Renderers
+### Column Renderers
 
 | Column Renderer | Explanation | Additional Options |
 |:------------- |:-------------|:-------------|
