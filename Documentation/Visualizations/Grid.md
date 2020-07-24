@@ -61,7 +61,7 @@ Here is the same grid styled as bars.
 Here is an example that styles the _Request_ column as a bar:
 ![Image showing a log based grid with columns styled as bars](../Images/LogChart-Grid-ColumnSettingsStart.png)
 
-### Column Renderers
+## Column Renderers
 
 | Column Renderer | Explanation | Additional Options |
 |:------------- |:-------------|:-------------|
@@ -116,6 +116,21 @@ Date formatting options include
 | `Style` | The format to render a date as short, long, full formats, or a time as short or long time formats. |
 | `Show time as` | Allows the author to decide between showing the time in local time (default), or as UTC. depending on the date format style selected, the UTC/time zone information may not be displayed. |
 
+## Custom Column Width Setting
+![Image of column settings with the custom column width field indicated in a red box](../Images/CustomColumnWidthSetting.png)
+
+The author can customize the width of any column in the grid using the _Custom Column Width_ field in _Column Settings_. 
+* If the field is left blank, then the width will be automatically determined based on the number of characters in the column and the number of visible columns. Default unit is "ch" (characters)
+* Clicking the blue _(Current Width)_ button in the label will fill the text field with the selected column's current width. 
+* If a value is present in the custom width field with no unit of measurement, the default will be used. The units of measurement available are: 
+    * ch - characters (Default)
+    * px - pixels
+    * fr - fractional unit
+    * % - percentage
+* Input validation - if validation fails, a red guidance message will popup below the field, but user can still apply the width. If a value is present in the input, it will be parsed out and if no valid unit of measure is found, then the default will be used.   
+* There is no minimum/maximum width as this is left up to the author's discretion.
+* The custom column width field is disabled for hidden columns.
+* In every grid, there is an invisible column on the far right with a width setting of "1fr". 
 
 ## Examples
 ### Spark lines and Bar Underneath
