@@ -1,6 +1,7 @@
 $mainPath = Split-Path (split-path -parent $MyInvocation.MyCommand.Path) -Parent
 $localizeRoot = Convert-Path "$mainPath\scripts"
 $outputPath = "$mainPath\output"
+$scriptStart = Get-Date
 
 $reportTypes = @('Cohorts', 'Workbooks')
 $templateExtensions = @('cohort', 'workbook')
@@ -455,7 +456,7 @@ Function CreatePackageContent() {
             #Write-Host "copying $filename to $destination"
 
             # not generally possible, but could happen if people created folder a, filename b-c and folder a-b, filename c, as both would end up "a-b-c"
-            if (Test-Path $destination) {
+            if (Test-Path $destination -NewerThan $scriptStart) {
                  Write-Host "ERROR: duplicate file name $destination"
             }
             Copy-Item -Path $template.FullName -Destination $destination -Force
