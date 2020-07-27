@@ -258,12 +258,13 @@ If you are already running something like Apache or IIS locally, you don't need 
 ### setting up a storage account to deploy your package content
 1. Create azure storage account
 2. In that storage account create blob container, like "azure_monitor_workbook_templates"
-3. In that storage account, [enable CORS rules](https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) so your machine will be able to read frmo that storage account
-4. Upload contents of `outputs\package` directory to the blob container (so you now have a path like `azure_monitor_workbook_templates/package` in the storage account)
-5. Get the url to that folder.  it will be something like `https://[name of storage account].blob.core.windows.net/azure_monitor_workbook_templates/package`
-6. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
+3. Ensure that the access level for the container is set to `Blob (anonymouse read access for blobs only)` by clicking on the `Change access level` toolbar button.
+4. In that storage account, [enable CORS rules](https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) so your machine will be able to read from that storage account
+5. Upload contents of `outputs\package` directory to the blob container (so you now have a path like `azure_monitor_workbook_templates/package` in the storage account)
+6. Get the url to that folder.  it will be something like `https://[name of storage account].blob.core.windows.net/azure_monitor_workbook_templates/package`
+7. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
    - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
-7. As you make changes to your templates, rebuild the package and re-upload changed content.
+8. As you make changes to your templates, rebuild the package and re-upload changed content.
 
 
 # How to publish your changes
