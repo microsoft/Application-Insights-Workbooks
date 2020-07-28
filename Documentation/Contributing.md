@@ -329,7 +329,7 @@ Be mindful to reuse the `Resource` and `TimeRange` parameters throughout the ite
 
 ![AtResourceTestAddMetric](Images/AtResourceTestAddMetric.png)
 
-For other working examples of At Resource templates, see [Storage Overview](../Workbooks/Individual%20Storage/Overview), [Azure Cache for Redis](../Workbooks/Resource%20Insights/Redis%20Cache), [Azure Data Explorer Cluster](../Workbooks/ADXCluster/AtResource), and [Keyvault](../Workbooks/KeyVault/Overview).
+For other working examples of At Resource templates, see [Storage Overview](../Workbooks/Individual%20Storage/Overview), [Azure Cache for Redis](../Workbooks/Resource%20Insights/RedisCache), [Azure Data Explorer Cluster](../Workbooks/ADXCluster/AtResource), and [Keyvault](../Workbooks/KeyVault/Overview).
 
 
 # How to publish your changes
