@@ -266,6 +266,71 @@ If you are already running something like Apache or IIS locally, you don't need 
    - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
 8. As you make changes to your templates, rebuild the package and re-upload changed content.
 
+## How to create an 'at resource' workbook template
+An 'at resource' workbook template is a workbook that is opened within the context of a specific resource. This resource id is automatically detected and used to populate a resource parameter when the workbook is opened. The resource parameter then powers the metrics and visualizations for the whole workbook.
+
+The [At resource template starter](../Workbooks/Azure%20Monitor%20-%20Getting%20Started/At%20Resource%20Starter) has two important parameters for you to get started.
+
+1. The `Resource` parameter. Below are the properties of this parameter:
+    - `Parameter Name`: Resource
+    - `Display Name`: This is the label of your resource. ie. Storage Account, Azure Cosmos DB, etc.
+    - `Parameter Type`: Resource Picker
+    - `Required`: checked
+    - `Hide parameter in reading mode`: checked
+    - `Get data from`: Workbook Resources
+2. The `TimeRange` parameter. Below are the properties of this parameter:
+    - `Parameter Name`: TimeRange
+    - `Display Name`: Time Range
+    - `Parameter type`: Time range picker
+    - `Required`: checked
+    - Set the TimeRange parameter to a default value like 'Last 4 hours'.
+
+Create a new folder with a `*.workbook` file with the contents of [At Resource Starter.workbook](../Workbooks/Azure%20Monitor%20-%20Getting%20Started/At%20Resource%20Starter/At%20Resource%Starter.workbook). For the `settings.json` file, ensure the galleries array has an object that is a resource type for your resource.
+
+For example, if you wanted create an At Resource workbook for 'microsoft.operationalinsights/workspaces'. You would create the .workbook file in the 'Workspace' directory (this directory will differ depending on your team). Also create a `categoryResources.json` folder at the same level as your folder if it doesn't already exist.
+```
+Root
+ |
+ |- Workbooks
+       |- ...
+       |- Workspace
+             |- Agent Health
+             |- AtResourceTest
+                    |- AtResourceTest.workbook
+                    |- settings.json
+             |- Workspace Usage
+             |- categoryResources.json
+```
+And the `settings.json` would look something like this.
+```
+{
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
+    "name":"At Resource Starter",
+    "description":"Use this to start your 'At Resource' workbook template",
+    "author": "Microsoft",
+    "galleries": [{ "type": "workbook", "resourceType": "microsoft.operationalinsights/workspaces", "order": 100 }]
+}
+```
+Note that the "resourceType" field determines where the gallery containing the workbook templates should be accessed from. In this example, this gallery is accessed from the Log analytics Workspace under the 'Workbook' table of contents menu item. 
+
+![WorkspaceWithWorkbooksMenuItem](Images/WorkspaceWithWorkbooksMenuItem.png)
+
+> If your resource overview does not have a 'Workbooks' menu item, create a github issue and we will work with you to set that up.
+
+After creating the workbook, follow the steps to [setting up a storage account to deploy your package content](#setting-up-a-storage-account-to-deploy) to deploy the gallery and view the sample resource workbook template.
+
+![AtResourceTestGalleryView](Images/AtResourceTestGalleryView.png)
+
+Clicking into the template itself, we should see that the resource parameter is automatically populated.
+
+![AtResourceTestWorkbookView](Images/AtResourceTestWorkbookView.png)
+
+Be mindful to reuse the `Resource` and `TimeRange` parameters throughout the items in the workbook, such as a metrics item. This will avoid saving resourceIds in the workbook content, as resourceIds cannot be included in a published workbook template.
+
+![AtResourceTestAddMetric](Images/AtResourceTestAddMetric.png)
+
+For other working examples of At Resource templates, see [Storage Overview](../Workbooks/Individual%20Storage/Overview), [Azure Cache for Redis](../Workbooks/Resource%20Insights/Redis%20Cache), [Azure Data Explorer Cluster](../Workbooks/ADXCluster/AtResource), and [Keyvault](../Workbooks/KeyVault/Overview).
+
 
 # How to publish your changes
 
