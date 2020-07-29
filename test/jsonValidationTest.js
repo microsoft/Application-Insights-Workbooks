@@ -1,8 +1,10 @@
-const assert = require('chai').assert;
+const chai = require('chai');
+const assert = chai.assert;
 const Mocha = require('mocha');
 const fs = require('fs');
 const path = require('path');
 const workbookSchema = require('../schema/workbook.json');
+chai.use(require('chai-json-schema'));
 
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
