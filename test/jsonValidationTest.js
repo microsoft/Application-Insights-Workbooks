@@ -2,6 +2,7 @@ const assert = require('chai').assert;
 const Mocha = require('mocha');
 const fs = require('fs');
 const path = require('path');
+const workbookSchema = require('./schema/workbook.json');
 
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
@@ -68,6 +69,7 @@ describe('Validating Workbooks...', () => {
                     validateNoResourceIds(settings, file);
                     validateNoFromTemplateId(settings, file);
                     validateSingleWorkbookFile(settings, file);
+                    validateWorkbookSchema(settings, file);
                 });
 
             done();
@@ -223,6 +225,10 @@ function validateSingleWorkbookFile(settings, file) {
             assert.fail(file + ": Found " + workbooks.length + " .workbook files in folder. Only one is allowed.");
         }    
     });
+}
+
+function validateWorkbookSchema(settings, file) {
+    assert.jsonSchema(settings, workbookSchema);
 }
 
 function validateCategory(category, file) {
