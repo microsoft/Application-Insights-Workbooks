@@ -230,7 +230,12 @@ function validateSingleWorkbookFile(settings, file) {
 }
 
 function validateWorkbookSchema(settings, file) {
-    assert.jsonSchema(settings, workbookSchema);
+    try {
+        assert.jsonSchema(settings, workbookSchema);
+    } catch (e) {
+        console.warn(file + ": workbook schema warning");
+        console.warn(e);
+    }
 }
 
 function validateCategory(category, file) {
