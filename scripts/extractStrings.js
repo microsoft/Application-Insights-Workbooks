@@ -29,7 +29,7 @@ const SettingsFile = "settings.json";
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = 'resjson';
-const LCLStringFileExtension = "lcl";
+const LCLStringFileExtension = "resjson.lcl";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
