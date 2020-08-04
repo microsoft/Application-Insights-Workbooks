@@ -37,7 +37,6 @@ const CohortsTemplateFolder = "\\Cohorts\\";
 const RESJSONOutputFolder = "\\output\\loc\\";
 
 const LocProjectFileName = "LocProject.json";
-const StringOutputPath = "\\strings";
 const LangOutputSpecifier = "\\{Lang}\\";
 
 /**
@@ -256,9 +255,9 @@ for (var i in files) {
     // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
     locItems.push({
       "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
-      "LclFile": templatePath.concat(StringOutputPath, LangOutputSpecifier, lclFileName),
+      "LclFile": templatePath.concat(LangOutputSpecifier, lclFileName),
       "CopyOption": "LangIDOnPath",
-      "OutputPath": templatePath.concat(StringOutputPath, LangOutputSpecifier, resjsonFileName)
+      "OutputPath": templatePath.concat(LangOutputSpecifier, resjsonFileName)
     });
 
     // Write extracted strings to file
