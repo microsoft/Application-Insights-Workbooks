@@ -1,0 +1,616 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "d9ba2e0d-ed51-4222-b6fa-84275b6181f9",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "649427ba-20ed-47f0-80e7-860a1ee5521f",
+            "version": "KqlParameterItem/1.0",
+            "name": "Namespace",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "InsightsMetrics\r\n| where Name contains \"kube_\"\r\n| extend Deploy = parse_json(Tags)\r\n| extend k8sNamespace = tostring(Deploy.k8sNamespace)\r\n| distinct k8sNamespace\r\n| project k8sNamespace",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ]
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "067ed1a2-d4ed-49a0-adf3-7efd7f7071ac",
+            "version": "KqlParameterItem/1.0",
+            "name": "DeploymentName",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "// This is a bad query, but trying to extract the Deployment Name from each Tag\r\nInsightsMetrics\r\n| where Name == \"kube_deployment_status_replicas_ready\"\r\n| extend Deploy = parse_json(Tags)\r\n| extend DeploymentName = tostring(Deploy.deployment)\r\n| where Deploy.k8sNamespace in ({Namespace})\r\n| distinct DeploymentName\r\n| project DeploymentName",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ]
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "a01cf284-1c57-4788-a105-d4c69300156e",
+            "version": "KqlParameterItem/1.0",
+            "name": "HPA",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "InsightsMetrics\r\n| where Name contains \"hpa\"\r\n| extend Deploy = parse_json(Tags)\r\n| extend hpa = tostring(Deploy.hpa)\r\n| extend Namespaces = tostring(Deploy.k8sNamespace)\r\n| where Namespaces in ({Namespace})\r\n| project hpa, Namespaces\r\n| distinct *\r\n| project hpa",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ]
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - 0"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Deployment",
+            "subTarget": "Deployment",
+            "style": "link"
+          },
+          {
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "HPA",
+            "subTarget": "HPA",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "links - 1"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Name == \"kube_deployment_status_replicas_ready\"\r\n| extend parsed = parse_json(Tags)\r\n| where parsed.deployment in ({DeploymentName})\r\n| extend Deployment = tostring(parsed.deployment)\r\n| extend Ready = Val/parsed.spec_replicas * 100, Updated = Val/parsed.status_replicas_updated * 100, Available = Val/parsed.status_replicas_available * 100\r\n| extend ReadyCase = case(Ready == 100, \"Healthy\", \"Warning\"),  UpdatedCase = case(Updated == 100, \"Healthy\", \"Warning\"),  AvailableCase = case(Available == 100, \"Healthy\", \"Warning\")\r\n| extend Overall = case(ReadyCase == \"Healthy\" and UpdatedCase == \"Healthy\" and AvailableCase == \"Healthy\", \"Healthy\", \"Warning\")\r\n| summarize arg_max(TimeGenerated, *) by Deployment\r\n| summarize OverallStatus = count() by Overall",
+              "size": 3,
+              "title": "Deployment Status",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "exportParameterName": "OverallFilter",
+              "exportDefaultValue": "*",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Overall",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "OverallStatus",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 2,
+                      "maximumSignificantDigits": 3
+                    }
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "showPin": true,
+            "name": "query - 4"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let data = InsightsMetrics\r\n| where Name == \"kube_deployment_status_replicas_ready\"\r\n| extend parsed = parse_json(Tags)\r\n| where parsed.deployment in ({DeploymentName})\r\n| extend Deployment = tostring(parsed.deployment)\r\n| extend Ready = Val/parsed.spec_replicas * 100, Updated = Val/parsed.status_replicas_updated * 100, Available = Val/parsed.status_replicas_available * 100\r\n| extend Age = (now() - todatetime(parsed[\"creationTime\"]))/1m\r\n| summarize arg_max(TimeGenerated, *) by Deployment\r\n| project Deployment, Age, Ready, Updated, Available;\r\nlet ReadyData = InsightsMetrics\r\n| where Name == \"kube_deployment_status_replicas_ready\"\r\n| extend parsed = parse_json(Tags)\r\n| where parsed.deployment in ({DeploymentName})\r\n| extend Deployment = tostring(parsed.deployment)\r\n| extend Ready = Val/parsed.spec_replicas * 100\r\n| make-series ReadyTrend = avg(Ready) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Deployment;\r\nlet UpdatedData = InsightsMetrics\r\n| where Name == \"kube_deployment_status_replicas_ready\"\r\n| extend parsed = parse_json(Tags)\r\n| where parsed.deployment in ({DeploymentName})\r\n| extend Deployment = tostring(parsed.deployment)\r\n| extend Updated = Val/parsed.status_replicas_updated * 100\r\n| make-series UpdatedTrend = avg(Updated) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Deployment;\r\nlet AvailableData = InsightsMetrics\r\n| where Name == \"kube_deployment_status_replicas_ready\"\r\n| extend parsed = parse_json(Tags)\r\n| where parsed.deployment in ({DeploymentName})\r\n| extend Deployment = tostring(parsed.deployment)\r\n| extend Available = Val/parsed.status_replicas_available * 100\r\n| make-series AvailableTrend = avg(Available) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Deployment;\r\ndata\r\n| join kind = inner(ReadyData) on Deployment \r\n| join kind = inner(UpdatedData) on Deployment \r\n| join kind = inner(AvailableData) on Deployment\r\n| extend ReadyCase = case(Ready == 100, \"Healthy\", \"Warning\"),  UpdatedCase = case(Updated == 100, \"Healthy\", \"Warning\"),  AvailableCase = case(Available == 100, \"Healthy\", \"Warning\")\r\n| extend Overall = case(ReadyCase == \"Healthy\" and UpdatedCase == \"Healthy\" and AvailableCase == \"Healthy\", \"Healthy\", \"Warning\")\r\n| extend OverallFilterStatus = case('{OverallFilter}' contains \"Healthy\", \"Healthy\", '{OverallFilter}' contains \"Warning\", \"Warning\", \"Healthy, Warning\")\r\n| where OverallFilterStatus has Overall\r\n| project Deployment, Age, Ready, ReadyTrend, Updated, UpdatedTrend, Available,AvailableTrend\r\n| sort by Ready asc\r\n",
+              "size": 0,
+              "showAnalytics": true,
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Age",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 25,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Ready",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "100",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NaN",
+                          "representation": "more",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "ReadyTrend",
+                    "formatter": 9,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    }
+                  },
+                  {
+                    "columnMatch": "Updated",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "100",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NaN",
+                          "representation": "more",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "warning",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "UpdatedTrend",
+                    "formatter": 9,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    }
+                  },
+                  {
+                    "columnMatch": "Available",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "100",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NaN",
+                          "representation": "more",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "warning",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "AvailableTrend",
+                    "formatter": 9,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Deployment"
+                  },
+                  {
+                    "columnId": "Ready"
+                  },
+                  {
+                    "columnId": "ReadyTrend"
+                  },
+                  {
+                    "columnId": "Updated",
+                    "label": "Up-to-date"
+                  },
+                  {
+                    "columnId": "UpdatedTrend",
+                    "label": "Up-to-dateTrend"
+                  },
+                  {
+                    "columnId": "Available"
+                  },
+                  {
+                    "columnId": "AvailableTrend"
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Ready",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "colors",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "1",
+                        "representation": null,
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": null,
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "showPin": true,
+            "name": "query - 1"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "Deployment"
+      },
+      "name": "Replica"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let ParsedData = InsightsMetrics\r\n| where Name contains \"hpa\"\r\n| extend parsed = parse_json(Tags)\r\n| where tostring(parsed.hpa) in ({HPA})\r\n| extend HPAs = tostring(parsed.hpa), Deployment = tostring(parsed.targetName)\r\n| extend lastScaleTime = todatetime(parsed.lastScaleTime);\r\nlet ValData = ParsedData\r\n| make-series ValTrend = avg(Val) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nlet MinData = ParsedData\r\n| make-series MinTrend = avg(toint(parsed.spec_min_replicas)) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nlet MaxData = ParsedData\r\n| make-series MaxTrend = avg(toint(parsed.spec_max_replicas)) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nlet DesiredData = ParsedData\r\n| make-series DesiredTrend = avg(toint(parsed.status_desired_replicas)) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nParsedData\r\n| summarize arg_max(TimeGenerated,*) by HPAs\r\n| join kind = inner(ValData) on HPAs\r\n| join kind = inner(MinData) on HPAs\r\n| join kind = inner(MaxData) on HPAs\r\n| join kind = inner(DesiredData) on HPAs\r\n| extend currentMin = tostring(parsed.spec_min_replicas), currentMax =  tostring(parsed.spec_max_replicas), currentDesired = tostring(parsed.status_desired_replicas)\r\n| extend HPAStatus = case(Val == currentDesired, \"Healthy\", \"Warning\")\r\n| extend percentofMax = toint(Val)/toint(currentMax)\r\n| sort by percentofMax desc\r\n| project HPAs, Deployment, HPAStatus, lastScaleTime, Val, ValTrend, currentMin, MinTrend, currentMax, MaxTrend, currentDesired, DesiredTrend",
+              "size": 0,
+              "showAnalytics": true,
+              "title": "Select a row to view more details",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "exportFieldName": "HPAs",
+              "exportParameterName": "HPAFilter",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "HPAStatus",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ValTrend",
+                    "formatter": 9,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "Trend",
+                    "formatter": 9,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  }
+                ],
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "currentMin",
+                    "sortOrder": 1
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "HPAs"
+                  },
+                  {
+                    "columnId": "Deployment"
+                  },
+                  {
+                    "columnId": "HPAStatus"
+                  },
+                  {
+                    "columnId": "lastScaleTime",
+                    "label": "Last Scale Time"
+                  },
+                  {
+                    "columnId": "Val",
+                    "label": "Current Replicas"
+                  },
+                  {
+                    "columnId": "ValTrend",
+                    "label": "Current Over Time"
+                  },
+                  {
+                    "columnId": "currentMin",
+                    "label": "Min Replicas"
+                  },
+                  {
+                    "columnId": "MinTrend",
+                    "label": "Min Over Time"
+                  },
+                  {
+                    "columnId": "currentMax",
+                    "label": "Max Replicas"
+                  },
+                  {
+                    "columnId": "MaxTrend",
+                    "label": "Max Over Time"
+                  },
+                  {
+                    "columnId": "currentDesired",
+                    "label": "Desired Replicas"
+                  },
+                  {
+                    "columnId": "DesiredTrend",
+                    "label": "Desired Over Time"
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "currentMin",
+                  "sortOrder": 1
+                }
+              ]
+            },
+            "showPin": true,
+            "name": "query - 4"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let ParsedData = InsightsMetrics\r\n| where Name contains \"hpa\"\r\n| extend parsed = parse_json(Tags)\r\n| where tostring(parsed.hpa) in ({HPA})\r\n| extend HPAs = tostring(parsed.hpa), Deployment = tostring(parsed.targetName)\r\n| where HPAs == '{HPAFilter}';\r\nlet ValData = ParsedData\r\n| make-series ValTrend = avg(Val) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nlet MinData = ParsedData\r\n| make-series MinTrend = avg(toint(parsed.spec_min_replicas)) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nlet MaxData = ParsedData\r\n| make-series MaxTrend = avg(toint(parsed.spec_max_replicas)) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nlet DesiredData = ParsedData\r\n| make-series DesiredTrend = avg(toint(parsed.status_desired_replicas)) default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by HPAs, Deployment;\r\nParsedData\r\n| join kind = inner(ValData) on HPAs\r\n| join kind = inner(MinData) on HPAs\r\n| join kind = inner(MaxData) on HPAs\r\n| join kind = inner(DesiredData) on HPAs\r\n| top 1 by TimeGenerated\r\n| project ValTrend, MinTrend, MaxTrend, DesiredTrend, TimeGenerated1",
+              "size": 0,
+              "aggregation": 5,
+              "title": "Full view for {HPAFilter}",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "unstackedbar",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "ValTrend",
+                    "label": "Current Replicas"
+                  },
+                  {
+                    "seriesName": "MinTrend",
+                    "label": "Min Replicas"
+                  },
+                  {
+                    "seriesName": "MaxTrend",
+                    "label": "Max Replicas"
+                  },
+                  {
+                    "seriesName": "DesiredTrend",
+                    "label": "Desired Replicas"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  },
+                  "min": 0
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "HPAFilter",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "query - 2"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "HPA"
+      },
+      "name": "HPA"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
