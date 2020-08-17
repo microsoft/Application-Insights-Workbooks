@@ -487,7 +487,19 @@ Function CreatePackageContent() {
             $allCategories | ConvertTo-Json -depth 2 -Compress | Out-File -Encoding "UTF8" -FilePath $categoryFileName -Force
         }
 
-        Write-Host "... DONE building gallery: $reporttype "
+        # FORCE ALL the files in this folder to be UTF-8 with no byte order mark
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+
+        Write-Host "... FORCING UTF-8 NOBOM: $reporttype "
+        foreach ($f in ls -name $reportTypePath\*.json)
+        {
+            $path = "$reportTypePath\$f"
+            $content = Get-Content $path -Raw
+            Write-Host "... $path"
+            Set-Content -Value $utf8.GetBytes($content) -Encoding Byte -Path $path
+        }
+
+        Write-Host "DONE building gallery: $reporttype "
     }
 }
 
