@@ -466,13 +466,13 @@ Function CreatePackageContent() {
             $value = $fullGallery.$($key)
             $key = $key.Replace("/", "-")
             $galleryFileName = "$reportTypePath\_gallery.$key.json"
-            $value | ConvertTo-Json -depth 10 -Compress | Out-File -FilePath $galleryFileName -Force
+            $value | ConvertTo-Json -depth 10 -Compress | Out-File -Encoding "UTF8" -FilePath $galleryFileName -Force
         }
 
         # if you want to see the full gallery of everything, this would generate it
         if ($generateFullGalleryFile) {
             $galleryFileName = "$reportTypePath\_gallery.json"
-            $fullGallery | ConvertTo-Json -depth 10 -Compress | Out-File -FilePath $galleryFileName -Force
+            $fullGallery | ConvertTo-Json -depth 10 -Compress | Out-File -Encoding "UTF8" -FilePath $galleryFileName -Force
         }
 
         # create an index that has every path mapped to a file name
@@ -480,14 +480,26 @@ Function CreatePackageContent() {
         # client side code could generate the right filenames, but then you don't know if you got a 404 because
         # of missing files or inaccuate generation.  Whether the client uses it or not, the package has it!
         $indexFileName = "$reportTypePath\_index.json"
-        $index | ConvertTo-Json -depth 2 -Compress | Out-File -FilePath $indexFileName -Force
+        $index | ConvertTo-Json -depth 2 -Compress | Out-File -Encoding "UTF8" -FilePath $indexFileName -Force
 
         if ($generateFullCategoriesFile) {
             $categoryFileName = "$reportTypePath\_categories.json"
-            $allCategories | ConvertTo-Json -depth 2 -Compress | Out-File -FilePath $categoryFileName -Force
+            $allCategories | ConvertTo-Json -depth 2 -Compress | Out-File -Encoding "UTF8" -FilePath $categoryFileName -Force
         }
 
-        Write-Host "... DONE building gallery: $reporttype "
+        # FORCE ALL the files in this folder to be UTF-8 with no byte order mark
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+
+        Write-Host "... FORCING UTF-8 NOBOM: $reporttype "
+        foreach ($f in ls -name $reportTypePath\*.json)
+        {
+            $path = "$reportTypePath\$f"
+            $content = Get-Content $path -Raw
+            Write-Host "... $path"
+            Set-Content -Value $utf8.GetBytes($content) -Encoding Byte -Path $path
+        }
+
+        Write-Host "DONE building gallery: $reporttype "
     }
 }
 
