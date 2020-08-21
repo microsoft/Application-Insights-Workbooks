@@ -29,6 +29,7 @@ const SettingsFile = "settings.json";
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = 'resjson';
+const LCLStringFileExtension = "resjson.lcl";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
@@ -36,7 +37,7 @@ const CohortsTemplateFolder = "\\Cohorts\\";
 const RESJSONOutputFolder = "\\output\\loc\\";
 
 const LocProjectFileName = "LocProject.json";
-const StringOutputPath = "\\strings";
+const LangOutputSpecifier = "\\{Lang}\\";
 
 /**
  * FUNCTIONS 
@@ -135,15 +136,15 @@ function findParameterNames(text) {
   return params;
 }
 
-function getResJSONFileName(fileName) {
+function replaceFileExtension(fileName, extensionType) {
   var a = fileName.split(".");
   const extension = a.pop();
-  return fileName.replace(extension, ResJsonStringFileExtension);
+  return fileName.replace(extension, extensionType);
 }
 
 /** Write string file as RESJSON */
 function writeToFileRESJSON(data, fileName, outputPath) {
-  const resjsonFileName = getResJSONFileName(fileName);
+  const resjsonFileName = replaceFileExtension(fileName, ResJsonStringFileExtension);
   const fullpath = outputPath.concat("\\", resjsonFileName);
 
   const content = JSON.stringify(data, null, "\t");
@@ -247,14 +248,16 @@ for (var i in files) {
   }
 
   if (Object.keys(extracted).length > 0) {
-    const LCLOutputPath = templatePath.concat(StringOutputPath);
-    const resjsonFileName = getResJSONFileName(fileName);
+    const resjsonFileName = replaceFileExtension(fileName, ResJsonStringFileExtension);
+    const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
 
     // Add LocProject entry
+    // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
     locItems.push({
       "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
+      "LclFile": templatePath.concat(LangOutputSpecifier, lclFileName),
       "CopyOption": "LangIDOnPath",
-      "OutputPath": LCLOutputPath
+      "OutputPath": templatePath.concat(LangOutputSpecifier, resjsonFileName)
     });
 
     // Write extracted strings to file
