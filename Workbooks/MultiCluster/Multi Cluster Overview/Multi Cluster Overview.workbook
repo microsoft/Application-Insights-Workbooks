@@ -351,6 +351,7 @@
                     "version": "KqlItem/1.0",
                     "query": "let NODE_HEALTHY_THRESHOLD = 0.85;\r\nlet NODE_CRITICAL_THRESHOLD = 0.6;\r\n\r\nlet USER_POD_HEALTHY_THRESHOLD = 1;\r\nlet USER_POD_CRITICAL_THRESHOLD = 0.9;\r\n\r\nlet SYSTEM_POD_HEALTHY_THRESHOLD = 1;\r\n\r\nlet NodeInventoryTable = materialize(KubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterRegion = tostring(parse_json(Labels)[0]['failure-domain.beta.kubernetes.io/region'])\r\n| project TimeGenerated, ClusterId, ClusterVersion = trim_start('v', KubeletVersion), Node = Computer, NodeStatus = Status, ClusterRegion);\r\n\r\nlet ClusterInfoTable = materialize(NodeInventoryTable\r\n| where TimeGenerated {timeRange:query}\r\n| summarize arg_max(TimeGenerated, *) by ClusterId, ClusterVersion, ClusterRegion\r\n| project ClusterId, ClusterVersion, ClusterRegion);\r\n\r\nlet NodeTable = materialize(NodeInventoryTable\r\n| where TimeGenerated {timeRange:query}\r\n| summarize arg_max(TimeGenerated, NodeStatus) by ClusterId, Node\r\n| project ClusterId, Node, NodeStatus\r\n| summarize HealthyNodeCount = sumif(1, NodeStatus == \"Ready\"), TotalNodeCount = sumif(1, true) by ClusterId);\r\n\r\nlet PodTable = materialize(KubePodInventory\r\n| where TimeGenerated {timeRange:query}\r\n| project TimeGenerated, ClusterId, Namespace, Node = Computer, PodUid, PodStatus \r\n| summarize arg_max(TimeGenerated, PodStatus) by ClusterId, Namespace, PodUid\r\n| project ClusterId, Namespace, PodUid, PodStatus\r\n| summarize HealthySystemPodsCount = sumif(1, Namespace =~ \"kube-system\" and ( PodStatus =~ \"running\" or PodStatus  =~ \"succeeded\")), \r\n    HealthyUserPodsCount = sumif(1, Namespace !~ \"kube-system\" and ( PodStatus =~ \"running\" or PodStatus  =~ \"succeeded\")),\r\n    TotalUserPodsCount = sumif(1, Namespace !~ \"kube-system\"),\r\n    TotalSystemPodsCount = sumif(1, Namespace =~ \"kube-system\") by ClusterId\r\n);\r\n\r\nNodeTable \r\n| join ClusterInfoTable on ClusterId\r\n| join PodTable on ClusterId\r\n| project-away ClusterId1, ClusterId2\r\n| project ClusterId, ClusterRegion, ClusterVersion, NodeHealthRatio = iff(HealthyNodeCount == 0 or TotalNodeCount == 0 , 0.0, todouble(HealthyNodeCount) / TotalNodeCount),\r\n UserPodsHealthRatio = iff(TotalUserPodsCount == 0 , 1.0, todouble(HealthyUserPodsCount) / TotalUserPodsCount),\r\n SystemPodsHealthRatio = iff(TotalSystemPodsCount == 0 , 0.0, todouble(HealthySystemPodsCount) / TotalSystemPodsCount), \r\n HealthyNodeCount, TotalNodeCount, HealthyUserPodsCount, TotalUserPodsCount, HealthySystemPodsCount,TotalSystemPodsCount\r\n| project ClusterName = iff(isempty(split(ClusterId, \"/\")[8]), ClusterId, split(ClusterId, \"/\")[8]),ClusterType = case(ClusterId has 'microsoft.containerservice/managedclusters', 'AKS', ClusterId has 'microsoft.kubernetes/connectedclusters', 'Azure Arc', ClusterId has 'microsoft.containerservice/openshiftmanagedclusters', 'ARO', ClusterId has 'microsoft.redhatopenshift/openshiftclusters', 'AROv4', 'Unknown' ), ClusterRegion, ClusterVersion, Status = case(NodeHealthRatio > NODE_HEALTHY_THRESHOLD and UserPodsHealthRatio >= USER_POD_HEALTHY_THRESHOLD and SystemPodsHealthRatio >= SYSTEM_POD_HEALTHY_THRESHOLD , \"healthy\", \r\n  NodeHealthRatio < NODE_CRITICAL_THRESHOLD or UserPodsHealthRatio < USER_POD_CRITICAL_THRESHOLD or SystemPodsHealthRatio < SYSTEM_POD_HEALTHY_THRESHOLD, \"critical\", \"warning\"),\r\n  NodeHealthStatus = NodeHealthRatio,\r\n  Nodes = iff(TotalNodeCount == 0, \"0\", strcat_delim(\"/\", HealthyNodeCount, TotalNodeCount)),  \r\n  UserPodsHealthStatus = UserPodsHealthRatio, \r\n  UserPods = iff(TotalUserPodsCount == 0, \"0\", strcat_delim(\"/\", HealthyUserPodsCount, TotalUserPodsCount)),\r\n  SystemPodsHealthStatus = SystemPodsHealthRatio,  \r\n  SystemPods = iff(TotalSystemPodsCount == 0, \"0\", strcat_delim(\"/\", HealthySystemPodsCount, TotalSystemPodsCount))\r\n",
                     "size": 1,
+                    "showAnalytics": true,
                     "title": "Cluster Status Summary",
                     "timeContext": {
                       "durationMs": 1800000
@@ -539,6 +540,7 @@
                       "type": 0
                     }
                   },
+                  "showPin": true,
                   "name": "Cluster Status Summary"
                 },
                 {
@@ -547,9 +549,10 @@
                     "version": "KqlItem/1.0",
                     "query": "KubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| extend OS=tostring(parse_json(Labels)[0][\"beta.kubernetes.io/os\"])\r\n| summarize LinuxNodes=dcountif(Computer, OS == 'linux'), WindowsNodes=dcountif(Computer, OS == 'windows') by  ClusterName\r\n| extend Title = ClusterName, Content = strcat(LinuxNodes,\" 🐧, \", WindowsNodes,\" 🖥️ \")",
                     "size": 3,
+                    "showAnalytics": true,
                     "title": "Cluster footprint",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -596,6 +599,7 @@
                     }
                   },
                   "customWidth": "50",
+                  "showPin": true,
                   "name": "Availability Regions"
                 },
                 {
@@ -604,9 +608,10 @@
                     "version": "KqlItem/1.0",
                     "query": "KubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| where Computer !hasprefix \"virtual-\"\r\n| extend Location = tostring(parse_json(Labels)[0]['failure-domain.beta.kubernetes.io/region'])\r\n| summarize ClusterCount=dcount(ClusterId) by Location",
                     "size": 0,
+                    "showAnalytics": true,
                     "title": "Azure regions where clusters are available",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -639,6 +644,7 @@
                     }
                   },
                   "customWidth": "50",
+                  "showPin": true,
                   "name": "Cluster Locations"
                 }
               ]
@@ -1001,9 +1007,10 @@
                     "size": 0,
                     "aggregation": 3,
                     "showAnnotations": true,
+                    "showAnalytics": true,
                     "title": "Average Cluster {metricName} Utilization % By NodePool",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -1064,6 +1071,7 @@
                     "comparison": "isNotEqualTo",
                     "value": "tabular"
                   },
+                  "showPin": true,
                   "name": "cpu utilization table",
                   "styleSettings": {
                     "showBorder": true
@@ -1574,7 +1582,7 @@
                     "showAnalytics": true,
                     "title": "Disk Capacity Overview",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportParameterName": "selectedRow",
@@ -1793,7 +1801,7 @@
                     "showAnalytics": true,
                     "title": "Disk IO Overview",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportParameterName": "selectedRow",
@@ -2031,9 +2039,10 @@
                     "version": "KqlItem/1.0",
                     "query": "let data = InsightsMetrics\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'container.azm.ms/net'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Interface = tostring(Tags.interface)\r\n| extend ClusterName = tostring(Tags.[\"container.azm.ms/clusterId\"])\r\n| where ClusterName in~ ({selectedCluster})\r\n| extend partitionKey = strcat(HostName, '/', Interface, '/', Name)\r\n| order by partitionKey asc, TimeGenerated asc\r\n| serialize\r\n| extend PrevVal = iif(prev(partitionKey) != partitionKey, 0.0, prev(Val)), PrevTimeGenerated = iif(prev(partitionKey) != partitionKey, datetime(null), prev(TimeGenerated))\r\n| where isnotnull(PrevTimeGenerated) and PrevTimeGenerated != TimeGenerated\r\n| extend Rate = iif(PrevVal > Val, Val / datetime_diff('Second', TimeGenerated, PrevTimeGenerated), (Val - PrevVal) / datetime_diff('Second', TimeGenerated, PrevTimeGenerated))\r\n| where isnotnull(Rate)\r\n| project TimeGenerated, ClusterName, HostName, Interface, Name, Rate;\r\nlet bytesSent = data\r\n| where Name == 'bytes_sent';\r\nlet bytesReceived = data\r\n| where Name == 'bytes_recv';\r\nlet errorsOut = data\r\n| where Name == 'err_out';\r\nlet errorsIn = data\r\n| where Name == 'err_in';\r\nlet maxOn = -1;\r\nlet avgOn = -1;\r\nlet minOn = -1;\r\nlet bytesSentTableData = bytesSent // bytes sent per sec data\r\n| summarize BytesSentPerSecond = avg(Rate) by HostName, Interface // for interfaces, group by parentId (HostName) \r\n| join kind = inner (\r\n    bytesSent\r\n    | make-series BytesSentPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project ClusterName, Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', BytesSentPerSecond, BytesSentPerSecondTrend;\r\nlet bytesReceivedTableData = bytesReceived // bytes received per sec data\r\n| summarize BytesReceivedPerSecond = avg(Rate) by ClusterName, HostName, Interface\r\n| join kind = inner (\r\n    bytesReceived\r\n    | make-series BytesReceivedPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), ClusterName, HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', BytesReceivedPerSecond, BytesReceivedPerSecondTrend;\r\nlet errorsOutTableData = errorsOut // errors out per sec data\r\n| summarize ErrorsOutPerSecond = avg(Rate) by ClusterName, HostName, Interface\r\n| join kind = inner (\r\n    errorsOut\r\n    | make-series ErrorsOutPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), ClusterName, HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', ErrorsOutPerSecond, ErrorsOutPerSecondTrend;\r\nlet errorsInTableData = errorsIn // errors in per sec data\r\n| summarize ErrorsInPerSecond = avg(Rate) by ClusterName, HostName, Interface\r\n| join kind = inner (\r\n    errorsIn\r\n    | make-series ErrorsInPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project ClusterName, Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', ErrorsInPerSecond, ErrorsInPerSecondTrend;\r\nbytesSentTableData\r\n| join kind = inner ( bytesReceivedTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| join kind = inner ( errorsOutTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| join kind = inner ( errorsInTableData ) on Id\r\n| project-away ClusterName1,ClusterName2, ClusterName3,Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| project-rename ['Sent Bytes/sec'] = BytesSentPerSecond, ['Sent Bytes/sec Trend'] = BytesSentPerSecondTrend, ['Received Bytes/sec'] = BytesReceivedPerSecond, ['Received Bytes/sec Trend'] = BytesReceivedPerSecondTrend, ['Errors Out/sec'] = ErrorsOutPerSecond, ['ErrorsOut/sec Trend'] = ErrorsOutPerSecondTrend, ['Errors In/sec'] = ErrorsInPerSecond, ['Errors In/sec Trend'] = ErrorsInPerSecondTrend\r\n| order by Id asc\r\n| project-rename ClusterName, FullId = Id, GridId = Name, Name = ParentId",
                     "size": 1,
+                    "showAnalytics": true,
                     "title": "Network Overview",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
