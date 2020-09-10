@@ -119,19 +119,27 @@ Paste a Portal URL containing the extension, name of the view, and any inputs ne
 ## Workbook (template) link settings
 If the selected link type is `Workbook (Template)` the author must specify additional settings to open up the correct workbook template. The settings below have options for how the grid will find the appropriate value for each of the settings. 
 
-![Image showing workbook link settings](../Images/WorkbookLinkSettings.png)
-
 | Setting | Explanation |
 |:------------- |:-------------|
 | `Workbook owner Resource Id` | This is the Resource Id of the Azure Resource that "owns" the workbook. Commonly it is an Application Insights resource, or a Log Analytics Workspace. Inside of Azure Monitor, this may also be the literal string `"Azure Monitor"`. When the workbook is Saved, this is what the workbook will be linked to. |
 | `Workbook resources` | An array of Azure Resource Ids that specify the default resource used in the workbook. For example, if the template being opened shows Virtual Machine metrics, the values here would be Virtual Machine resource ids.  Many times, the owner and resources are set to the same settings. |
-| `Template Id` | Specify the name of the template to be opened. If this is a community template from the gallery (the most common case), prefix the value with `Community-`, like `Community--Workbooks/Performance/Apdex`. |
+| `Template Id` | Specify the Id of the template to be opened. If this is a community template from the gallery (the most common case), prefix the path to the template with `Community-`, like `Community-Workbooks/Performance/Apdex` for the `Workbooks/Performance/Apdex` template. If this is a link to a saved workbook/template, it is the full Azure resource id of that item. |
 | `Workbook Type` | Specify the kind of workbook template to open. The most common cases use the `Default` or `Workbook` option to use the value in the current workbook. |
 | `Gallery Type` | This specifies the gallery type that will be displayed in the "Gallery" view of the template that opens. The most common cases use the `Default` or `Workbook` option to use the value in the current workbook. |
+|`Location comes from` | The location field should be specified if you are opening a specific Workbook resource. If location is not specified, finding the workbook content is much slower. If you know the location, specify it. If you do not know the location or are opening a template that with no specific location, leave this field as "Default".|
+|`Pass specific parameters to template` | Select to pass specific parameters to the template. If selected, only the specified parameters are passed to the template else all the parameters in the current workbook are passed to the template and in that case the parameter *names* must be the same in both workbooks for this parameter value to work.|
+|`Workbook Template Parameters` | This section defines the parameters that are passed to the target template. The name should match with the name of the parameter in the target template. Select value from `Cell`, `Column`, `Parameter`, and `Static Value`. Name and value must not be empty to pass that parameter to the target template.|
+
 
 For each of the above settings, the author must pick where the value in the linked workbook will come from. See [Link Sources](#Link-sources).
 
-When the workbook link is opened, the new workbook view will be passed all of the values configured from the settings above, along with the values of any parameters set in the workbook to that point (including any parameters that would be exported from the row selection of the grid). This is commonly used to allow a "downstream" workbook to "inherit" a time range setting from the current workbook. The parameter *names* must be the same in both workbooks for this parameter value inheritance to work. 
+When the workbook link is opened, the new workbook view will be passed all of the values configured from the settings above. 
+
+![Image showing workbook link settings](../Images/WorkbookLinkSettings.png)
+
+![Image showing Workbook template parameters settings](../Images/WorkbookTemplateLinkSettingsParams.png)
+
+
 
 ## Link sources
 | Source | Explanation |
