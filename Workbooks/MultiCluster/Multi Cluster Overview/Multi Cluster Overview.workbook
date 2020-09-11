@@ -74,10 +74,13 @@
               "value::selected"
             ],
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
             },
             "timeContext": {
-              "durationMs": 0
+              "durationMs": 14400000
             },
             "timeContextFromParameter": "timeRange",
             "queryType": 1,
@@ -125,11 +128,13 @@
               "{Subscription}"
             ],
             "typeSettings": {
-              "additionalResourceOptions": [],
+              "additionalResourceOptions": [
+                "value::all"
+              ],
               "showDefault": false
             },
             "timeContext": {
-              "durationMs": 0
+              "durationMs": 14400000
             },
             "timeContextFromParameter": "timeRange",
             "queryType": 1,
@@ -197,7 +202,7 @@
               "size": 3,
               "showAnalytics": true,
               "timeContext": {
-                "durationMs": 14400000
+                "durationMs": 0
               },
               "timeContextFromParameter": "timeRange",
               "queryType": 0,
@@ -513,6 +518,7 @@
                           "formatter": 1
                         }
                       ],
+                      "filter": true,
                       "labelSettings": [
                         {
                           "columnId": "ClusterName"
@@ -550,71 +556,12 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "KubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| extend OS=tostring(parse_json(Labels)[0][\"beta.kubernetes.io/os\"])\r\n| summarize LinuxNodes=dcountif(Computer, OS == 'linux'), WindowsNodes=dcountif(Computer, OS == 'windows') by  ClusterName\r\n| extend Title = ClusterName, Content = strcat(LinuxNodes,\" 🐧, \", WindowsNodes,\" 🖥️ \")",
-                    "size": 3,
-                    "showAnalytics": true,
-                    "title": "Cluster footprint",
-                    "timeContext": {
-                      "durationMs": 14400000
-                    },
-                    "timeContextFromParameter": "timeRange",
-                    "queryType": 0,
-                    "resourceType": "{ResourceType}",
-                    "crossComponentResources": [
-                      "{selectedCluster}"
-                    ],
-                    "visualization": "tiles",
-                    "tileSettings": {
-                      "titleContent": {
-                        "columnMatch": "Title",
-                        "formatter": 1,
-                        "formatOptions": {
-                          "palette": "blue",
-                          "showIcon": true
-                        }
-                      },
-                      "subtitleContent": {
-                        "columnMatch": "Subtitle",
-                        "formatter": 1,
-                        "formatOptions": {
-                          "showIcon": true
-                        }
-                      },
-                      "leftContent": {
-                        "columnMatch": "Content",
-                        "formatter": 4,
-                        "formatOptions": {
-                          "palette": "auto",
-                          "showIcon": true
-                        }
-                      },
-                      "secondaryContent": {
-                        "columnMatch": "TotalNodes",
-                        "formatter": 4,
-                        "formatOptions": {
-                          "min": 0,
-                          "max": 100,
-                          "palette": "pink",
-                          "showIcon": true
-                        }
-                      },
-                      "showBorder": true
-                    }
-                  },
-                  "customWidth": "50",
-                  "showPin": true,
-                  "name": "Availability Regions"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
                     "query": "KubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| where Computer !hasprefix \"virtual-\"\r\n| extend Location = tostring(parse_json(Labels)[0]['failure-domain.beta.kubernetes.io/region'])\r\n| summarize ClusterCount=dcount(ClusterId) by Location",
                     "size": 0,
                     "showAnalytics": true,
                     "title": "Azure regions where clusters are available",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -646,7 +593,6 @@
                       }
                     }
                   },
-                  "customWidth": "50",
                   "showPin": true,
                   "name": "Cluster Locations"
                 }
@@ -728,9 +674,10 @@
                     "version": "KqlItem/1.0",
                     "query": "let trendBinSize=1m;\r\nlet precision =2;\r\nlet KPI = KubeNodeInventory\r\n| where isnotempty(Labels)\r\n| extend LabelsJSON = parse_json(Labels)[0]\r\n| extend NodePool = iff (isnotempty(LabelsJSON.agentpool), tostring(LabelsJSON.agentpool), \"Unknown\")\r\n| extend OS = iff(isnotempty(LabelsJSON.[\"beta.kubernetes.io/os\"]), tostring(LabelsJSON.[\"beta.kubernetes.io/os\"]), \"Unknown\")\r\n| project TimeGenerated, _ResourceId, NodePool, Computer, OS\r\n| summarize arg_max(TimeGenerated, *) by _ResourceId, NodePool, Computer, OS\r\n| project-away TimeGenerated;\r\n\r\nlet PerfTable = Perf\r\n| where ObjectName == \"K8SNode\"\r\n| where CounterName in (\"cpuUsageNanoCores\",  \"cpuCapacityNanoCores\",  \"memoryWorkingSetBytes\", \"memoryCapacityBytes\")\r\n| project TimeGenerated, _ResourceId, Computer, ObjectName, CounterName, CounterValue ;\r\n\r\nlet ExtendedPerfTable = PerfTable | join kind=leftouter  KPI on _ResourceId, Computer | project-away Computer1, _ResourceId1; \r\n\r\nlet calculateUtilization = (usageCounterName: string, capacityCounterName: string, usageObject: string)\r\n{\r\n\r\nlet filterMetric = (counterName: string, objectName: string) {  \r\n       ExtendedPerfTable\r\n       | where ObjectName =~ objectName and CounterName =~ counterName\r\n       | summarize CounterValue = avg(CounterValue) by _ResourceId, NodePool, OS,  bin(TimeGenerated, trendBinSize)       \r\n      };\r\n\r\n filterMetric(usageCounterName, usageObject)\r\n| project-rename Usage = CounterValue\r\n| join kind=leftouter\r\n(\r\n    filterMetric(capacityCounterName, usageObject)\r\n    | project-rename Available = CounterValue\r\n) on _ResourceId, NodePool, OS, TimeGenerated\r\n| project _ResourceId, NodePool, OS, TimeGenerated, pct = iff(isempty(Available) or isnull(Available), 0.0, round((100 * Usage)/Available,precision))\r\n| summarize percentiles(pct, 50, 90, 95, 99), Max = max(pct) by _ResourceId, NodePool, OS\r\n};\r\n\r\n\r\nlet utilizationTable = calculateUtilization('cpuUsageNanoCores', 'cpuCapacityNanoCores', 'K8SNode')\r\n| project-rename ['CPU P50'] = percentile_pct_50, ['CPU P90'] = percentile_pct_90, ['CPU P95'] = percentile_pct_95,  ['CPU P99'] = percentile_pct_99, ['CPU Max'] = Max\r\n| join\r\n(\r\n    calculateUtilization('memoryWorkingSetBytes', 'memoryCapacityBytes','K8SNode')\r\n   | project-rename ['Memory P50'] = percentile_pct_50, ['Memory P90'] = percentile_pct_90, ['Memory P95'] = percentile_pct_95, ['Memory P99'] = percentile_pct_99, ['Memory Max'] = Max\r\n)\r\non _ResourceId, OS;\r\n\r\nutilizationTable\r\n| project-away _ResourceId1, OS1, NodePool1\r\n| project-rename Cluster=_ResourceId\r\n| extend OSType = iif(OS =~'linux','🐧 ','🖥️')\r\n| project-reorder  Cluster, NodePool, OSType, ['CPU P50'],['CPU P90'],['CPU P95'], ['CPU P99'], ['CPU Max'], ['Memory P50'],['Memory P90'],['Memory P95'], ['Memory P99'], ['Memory Max']\r\n| extend Name = tostring(split(Cluster, \"/\")[-1])\r\n| extend DisplayValue = ['Memory P50']\r\n| sort by Name asc , OSType asc",
                     "size": 3,
+                    "showAnalytics": true,
                     "title": "View {cpuView}",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportedParameters": [
@@ -975,6 +922,7 @@
                           }
                         }
                       ],
+                      "filter": true,
                       "sortBy": [
                         {
                           "itemKey": "OS",
@@ -1091,7 +1039,7 @@
                     "showAnalytics": true,
                     "title": "Average Cluster CPU Utilization% - Select a node to see more details",
                     "timeContext": {
-                      "durationMs": 0
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportedParameters": [
@@ -1248,7 +1196,7 @@
                     "showAnalytics": true,
                     "title": "Average Node Memory Utilization% - Select a node to see more details",
                     "timeContext": {
-                      "durationMs": 0
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportedParameters": [
@@ -2284,9 +2232,6 @@
       },
       "name": "Workbook Content"
     }
-  ],
-  "fallbackResourceIds": [
-    "Azure Monitor"
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
