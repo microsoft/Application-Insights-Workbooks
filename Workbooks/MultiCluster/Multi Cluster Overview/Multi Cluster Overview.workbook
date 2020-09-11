@@ -202,7 +202,7 @@
               "size": 3,
               "showAnalytics": true,
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "timeRange",
               "queryType": 0,
@@ -339,8 +339,22 @@
                 {
                   "cellValue": "selectedTab",
                   "linkTarget": "parameter",
-                  "linkLabel": "Disk IO / Network",
+                  "linkLabel": "Disk IO",
                   "subTarget": "io",
+                  "style": "link"
+                },
+                {
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Disk Capacity",
+                  "subTarget": "capacity",
+                  "style": "link"
+                },
+                {
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Network",
+                  "subTarget": "network",
                   "style": "link"
                 }
               ]
@@ -561,7 +575,7 @@
                     "showAnalytics": true,
                     "title": "Azure regions where clusters are available",
                     "timeContext": {
-                      "durationMs": 0
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -677,7 +691,7 @@
                     "showAnalytics": true,
                     "title": "View {cpuView}",
                     "timeContext": {
-                      "durationMs": 0
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportedParameters": [
@@ -1530,227 +1544,8 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let data = InsightsMetrics\r\n| where TimeGenerated {timeRange:query}    \r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'disk' or Namespace =~ 'container.azm.ms/disk'\r\n| where Name == 'used_percent' or Name == 'free'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Device = strcat('/dev/', tostring(Tags.device)), ClusterId = tostring(Tags.[\"container.azm.ms/clusterId\"])\r\n| where ClusterId in~ ({selectedCluster})\r\n| extend NodeDisk = strcat(HostName, Device)\r\n| project TimeGenerated, ClusterId,  HostName, NodeDisk, Device, Name, Val;\r\n\r\nlet usedPercent = data\r\n| where Name == 'used_percent';\r\nlet free = data\r\n| where Name == 'free';\r\nlet worstDisksPerNode = usedPercent\r\n| partition by HostName (\r\n    summarize UsedPercent = max(Val) by ClusterId, HostName, Device, NodeDisk\r\n    | top 1 by UsedPercent desc\r\n);\r\n\r\nusedPercent // used percent for devices\r\n| summarize UsedPercent = max(Val) by ClusterId, HostName, Device\r\n| join kind = inner (\r\n    usedPercent \r\n    | make-series UsedPercentTrend = max(Val) default = 0 on {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName, Device\r\n) on ClusterId, HostName, Device\r\n| project ClusterId, Id = strcat(HostName, Device), Name = strcat('🔹 ', Device), ParentId = HostName, Kind = 'Device', UsedPercent, UsedPercentTrend\r\n| union ( // used percent for nodes\r\n    usedPercent\r\n    | summarize UsedPercent = max(Val) by ClusterId, HostName\r\n    | join kind = inner (\r\n        usedPercent \r\n        | make-series UsedPercentTrend = max(Val) default = 0 on {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName\r\n    ) on ClusterId, HostName\r\n    | project ClusterId, Id = HostName, Name = strcat('🖥️ ', HostName), ParentId = '', Kind = 'Node', UsedPercent, UsedPercentTrend\r\n)\r\n| join kind = inner (\r\n    free // free space for devices\r\n    | summarize Free = min(Val) by ClusterId, HostName, Device\r\n    | join kind = inner (\r\n        free    \r\n        | make-series FreeTrend = min(Val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName, Device\r\n    ) on ClusterId, HostName, Device   \r\n    | project ClusterId, Id = strcat(HostName, Device), Name = Device, ParentId = HostName, Kind = 'Device', Free, FreeTrend\r\n    | union ( // free space for nodes\r\n        free\r\n        | summarize Free = min(Val) by ClusterId, HostName, Device\r\n        | join kind = inner ( // match the set of node-disk free space data to the nodes with the worst used percent data for setting the data in the node rows\r\n            worstDisksPerNode\r\n        ) on ClusterId, HostName, Device\r\n        | join kind = inner (\r\n            free \r\n            | make-series FreeTrend = min(Val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName, Device\r\n            | join kind = inner (\r\n                worstDisksPerNode\r\n            ) on ClusterId, HostName, Device\r\n        ) on HostName\r\n        | project ClusterId, Id = HostName, Name = HostName, ParentId = '', Kind = 'Node', Free, FreeTrend\r\n    )\r\n) on Id\r\n| extend ClusterName = iff(isempty(split(ClusterId, \"/\")[8]), ClusterId, split(ClusterId, \"/\")[8])\r\n| project-away Id1, Name1, ParentId1, Kind1,  ClusterId1\r\n| project-rename ClusterName , ['Used Disk % (Max)'] = UsedPercent, ['Used Disk % Trend (Max)'] = UsedPercentTrend, ['Free Disk Space (Min)'] = Free, ['Free Disk Space Trend (Min)'] = FreeTrend\r\n| order by ['Used Disk % (Max)'] desc, Name asc\r\n| where isempty(ParentId) == false\r\n| extend Host = strcat('🖥️ ', ParentId)",
-                    "size": 1,
-                    "showAnalytics": true,
-                    "title": "Disk Capacity Overview",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "timeRange",
-                    "exportParameterName": "selectedRow",
-                    "exportDefaultValue": "{\"Kind\":\"Unselected\"}",
-                    "queryType": 0,
-                    "resourceType": "{ResourceType}",
-                    "crossComponentResources": [
-                      "{selectedCluster}"
-                    ],
-                    "gridSettings": {
-                      "formatters": [
-                        {
-                          "columnMatch": "$gen_group",
-                          "formatter": 13,
-                          "formatOptions": {
-                            "linkTarget": "Resource",
-                            "showIcon": true,
-                            "workbookContext": {
-                              "componentIdSource": "column",
-                              "componentId": "ClusterId",
-                              "resourceIdsSource": "column",
-                              "resourceIds": "ClusterId",
-                              "templateIdSource": "static",
-                              "templateId": "community-Workbooks/AKS/Node Disk Capacity AKS",
-                              "typeSource": "workbook",
-                              "gallerySource": "static",
-                              "gallery": "container-insights",
-                              "locationSource": "default",
-                              "passSpecificParams": true,
-                              "templateParameters": [
-                                {
-                                  "name": "ComponentId",
-                                  "source": "column",
-                                  "value": "ClusterId"
-                                }
-                              ]
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "ClusterId",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Id",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Name",
-                          "formatter": 7,
-                          "formatOptions": {
-                            "linkTarget": "WorkbookTemplate",
-                            "linkIsContextBlade": false,
-                            "workbookContext": {
-                              "componentIdSource": "column",
-                              "componentId": "ClusterId",
-                              "resourceIdsSource": "column",
-                              "resourceIds": "ClusterId",
-                              "templateIdSource": "static",
-                              "templateId": "community-Workbooks/AKS/Node Disk Capacity AKS",
-                              "typeSource": "workbook",
-                              "gallerySource": "static",
-                              "gallery": "container-insights",
-                              "locationSource": "default"
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "ParentId",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Kind",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Used Disk % (Max)",
-                          "formatter": 18,
-                          "formatOptions": {
-                            "thresholdsOptions": "icons",
-                            "thresholdsGrid": [
-                              {
-                                "operator": ">=",
-                                "thresholdValue": "90",
-                                "representation": "2"
-                              },
-                              {
-                                "operator": ">=",
-                                "thresholdValue": "99",
-                                "representation": "4",
-                                "text": "{0}{1}"
-                              },
-                              {
-                                "operator": "Default",
-                                "thresholdValue": null,
-                                "representation": "success",
-                                "text": "{0}{1}"
-                              }
-                            ],
-                            "aggregation": "Max"
-                          },
-                          "numberFormat": {
-                            "unit": 1,
-                            "options": {
-                              "style": "decimal",
-                              "maximumFractionDigits": 1
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Used Disk % Trend (Max)",
-                          "formatter": 9,
-                          "formatOptions": {
-                            "min": 0,
-                            "max": 100,
-                            "palette": "greenRed",
-                            "aggregation": "Max"
-                          }
-                        },
-                        {
-                          "columnMatch": "Free Disk Space (Min)",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "aggregation": "Max"
-                          },
-                          "numberFormat": {
-                            "unit": 2,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false,
-                              "maximumFractionDigits": 1
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Free Disk Space Trend (Min)",
-                          "formatter": 9,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "blueDark",
-                            "aggregation": "Max"
-                          }
-                        },
-                        {
-                          "columnMatch": "ClusterName",
-                          "formatter": 5,
-                          "formatOptions": {
-                            "aggregation": "Min"
-                          }
-                        },
-                        {
-                          "columnMatch": "Host",
-                          "formatter": 5
-                        }
-                      ],
-                      "filter": true,
-                      "hierarchySettings": {
-                        "treeType": 1,
-                        "groupBy": [
-                          "ClusterId",
-                          "Host"
-                        ],
-                        "expandTopLevel": true,
-                        "finalBy": "Name"
-                      },
-                      "labelSettings": [
-                        {
-                          "columnId": "ClusterId"
-                        },
-                        {
-                          "columnId": "Id",
-                          "label": ""
-                        },
-                        {
-                          "columnId": "Name",
-                          "label": "Drill-in"
-                        },
-                        {
-                          "columnId": "ParentId"
-                        },
-                        {
-                          "columnId": "Kind"
-                        },
-                        {
-                          "columnId": "Used Disk % (Max)"
-                        },
-                        {
-                          "columnId": "Used Disk % Trend (Max)"
-                        },
-                        {
-                          "columnId": "Free Disk Space (Min)"
-                        },
-                        {
-                          "columnId": "Free Disk Space Trend (Min)"
-                        },
-                        {
-                          "columnId": "ClusterName"
-                        }
-                      ]
-                    }
-                  },
-                  "conditionalVisibility": {
-                    "parameterName": "selectedTab",
-                    "comparison": "isEqualTo",
-                    "value": "io"
-                  },
-                  "showPin": true,
-                  "name": "Disk Capacity Overview"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
                     "query": "let data = InsightsMetrics\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'container.azm.ms/diskio'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Device = strcat('/dev/', tostring(Tags.name)), ClusterName = tostring(Tags.[\"container.azm.ms/clusterId\"])\r\n| where ClusterName in~ ({selectedCluster})\r\n| extend NodeDisk = strcat(HostName, Device)\r\n| extend partitionKey = strcat(NodeDisk, '/', Name)\r\n| order by partitionKey asc, TimeGenerated asc\r\n| serialize\r\n| extend PrevVal = iif(prev(partitionKey) != partitionKey, 0.0, prev(Val)), PrevTimeGenerated = iif(prev(partitionKey) != partitionKey, datetime(null), prev(TimeGenerated))\r\n| where isnotnull(PrevTimeGenerated) and PrevTimeGenerated != TimeGenerated\r\n| extend Rate = iif(PrevVal > Val, Val, Val - PrevVal)\r\n| where isnotnull(Rate)\r\n| project TimeGenerated, PrevTimeGenerated, ClusterName, HostName, Device, NodeDisk, Name, Rate, Val;\r\nlet bytesRead = data\r\n| where Name == 'read_bytes'\r\n| extend Rate = Rate / datetime_diff('Second', TimeGenerated, PrevTimeGenerated);\r\nlet msPerByteRead = data\r\n| where Name == 'read_bytes'\r\n| extend Rate = (datetime_diff('Second', TimeGenerated, PrevTimeGenerated) * 1000) / Rate;\r\nlet bytesWritten = data\r\n| where Name == 'write_bytes'\r\n| extend Rate = Rate / datetime_diff('Second', TimeGenerated, PrevTimeGenerated);\r\nlet msPerByteWritten = data\r\n| where Name == 'write_bytes'\r\n| extend Rate = (datetime_diff('Second', TimeGenerated, PrevTimeGenerated) * 1000) / Rate;\r\nlet iopsInFlight = data\r\n| where Name == 'iops_in_progress'\r\n| extend Rate = Val;\r\nlet diskBusy = data\r\n| where Name == 'io_time'\r\n| extend Rate = iif(TimeGenerated == PrevTimeGenerated, 0.0, Rate / (datetime_diff('Second', TimeGenerated, PrevTimeGenerated) * 1000));\r\nlet maxOn = -1;\r\nlet avgOn = -1;\r\nlet minOn = -1;\r\nlet bytesReadTableData = bytesRead // bytes read per sec \r\n| summarize BytesReadPerSecond = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) by ClusterName, HostName, Device // for devices, group by parentId (HostName) in workbook config\r\n| join kind = inner (\r\n    bytesRead\r\n    | make-series BytesReadPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Device\r\n) on HostName\r\n| where Device == Device1\r\n| project Id = strcat(HostName, Device),ClusterName, HostName, Device, Name = strcat('🔹 ', Device), ParentId = strcat('🖥️ ', HostName), Kind = 'Device', BytesReadPerSecond, BytesReadPerSecondTrend;\r\nlet bytesWrittenTableData = bytesWritten // bytes witten per sec \r\n| summarize BytesWrittenPerSecond = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) by ClusterName, HostName, Device // for devices\r\n| join kind = inner (\r\n    bytesWritten\r\n    | make-series BytesWrittenPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Device\r\n) on HostName\r\n| where Device == Device1\r\n| project Id = strcat(HostName, Device),ClusterName, HostName, Device, Name = strcat('🔹 ', Device), ParentId = strcat('🖥️ ', HostName), Kind = 'Device', BytesWrittenPerSecond, BytesWrittenPerSecondTrend;\r\nlet diskBusyTableData = diskBusy // disk busy\r\n| summarize DiskBusy = max(Rate) by ClusterName, HostName, Device // for devices, group by parentId (HostName) in workbook config\r\n| join kind = inner (\r\n    diskBusy\r\n    | make-series DiskBusyTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Device\r\n) on HostName\r\n| where Device == Device1\r\n| project ClusterName, Id = strcat(HostName, Device), HostName, Device, Name = strcat('🔹 ', Device), ParentId = strcat('🖥️ ', HostName), Kind = 'Device', DiskBusy, DiskBusyTrend;\r\nlet iopsTableData = iopsInFlight // iops\r\n| summarize IOPS = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) by ClusterName, HostName, Device // for devices, group by parentId (HostName) in workbook config\r\n| join kind = inner (\r\n    iopsInFlight\r\n    | make-series IOPSTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName,HostName, Device\r\n) on HostName\r\n| where Device == Device1\r\n| project ClusterName, Id = strcat(HostName, Device), HostName, Device, Name = strcat('🔹 ', Device), ParentId = strcat('🖥️ ', HostName), Kind = 'Device', IOPS, IOPSTrend;\r\nbytesReadTableData\r\n| join kind = inner ( bytesWrittenTableData ) on Id\r\n| join kind = inner ( diskBusyTableData ) on Id\r\n| join kind = inner ( iopsTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, Id2, Name2, ParentId2, Kind2, Id3, Name3, ParentId3, Kind3, Device1, Device2, Device3, HostName1, HostName2, HostName3, ClusterName1, ClusterName2, ClusterName3\r\n| project-rename ClusterName, ['Read Bytes/sec'] = BytesReadPerSecond, ['Read Bytes/sec Trend'] = BytesReadPerSecondTrend, ['Write Bytes/sec'] = BytesWrittenPerSecond, ['Write Bytes/sec Trend'] = BytesWrittenPerSecondTrend, ['% Disk Busy'] = DiskBusy, ['% Disk Busy Trend'] = DiskBusyTrend, ['IOPS Trend'] = IOPSTrend\r\n| order by Id asc\r\n| project-rename ClusterName,  FullId = Id, GridId = Name, Name = ParentId",
-                    "size": 1,
+                    "size": 0,
                     "showAnalytics": true,
                     "title": "Disk IO Overview",
                     "timeContext": {
@@ -1978,24 +1773,263 @@
                       ]
                     }
                   },
-                  "conditionalVisibility": {
-                    "parameterName": "selectedTab",
-                    "comparison": "isEqualTo",
-                    "value": "io"
-                  },
                   "showPin": true,
                   "name": "Disk IO Overview"
-                },
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "io"
+            },
+            "name": "Disk IO"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let data = InsightsMetrics\r\n| where TimeGenerated {timeRange:query}    \r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'disk' or Namespace =~ 'container.azm.ms/disk'\r\n| where Name == 'used_percent' or Name == 'free'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Device = strcat('/dev/', tostring(Tags.device)), ClusterId = tostring(Tags.[\"container.azm.ms/clusterId\"])\r\n| where ClusterId in~ ({selectedCluster})\r\n| extend NodeDisk = strcat(HostName, Device)\r\n| project TimeGenerated, ClusterId,  HostName, NodeDisk, Device, Name, Val;\r\n\r\nlet usedPercent = data\r\n| where Name == 'used_percent';\r\nlet free = data\r\n| where Name == 'free';\r\nlet worstDisksPerNode = usedPercent\r\n| partition by HostName (\r\n    summarize UsedPercent = max(Val) by ClusterId, HostName, Device, NodeDisk\r\n    | top 1 by UsedPercent desc\r\n);\r\n\r\nusedPercent // used percent for devices\r\n| summarize UsedPercent = max(Val) by ClusterId, HostName, Device\r\n| join kind = inner (\r\n    usedPercent \r\n    | make-series UsedPercentTrend = max(Val) default = 0 on {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName, Device\r\n) on ClusterId, HostName, Device\r\n| project ClusterId, Id = strcat(HostName, Device), Name = strcat('🔹 ', Device), ParentId = HostName, Kind = 'Device', UsedPercent, UsedPercentTrend\r\n| union ( // used percent for nodes\r\n    usedPercent\r\n    | summarize UsedPercent = max(Val) by ClusterId, HostName\r\n    | join kind = inner (\r\n        usedPercent \r\n        | make-series UsedPercentTrend = max(Val) default = 0 on {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName\r\n    ) on ClusterId, HostName\r\n    | project ClusterId, Id = HostName, Name = strcat('🖥️ ', HostName), ParentId = '', Kind = 'Node', UsedPercent, UsedPercentTrend\r\n)\r\n| join kind = inner (\r\n    free // free space for devices\r\n    | summarize Free = min(Val) by ClusterId, HostName, Device\r\n    | join kind = inner (\r\n        free    \r\n        | make-series FreeTrend = min(Val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName, Device\r\n    ) on ClusterId, HostName, Device   \r\n    | project ClusterId, Id = strcat(HostName, Device), Name = Device, ParentId = HostName, Kind = 'Device', Free, FreeTrend\r\n    | union ( // free space for nodes\r\n        free\r\n        | summarize Free = min(Val) by ClusterId, HostName, Device\r\n        | join kind = inner ( // match the set of node-disk free space data to the nodes with the worst used percent data for setting the data in the node rows\r\n            worstDisksPerNode\r\n        ) on ClusterId, HostName, Device\r\n        | join kind = inner (\r\n            free \r\n            | make-series FreeTrend = min(Val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterId, HostName, Device\r\n            | join kind = inner (\r\n                worstDisksPerNode\r\n            ) on ClusterId, HostName, Device\r\n        ) on HostName\r\n        | project ClusterId, Id = HostName, Name = HostName, ParentId = '', Kind = 'Node', Free, FreeTrend\r\n    )\r\n) on Id\r\n| extend ClusterName = iff(isempty(split(ClusterId, \"/\")[8]), ClusterId, split(ClusterId, \"/\")[8])\r\n| project-away Id1, Name1, ParentId1, Kind1,  ClusterId1\r\n| project-rename ClusterName , ['Used Disk % (Max)'] = UsedPercent, ['Used Disk % Trend (Max)'] = UsedPercentTrend, ['Free Disk Space (Min)'] = Free, ['Free Disk Space Trend (Min)'] = FreeTrend\r\n| order by ['Used Disk % (Max)'] desc, Name asc\r\n| where isempty(ParentId) == false\r\n| extend Host = strcat('🖥️ ', ParentId)",
+                    "size": 0,
+                    "showAnalytics": true,
+                    "title": "Disk Capacity Overview",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "exportParameterName": "selectedRow",
+                    "exportDefaultValue": "{\"Kind\":\"Unselected\"}",
+                    "queryType": 0,
+                    "resourceType": "{ResourceType}",
+                    "crossComponentResources": [
+                      "{selectedCluster}"
+                    ],
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "$gen_group",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true,
+                            "workbookContext": {
+                              "componentIdSource": "column",
+                              "componentId": "ClusterId",
+                              "resourceIdsSource": "column",
+                              "resourceIds": "ClusterId",
+                              "templateIdSource": "static",
+                              "templateId": "community-Workbooks/AKS/Node Disk Capacity AKS",
+                              "typeSource": "workbook",
+                              "gallerySource": "static",
+                              "gallery": "container-insights",
+                              "locationSource": "default",
+                              "passSpecificParams": true,
+                              "templateParameters": [
+                                {
+                                  "name": "ComponentId",
+                                  "source": "column",
+                                  "value": "ClusterId"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "ClusterId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Id",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Name",
+                          "formatter": 7,
+                          "formatOptions": {
+                            "linkTarget": "WorkbookTemplate",
+                            "linkIsContextBlade": false,
+                            "workbookContext": {
+                              "componentIdSource": "column",
+                              "componentId": "ClusterId",
+                              "resourceIdsSource": "column",
+                              "resourceIds": "ClusterId",
+                              "templateIdSource": "static",
+                              "templateId": "community-Workbooks/AKS/Node Disk Capacity AKS",
+                              "typeSource": "workbook",
+                              "gallerySource": "static",
+                              "gallery": "container-insights",
+                              "locationSource": "default"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "ParentId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Kind",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Used Disk % (Max)",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": ">=",
+                                "thresholdValue": "90",
+                                "representation": "2"
+                              },
+                              {
+                                "operator": ">=",
+                                "thresholdValue": "99",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "success",
+                                "text": "{0}{1}"
+                              }
+                            ],
+                            "aggregation": "Max"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Used Disk % Trend (Max)",
+                          "formatter": 9,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "greenRed",
+                            "aggregation": "Max"
+                          }
+                        },
+                        {
+                          "columnMatch": "Free Disk Space (Min)",
+                          "formatter": 0,
+                          "formatOptions": {
+                            "aggregation": "Max"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "maximumFractionDigits": 1
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Free Disk Space Trend (Min)",
+                          "formatter": 9,
+                          "formatOptions": {
+                            "min": 0,
+                            "palette": "blueDark",
+                            "aggregation": "Max"
+                          }
+                        },
+                        {
+                          "columnMatch": "ClusterName",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "aggregation": "Min"
+                          }
+                        },
+                        {
+                          "columnMatch": "Host",
+                          "formatter": 5
+                        }
+                      ],
+                      "filter": true,
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "ClusterId",
+                          "Host"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "Name"
+                      },
+                      "labelSettings": [
+                        {
+                          "columnId": "ClusterId"
+                        },
+                        {
+                          "columnId": "Id",
+                          "label": ""
+                        },
+                        {
+                          "columnId": "Name",
+                          "label": "Drill-in"
+                        },
+                        {
+                          "columnId": "ParentId"
+                        },
+                        {
+                          "columnId": "Kind"
+                        },
+                        {
+                          "columnId": "Used Disk % (Max)"
+                        },
+                        {
+                          "columnId": "Used Disk % Trend (Max)"
+                        },
+                        {
+                          "columnId": "Free Disk Space (Min)"
+                        },
+                        {
+                          "columnId": "Free Disk Space Trend (Min)"
+                        },
+                        {
+                          "columnId": "ClusterName"
+                        }
+                      ]
+                    }
+                  },
+                  "showPin": true,
+                  "name": "Disk Capacity Overview"
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "capacity"
+            },
+            "name": "Disk Capacity"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
                     "query": "let data = InsightsMetrics\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'container.azm.ms/net'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Interface = tostring(Tags.interface)\r\n| extend ClusterName = tostring(Tags.[\"container.azm.ms/clusterId\"])\r\n| where ClusterName in~ ({selectedCluster})\r\n| extend partitionKey = strcat(HostName, '/', Interface, '/', Name)\r\n| order by partitionKey asc, TimeGenerated asc\r\n| serialize\r\n| extend PrevVal = iif(prev(partitionKey) != partitionKey, 0.0, prev(Val)), PrevTimeGenerated = iif(prev(partitionKey) != partitionKey, datetime(null), prev(TimeGenerated))\r\n| where isnotnull(PrevTimeGenerated) and PrevTimeGenerated != TimeGenerated\r\n| extend Rate = iif(PrevVal > Val, Val / datetime_diff('Second', TimeGenerated, PrevTimeGenerated), (Val - PrevVal) / datetime_diff('Second', TimeGenerated, PrevTimeGenerated))\r\n| where isnotnull(Rate)\r\n| project TimeGenerated, ClusterName, HostName, Interface, Name, Rate;\r\nlet bytesSent = data\r\n| where Name == 'bytes_sent';\r\nlet bytesReceived = data\r\n| where Name == 'bytes_recv';\r\nlet errorsOut = data\r\n| where Name == 'err_out';\r\nlet errorsIn = data\r\n| where Name == 'err_in';\r\nlet maxOn = -1;\r\nlet avgOn = -1;\r\nlet minOn = -1;\r\nlet bytesSentTableData = bytesSent // bytes sent per sec data\r\n| summarize BytesSentPerSecond = avg(Rate) by HostName, Interface // for interfaces, group by parentId (HostName) \r\n| join kind = inner (\r\n    bytesSent\r\n    | make-series BytesSentPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project ClusterName, Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', BytesSentPerSecond, BytesSentPerSecondTrend;\r\nlet bytesReceivedTableData = bytesReceived // bytes received per sec data\r\n| summarize BytesReceivedPerSecond = avg(Rate) by ClusterName, HostName, Interface\r\n| join kind = inner (\r\n    bytesReceived\r\n    | make-series BytesReceivedPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), ClusterName, HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', BytesReceivedPerSecond, BytesReceivedPerSecondTrend;\r\nlet errorsOutTableData = errorsOut // errors out per sec data\r\n| summarize ErrorsOutPerSecond = avg(Rate) by ClusterName, HostName, Interface\r\n| join kind = inner (\r\n    errorsOut\r\n    | make-series ErrorsOutPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), ClusterName, HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', ErrorsOutPerSecond, ErrorsOutPerSecondTrend;\r\nlet errorsInTableData = errorsIn // errors in per sec data\r\n| summarize ErrorsInPerSecond = avg(Rate) by ClusterName, HostName, Interface\r\n| join kind = inner (\r\n    errorsIn\r\n    | make-series ErrorsInPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by ClusterName, HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project ClusterName, Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', ErrorsInPerSecond, ErrorsInPerSecondTrend;\r\nbytesSentTableData\r\n| join kind = inner ( bytesReceivedTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| join kind = inner ( errorsOutTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| join kind = inner ( errorsInTableData ) on Id\r\n| project-away ClusterName1,ClusterName2, ClusterName3,Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| project-rename ['Sent Bytes/sec'] = BytesSentPerSecond, ['Sent Bytes/sec Trend'] = BytesSentPerSecondTrend, ['Received Bytes/sec'] = BytesReceivedPerSecond, ['Received Bytes/sec Trend'] = BytesReceivedPerSecondTrend, ['Errors Out/sec'] = ErrorsOutPerSecond, ['ErrorsOut/sec Trend'] = ErrorsOutPerSecondTrend, ['Errors In/sec'] = ErrorsInPerSecond, ['Errors In/sec Trend'] = ErrorsInPerSecondTrend\r\n| order by Id asc\r\n| project-rename ClusterName, FullId = Id, GridId = Name, Name = ParentId",
-                    "size": 1,
+                    "size": 0,
                     "showAnalytics": true,
                     "title": "Network Overview",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -2207,11 +2241,6 @@
                       ]
                     }
                   },
-                  "conditionalVisibility": {
-                    "parameterName": "selectedTab",
-                    "comparison": "isEqualTo",
-                    "value": "io"
-                  },
                   "showPin": true,
                   "name": "Network Overview"
                 }
@@ -2220,9 +2249,9 @@
             "conditionalVisibility": {
               "parameterName": "selectedTab",
               "comparison": "isEqualTo",
-              "value": "io"
+              "value": "network"
             },
-            "name": "Network IO"
+            "name": "network"
           }
         ]
       },
