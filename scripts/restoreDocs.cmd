@@ -18,6 +18,8 @@ git clone --single-branch --branch master --no-tags https://github.com/Microsoft
 git clone --single-branch --branch master --no-tags https://github.com/MicrosoftDocs/Application-Insights-Workbooks.tr-tr.git tr-tr
 git clone --single-branch --branch master --no-tags https://github.com/MicrosoftDocs/Application-Insights-Workbooks.zh-cn.git zh-cn
 git clone --single-branch --branch master --no-tags https://github.com/MicrosoftDocs/Application-Insights-Workbooks.zh-tw.git zh-tw
-dir
+
+REM clone the new localization string-only repository
+git clone --single-branch --branch main --no-tags https://github.com/microsoft/Workbooks-Localization localization
 
 exit /B 0
