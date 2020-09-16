@@ -1,0 +1,375 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{selectedCluster}"
+        ],
+        "parameters": [
+          {
+            "id": "64f87c0f-eed6-4e3d-b820-996c88ae8a03",
+            "version": "KqlParameterItem/1.0",
+            "name": "timeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 14400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000
+                },
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            }
+          },
+          {
+            "id": "a3a006f1-e89d-4628-8622-e06915226c05",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "where type =~ 'Microsoft.ContainerService/managedClusters'\r\n| summarize Count = count() by subscriptionId\r\n| order by Count desc\r\n| extend Rank = row_number()\r\n| project value = subscriptionId, label = subscriptionId, selected = Rank == 1",
+            "crossComponentResources": [
+              "value::selected"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "aae950ab-90f8-49a3-b28d-2ca050418165",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceType",
+            "type": 7,
+            "isRequired": true,
+            "query": "where type in~ (\r\n'Microsoft.ContainerService/managedClusters', \r\n'Microsoft.Kubernetes/connectedClusters', \r\n'Microsoft.RedHatOpenShift/OpenShiftClusters',\r\n'Microsoft.ContainerService/openshiftManagedClusters')\r\n| distinct type",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "value": "microsoft.containerservice/managedclusters",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "6920400e-5b98-4cc8-adc8-a0dc242d1685",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedCluster",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "where type in~ ('{ResourceType}')\r\n| project id, name,  workspaceResourceId = case(\r\ntype =~ 'Microsoft.ContainerService/managedClusters', parse_json(tolower(properties)).addonprofiles.omsagent.config.loganalyticsworkspaceresourceid,\r\ntype =~ 'Microsoft.Kubernetes/connectedClusters', parse_json(tolower(tags)).loganalyticsworkspaceresourceid,\r\ntype =~ 'Microsoft.ContainerService/openshiftmanagedclusters', parse_json(tolower(properties)).monitorprofile.workspaceresourceid,\r\ntype =~ 'Microsoft.RedHatOpenShift/OpenShiftClusters', parse_json(tolower(tags)).loganalyticsworkspaceresourceid, \"\")\r\n| where isnotempty(workspaceResourceId)\r\n| order by name asc\r\n| extend Rank = row_number()\r\n| project value = id, label = id, selected = Rank <= 5",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "58c37af2-7b60-41b1-8c64-72999d6a7bd6",
+            "version": "KqlParameterItem/1.0",
+            "name": "hiveSelectedCluster",
+            "type": 2,
+            "isRequired": true,
+            "query": "let capacityCounterName = \"memoryAllocatableBytes\";\r\nlet usageCounterName = \"memoryWorkingSetBytes\";\r\nKubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| extend OS=tostring(parse_json(Labels)[0][\"beta.kubernetes.io/os\"])\r\n| distinct ClusterName, ClusterId, Computer , OS\r\n| extend fields = split(ClusterName, \"-\")\r\n| project Ring = fields[1], Silo = fields [2], Region = fields[3], InstanceName = strcat(ClusterId, \"/\", Computer), ClusterName, Computer , OS\r\n| join hint.strategy=shuffle (\r\n    Perf\r\n    | where TimeGenerated {timeRange:query}\r\n    | where ObjectName =~ \"K8sNode\"\r\n    | where CounterName =~ capacityCounterName\r\n    | project Computer, InstanceName, AllocatableInBytes = CounterValue \r\n    ) on InstanceName\r\n    | join kind=inner hint.strategy=shuffle (\r\n        Perf\r\n        | where TimeGenerated {timeRange:query}\r\n        | where ObjectName =~ \"K8sNode\"\r\n        | where CounterName =~ usageCounterName\r\n        | project TimeGenerated, Computer, InstanceName, UsageInBytes = CounterValue\r\n    ) on InstanceName \r\n| project TimeGenerated, Computer, UsageInBytes , AllocatableInBytes, InstanceName, ClusterName, UsagePercent = UsageInBytes * 100 / AllocatableInBytes, OS\r\n| extend ComputerId = strcat(ClusterName, \"/\",Computer)\r\n| extend pct = (UsageInBytes*100 /AllocatableInBytes)\r\n| summarize percentiles(pct, 5, 50, 75, 95) by ComputerId\r\n| extend fields = split(ComputerId,\"/\")\r\n| extend NodeName= tostring(fields[1]), Cluster= tostring(fields[0])\r\n| extend value = strcat(tostring(percentile_pct_50),\"/\",tostring(percentile_pct_75),\"/\",tostring(percentile_pct_95))\r\n| project Cluster",
+            "crossComponentResources": [
+              "{selectedCluster}"
+            ],
+            "value": "value::1",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            },
+            "timeContext": {
+              "durationMs": 14400000
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 0,
+            "resourceType": "{ResourceType}"
+          },
+          {
+            "id": "9a14ed81-9f77-45c9-a42a-dab20983c10e",
+            "version": "KqlParameterItem/1.0",
+            "name": "hiveSelectedNode",
+            "type": 2,
+            "query": "let capacityCounterName = \"memoryAllocatableBytes\";\r\nlet usageCounterName = \"memoryWorkingSetBytes\";\r\nKubeNodeInventory\r\n| where TimeGenerated {timeRange:query}\r\n| extend OS=tostring(parse_json(Labels)[0][\"beta.kubernetes.io/os\"])\r\n| distinct ClusterName, ClusterId, Computer , OS\r\n| extend fields = split(ClusterName, \"-\")\r\n| project Ring = fields[1], Silo = fields [2], Region = fields[3], InstanceName = strcat(ClusterId, \"/\", Computer), ClusterName, Computer , OS\r\n| join hint.strategy=shuffle (\r\n    Perf\r\n    | where TimeGenerated {timeRange:query}\r\n    | where ObjectName =~ \"K8sNode\"\r\n    | where CounterName =~ capacityCounterName\r\n    | project Computer, InstanceName, AllocatableInBytes = CounterValue \r\n    ) on InstanceName\r\n    | join kind=inner hint.strategy=shuffle (\r\n        Perf\r\n        | where TimeGenerated {timeRange:query}\r\n        | where ObjectName =~ \"K8sNode\"\r\n        | where CounterName =~ usageCounterName\r\n        | project TimeGenerated, Computer, InstanceName, UsageInBytes = CounterValue\r\n    ) on InstanceName \r\n| project TimeGenerated, Computer, UsageInBytes , AllocatableInBytes, InstanceName, ClusterName, UsagePercent = UsageInBytes * 100 / AllocatableInBytes, OS\r\n| extend ComputerId = strcat(ClusterName, \"/\",Computer)\r\n| extend pct = (UsageInBytes*100 /AllocatableInBytes)\r\n| summarize percentiles(pct, 5, 50, 75, 95) by ComputerId\r\n| extend fields = split(ComputerId,\"/\")\r\n| extend NodeName= tostring(fields[1]), Cluster= tostring(fields[0])\r\n| extend value = strcat(tostring(percentile_pct_50),\"/\",tostring(percentile_pct_75),\"/\",tostring(percentile_pct_95))\r\n| where '{hiveSelectedCluster}' contains Cluster\r\n| project NodeName",
+            "crossComponentResources": [
+              "{selectedCluster}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 0,
+            "resourceType": "{ResourceType}"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "{ResourceType}"
+      },
+      "name": "cluster parameter"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let capacityCounterName = \"cpuAllocatableNanoCores\";\r\nlet usageCounterName = \"cpuUsageNanoCores\";\r\nKubePodInventory\r\n| where TimeGenerated {timeRange:query}\r\n| distinct ClusterName, ClusterId, Computer\r\n| project ClusterName, Computer, InstanceName = strcat(ClusterId, \"/\", Computer) \r\n| join hint.strategy=shuffle (\r\n    Perf\r\n    | where TimeGenerated {timeRange:query}\r\n    | where ObjectName =~ \"K8sNode\"\r\n    | where CounterName =~ capacityCounterName\r\n    | project Computer, InstanceName, AllocatableInBytes = CounterValue \r\n    ) on InstanceName\r\n    | join kind=inner hint.strategy=shuffle (\r\n        Perf\r\n        | where TimeGenerated {timeRange:query}\r\n        | where ObjectName =~ \"K8sNode\"\r\n        | where CounterName =~ usageCounterName\r\n        | project TimeGenerated, Computer, InstanceName, UsageInBytes = CounterValue\r\n    ) on InstanceName \r\n| project TimeGenerated, Computer, UsageInBytes , AllocatableInBytes, InstanceName, ClusterName, UsagePercent = UsageInBytes * 100 / AllocatableInBytes\r\n| extend ComputerId = strcat(ClusterName , \"/\", Computer)\r\n| where '{hiveSelectedCluster}' contains ClusterName and ComputerId contains '{hiveSelectedNode}'\r\n| summarize avg = (avg(UsageInBytes) * 100 / avg(AllocatableInBytes) )by bin(TimeGenerated, {timeRange:grain}) , ComputerId\r\n",
+              "size": 1,
+              "aggregation": 3,
+              "showAnnotations": true,
+              "showAnalytics": true,
+              "title": "Node CPU Utilization% - Cluster : {hiveSelectedCluster} Node: {hiveSelectedNode} ",
+              "noDataMessage": "No cluster selected ",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "timeRange",
+              "queryType": 0,
+              "resourceType": "{ResourceType}",
+              "crossComponentResources": [
+                "{selectedCluster}"
+              ],
+              "visualization": "linechart"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "hiveSelectedNode",
+              "comparison": "isNotEqualTo"
+            },
+            "showPin": true,
+            "name": "cpu node query"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let trendBinSize = {timeRange:grain};\r\nlet allocatableCounterName = 'memoryAllocatableBytes';\r\nlet usageCounterName = 'memoryWorkingSetBytes';\r\n\r\nlet filterMetric = (counterName:string, objectName: string) {\r\n    Perf \r\n    | where TimeGenerated {timeRange:query} and ObjectName =~ objectName and CounterName =~ counterName and _ResourceId contains '{hiveSelectedCluster}'\r\n    | summarize CounterValue = avg(CounterValue) by InstanceName, _ResourceId, bin(TimeGenerated, trendBinSize), Computer\r\n    | summarize CounterValue = sum(CounterValue) by _ResourceId, TimeGenerated, Computer\r\n};\r\n\r\nfilterMetric(usageCounterName, 'K8SContainer')\r\n| join kind=leftouter filterMetric(allocatableCounterName, 'K8SNode') on TimeGenerated, _ResourceId, Computer\r\n| project _ResourceId, Computer, TimeGenerated, UsagePercent = iff(isempty(CounterValue) or isnull(CounterValue), 0.0, 100*CounterValue / CounterValue1)\r\n| summarize TimeGenerated=make_list(TimeGenerated), UsagePercent=make_list(UsagePercent) by Computer, _ResourceId\r\n| where _ResourceId contains '{hiveSelectedCluster}' and Computer contains '{hiveSelectedNode}'\r\n| project Computer, UsagePercent, TimeGenerated\r\n| sort by Computer asc",
+              "size": 1,
+              "aggregation": 3,
+              "showAnnotations": true,
+              "showAnalytics": true,
+              "title": "Memory Utilization% - Node: {hiveSelectedNode} Cluster : {hiveSelectedCluster}",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "timeRange",
+              "queryType": 0,
+              "resourceType": "{ClusterType}",
+              "crossComponentResources": [
+                "{selectedCluster}"
+              ],
+              "visualization": "linechart"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "hiveSelectedNode",
+              "comparison": "isNotEqualTo"
+            },
+            "showPin": true,
+            "name": "memory node query"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let trendBinSize = {timeRange:grain};\r\n\r\nKubePodInventory\r\n| where TimeGenerated {timeRange:query} and ClusterId contains '{hiveSelectedCluster}' and '{hiveSelectedNode}' contains Computer \r\n| extend InstanceName=strcat(ClusterId,'/',ContainerName)\r\n| summarize arg_max(TimeGenerated, ContainerStatus) by Namespace, Name, InstanceName\r\n| extend TimeFromNow = now() - TimeGenerated\r\n| extend TimeAgo = strcat('🕒', case(TimeFromNow < 2m, strcat(toint(TimeFromNow / 1s), 's'), TimeFromNow < 2h, strcat(toint(TimeFromNow / 1m), 'm'), TimeFromNow < 2d, strcat(toint(TimeFromNow / 1h), 'h'), strcat(toint(TimeFromNow / 1d), 'd')), ' ago')\r\n| project Namespace,['Last Seen']=TimeAgo,PodName=Name,InstanceName,ContainerName=split(InstanceName,'/')[-1],Status=strcat(iff(ContainerStatus=~'Running' or ContainerStatus=~'Succeeded', '✔️', '❌'),ContainerStatus)\r\n| sort by PodName asc\r\n| project Namespace,['Pod Name']=PodName,['Container Name']=ContainerName, Status,['Last Seen'], PodName",
+              "size": 1,
+              "showAnalytics": true,
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "timeRange",
+              "exportMultipleValues": true,
+              "exportedParameters": [
+                {
+                  "fieldName": "PodName",
+                  "parameterName": "selectedPodNames",
+                  "parameterType": 1
+                }
+              ],
+              "queryType": 0,
+              "resourceType": "{ClusterType}",
+              "crossComponentResources": [
+                "{selectedCluster}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Container Name",
+                    "formatter": 5,
+                    "formatOptions": {
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "PodName",
+                    "formatter": 5,
+                    "formatOptions": {
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "hiveSelectedNode",
+              "comparison": "isNotEqualTo"
+            },
+            "showPin": true,
+            "name": "Pod Info"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let trendBinSize = {timeRange:grain};\r\nlet capacityCounterName = 'cpuLimitNanoCores';\r\nlet usageCounterName = 'cpuUsageNanoCores';\r\n//let selectedPods = iif(isempty({selectedPodNames}), '', {selectedPodNames});\r\n\r\nlet podsInfo = KubePodInventory\r\n| where TimeGenerated {timeRange:query} and Computer contains '{hiveSelectedNode}' and ClusterId contains '{hiveSelectedCluster}' \r\n| extend InstanceName = strcat(ClusterId, '/', ContainerName), Name\r\n//| where Name in~ (selectedPods)\r\n| summarize count() by  InstanceName, Name;\r\n\r\npodsInfo\r\n| join hint.strategy=shuffle (\r\n  Perf\r\n    | where TimeGenerated {timeRange:query}\r\n    | where ObjectName == 'K8SContainer' and CounterName == capacityCounterName\r\n    and Computer contains '{hiveSelectedNode}'\r\n    | project InstanceName, LimitValue = CounterValue\r\n) on  InstanceName\r\n| join kind=inner hint.strategy=shuffle (\r\n    Perf\r\n    | where TimeGenerated {timeRange:query}\r\n    | where ObjectName == 'K8SContainer' and CounterName == usageCounterName and Computer contains '{hiveSelectedNode}'\r\n    | project Computer, InstanceName, UsageValue = CounterValue, TimeGenerated\r\n) on InstanceName\r\n| project Computer, TimeGenerated, UsagePercent = (UsageValue * 100.0) / LimitValue, InstanceName , Name//, Path\r\n| summarize AggregatedValue = avg(UsagePercent) by Name, length=bin(TimeGenerated, trendBinSize) ",
+              "size": 0,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Container CPU Utilization - Node: {hiveSelectedNode} - Cluster : {hiveSelectedCluster} ",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "timeRange",
+              "queryType": 0,
+              "resourceType": "{ClusterType}",
+              "crossComponentResources": [
+                "{selectedCluster}"
+              ],
+              "visualization": "linechart",
+              "chartSettings": {
+                "yAxis": [
+                  "AggregatedValue"
+                ],
+                "showLegend": true
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "hiveSelectedNode",
+              "comparison": "isNotEqualTo"
+            },
+            "showPin": true,
+            "name": "Container CPU Utilization"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let trendBinSize = {timeRange:grain};\r\nlet capacityCounterName = 'memoryAllocatableBytes';\r\nlet usageCounterName = 'memoryWorkingSetBytes';\r\n//let selectedPods = iif(isempty({selectedPodNames}), '', {selectedPodNames});\r\n\r\nlet Limit=toscalar(Perf\r\n    | where TimeGenerated {timeRange:query}\r\n    | where ObjectName == 'K8SNode' and CounterName == capacityCounterName  and InstanceName has '{hiveSelectedCluster}'  and Computer contains '{hiveSelectedNode}' | take 1\r\n    | project CounterValue);\r\n\r\nlet podsInfo = KubePodInventory\r\n| where TimeGenerated {timeRange:query} and Computer contains '{hiveSelectedNode}' and ClusterId contains '{hiveSelectedCluster}' \r\n| extend InstanceName = strcat(ClusterId, '/', ContainerName), Name\r\n| summarize count() by  InstanceName, Computer, Name;\r\n\r\nPerf\r\n| where TimeGenerated {timeRange:query}\r\n| where ObjectName == 'K8SContainer' and CounterName == usageCounterName  and InstanceName has '{hiveSelectedCluster}' and Computer contains '{hiveSelectedNode}'\r\n| summarize Usage = avg((100*CounterValue) / Limit) by InstanceName, Computer , bin(TimeGenerated, trendBinSize)\r\n|join kind=inner (\r\n    podsInfo\r\n) on InstanceName\r\n|project Usage, Name, TimeGenerated",
+              "size": 0,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Container Memory Utilization - Node: {hiveSelectedNode} - Cluster : {hiveSelectedCluster} ",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "timeRange",
+              "queryType": 0,
+              "resourceType": "{ClusterType}",
+              "crossComponentResources": [
+                "{selectedCluster}"
+              ],
+              "visualization": "linechart",
+              "chartSettings": {
+                "xAxis": "TimeGenerated",
+                "showLegend": true
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "hiveSelectedNode",
+              "comparison": "isNotEqualTo"
+            },
+            "showPin": true,
+            "name": "Container CPU Utilization - Copy"
+          }
+        ]
+      },
+      "name": "cpu-metrics-group"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
