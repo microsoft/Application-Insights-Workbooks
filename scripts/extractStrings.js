@@ -96,7 +96,7 @@ function openFile(file) {
     const data = fs.readFileSync(file, Encoding);
     return data;
   } catch (err) {
-    console.error("Cannot open file: ", file, "ERROR: ", err);
+    console.error("ERROR: Cannot open file: ", file, "ERROR: ", err);
   }
 }
 
@@ -115,7 +115,10 @@ function getLocalizeableStrings(obj, key, outputMap, filename) {
       }
     } else if (LocKeys.includes(i)) {
       const jsonKey = key.concat(i);
-      outputMap[jsonKey] = obj[i];
+      const jsonVal = obj[i];
+      if (jsonVal !== "") {
+        outputMap[jsonKey] = jsonVal;
+      }
 
       // Check for parameters that should be locked
       findAndGenerateLockedStringComment(jsonKey, obj[i], outputMap);
@@ -144,7 +147,7 @@ function findParameterNames(text) {
   try {
     params = text.match(_parameterRegex);
   } catch (e) {
-    console.error("Cannot extract parameter. ", "ERROR: ", e);
+    console.error("ERROR: Cannot extract parameter. ", "ERROR: ", e);
   }
 
   return params;
@@ -157,7 +160,7 @@ function findColumnNameReferences(text) {
   try {
     columnRefs = text.match(_columnRegex);
   } catch (e) {
-    console.error("Cannot extract parameter. ", "ERROR: ", e);
+    console.error("ERROR: Cannot extract parameter. ", "ERROR: ", e);
   }
   return columnRefs;
 }
@@ -183,7 +186,7 @@ function writeToFileRESJSON(data, fileName, outputPath) {
     fs.writeFileSync(fullpath, content);
     console.log(">>>>> Wrote to file: ", fullpath);
   } catch (e) {
-    console.error("Cannot write to file: ", fullpath, "ERROR: ", e);
+    console.error("ERROR: Cannot write to file: ", fullpath, "ERROR: ", e);
   }
 }
 
@@ -220,7 +223,7 @@ function generateLocProjectFile(dir, projectOutputs) {
     fs.writeFileSync(pathToLocProjectFile.concat("\\", LocProjectFileName), content);
     console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile, "\\", LocProjectFileName);
   } catch (e) {
-    console.error("Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
+    console.error("ERROR: Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
   }
 }
 
@@ -236,16 +239,19 @@ if (!process.argv[2]) { // path to extract strings from
 }
 
 // Verify directory path
-// TODO: need to include cohorts as well
-const directoryPath = process.argv[2];
+var directoryPath = process.argv[2];
 const exists = testPath(directoryPath);
 if (!exists) {
   return;
 }
 // Valid args, start processing the files.
-console.log("Processing...");
+console.log(">>>>> Processing...");
+const workbooksPath = directoryPath + "\\Workbooks";
+const cohortsPath = directoryPath + "\\Cohorts";
 
-const directories = getDirectoriesRecursive(directoryPath, []);
+const workbooksDirectories = getDirectoriesRecursive(workbooksPath);
+const cohortsDirectories = getDirectoriesRecursive(cohortsPath);
+const directories = workbooksDirectories.concat(cohortsDirectories);
 var locProjectOutput = [];
 
 for (var d in directories) {
