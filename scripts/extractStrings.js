@@ -246,8 +246,8 @@ if (!exists) {
 }
 // Valid args, start processing the files.
 console.log(">>>>> Processing...");
-const workbooksPath = directoryPath + "\\Workbooks";
-const cohortsPath = directoryPath + "\\Cohorts";
+const workbooksPath = directoryPath + WorkbookTemplateFolder;
+const cohortsPath = directoryPath + CohortsTemplateFolder;
 
 const workbooksDirectories = getDirectoriesRecursive(workbooksPath);
 const cohortsDirectories = getDirectoriesRecursive(cohortsPath);
