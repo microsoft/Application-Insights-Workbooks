@@ -29,6 +29,7 @@ const SettingsFile = "settings.json";
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = 'resjson';
+const LCLStringFileExtension = "resjson.lcl";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
@@ -36,7 +37,7 @@ const CohortsTemplateFolder = "\\Cohorts\\";
 const RESJSONOutputFolder = "\\output\\loc\\";
 
 const LocProjectFileName = "LocProject.json";
-const StringOutputPath = "\\strings";
+const LangOutputSpecifier = "\\{Lang}\\";
 
 /**
  * FUNCTIONS 
@@ -165,15 +166,15 @@ function findColumnNameReferences(text) {
   return columnRefs;
 }
 
-function getResJSONFileName(fileName) {
+function replaceFileExtension(fileName, extensionType) {
   var a = fileName.split(".");
   const extension = a.pop();
-  return fileName.replace(extension, ResJsonStringFileExtension);
+  return fileName.replace(extension, extensionType);
 }
 
 /** Write string file as RESJSON */
 function writeToFileRESJSON(data, fileName, outputPath) {
-  const resjsonFileName = getResJSONFileName(fileName);
+  const resjsonFileName = replaceFileExtension(fileName, ResJsonStringFileExtension);
   const fullpath = outputPath.concat("\\", resjsonFileName);
 
   const content = JSON.stringify(data, null, "\t");
@@ -200,30 +201,28 @@ function getLocProjectFilePath(dir) {
   return root.concat("\\src");
 }
 
-function addLocProjectEntry(locItems, projectOutputs) {
-  projectOutputs.push(
-    {
-      "LanguageSet": "Azure_Languages",
-      "LocItems": locItems
-    }
-  );
-}
-
 /** Write a LocProject.json file needed to point the loc tool to the resjson files + where to output LCL files  */
-function generateLocProjectFile(dir, projectOutputs) {
+function generateLocProjectFile(locItems, directoryPath) {
+  console.log(">>>>> Generating LocProject.json file...");
+
   const locProjectJson = {
-    "Projects": projectOutputs
+    "Projects": [
+      {
+        "LanguageSet": "Azure_Languages",
+        "LocItems": locItems
+      }
+    ]
   };
   const content = JSON.stringify(locProjectJson, null, "\t");
   try {
-    const pathToLocProjectFile = getLocProjectFilePath(dir);
+    const pathToLocProjectFile = getLocProjectFilePath(directoryPath);
     if (!fs.existsSync(pathToLocProjectFile)) {
       fs.mkdirSync(pathToLocProjectFile, { recursive: true });
     }
     fs.writeFileSync(pathToLocProjectFile.concat("\\", LocProjectFileName), content);
-    console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile, "\\", LocProjectFileName);
+    console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile);
   } catch (e) {
-    console.error("ERROR: Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
+    console.error("Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
   }
 }
 
@@ -255,22 +254,24 @@ const directories = workbooksDirectories.concat(cohortsDirectories);
 var locProjectOutput = [];
 
 for (var d in directories) {
-  const dir = directories[d];
-  const files = fs.readdirSync(dir);
+  const templatePath = directories[d];
+
+  const files = fs.readdirSync(templatePath);
   if (!files || files.length === 0) {
     // No files in directory, continue
     continue;
   }
 
   // This is where we will output the resjson artifact
-  const RESJSONOutputPath = generateRESJSONOutputPath(dir);
-  const locItems = [];
+  const RESJSONOutputPath = generateRESJSONOutputPath(templatePath);
 
   // Create string output dir
   if (!fs.existsSync(RESJSONOutputPath)) {
     fs.mkdirSync(RESJSONOutputPath, { recursive: true });
   }
 
+
+  const locProjectEntries = [];
 
   for (var i in files) {
     const fileName = files[i];
@@ -280,7 +281,7 @@ for (var d in directories) {
       continue;
     }
 
-    const filePath = dir.concat("\\", fileName);
+    const filePath = templatePath.concat("\\", fileName);
     const data = openFile(filePath);
 
     // parse the workbook for strings
@@ -293,14 +294,16 @@ for (var d in directories) {
     }
 
     if (Object.keys(extracted).length > 0) {
-      const LCLOutputPath = dir.concat(StringOutputPath);
-      const resjsonFileName = getResJSONFileName(fileName);
+      const resjsonFileName = replaceFileExtension(fileName, ResJsonStringFileExtension);
+      const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
 
       // Add LocProject entry
-      locItems.push({
+      // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
+      locProjectEntries.push({
         "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
+        "LclFile": templatePath.concat(LangOutputSpecifier, lclFileName),
         "CopyOption": "LangIDOnPath",
-        "OutputPath": LCLOutputPath
+        "OutputPath": templatePath.concat(LangOutputSpecifier, resjsonFileName)
       });
 
       // Write extracted strings to file
@@ -308,15 +311,14 @@ for (var d in directories) {
     } else {
       console.log(">>>>> No strings found for template: ", filePath);
     }
+    locProjectOutput.push(...locProjectEntries);
   };
-  // Add an entry to locProject file
-  addLocProjectEntry(locItems, locProjectOutput);
 }
 
+
 // Generate and push locProject file
-console.log(">>>>> Generating LocProject.json file...");
 if (locProjectOutput.length > 0) {
-  generateLocProjectFile(directoryPath.concat("\\"), locProjectOutput);
+  generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));
 }
 
 console.log("String extraction completed.");

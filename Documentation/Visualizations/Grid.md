@@ -116,6 +116,21 @@ Date formatting options include
 | `Style` | The format to render a date as short, long, full formats, or a time as short or long time formats. |
 | `Show time as` | Allows the author to decide between showing the time in local time (default), or as UTC. depending on the date format style selected, the UTC/time zone information may not be displayed. |
 
+## Custom Column Width Setting
+![Image of column settings with the custom column width field indicated in a red box](../Images/CustomColumnWidthSetting.png)
+
+The author can customize the width of any column in the grid using the _Custom Column Width_ field in _Column Settings_. 
+* If the field is left blank, then the width will be automatically determined based on the number of characters in the column and the number of visible columns. Default unit is "ch" (characters)
+* Clicking the blue _(Current Width)_ button in the label will fill the text field with the selected column's current width. 
+* If a value is present in the custom width field with no unit of measurement, the default will be used. The units of measurement available are: 
+    * ch - characters (Default)
+    * px - pixels
+    * fr - fractional unit * example below
+    * % - percentage
+* Input validation - if validation fails, a red guidance message will popup below the field, but user can still apply the width. If a value is present in the input, it will be parsed out and if no valid unit of measure is found, then the default will be used.   
+* There is no minimum/maximum width as this is left up to the author's discretion.
+* The custom column width field is disabled for hidden columns.
+
 
 ## Examples
 ### Spark lines and Bar Underneath
@@ -194,3 +209,15 @@ Will result in the following grid:
 
 Where each link in the grid opens up a different workbook template for that Application Insights resource.
 
+
+### Fractional Units and Percentages
+The fractional unit is a commonly used dynamic unit of measurement in various types of grids. As the window size/resolution changes, the fr width changes as well. 
+
+The below image shows a table with 8 columns that are 1fr width each and are all equal widths. As the window size changes, the width of each column changes proportionally. 
+![Image of columns in grid with column width value of 1fr each](../Images/CustomColumnWidthFrExplanation1.png)
+
+The image below shows the same table, except the first column is set to 50% width. This will set the column to half of the total grid width dynamically. Resizing the window will continue to retain the 50% width unless the window size gets too small - these dynamic columns have a minimum width based on their contents. The remaining 50% of the grid is divided up by the 8 total fractional units. The "kind" column below is set to 2fr, so it takes up 2/8ths of remaining space. As the other columns are 1fr each, they each take up 1/8th of the right half of the grid. 
+![Image of columns in grid with 1 column width value of 50% and the rest as 1fr each](../Images/CustomColumnWidthFrExplanation2.png)
+
+Combining fr, %, px, and ch widths is possible and works similarly to the above examples. The widths that are set by the static units, ch and px, they're hard constants that won't change even if the window/resolution is changed. The columns set by % will take their % based on the total grid width (might not be exact due to the aforementioned minimum widths). The columns set with fr will just split up the remaining grid space based on the number of fractional units they are allotted.
+![Image of columns in grid with assortment of different width units used](../Images/CustomColumnWidthFrExplanation3.png)
