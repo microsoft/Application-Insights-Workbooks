@@ -22,7 +22,7 @@ const LocalizableFileTypes = [
 const SettingsFileLocKeys = [
   "name",
   "description"
-]
+];
 
 const CategoryResourcesFile = "categoryResources.json";
 const SettingsFile = "settings.json";
