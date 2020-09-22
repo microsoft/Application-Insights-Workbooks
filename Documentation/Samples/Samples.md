@@ -27,9 +27,3 @@
 [![Image showing a grid with alerts data](../Images/ARMAlertsQueryGridFormat.png)](AlertDataARM.md)
 
 [See instructions](AlertDataARM.md)
-
-### Bring your own storage to save workbook
-
-[![Image showing a grid with alerts data](../Images/ByosSavedDialogWithStorage.png)](BringYourOwnStorage.md)
-
-[See instructions](BringYourOwnStorage.md)
