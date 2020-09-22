@@ -1,4 +1,4 @@
-const fs = require('fs'), path = require('path');
+const fs = require('fs'), path = require('path'), xml2js = require('xml2js');
 
 // Keys to localize. Add new keys here.
 const LocKeys = [
@@ -35,9 +35,14 @@ const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
 
 const RESJSONOutputFolder = "\\output\\loc\\";
+const TemplateOutoutFolder = "\\output\\templates\\"
 
 const LocProjectFileName = "LocProject.json";
 const LangOutputSpecifier = "\\{Lang}\\";
+
+const Languages = [
+  "cs", "de", "es", "fr", "hu", "it", "ja", "ko", "nl", "pl", "pl-BR", "pt-PT", "ru", "sv", "tr", "zh-Hans", "zh-Hant"
+];
 
 /**
  * FUNCTIONS 
@@ -70,11 +75,11 @@ function getDirectoriesRecursive(srcpath) {
 }
 
 /** Generates a output path for the template path by replacing template directory with output directory */
-function generateRESJSONOutputPath(dir) {
+function generateOutputPath(dir, folder) {
   if (dir.includes(CohortsTemplateFolder)) {
-    return dir.replace(CohortsTemplateFolder, RESJSONOutputFolder);
+    return dir.replace(CohortsTemplateFolder, folder);
   } else {
-    return dir.replace(WorkbookTemplateFolder, RESJSONOutputFolder);
+    return dir.replace(WorkbookTemplateFolder, folder);
   }
 }
 
@@ -191,14 +196,14 @@ function writeToFileRESJSON(data, fileName, outputPath) {
   }
 }
 
-function getLocProjectFilePath(dir) {
+function getRootFolder(dir) {
   var root = "";
   if (dir.includes(CohortsTemplateFolder)) {
     root = dir.slice(0, dir.indexOf(CohortsTemplateFolder));
   } else {
     root = dir.slice(0, dir.indexOf(WorkbookTemplateFolder));
   }
-  return root.concat("\\src");
+  return root;
 }
 
 /** Write a LocProject.json file needed to point the loc tool to the resjson files + where to output LCL files  */
@@ -215,7 +220,7 @@ function generateLocProjectFile(locItems, directoryPath) {
   };
   const content = JSON.stringify(locProjectJson, null, "\t");
   try {
-    const pathToLocProjectFile = getLocProjectFilePath(directoryPath);
+    const pathToLocProjectFile = getRootFolder(directoryPath).concat("\\src");;
     if (!fs.existsSync(pathToLocProjectFile)) {
       fs.mkdirSync(pathToLocProjectFile, { recursive: true });
     }
@@ -224,6 +229,143 @@ function generateLocProjectFile(locItems, directoryPath) {
   } catch (e) {
     console.error("Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
   }
+}
+
+/**
+ * ===================== Template Generation ===========================
+ */
+
+
+function generateTranslatedFile(fileData, workbookJSON, templateDir, fullpath) {
+  xml2js.parseStringPromise(fileData /*, options */).then(function (result) {
+      parseXMLResult(result, workbookJSON, templateDir, fullpath);
+  }).catch(function (err) {
+      // Failed
+      console.error("ERROR: Could not parse XML file", err);
+  });
+}
+
+function parseXMLResult(result, workbookJSON, templateDir, fullpath) {
+  console.log(result);
+  // language 
+  const lang = result.LCX.$.TgtCul;
+  console.log("Processing language: ", lang);
+
+  // strings 
+  const strings = result.LCX.Item[0].Item[0].Item
+  console.log(strings);
+  var locStringData = {};
+  // Extract strings from XML LCL file to map 
+  strings.forEach(entry => {
+      parseStringEntry(entry, locStringData);
+  });
+
+  // Strings extracted. Replace results into workbook JSON
+  const translatedJSON = replaceText(workbookJSON, locStringData);
+  writeTranslatedWorkbookToFile(translatedJSON, templateDir, fullpath);
+}
+
+/** Write file as new workbook  */
+function writeTranslatedWorkbookToFile(data, templateDir, fullpath) {
+  const content = JSON.stringify(data, null, "\t");
+  try {
+      if (!fs.existsSync(templateDir)) {
+          fs.mkdirSync(templateDir, { recursive: true });
+      }
+      fs.writeFileSync(fullpath, content);
+      console.log(">>>>> Generated translated file: ", fullpath);
+  } catch (e) {
+      console.error("ERROR: Cannot write to file: ", fullpath, "ERROR: ", e);
+  }
+}
+
+function parseStringEntry(entry, locStringData) {
+  // strings always start with ; so get rid of the first char
+  var itemId = entry.$.ItemId.substring(1);
+  locStringData[itemId] = {};
+
+  const originalEngText = entry.Str[0].Val[0];
+  locStringData[itemId]["en-us"] = originalEngText;
+  if (entry.Str[0].Tgt) { // some entries might not have a target yet
+    const translatedText = entry.Str[0].Tgt[0].Val[0];
+    locStringData[itemId]["value"] = translatedText;
+  }
+}
+
+/** Replace the strings in the workbook json */
+function replaceText(workbookJSON, stringMap) {
+  const keys = Object.keys(stringMap);
+  keys.forEach(key => {
+      const keyArray = convertStringKeyToPath(key);
+      // value in the template
+      const templateVal = getValFromPath(keyArray, workbookJSON); // value in the english template
+      const translatedVal = stringMap[key]["value"]; // translated value in the lcl file
+      const engVal = stringMap[key]["en-us"]; // original english value in the lcl file
+
+      if (translatedVal && templateVal.localeCompare(engVal) === 0) { // if the text from the lcl file and template file match, we can go ahead and replace it
+          // change the template value
+          var source = {};
+          assignValueToPath(source, keyArray, translatedVal);
+          ObjectAssign(Object.create(workbookJSON), source);
+      }
+  });
+  return workbookJSON;
+};
+
+function convertStringKeyToPath(key) {
+  const vals = key.split(".");
+  return vals;
+}
+
+function getValFromPath(paths, obj) {
+  var output = obj;
+  paths.forEach(key => {
+      output = output[key];
+  });
+  return output;
+}
+
+function assignValueToPath(obj, path, value) {
+  var emptyObj = {};
+  const val = assignValueToObject(emptyObj, path, value);
+  Object.assign(obj, emptyObj);
+}
+
+function ObjectAssign(target, ...sources) {
+  sources.forEach(source => {
+      Object.keys(source).forEach(key => {
+          const sourceVal = source[key];
+          const targetVal = target[key];
+          target[key] = targetVal && sourceVal && typeof targetVal === 'object' && typeof sourceVal === 'object'
+              ? ObjectAssign(targetVal, sourceVal)
+              : sourceVal
+      });
+  });
+  return target;
+}
+
+function assignValueToObject(obj, keys, value) {
+  obj = typeof obj === 'object' ? obj : {};
+  var curStep = obj;
+  for (var i = 0; i < keys.length - 1; i++) {
+      var key = keys[i];
+
+      if (!curStep[key] && !Object.prototype.hasOwnProperty.call(curStep, key)) {
+          var nextKey = keys[i + 1];
+          var useArray = /^\+?(0|[1-9]\d*)$/.test(nextKey);
+          curStep[key] = useArray ? [] : {};
+      }
+      curStep = curStep[key];
+  }
+  var finalStep = keys[keys.length - 1];
+  curStep[finalStep] = value;
+};
+
+function getClonedLocDirectory(templatePath) {
+  const rootDirectory = getRootFolder(templatePath);
+  var result = rootDirectory.concat("\\scripts\\localization");
+  var removedIndex = templatePath.replace(rootDirectory, "");
+  return result.concat(removedIndex);
 }
 
 /**
@@ -251,7 +393,7 @@ const cohortsPath = directoryPath + CohortsTemplateFolder;
 const workbooksDirectories = getDirectoriesRecursive(workbooksPath);
 const cohortsDirectories = getDirectoriesRecursive(cohortsPath);
 const directories = workbooksDirectories.concat(cohortsDirectories);
-var locProjectOutput = [];
+const locProjectOutput = [];
 
 for (var d in directories) {
   const templatePath = directories[d];
@@ -263,15 +405,12 @@ for (var d in directories) {
   }
 
   // This is where we will output the resjson artifact
-  const RESJSONOutputPath = generateRESJSONOutputPath(templatePath);
+  const RESJSONOutputPath = generateOutputPath(templatePath, RESJSONOutputFolder);
 
   // Create string output dir
   if (!fs.existsSync(RESJSONOutputPath)) {
     fs.mkdirSync(RESJSONOutputPath, { recursive: true });
   }
-
-
-  const locProjectEntries = [];
 
   for (var i in files) {
     const fileName = files[i];
@@ -287,7 +426,9 @@ for (var d in directories) {
     // parse the workbook for strings
     var extracted = {};
     try {
-      getLocalizeableStrings(JSON.parse(data), '', extracted, fileName);
+      var workbookParsed = JSON.parse(data);
+      getLocalizeableStrings(workbookParsed, '', extracted, fileName);
+
     } catch (error) {
       console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
       continue;
@@ -299,7 +440,7 @@ for (var d in directories) {
 
       // Add LocProject entry
       // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
-      locProjectEntries.push({
+      locProjectOutput.push({
         "SourceFile": RESJSONOutputPath.concat("\\", resjsonFileName),
         "LclFile": templatePath.concat(LangOutputSpecifier, lclFileName),
         "CopyOption": "LangIDOnPath",
@@ -308,13 +449,32 @@ for (var d in directories) {
 
       // Write extracted strings to file
       writeToFileRESJSON(extracted, fileName, RESJSONOutputPath);
+
+      const replaced = Object.assign({}, workbookParsed);
+      // Generate new templates
+      const locDirectory = getClonedLocDirectory(templatePath);
+      if (locDirectory === "C:\\src\\Application-Insights-Workbooks\\scripts\\localization\\Workbooks\\Storage\\Overview") {
+        for (var lang in Languages) {
+          var translatedDir = generateOutputPath(templatePath, TemplateOutoutFolder);
+          translatedDir = translatedDir.concat("\\", Languages[lang]);
+          const fullpath = translatedDir.concat("\\", fileName);
+          const fullLocPath = locDirectory.concat("\\", Languages[lang], "\\", lclFileName);
+          if (fs.existsSync(fullLocPath)) {
+            console.log(">>>>> Localization path exists exists!", fullLocPath);
+            // Do workbook string replacement here
+            const fileData = fs.readFileSync(fullLocPath, Encoding);
+            generateTranslatedFile(fileData, replaced, translatedDir, fullpath);
+          } else {
+            // No loc file found, just push the workbook file as is in English
+            writeTranslatedWorkbookToFile(replaced, translatedDir, fullpath);
+          }
+        }
+      }
     } else {
       console.log(">>>>> No strings found for template: ", filePath);
     }
-    locProjectOutput.push(...locProjectEntries);
   };
 }
-
 
 // Generate and push locProject file
 if (locProjectOutput.length > 0) {
