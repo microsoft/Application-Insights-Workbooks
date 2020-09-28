@@ -1235,22 +1235,15 @@
                   "label": "Selected PVC",
                   "type": 1,
                   "description": "Selected PVC to show detailed graph",
-                  "isHiddenWhenLocked": true
-                },
-                {
-                  "id": "f22b4b39-4f15-4f1f-bb81-dcc89d8ec6c6",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "onlyHighUsage",
-                  "label": "Usage State",
-                  "type": 1,
-                  "description": "Usage State to filter by: \"All PVs\" or \"High Usage\"",
+                  "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet controllerName= '{workloadName:value}';\r\nKubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n{clusterIdWhereClause}\r\n| where ControllerName in (controllerName)\r\n| extend PodName = Name\r\n{podStatusWhereClause}\r\n{podNameWhereClause}\r\n| distinct PodUid\r\n| join hint.strategy=shuffle (\r\n    InsightsMetrics\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where Namespace == 'container.azm.ms/pv'\r\n    | where Name == 'pvUsedBytes'\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Capacity = tolong(Tags.pvCapacityBytes)\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | extend PVCName = tostring(Tags.pvcName)\r\n    | extend PodUid = tostring(Tags.podUid)\r\n    | extend PodName = tostring(Tags.podName)\r\n    | project PodUid, UsagePercent, TimeGenerated, PVCName\r\n) on PodUid\r\n| order by TimeGenerated asc\r\n| make-series Trend = max(UsagePercent) default = 0 on TimeGenerated step trendBinSize by PVCName\r\n| extend CurrentUsage = toreal(Trend[-1])\r\n| order by CurrentUsage desc\r\n| take 1\r\n| project PVCName",
                   "isHiddenWhenLocked": true,
-                  "value": "All PVs"
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
                 }
               ],
               "style": "above",
               "queryType": 0,
-              "resourceType": "microsoft.containerservice/managedclusters"
+              "resourceType": "microsoft.operationalinsights/workspaces"
             },
             "name": "parameters - 3"
           },
@@ -1258,15 +1251,27 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet controllerName= '{workloadName:value}';\r\nlet threshold = {pvHighUsageThreshold:value};\r\nlet data = KubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n{clusterIdWhereClause}\r\n| where ControllerName in (controllerName)\r\n| extend PodName = Name\r\n{podStatusWhereClause}\r\n{podNameWhereClause}\r\n| distinct PodUid\r\n| join hint.strategy=shuffle (\r\n    InsightsMetrics\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where Namespace == 'container.azm.ms/pv'\r\n    | where Name == 'pvUsedBytes'\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Capacity = tolong(Tags.pvCapacityBytes)\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | extend PVCName = tostring(Tags.pvcName)\r\n    | extend PodUid = tostring(Tags.podUid)\r\n    | project PodUid, UsagePercent, TimeGenerated, PVCName, Capacity\r\n) on PodUid\r\n| summarize Usage=max(UsagePercent) by PVCName\r\n| extend State = iff(Usage >= threshold, 'High Usage', 'Regular Usage');\r\n\r\ndata\r\n| summarize Count = count(), PVCs = makeset(PVCName) by State\r\n| union (\r\n    data\r\n    | summarize Count = count(), PVCs = dynamic([\"*\"])\r\n    | extend State = 'All PVs'\r\n)\r\n| join kind = fullouter (datatable (State: string) ['All PVs', 'High Usage', 'Regular Usage']) on State\r\n| extend Count = iff(State == '', 0, Count), PVCs = iff(State == '', dynamic([]), PVCs)\r\n| where State != 'Regular Usage'\r\n| where State != ''\r\n| order by Count desc",
-              "size": 4,
+              "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet controllerName= '{workloadName:value}';\r\nlet threshold = {pvHighUsageThreshold:value};\r\nlet data = KubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n{clusterIdWhereClause}\r\n| where ControllerName in (controllerName)\r\n| extend PodName = Name\r\n{podStatusWhereClause}\r\n{podNameWhereClause}\r\n| distinct PodUid\r\n| join hint.strategy=shuffle (\r\n    InsightsMetrics\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where Namespace == 'container.azm.ms/pv'\r\n    | where Name == 'pvUsedBytes'\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Capacity = tolong(Tags.pvCapacityBytes)\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | extend PVCName = tostring(Tags.pvcName)\r\n    | extend PodUid = tostring(Tags.podUid)\r\n    | project PodUid, UsagePercent, TimeGenerated, PVCName, Capacity\r\n) on PodUid\r\n| summarize Usage=max(UsagePercent) by PVCName\r\n| extend State = iff(Usage >= threshold, 'High Usage', 'Regular Usage');\r\n\r\ndata\r\n| summarize Count = count(), PVCs = makeset(PVCName) by State\r\n| union (\r\n    data\r\n    | summarize Count = count(), PVCs = dynamic([\"*\"])\r\n    | extend State = 'All PVs'\r\n)\r\n| join kind = fullouter (datatable (State: string) ['All PVs', 'High Usage', 'Regular Usage']) on State\r\n| extend Count = iff(State == '', 0, Count), PVCs = iff(State == '', dynamic([]), PVCs), State = iff(State == '', State1, State)\r\n| where State != 'Regular Usage'\r\n| extend State = iff(State == 'High Usage', strcat('Greater Than ', tostring(threshold), '% Usage'), State)\r\n| extend noPVs = iff(Count == 0, 'true', 'false')\r\n| order by Count desc",
+              "size": 3,
+              "showAnalytics": true,
               "timeContext": {
                 "durationMs": 0
               },
               "timeContextFromParameter": "timeRange",
-              "exportFieldName": "State",
-              "exportParameterName": "onlyHighUsage",
-              "exportDefaultValue": "All PVs",
+              "exportedParameters": [
+                {
+                  "fieldName": "noPVs",
+                  "parameterName": "noPVs",
+                  "parameterType": 1,
+                  "defaultValue": "false"
+                },
+                {
+                  "fieldName": "State",
+                  "parameterName": "onlyHighUsage",
+                  "parameterType": 1,
+                  "defaultValue": "All PVs"
+                }
+              ],
               "queryType": 0,
               "resourceType": "microsoft.containerservice/managedclusters",
               "visualization": "tiles",
@@ -1282,8 +1287,8 @@
                     "thresholdsOptions": "icons",
                     "thresholdsGrid": [
                       {
-                        "operator": "==",
-                        "thresholdValue": "High Usage",
+                        "operator": "contains",
+                        "thresholdValue": "Greater Than",
                         "representation": "4",
                         "text": ""
                       },
@@ -1311,14 +1316,15 @@
                 "size": "auto"
               }
             },
+            "showPin": true,
             "name": "PVOverview"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet controllerName= '{workloadName:value}';\r\nlet usageThreshold = toreal({pvHighUsageThreshold});\r\nlet threshold = iff('{onlyHighUsage}' == \"High Usage\", usageThreshold, -1.0);\r\nKubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n{clusterIdWhereClause}\r\n| where ControllerName in (controllerName)\r\n| extend PodName = Name\r\n{podStatusWhereClause}\r\n{podNameWhereClause}\r\n| distinct PodUid\r\n| join hint.strategy=shuffle (\r\n    InsightsMetrics\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where Namespace == 'container.azm.ms/pv'\r\n    | where Name == 'pvUsedBytes'\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Capacity = tolong(Tags.pvCapacityBytes)\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | extend PVCName = tostring(Tags.pvcName)\r\n    | extend PodUid = tostring(Tags.podUid)\r\n    | project PodUid, UsagePercent, TimeGenerated, PVCName, Capacity\r\n) on PodUid\r\n| order by TimeGenerated asc\r\n| make-series Trend = max(UsagePercent) default = 0 on TimeGenerated step trendBinSize by PVCName, Capacity\r\n| extend CurrentUsage = toreal(Trend[-1])\r\n| where CurrentUsage > threshold\r\n| extend Used = CurrentUsage * toreal(Capacity) / 100\r\n| extend State = iff(CurrentUsage >= usageThreshold, 'High Usage', 'Healthy Usage')\r\n| project PVCName, State, Trend, CurrentUsage, Used, Capacity\r\n| order by CurrentUsage desc",
-              "size": 1,
+              "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet controllerName= '{workloadName:value}';\r\nlet usageThreshold = toreal({pvHighUsageThreshold});\r\nlet threshold = iff('{onlyHighUsage}' contains \"Greater Than\", usageThreshold, -1.0);\r\nKubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n{clusterIdWhereClause}\r\n| where ControllerName in (controllerName)\r\n| extend PodName = Name\r\n{podStatusWhereClause}\r\n{podNameWhereClause}\r\n| distinct PodUid\r\n| join hint.strategy=shuffle (\r\n    InsightsMetrics\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where Namespace == 'container.azm.ms/pv'\r\n    | where Name == 'pvUsedBytes'\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Capacity = tolong(Tags.pvCapacityBytes)\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | extend PVCName = tostring(Tags.pvcName)\r\n    | extend PodUid = tostring(Tags.podUid)\r\n    | extend PodName = tostring(Tags.podName)\r\n    | extend VolumeName = tostring(Tags.volumeName)\r\n    | project PodUid, UsagePercent, TimeGenerated, PVCName, Capacity, PodName, Computer, VolumeName\r\n) on PodUid\r\n| order by TimeGenerated asc\r\n| make-series Trend = max(UsagePercent) default = 0 on TimeGenerated step trendBinSize by PVCName, Capacity, Computer, PodName, VolumeName\r\n| extend CurrentUsage = toreal(Trend[-1])\r\n| where CurrentUsage > threshold\r\n| extend Used = format_bytes(CurrentUsage * toreal(Capacity) / 100, 2)\r\n| extend Capacity = format_bytes(Capacity, 2)\r\n| extend UsedAndCapacity = strcat(Used, ' / ', Capacity)\r\n| project PVCName, Computer, PodName,  VolumeName, CurrentUsage, Trend, UsedAndCapacity\r\n| order by CurrentUsage desc",
+              "size": 3,
               "showAnalytics": true,
               "noDataMessage": "There are no persistent volumes for the selected criteria",
               "timeContext": {
@@ -1333,30 +1339,38 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "State",
+                    "columnMatch": "CurrentUsage",
                     "formatter": 18,
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
                         {
-                          "operator": "==",
-                          "thresholdValue": "High Usage",
-                          "representation": "4",
-                          "text": "{0}"
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "failed",
+                          "text": "{0}%"
                         },
                         {
-                          "operator": "==",
-                          "thresholdValue": "Healthy Usage",
-                          "representation": "success",
-                          "text": "{0}"
+                          "operator": ">=",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}%"
                         },
                         {
                           "operator": "Default",
                           "thresholdValue": null,
                           "representation": "success",
-                          "text": "{0}"
+                          "text": "{0}%"
                         }
                       ]
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "maximumFractionDigits": 2
+                    }
                     }
                   },
                   {
@@ -1381,10 +1395,10 @@
                     }
                   },
                   {
-                    "columnMatch": "CurrentUsage",
+                    "columnMatch": "UsedAndCapacity",
                     "formatter": 0,
                     "numberFormat": {
-                      "unit": 1,
+                      "unit": 2,
                       "options": {
                         "style": "decimal",
                         "useGrouping": false,
@@ -1415,6 +1429,39 @@
                         "maximumFractionDigits": 2
                       }
                     }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High Usage",
+                          "representation": "4",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Healthy Usage",
+                          "representation": "success",
+                          "text": "{0}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}"
+                  }
+                      ]
+                    }
+                  }
+                ],
+                "sortBy": [
+                  {
+                    "itemKey": "Computer",
+                    "sortOrder": 1
                   }
                 ],
                 "labelSettings": [
@@ -1423,28 +1470,43 @@
                     "label": "PVC Name"
                   },
                   {
-                    "columnId": "State",
-                    "label": "Status"
+                    "columnId": "Computer",
+                    "label": "Node Name"
+                  },
+                  {
+                    "columnId": "PodName",
+                    "label": "Pod Name"
+                  },
+                  {
+                    "columnId": "VolumeName",
+                    "label": "Volume Name"
+                  },
+                  {
+                    "columnId": "CurrentUsage",
+                    "label": "Usage"
                   },
                   {
                     "columnId": "Trend",
                     "label": "Usage Trend"
                   },
                   {
-                    "columnId": "CurrentUsage",
-                    "label": "Used Bytes %"
-                  },
-                  {
-                    "columnId": "Used"
-                  },
-                  {
-                    "columnId": "Capacity"
+                    "columnId": "UsedAndCapacity",
+                    "label": "Used / Capacity"
                   }
                 ]
               },
-              "sortBy": []
+              "sortBy": [
+                {
+                  "itemKey": "Computer",
+                  "sortOrder": 1
+                }
+              ]
             },
-            "name": "PVGrid"
+            "showPin": true,
+            "name": "PVGrid",
+            "styleSettings": {
+              "showBorder": true
+            }
           },
           {
             "type": 3,
@@ -1453,7 +1515,8 @@
               "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet controllerName= '{workloadName:value}';\r\nlet selectedPVC = '{selectedPVC:value}';\r\nKubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n{clusterIdWhereClause}\r\n| where ControllerName in (controllerName)\r\n| extend PodName = Name\r\n{podStatusWhereClause}\r\n{podNameWhereClause}\r\n| distinct PodUid\r\n| join hint.strategy=shuffle (\r\n    InsightsMetrics\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where Namespace == 'container.azm.ms/pv'\r\n    | where Name == 'pvUsedBytes'\r\n    | extend Tags = todynamic(Tags)\r\n    | extend PVCName = tostring(Tags.pvcName)\r\n    | where PVCName == selectedPVC\r\n    | extend Capacity = Tags.pvCapacityBytes\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | extend PodUid = tostring(Tags.podUid)\r\n    | project TimeGenerated, UsagePercent, PVCName, PodUid\r\n) on PodUid\r\n| project PVCName, TimeGenerated, UsagePercent\r\n| summarize UsagePercentage=max(UsagePercent) by bin(TimeGenerated, trendBinSize), PVCName",
               "size": 0,
               "aggregation": 5,
-              "title": "Used Bytes %",
+              "showAnalytics": true,
+              "title": "{selectedPVC} usage",
               "noDataMessage": "Select a PV to view details",
               "queryType": 0,
               "resourceType": "microsoft.containerservice/managedclusters",
@@ -1491,12 +1554,22 @@
                 }
               }
             },
-            "conditionalVisibility": {
-              "parameterName": "selectedPVC",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "noPVs",
               "comparison": "isNotEqualTo",
-              "value": ""
+                "value": "true"
             },
-            "name": "PVDetails"
+              {
+                "parameterName": "selectedPVC",
+                "comparison": "isNotEqualTo"
+              }
+            ],
+            "showPin": true,
+            "name": "PVDetails",
+            "styleSettings": {
+              "showBorder": true
+            }
           }
         ]
       },
