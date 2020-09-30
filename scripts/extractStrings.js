@@ -52,7 +52,6 @@ const Languages = [
 function testPath(path) {
   console.log(">>>>> Processing template path: ", path);
   if (fs.existsSync(path)) {
-    console.log("Path verified.");
     return true;
   } else {
     console.error("ERROR: Template path does not exist: ", path);
@@ -213,7 +212,7 @@ function writeToFileRESJSON(data, fileName, outputPath) {
 
   const content = JSON.stringify(data, null, "\t");
   if (content.localeCompare("{}") === 0) {
-    console.log("No strings found for: ", fileName);
+    console.log(">>>>> No strings found for: ", fileName);
     return;
   }
 
@@ -275,14 +274,10 @@ function generateTranslatedFile(fileData, workbookJSON, templateDir, fullpath) {
 }
 
 function parseXMLResult(result, workbookJSON, templateDir, fullpath) {
-  console.log(result);
-  // language 
-  const lang = result.LCX.$.TgtCul;
-  console.log("Processing language: ", lang);
+  const lang = result.LCX.$.TgtCul; // language specified in LCL file
 
   // strings 
   const strings = result.LCX.Item[0].Item[0].Item
-  console.log(strings);
   var locStringData = {};
   // Extract strings from XML LCL file to map 
   strings.forEach(entry => {
@@ -291,18 +286,18 @@ function parseXMLResult(result, workbookJSON, templateDir, fullpath) {
 
   // Strings extracted. Replace results into workbook JSON
   const translatedJSON = replaceText(workbookJSON, locStringData);
-  writeTranslatedWorkbookToFile(translatedJSON, templateDir, fullpath);
+  writeTranslatedWorkbookToFile(translatedJSON, templateDir, fullpath, lang);
 }
 
 /** Write file as new workbook  */
-function writeTranslatedWorkbookToFile(data, templateDir, fullpath) {
+function writeTranslatedWorkbookToFile(data, templateDir, fullpath, language) {
   const content = JSON.stringify(data, null, "\t");
   try {
     if (!fs.existsSync(templateDir)) {
       fs.mkdirSync(templateDir, { recursive: true });
     }
     fs.writeFileSync(fullpath, content);
-    console.log(">>>>> Generated translated file: ", fullpath);
+    console.log(">>>>> Generated translated file: ", fullpath, "Language: ",language);
   } catch (e) {
     console.error("ERROR: Cannot write to file: ", fullpath, "ERROR: ", e);
   }
@@ -493,5 +488,3 @@ for (var d in directories) {
 if (locProjectOutput.length > 0) {
   generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));
 }
-
-console.log(">>>>> Localization script completed.");
