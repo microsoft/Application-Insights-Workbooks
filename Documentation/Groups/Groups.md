@@ -20,14 +20,15 @@ Groups in workbooks are useful for several things:
 3. performance - in cases where you have a very large templates with many sections or tabs, you can convert each section into it's own sub-template and use groups to load all the sub-templates within the top level template. In these cases, the contents of the sub-templates won't load or run until a user makes those groups visible. See [How to split a large template into many templates](#how-to-split-a-large-template-into-many-templates) for more information.
 
 ## Scoping
-Note: at the current time, a group is treated as a new "scope" in the workbook. Any parameters created in the group are only visible *inside the group*. This is also true for things like merge, they can only see data inside their group or at the parent level.
+By default a group is treated as a new "scope" in the workbook. Any parameters created in the group are only visible *inside the group*. This is also true for things like merge, they can only see data inside their group or at the parent level.
+You can change this behavior for parameters by going into the `Advanced settings` for the group, and enabling `Export parameters inside this group to be visible outside the group` option. When this option is enabled, parameters inside a group will be visible below that group, like other standard parameters.
 
 ## Group types
 The workbook "group" item allows you to add a group of items to a workbook. As the author of a workbook, you specify which type of group it will be. There are 2 types of groups:
 
 * **editable** - the group in the workbook allows you to add/remove/edit the contents of the items in the group. this is most commonly used for layout and visibility purposes.
 
-* **from template** - the group in the workbook loads from the contents of another template by its id. the content of that template is loaded and merged into the workbook at runtime. In edit mode, you cannot modify any of the contents of the group, as they will just load again from the template next time the item loads.
+* **from template** - the group in the workbook loads from the contents of another template by its id. the content of that template is loaded and merged into the workbook at runtime. In edit mode, you cannot modify any of the contents of the group, as they will just load again from the template next time the item loads. When groups are loaded from templates, any parameters inside the loaded template that match with parameters in the outer content may be merged away. See [Using templates inside a group](#Using_templates_inside_a_group) below for how this works. This is commonly used to break up a large template into several smaller templates, or to share common content between multiple templates.
 
 ## Load types
 There are several different ways that the content of a group may be loaded. As the author of a workbook, you get to specify when and how the contents of the group will load
