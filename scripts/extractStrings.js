@@ -14,14 +14,10 @@ const LocKeys = [
   "loadButtonText",
   "noDataMessage"
 ];
+
 const LocalizableFileTypes = [
   "workbook",
   "cohort"
-];
-
-const SettingsFileLocKeys = [
-  "name",
-  "description"
 ];
 
 const CategoryResourcesFile = "categoryResources.json";
@@ -97,17 +93,20 @@ function generateOutputPath(dir, folder) {
   return outputPath;
 }
 
-/** Validates file type as localizeable. Expected to be either workbook/cohort file or settings/categoryjson file */
-function isLocalizeableFileType(filename) {
+/** Validates file type as localizeable. Expected to be either workbook/cohort file or settings/categoryjson file. Returns null if file is not localizeable */
+function getLocalizeableFileType(filename) {
   if (filename.localeCompare(CategoryResourcesFile) === 0 || filename.localeCompare(SettingsFile) === 0) {
-    return true;
+    return filename;
   }
   var a = filename.split(".");
   if (a.length === 1 || (a[0] === "" && a.length === 2)) {
-    return false;
+    return null;
   }
   const extension = a.pop();
-  return extension && LocalizableFileTypes.includes(extension.toLowerCase());
+  if (extension && LocalizableFileTypes.includes(extension.toLowerCase())) {
+    return extension;
+  }
+  return null;
 }
 
 function openFile(file) {
@@ -120,29 +119,59 @@ function openFile(file) {
   }
 }
 
-function getLocalizeableStrings(obj, key, outputMap, fileName) {
-  for (var i in obj) {
-    if (!obj.hasOwnProperty(i)) {
-      continue;
-    }
-    if (typeof obj[i] === 'object') {
-      getLocalizeableStrings(obj[i], key.concat(i, '.'), outputMap, fileName);
-    } else if (fileName.localeCompare(SettingsFile) === 0) {
-      // Settings file has different loc keys than template files
-      if (SettingsFileLocKeys.includes(i)) {
-        const jsonKey = key.concat(i);
-        outputMap[jsonKey] = obj[i];
+function getLocalizeableStrings(obj, key, outputMap) {
+  for (var field in obj) {
+    var objectEntry = obj[field];
+    var jsonKey;
+    if (typeof objectEntry === 'object') {
+      // if the last field is a number, it is part of an array.
+      // See if there's another identifier
+      if (!isNaN(parseInt(field))) {
+        if (key.endsWith("items") && objectEntry["name"] !== null) { // item name
+          jsonKey = key.concat(".", objectEntry["name"]);
+        } else if (key.endsWith("parameters") && objectEntry["id"] !== null) { // kql item
+          jsonKey = key.concat(".", objectEntry["id"]);
+        } else if (key.endsWith("labelSettings") && objectEntry["columnId"] !== null) { // column label
+          jsonKey = key.concat(".", objectEntry["columnId"]);
+        } else if (key.endsWith("links") && objectEntry["id"] !== null) { // link item
+          jsonKey = key.concat(".", objectEntry["id"]);
+        } else {
+          jsonKey = key.concat(".", field);
+        }
+      } else {
+        jsonKey = key.concat(".", field);
       }
-    } else if (LocKeys.includes(i)) {
-      const jsonKey = key.concat(i);
-      const jsonVal = obj[i];
+      getLocalizeableStrings(objectEntry, jsonKey, outputMap);
+
+    } else if (LocKeys.includes(field)) {
+      jsonKey = key.concat(".", field);
+      const jsonVal = obj[field];
       if (jsonVal !== "") {
         outputMap[jsonKey] = jsonVal;
       }
-
       // Check for parameters that should be locked
-      findAndGenerateLockedStringComment(jsonKey, obj[i], outputMap);
+      findAndGenerateLockedStringComment(jsonKey, objectEntry, outputMap);
     }
+  }
+}
+
+
+// Category resources strings for category names
+function getCategoryResourceStrings(object, outputMap) {
+  if (object && object.categories) {
+    object.categories.forEach(category => {
+      const key = category.key;
+      const name = category.settings["en-us"].name;
+      const description = category.settings["en-us"].description;
+      outputMap[key.concat(".name")] = name;
+      outputMap[key.concat(".description")] = description;
+    });
+  }
+}
+
+function getSettingStrings(object, outputMap) {
+  if (object && object.hasOwnProperty("name")) {
+    outputMap["name"] = object.name;
   }
 }
 
@@ -158,7 +187,7 @@ function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
   }
 }
 
-/** Copied from InsightsPortal to find parameters in strings. TODO: need to handle column name references */
+/** Copied from InsightsPortal to find parameters in strings.*/
 function findParameterNames(text) {
   const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
   const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
@@ -255,7 +284,7 @@ function generateLocProjectFile(locItems, directoryPath) {
     fs.writeFileSync(pathToLocProjectFile.concat("\\", LocProjectFileName), content);
     console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile);
   } catch (e) {
-    console.error("Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
+    console.error("ERROR: Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
   }
 }
 
@@ -297,7 +326,7 @@ function writeTranslatedWorkbookToFile(data, templateDir, fullpath, language) {
       fs.mkdirSync(templateDir, { recursive: true });
     }
     fs.writeFileSync(fullpath, content);
-    console.log(">>>>> Generated translated file: ", fullpath, "Language: ",language);
+    console.log(">>>>> Generated translated file: ", fullpath, "Language: ", language);
   } catch (e) {
     console.error("ERROR: Cannot write to file: ", fullpath, "ERROR: ", e);
   }
@@ -432,8 +461,9 @@ for (var d in directories) {
   for (var i in files) {
     const fileName = files[i];
     // Get the contents of the workbook
-    const isValid = isLocalizeableFileType(fileName);
-    if (!isValid) {
+    const extensionType = getLocalizeableFileType(fileName);
+    // If extension type is not valid localizeable file type, skip
+    if (!extensionType) {
       continue;
     }
 
@@ -444,7 +474,14 @@ for (var d in directories) {
     var extracted = {};
     try {
       var jsonParsedData = JSON.parse(fileData);
-      getLocalizeableStrings(jsonParsedData, '', extracted, fileName);
+      if (extensionType.localeCompare(CategoryResourcesFile) === 0) {
+        // Special case for category resource strings
+        getCategoryResourceStrings(jsonParsedData, extracted);
+      } else if (extensionType.localeCompare(SettingsFile) === 0) {
+        getSettingStrings(jsonParsedData, extracted);
+      } else {
+        getLocalizeableStrings(jsonParsedData, '', extracted);
+      }
     } catch (error) {
       console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
       continue;
