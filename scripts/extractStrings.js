@@ -15,6 +15,13 @@ const LocKeys = [
   "noDataMessage"
 ];
 
+const ArrayLocIdentifier = {
+  "items": "name",
+  "parameters": "id",
+  "labelSettings": "columnId",
+  "links": "id"
+}
+
 const LocalizableFileTypes = [
   "workbook",
   "cohort"
@@ -124,20 +131,10 @@ function getLocalizeableStrings(obj, key, outputMap) {
     var objectEntry = obj[field];
     var jsonKey;
     if (typeof objectEntry === 'object') {
-      // if the last field is a number, it is part of an array.
-      // See if there's another identifier
+      // If the last field is a number, it is part of an array.
+      // See if there's another identifier such that if a template order is edited, the string does not need to be re-localized
       if (!isNaN(parseInt(field))) {
-        if (key.endsWith("items") && objectEntry["name"] !== null) { // item name
-          jsonKey = key.concat(".", objectEntry["name"]);
-        } else if (key.endsWith("parameters") && objectEntry["id"] !== null) { // kql item
-          jsonKey = key.concat(".", objectEntry["id"]);
-        } else if (key.endsWith("labelSettings") && objectEntry["columnId"] !== null) { // column label
-          jsonKey = key.concat(".", objectEntry["columnId"]);
-        } else if (key.endsWith("links") && objectEntry["id"] !== null) { // link item
-          jsonKey = key.concat(".", objectEntry["id"]);
-        } else {
-          jsonKey = key.concat(".", field);
-        }
+        jsonKey = getKeyForArrayObject(key, objectEntry, field);
       } else {
         jsonKey = key.concat(".", field);
       }
@@ -155,6 +152,19 @@ function getLocalizeableStrings(obj, key, outputMap) {
   }
 }
 
+// Gets unique key identifier for array object
+function getKeyForArrayObject(key, objectEntry, field) {
+  if (endsWithLocIdentifier(key) && objectEntry[ArrayLocIdentifier[key]] !== null) {
+    return key.concat(".", objectEntry[ArrayLocIdentifier[key]]);
+  }
+  return key.concat(".", field);
+}
+
+function endsWithLocIdentifier(string) {
+  return Object.keys(ArrayLocIdentifier).some(id => {
+      return string.endsWith(id);
+  });
+}
 
 // Category resources strings for category names
 function getCategoryResourceStrings(object, outputMap) {
@@ -346,19 +356,22 @@ function parseStringEntry(entry, locStringData) {
 }
 
 /** Replace the strings in the workbook json */
-function replaceText(workbookJSON, stringMap) {
+function replaceText(workbookTemplate, stringMap) {
+  var workbookJSON = JSON.parse(JSON.stringify(workbookTemplate));
   const keys = Object.keys(stringMap);
   keys.forEach(key => {
     const keyArray = convertStringKeyToPath(key);
     // value in the template
-    const templateVal = getValFromPath(keyArray, workbookJSON); // value in the english template
+    const result = getValueFromPath(keyArray, workbookJSON);
+    const templateVal = result && result.out; // value in the english template
+    const actualKeyPaths = result && result.paths; // the actual paths of the string (not using identifiers) 
     const translatedVal = stringMap[key]["value"]; // translated value in the lcl file
     const engVal = stringMap[key]["en-us"]; // original english value in the lcl file
 
-    if (translatedVal && templateVal.localeCompare(engVal) === 0) { // if the text from the lcl file and template file match, we can go ahead and replace it
+    if (translatedVal && templateVal == engVal) { // if the text from the lcl file and template file match, we can go ahead and replace it
       // change the template value
       var source = {};
-      assignValueToPath(source, keyArray, translatedVal);
+      assignValueToPath(source, actualKeyPaths, translatedVal);
       ObjectAssign(Object.create(workbookJSON), source);
     }
   });
@@ -370,17 +383,30 @@ function convertStringKeyToPath(key) {
   return vals;
 }
 
-function getValFromPath(paths, obj) {
-  var output = obj;
-  paths.forEach(key => {
-    output = output[key];
-  });
-  return output;
+function getValueFromPath(paths, obj) {
+  const keyPaths = [];
+  for (var i = 0; i < paths.length; i++) {
+    var currentKey = paths[i];
+    if (Array.isArray(obj) && isNaN(parseInt(paths[i]))) { // If a key is not a number but comes after an array, check if its a unique identifer
+      const previousKey = i > 0 ? paths[i - 1] : "";
+      var index;
+
+      if (Object.keys(ArrayLocIdentifier).includes(previousKey)) {
+        index = obj.findIndex(o => o[ArrayLocIdentifier[previousKey]] == currentKey);
+        if (index !== -1) {
+          currentKey = index.toString();
+        }
+      }
+    }
+    obj = obj[currentKey];
+    keyPaths.push(currentKey);
+  }
+  return { out: obj, paths: keyPaths };
 }
 
 function assignValueToPath(obj, path, value) {
   var emptyObj = {};
-  const val = assignValueToObject(emptyObj, path, value);
+  assignValueToObject(emptyObj, path, value);
   Object.assign(obj, emptyObj);
 }
 
@@ -497,8 +523,8 @@ for (var d in directories) {
       writeToFileRESJSON(extracted, fileName, resjonOutputPath);
 
       // Generate localized templates
-      const replaced = Object.assign({}, jsonParsedData);
       const locDirectory = getClonedLocDirectory(templatePath);
+      // TODO: change
       if (locDirectory === "C:\\src\\Application-Insights-Workbooks\\scripts\\localization\\Workbooks\\Storage\\Overview") {
         for (var l in Languages) {
           var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
@@ -508,10 +534,10 @@ for (var d in directories) {
           if (fs.existsSync(fullLocPath)) {
             // Do workbook string replacement here
             const fileData = fs.readFileSync(fullLocPath, Encoding);
-            generateTranslatedFile(fileData, replaced, translatedDir, generatedTemplatePath);
+            generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
           } else {
             // No loc file found, just push the workbook file as is in English
-            writeTranslatedWorkbookToFile(replaced, translatedDir, generatedTemplatePath);
+            writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
           }
         }
       }
