@@ -217,7 +217,7 @@
                     "name": "UserNameSearchString",
                     "label": "UPN to search for",
                     "type": 1,
-                    "description": "Enter a search term to filter the list of user names",
+                    "description": "Enter a full or partial user principal name to filter the list of user names",
                     "value": "",
                     "timeContext": {
                         "durationMs": 2592000000
@@ -230,7 +230,7 @@
                   "name": "UserName",
                   "label": "Matching users",
                   "type": 2,
-                  "description": "Users with some activity in the selected time period",
+                  "description": "List of matching users with some activity in the selected time period",
                   "isRequired": true,
                   "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where isnotempty(\"{UserNameSearchString}\")\r\n//| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n//| where Computername in (WVDHosts)\r\n//| summarize UserCount = dcount(UserName) by UserName\r\n//| project UserName, User = trim_end(@\"\\@.*\", UserName)\r\n//| order by UserName asc\r\n//| extend DefaultSelect = (row_number() == 1)   // set first name as default (must be 3rd colm)\r\n| project UserName\r\n| union\r\n(\r\n    WVDFeeds\r\n    | where isnotempty(\"{UserNameSearchString}\")\r\n    | project UserName\r\n)\r\n| union\r\n(\r\n    WVDManagement\r\n    | where isnotempty(\"{UserNameSearchString}\")\r\n    | project UserName\r\n)\r\n| where UserName has \"@\" and tolower(UserName) contains \"{UserNameSearchString}\"\r\n| distinct UserName\r\n| extend Lowercased=tolower(UserName)\r\n| sort by Lowercased asc\r\n| project Label=UserName, Value=UserName, Selected=(row_number()==1)",
                   "crossComponentResources": [
@@ -304,7 +304,7 @@
           {
             "type": 1,
             "content": {
-              "json": "Search for a user and select a match from the dropdown above to see a report of their activity.",
+              "json": "Enter a full or partial user name above and select a match from the dropdown to see a report of user activity.",
               "style": "info"
             },
             "conditionalVisibility": {
@@ -391,7 +391,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| where UserName == '{UserName}'\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= EndWin\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = iff(isnull(EndTime), EndWin, EndTime)\r\n| where EndTime >= StartWin\r\n| extend State = coalesce(State1, State)\r\n| extend Host = trim_end(@'\\..*', SessionHostName)   //shortname\r\n| make-series Connectcount = dcount(CorrelationId) default=long(0) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Host\r\n| mvexpand TimeGenerated to typeof(datetime), Connectcount",
+                      "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName == '{UserName}'\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as SourceData\r\n| where State==\"Started\"\r\n| project-rename StartTime=TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    SourceData\r\n    | where State == \"Completed\"\r\n    | project CorrelationId, SessionHostName, EndTime=TimeGenerated\r\n) on CorrelationId\r\n| project CorrelationId=coalesce(CorrelationId, CorrelationId1), StartTime=coalesce(StartTime, {TimeRange:start}), EndTime=coalesce(EndTime, {TimeRange:end}), SessionHostName=coalesce(SessionHostName, SessionHostName1)\r\n| extend ProbeTime = range(bin_at(StartTime, {TimeRange:grain}, {TimeRange:start}), bin_at(EndTime + {TimeRange:grain}, {TimeRange:grain}, {TimeRange:end}), {TimeRange:grain})\r\n| mv-expand ProbeTime to typeof(datetime)\r\n| extend ConnectionContainsProbe = (StartTime < ProbeTime and EndTime > ProbeTime),\r\n         ConnectionEndedInPreviousBucket = (StartTime < ProbeTime and EndTime + {TimeRange:grain} >= ProbeTime)\r\n| make-series Connections=dcountif(CorrelationId, ConnectionContainsProbe or ConnectionEndedInPreviousBucket) on ProbeTime from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Host=trim_end(@\"\\..*\", SessionHostName)",
                     "size": 1,
                     "title": "Connections over time for {UserName}",
                     "noDataMessage": "No connections detected for this user in the specified time frame.",
@@ -400,24 +400,12 @@
                     "crossComponentResources": [
                       "{poolla}"
                     ],
-                    "visualization": "barchart",
+                      "visualization": "areachart",
                     "chartSettings": {
-                      "xAxis": "TimeGenerated",
-                      "yAxis": [
-                        "Connectcount"
-                      ],
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 17,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true
+                        "showMetrics": false,
+                        "showLegend": true
                           }
                         },
-                        "min": 0
-                      }
-                    }
-                  },
                   "customWidth": "50",
                   "name": "ConnectionsbyUser"
                 },
@@ -438,7 +426,10 @@
                     "crossComponentResources": [
                       "{poolla}"
                     ],
-                    "visualization": "barchart"
+                      "visualization": "barchart",
+                      "chartSettings": {
+                        "showMetrics": false
+                      }
                   },
                   "customWidth": "50",
                   "name": "query - 8"
@@ -524,13 +515,16 @@
                     }
                   },
                   "customWidth": "16",
-                  "name": "query - 12 - Copy"
+                    "name": "ClientTiles",
+                    "styleSettings": {
+                      "maxWidth": "250px"
+                    }
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName == '{UserName}' and (\"{SelectedClientType}\" == \"*\" or ClientType == \"{SelectedClientType}\")\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| extend ClientTypeShort=replace(\"com.microsoft.rdc.\", \"\", ClientType)\r\n| make-series Connections=dcount(CorrelationId) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by strcat(ClientTypeShort, \" v\", ClientVersion)\r\n",
+                      "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName == '{UserName}' and (\"{SelectedClientType}\" == \"*\" or ClientType == \"{SelectedClientType}\")\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as SourceData\r\n| where State==\"Started\"\r\n| project-rename StartTime=TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    SourceData\r\n    | where State == \"Completed\"\r\n    | project CorrelationId, ClientVersion, ClientType, EndTime=TimeGenerated\r\n) on CorrelationId\r\n| project CorrelationId=coalesce(CorrelationId, CorrelationId1), StartTime=coalesce(StartTime, {TimeRange:start}), EndTime=coalesce(EndTime, {TimeRange:end}), ClientType=coalesce(ClientType, ClientType1), ClientVersion=coalesce(ClientVersion, ClientVersion1)\r\n| extend ClientTypeShort=replace(\"com.microsoft.rdc.\", \"\", ClientType), ProbeTime = range(bin_at(StartTime, {TimeRange:grain}, {TimeRange:start}), bin_at(EndTime + {TimeRange:grain}, {TimeRange:grain}, {TimeRange:end}), {TimeRange:grain})\r\n| mv-expand ProbeTime to typeof(datetime)\r\n| extend ConnectionContainsProbe = (StartTime < ProbeTime and EndTime > ProbeTime),\r\n         ConnectionEndedInPreviousBucket = (StartTime < ProbeTime and EndTime + {TimeRange:grain} >= ProbeTime)\r\n| make-series Connections=dcountif(CorrelationId, ConnectionContainsProbe or ConnectionEndedInPreviousBucket) on ProbeTime from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Client=strcat(ClientTypeShort, \" v\", ClientVersion)\r\n\r\n",
                     "size": 0,
                     "title": "Connections by client and version",
                     "noDataMessage": "No connections found for the configured filters.",
@@ -544,56 +538,12 @@
                       "{poolla}"
                     ],
                     "visualization": "areachart",
-                    "gridSettings": {
-                      "formatters": [
-                        {
-                          "columnMatch": "ClientType",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "ClientVersion",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "LastSeen",
-                          "formatter": 6,
-                          "formatOptions": {
-                            "aggregation": "Max",
-                            "customColumnWidthSetting": "30ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "FeedRefreshes",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "gray",
-                            "aggregation": "Sum",
-                            "customColumnWidthSetting": "128px"
-                          }
-                        },
-                        {
-                          "columnMatch": "Connections",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "blue",
-                            "aggregation": "Sum",
-                            "customColumnWidthSetting": "115px"
-                          }
-                        }
-                      ],
-                      "hierarchySettings": {
-                        "treeType": 1,
-                        "groupBy": [
-                          "ClientType"
-                        ],
-                        "expandTopLevel": true,
-                        "finalBy": "ClientVersion"
+                      "sortBy": [],
+                      "chartSettings": {
+                        "showMetrics": false,
+                        "showLegend": true
                       }
                     },
-                    "sortBy": []
-                  },
                   "customWidth": "42",
                   "name": "query - 12 - Copy - Copy",
                   "styleSettings": {
@@ -730,9 +680,9 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName contains '{UserName}'\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= {TimeRange:end}\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where UserName == \"{UserName}\" and State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, {TimeRange:end})\r\n| where EndTime >= {TimeRange:start}\r\n// chop duration hours to our timeframe even if connection spanned the edges...\r\n| extend Duration = min_of(EndTime, {TimeRange:end}) - max_of(StartTime, {TimeRange:start})\r\n| project Duration, Resource = ResourceAlias\r\n| summarize Duration = sum(Duration) by Resource\r\n| project Resource, UsageHours = Duration / 1h\r\n",
+                      "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName contains '{UserName}'\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= {TimeRange:end}\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where UserName == \"{UserName}\" and State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, {TimeRange:end})\r\n| where EndTime >= {TimeRange:start}\r\n// limit duration hours to our timeframe even if connection spanned the edges...\r\n| extend Duration = min_of(EndTime, {TimeRange:end}) - max_of(StartTime, {TimeRange:start})\r\n| summarize Duration = sum(Duration) by Host=trim_end(@\"\\..*\", SessionHostName)\r\n| project Host, UsageHours = Duration / 1h\r\n",
                     "size": 1,
-                    "title": "Connection time by resouce used to initiate the connection",
+                      "title": "Connection time by host",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -740,6 +690,9 @@
                     ],
                     "visualization": "piechart",
                     "chartSettings": {
+                        "yAxis": [
+                          "UsageHours"
+                        ],
                       "ySettings": {
                         "numberFormatSettings": {
                           "unit": 26,
@@ -753,13 +706,13 @@
                     }
                   },
                   "customWidth": "50",
-                  "name": "PopularResourceByUser"
+                    "name": "HostUsageByUser"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let GetTimespanAverage = (Time:timespan, Period:timespan) {\r\n    // Get the number of days in the period, note the period MUST be longer than 1 day, and in full days\r\n    let Days = toint(Period/1d);\r\n    // Total hours is the number of days*24, plus the hours\r\n    let TotalHours = toint(format_timespan(Time, \"d\")) * 24 + toint(format_timespan(Time, \"H\"));\r\n    // Calculate the average hours\r\n    let AvgHours = TotalHours / Days;\r\n    // We're rounding down for the average, figure out fractional hours left \r\n    let MinuteResidue = toint(((1.0*TotalHours/Days) - AvgHours) * 60);\r\n    // Total minutes is the number of minutes plus the residue from above\r\n    let TotalMinutes = toint(format_timespan(Time, \"m\")) + MinuteResidue;\r\n    // Calculate average minutes\r\n    let AvgMinutes =  toint(round(todouble(TotalMinutes) / Days));\r\n    // Pad with zero if necessary\r\n    let MinuteStr = iif(AvgMinutes < 10, strcat(\"0\", AvgMinutes), tostring(AvgMinutes));\r\n    let Result = strcat(\"~ \", AvgHours, \":\", MinuteStr, \" h / day\");\r\n    iif(Time/1s > 0, Result, '');\r\n};\r\nlet ProbeRange = range ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d | extend JoinKey=1;\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName == \"{UserName}\"\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as UserConnections\r\n| where State == \"Started\" and TimeGenerated <= {TimeRange:end}\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    UserConnections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, {TimeRange:end}) // assume connection ends now?\r\n//| extend EndTime=todatetime(EndTime), StartTime=todatetime(StartTime)\r\n| where StartTime between ({TimeRange:start} .. {TimeRange:end}) or // Connections starting in our date range\r\n        EndTime   between ({TimeRange:start} .. {TimeRange:end}) or // Connections ending in our date range\r\n        (StartTime <= {TimeRange:start} and EndTime >= {TimeRange:end}) // Connections that started before and ended after the range\r\n| extend EndTime=min_of(EndTime, {TimeRange:end})-1s, StartTime=max_of(StartTime,{TimeRange:start})+1s // Crop connections to within the report boundary\r\n| extend Duration = EndTime-StartTime\r\n| sort by ClientType asc // Sort for Clients string to be homogenous\r\n| as UserSelfhost\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LaunchExecutable\"\r\n    | extend Parameters=parse_json(Parameters)\r\n    | where tostring(Parameters.connectionStage) == \"RdpShellAppExecuted\" // or RdpShellAppExecution, depending what you need\r\n    | project CorrelationId, Parameters=tostring(Parameters.filename)\r\n) on CorrelationId\r\n| summarize //Days=dcount(bin(EndTime - (DateBoundary - HistoryRange), 1d)), // Day counting will count 24h buckets\r\n            AppsToStartConnection=dcount(ResourceAlias),\r\n            AppsUsed=dcount(Parameters),\r\n            Connections=dcount(CorrelationId),\r\n            Time=sum(Duration),\r\n            Clients=strcat_array(makeset(ClientType), \", \"),  // Concat all client types (friendly names)\r\n            ClientCount=dcount(ClientType)\r\n            by UserName\r\n| join kind=leftouter \r\n(\r\n    UserSelfhost\r\n    | extend JoinKey = 1\r\n    | join kind=fullouter ProbeRange on JoinKey\r\n    | make-series ConnectedToday=dcountif(CorrelationId, bin(ProbeDay, 1d) == bin(StartTime, 1d) or \r\n                                                bin(ProbeDay, 1d) == bin(EndTime, 1d) or \r\n                                                bin(ProbeDay, 1d) between (bin(StartTime, 1d)..bin(EndTime, 1d)))\r\n                on ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d by UserName\r\n    | mv-expand ProbeDay to typeof(datetime), ConnectedToday to typeof(int)\r\n    | summarize Days=countif(ConnectedToday > 0) by UserName\r\n) on UserName\r\n| project Days=coalesce(Days, 0), AppsToStartConnection=coalesce(AppsToStartConnection, 0), AppsUsed=coalesce(AppsUsed, 0), Connections=coalesce(Connections, 0), ConnectionTime=coalesce(Time, 0s)/1s, TimeAvg=GetTimespanAverage(Time, {TimeRange:end}-{TimeRange:start}),\r\n          Clients, ClientCount=coalesce(ClientCount, 0)\r\n",
+                      "query": "let GetTimespanAverage = (Time:timespan, Period:timespan) {\r\n    // Get the number of days in the period, note the period MUST be longer than 1 day, and in full days\r\n    let Days = toint(Period/1d);\r\n    // Total hours is the number of days*24, plus the hours\r\n    let TotalHours = toint(format_timespan(Time, \"d\")) * 24 + toint(format_timespan(Time, \"H\"));\r\n    // Calculate the average hours\r\n    let AvgHours = TotalHours / Days;\r\n    // We're rounding down for the average, figure out fractional hours left \r\n    let MinuteResidue = toint(((1.0*TotalHours/Days) - AvgHours) * 60);\r\n    // Total minutes is the number of minutes plus the residue from above\r\n    let TotalMinutes = toint(format_timespan(Time, \"m\")) + MinuteResidue;\r\n    // Calculate average minutes\r\n    let AvgMinutes =  toint(round(todouble(TotalMinutes) / Days));\r\n    // Pad with zero if necessary\r\n    let MinuteStr = iif(AvgMinutes < 10, strcat(\"0\", AvgMinutes), tostring(AvgMinutes));\r\n    let Result = strcat(\"~ \", AvgHours, \":\", MinuteStr, \" h / day\");\r\n    iif(Time/1s > 0, Result, '');\r\n};\r\nlet ProbeRange = range ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d | extend JoinKey=1;\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where UserName == \"{UserName}\"\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| as UserConnections\r\n| where State == \"Started\" and TimeGenerated <= {TimeRange:end}\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    UserConnections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, {TimeRange:end}) // assume connection ends now?\r\n//| extend EndTime=todatetime(EndTime), StartTime=todatetime(StartTime)\r\n| where StartTime between ({TimeRange:start} .. {TimeRange:end}) or // Connections starting in our date range\r\n        EndTime   between ({TimeRange:start} .. {TimeRange:end}) or // Connections ending in our date range\r\n        (StartTime <= {TimeRange:start} and EndTime >= {TimeRange:end}) // Connections that started before and ended after the range\r\n| extend EndTime=min_of(EndTime, {TimeRange:end})-1s, StartTime=max_of(StartTime,{TimeRange:start})+1s // Crop connections to within the report boundary\r\n| extend Duration = EndTime-StartTime\r\n| sort by ClientType asc // Sort for Clients string to be homogenous\r\n| as UserSelfhost\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LaunchExecutable\"\r\n    | extend Parameters=parse_json(Parameters)\r\n    | where tostring(Parameters.connectionStage) == \"RdpShellAppExecuted\" // or RdpShellAppExecution, depending what you need\r\n    | project CorrelationId, Parameters=tostring(Parameters.filename)\r\n) on CorrelationId\r\n| summarize //Days=dcount(bin(EndTime - (DateBoundary - HistoryRange), 1d)), // Day counting will count 24h buckets\r\n            AppsToStartConnection=dcount(ResourceAlias),\r\n            AppsUsed=dcount(Parameters),\r\n            Connections=dcount(CorrelationId),\r\n            Time=sum(Duration),\r\n            Clients=strcat_array(makeset(ClientType), \", \"),  // Concat all client types (friendly names)\r\n            ClientCount=dcount(ClientType)\r\n            by UserName\r\n| join kind=leftouter \r\n(\r\n    UserSelfhost\r\n    | extend JoinKey = 1\r\n    | join kind=fullouter ProbeRange on JoinKey\r\n    | make-series ConnectedToday=dcountif(CorrelationId, bin(ProbeDay, 1d) == bin(StartTime, 1d) or \r\n                                                bin(ProbeDay, 1d) == bin(EndTime, 1d) or \r\n                                                bin(ProbeDay, 1d) between (bin(StartTime, 1d)..bin(EndTime, 1d)))\r\n                on ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d by UserName\r\n    | mv-expand ProbeDay to typeof(datetime), ConnectedToday to typeof(int)\r\n    | summarize Days=countif(ConnectedToday > 0) by UserName\r\n) on UserName\r\n| project Days=coalesce(Days, 0), AppsToStartConnection=coalesce(AppsToStartConnection, 0), AppsUsed=coalesce(AppsUsed, 0), Connections=coalesce(Connections, 0), ConnectionTime=coalesce(Time, 0s)/1s, TimeAvg=GetTimespanAverage(Time, {TimeRange:end}-{TimeRange:start}),\r\n          Clients, ClientCount=coalesce(ClientCount, 0)",
                     "size": 1,
                     "title": "Key usage numbers",
                     "queryType": 0,
@@ -1264,6 +1217,7 @@
                                 "columnMatch": "TotalActivitiesImpacted",
                                 "formatter": 4,
                                 "formatOptions": {
+                                    "min": 0,
                                   "palette": "blue"
                                 }
                               },
@@ -1278,6 +1232,7 @@
                                 "columnMatch": "TotalHostsImpacted",
                                 "formatter": 4,
                                 "formatOptions": {
+                                    "min": 0,
                                   "palette": "magenta"
                                 }
                               },
