@@ -143,7 +143,7 @@ function getLocalizeableStrings(obj, key, outputMap) {
     } else if (LocKeys.includes(field)) {
       jsonKey = key.concat(".", field);
       const jsonVal = obj[field];
-      if (jsonVal !== "") {
+      if (canLocalize(jsonVal)) {
         outputMap[jsonKey] = jsonVal;
       }
       // Check for parameters that should be locked
@@ -152,18 +152,31 @@ function getLocalizeableStrings(obj, key, outputMap) {
   }
 }
 
+function canLocalize(text) {
+  const _notAllSpecialCharsRegex = new RegExp(".*[a-zA-Z].*", "g");
+  if (text != null && text.match(_notAllSpecialCharsRegex)) {
+    return true;
+  }
+  return false;
+}
+
 // Gets unique key identifier for array object
 function getKeyForArrayObject(key, objectEntry, field) {
-  if (endsWithLocIdentifier(key) && objectEntry[ArrayLocIdentifier[key]] !== null) {
-    return key.concat(".", objectEntry[ArrayLocIdentifier[key]]);
+  const identifier = endsWithLocIdentifier(key);
+  if (identifier !== "" && objectEntry[ArrayLocIdentifier[identifier]] != null) {
+    return key.concat(".", objectEntry[ArrayLocIdentifier[identifier]]);
   }
   return key.concat(".", field);
 }
 
-function endsWithLocIdentifier(string) {
-  return Object.keys(ArrayLocIdentifier).some(id => {
-      return string.endsWith(id);
-  });
+function endsWithLocIdentifier(key) {
+  const ids = Object.keys(ArrayLocIdentifier);
+  for (var i in ids) {
+    if (key.endsWith(ids[i])) {
+      return ids[i];
+    }
+  }
+  return null
 }
 
 // Category resources strings for category names
@@ -213,7 +226,7 @@ function findParameterNames(text) {
 }
 
 function findColumnNameReferences(text) {
-  const ValidColumnNameRegex = "\[\".+\"\]";
+  const ValidColumnNameRegex = '\\[\"' + ".*?" + '\"\\]';
   var _columnRegex = new RegExp(ValidColumnNameRegex, "g");
   var columnRefs = null;
   try {
@@ -522,22 +535,22 @@ for (var d in directories) {
       // Write extracted strings to file
       writeToFileRESJSON(extracted, fileName, resjonOutputPath);
 
-      // Generate localized templates
-      const locDirectory = getClonedLocDirectory(templatePath);
-        for (var l in Languages) {
-          var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
-          translatedDir = translatedDir.concat("\\", Languages[l]);
-          const generatedTemplatePath = translatedDir.concat("\\", fileName);
-          const fullLocPath = locDirectory.concat("\\", Languages[l], "\\", lclFileName);
-          if (fs.existsSync(fullLocPath)) {
-            // Do workbook string replacement here
-            const fileData = fs.readFileSync(fullLocPath, Encoding);
-            generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
-          } else {
-            // No loc file found, just push the workbook file as is in English
-            writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
-          }
-        }
+      // // Generate localized templates
+      // const locDirectory = getClonedLocDirectory(templatePath);
+      //   for (var l in Languages) {
+      //     var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
+      //     translatedDir = translatedDir.concat("\\", Languages[l]);
+      //     const generatedTemplatePath = translatedDir.concat("\\", fileName);
+      //     const fullLocPath = locDirectory.concat("\\", Languages[l], "\\", lclFileName);
+      //     if (fs.existsSync(fullLocPath)) {
+      //       // Do workbook string replacement here
+      //       const fileData = fs.readFileSync(fullLocPath, Encoding);
+      //       generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
+      //     } else {
+      //       // No loc file found, just push the workbook file as is in English
+      //       writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
+      //     }
+      //   }
     } else {
       console.log(">>>>> No localizeable strings found for template: ", filePath);
     }
