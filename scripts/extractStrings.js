@@ -368,7 +368,7 @@ function replaceText(workbookTemplate, stringMap) {
     const translatedVal = stringMap[key]["value"]; // translated value in the lcl file
     const engVal = stringMap[key]["en-us"]; // original english value in the lcl file
 
-    if (translatedVal && templateVal == engVal) { // if the text from the lcl file and template file match, we can go ahead and replace it
+    if (translatedVal && templateVal.localeCompare(engVal)) { // if the text from the lcl file and template file match, we can go ahead and replace it
       // change the template value
       var source = {};
       assignValueToPath(source, actualKeyPaths, translatedVal);
@@ -392,7 +392,7 @@ function getValueFromPath(paths, obj) {
       var index;
 
       if (Object.keys(ArrayLocIdentifier).includes(previousKey)) {
-        index = obj.findIndex(o => o[ArrayLocIdentifier[previousKey]] == currentKey);
+        index = obj.findIndex(o => o[ArrayLocIdentifier[previousKey]].localeCompare(currentKey));
         if (index !== -1) {
           currentKey = index.toString();
         }
@@ -524,8 +524,6 @@ for (var d in directories) {
 
       // Generate localized templates
       const locDirectory = getClonedLocDirectory(templatePath);
-      // TODO: change
-      if (locDirectory === "C:\\src\\Application-Insights-Workbooks\\scripts\\localization\\Workbooks\\Storage\\Overview") {
         for (var l in Languages) {
           var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
           translatedDir = translatedDir.concat("\\", Languages[l]);
@@ -540,7 +538,6 @@ for (var d in directories) {
             writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
           }
         }
-      }
     } else {
       console.log(">>>>> No localizeable strings found for template: ", filePath);
     }
