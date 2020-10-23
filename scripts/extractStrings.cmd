@@ -8,4 +8,4 @@ pushd %REL_PATH%
 set ABS_PATH=%CD%
 popd
 
-node extractStrings.js %ABS_PATH%
+node extractStrings.js %ABS_PATH% "root"

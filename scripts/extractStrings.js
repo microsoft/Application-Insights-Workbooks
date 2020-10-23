@@ -471,6 +471,11 @@ if (!process.argv[2]) { // Path to extract strings from
   return;
 }
 
+if (!process.argv[3]) { // Flag to specify root or test directory
+  console.error("ERROR: Please specify if the given directory is root or test. 'root' means the given path is the root directory of the repository. 'test' means the given path is a subdirectory eg. workbook folder with template.");
+  return;
+}
+
 const directoryPath = process.argv[2];
 const exists = testPath(directoryPath); // Verify directory path
 if (!exists) {
@@ -479,9 +484,14 @@ if (!exists) {
 // Valid args, start processing the files.
 console.log(">>>>> Localization script starting...");
 
-const workbooksDirectories = getWorkbookDirectories(directoryPath);
-const cohortsDirectories = getCohortDirectories(directoryPath);
-const directories = workbooksDirectories.concat(cohortsDirectories);
+var directories; 
+if (process.argv[3] === "test") {
+  directories = [directoryPath];
+} else {
+  const workbooksDirectories = getWorkbookDirectories(directoryPath);
+  const cohortsDirectories = getCohortDirectories(directoryPath);
+  directories = workbooksDirectories.concat(cohortsDirectories);
+}
 
 const locProjectOutput = []; // List of localization file entries for LocProject.json output
 
