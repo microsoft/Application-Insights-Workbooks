@@ -540,27 +540,28 @@ for (var d in directories) {
       // Add LocProject entry
       const locProjectEntry = generateLocProjectEntry(fileName, templatePath, resjonOutputPath);
       locProjectOutput.push(locProjectEntry);
-      const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
 
       // Write extracted strings to file
       writeToFileRESJSON(extracted, fileName, resjonOutputPath);
 
-      // Generate localized templates
-      const locDirectory = getClonedLocDirectory(templatePath);
-        for (var l in Languages) {
-          var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
-          translatedDir = translatedDir.concat("\\", Languages[l]);
-          const generatedTemplatePath = translatedDir.concat("\\", fileName);
-          const fullLocPath = locDirectory.concat("\\", Languages[l], "\\", lclFileName);
-          if (fs.existsSync(fullLocPath)) {
-            // Do workbook string replacement here
-            const fileData = fs.readFileSync(fullLocPath, Encoding);
-            generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
-          } else {
-            // No loc file found, just push the workbook file as is in English
-            writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
-          }
-        }
+      // TODO: un-comment this when localized strings are ready
+      // // Generate localized templates
+      // const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
+      // const locDirectory = getClonedLocDirectory(templatePath);
+      //   for (var l in Languages) {
+      //     var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
+      //     translatedDir = translatedDir.concat("\\", Languages[l]);
+      //     const generatedTemplatePath = translatedDir.concat("\\", fileName);
+      //     const fullLocPath = locDirectory.concat("\\", Languages[l], "\\", lclFileName);
+      //     if (fs.existsSync(fullLocPath)) {
+      //       // Do workbook string replacement here
+      //       const fileData = fs.readFileSync(fullLocPath, Encoding);
+      //       generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
+      //     } else {
+      //       // No loc file found, just push the workbook file as is in English
+      //       writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
+      //     }
+      //   }
     } else {
       console.log(">>>>> No localizeable strings found for template: ", filePath);
     }
