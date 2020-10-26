@@ -4,22 +4,51 @@ Parameters allow workbook authors to collect input from the consumers and refere
 
 Workbooks allow you to control how your parameter controls are presented to consumers – text box vs. drop down, single- vs. multi-select, values from text, JSON, KQL or Azure Resource Graph, etc.  
 
+
+## How do parameters work?
+A workbook is represented as a directed graph of steps. After a parameter is declared, it can be used by steps that come *after* it in the graph. Parameters can also depend on other parameters.
+
+Parameters have names, display names (labels), and values.
+* The name of the parameter is how you use it elsewhere, like in queries. Parameter names are similar to that of javascript identifiers: alphanumeric text and underscores are allowed. No spaces/special characters.
+* The display name (label) of the parameter is what users will see. The display name of the character *can* include special characters and spaces. Display names in templates will be localized.
+* The value of the parameter is set at run time. Depending on the parameter type, the value is different types. The initial value of a parameter
+
+Parameters and their values can be used in many ways:
+* Replacements in query contents, text
+* Time ranges in queries
+* Labels, tooltips
+* Resource / resource type selections 
+* Controlling visibility of other steps in a workbook
+
+Steps that reference a parameter will automatically be updated when the parameter value changes.
+
+## Where do parameters come from?
+Parameters can come from a few places, 
+
+* [Creating Parameters with a Parameters Step](#Creating-Parameters-with-a-Parameters-Step) is the most common of which is explicitly declaring them in a parameters step.
+These are the controls/settings you normally see in workbooks.
+* [Exporting parameters from selections in grids/charts](../Interactivity.md)
+The advanced settings of query and metrics steps allows you to export row values from grids, or x/y/series information in charts. This is commonly used in "drill in" like scenarios, where a selection in a grid causes another query to run and show details for the selected item.
+* Time brushing in time charts
+The advanced settings of query steps using a time chart allow you to export a range selected in a time chart as a time range parameter and used "downstream" of that chart, to focus a subsequent query on a specific time range.
+* Links / Tabs / Buttons setting values in a Links step
+Clicking a link or button or tab in a links step can also export a parameter to be used downstream. This is generally used to have the selected tab in a tab control hide/show other parts of a workbook.
+
+# Creating Parameters with a Parameters Step
 Supported parameter types include:
 * [Time Range](Time.md) - allows a user to select from prepopulated time ranges or select a custom range
 * [Drop down](DropDown.md) - allows a user to select one or more values from a set of values
 * [Options Group](OptionsGroup.md) - allows a user to select a single value from a set of values
-* [Text](Text.md) - allows a user to enter arbitrary text
+* [Text](Text.md) - allows a user to enter arbitrary text, including multi line editors
 * [Resource](Resources.md) - allows a user to select one or more Azure resources
 * [Subscription](Resources.md) - allows a user to select one or more Azure subscription resources
 * Resource Type - allows a user to select one or more Azure resource type values
 * Location - allows a user to select one or more Azure location values
 * [Multi-value](MultiValue.md) - allows a user to add or remove arbitrary text items
 
-These parameter values can be referenced in other parts of workbooks either via bindings or value expansions.
-
-## Creating a parameter
+## Creating an example time range parameter
 1. Start with an empty workbook in edit mode.
-2. Choose _Add parameters_ from the links within the workbook.
+2. Choose _Add_ from the toolbar and select _Parameters_ from the dropdown.
 3. Click on the blue _Add Parameter_ button.
 4. In the new parameter pane that pops up enter:
     1. Parameter name: `TimeRange` *(note that parameter __names__ can **not** include spaces or special characters)*
@@ -37,20 +66,21 @@ This is how the workbook will look like in read-mode, in the "Pills" style.
 
 ## Referencing a parameter
 ### Via Bindings
-1. Add a query control to the workbook and select an Application Insights resource.
+1. Add a query control to the workbook and select the logs data source and an Application Insights resource or Log Analytics workspace.
 2. Open the the _Time Range_ drop down and select the `Time Range` option from the Parameters section at the bottom.
-3. This binds the time range parameter to the time range of the chart. The time scope of the sample query is now Last 24 hours.
+3. This binds the time range parameter to the time range of the query. The time scope of the sample query is now Last 24 hours.
 4. Run query to see the results
 
 ![Image showing a time range parameter referenced via bindings](../Images/Parameters-Time-Binding.png)
 
-### In KQL
-1. Add a query control to the workbook and select an Application Insights resource.
-2. In the KQL, enter a time scope filter using the parameter: `| where timestamp {TimeRange}`
+### In Logs/other queries
+1. Add a query control to the workbook and select the logs data source and an Application Insights resource or Log Analytics workspace.
+2. In the tet, enter a time scope filter using the parameter: `| where timestamp {TimeRange}`  (using the appropriate column name for your table)
 3. This expands on query evaluation time to `| where timestamp > ago(1d)` which is the time range value of the parameter.
+*Note:* When using a time range this way in the query text instead of binding it with the time range drop down, make sure the time range drop down is set to "Set in query", or you'll get an intersection of the 2 time ranges.
 4. Run query to see the results
 
-![Image showing a time range referenced in KQL](../Images/Parameters-Time-InCode.png)
+![Image showing a time range referenced in a query](../Images/Parameters-Time-InCode.png)
 
 ### In Text 
 1. Add a text control to the workbook.
@@ -59,16 +89,16 @@ This is how the workbook will look like in read-mode, in the "Pills" style.
 4. The text control will show text: _The chosen time range is Last 24 hours_
 
 ## Parameter formatting
-The _In Text_ section used the `label` of the parameter instead of its value. Parameters expose various such options depending on its type - e.g. time range pickers allow value, label, query, start, end and grain.
+The _In Text_ section used the `label` of the parameter instead of its value. Parameters expose various such options depending on its type - e.g. time range pickers allow value, label, query, start, end, grain, and many other options.
 
-Use the `Previews` section of the _Edit Parameter_ pane to see the expansion options for your parameter:
+Use the `Previews` section of the _Edit Parameter_ pane to see the formatting expansion options for your parameter:
 
 ![Image showing a time range parameter options](../Images/Parameters-Time-Previews.png)
 
 For more specific examples of formatting times, see [Time formatting](./Time.md#Time-parameter-options)
 
 ## Formatting parameters using JSONPath
-For string parameters that are json content, you can use a [JSONPath format](../Transformations/JSONPath.md) in the parameter format string.
+For string parameters that are JSON content, you can use a [JSONPath format](../Transformations/JSONPath.md) in the parameter format string.
 
 For example, you may have a string parameter named `selection` that was the result of a query or selection in a visualization that has the following value
 ```json 
@@ -86,7 +116,7 @@ format | result
 *Note:* If the parameter value is not valid json, the result of the format will be an empty value.
 
 ## Parameter Style
-The following styles are available to layout the parameters:
+The following styles are available to layout the parameters in a parameters step
 #### Pills
 In pills style, the default style, the parameters look like text, and require the user to click them once to go into the edit mode.
 
@@ -110,3 +140,24 @@ In vertical style from, the controls are always visible, with label above the co
 ![Form Vertical style](../Images/FormVertical.png)
 
 *Note:* In standard, form horizontal, and form vertical layouts, there's no concept of inline editing, the controls are always in edit mode. 
+
+# Global parameters
+Now that you've learned how parameters work, and the limitations about only being able to use a parameter "downstream" of where it is set, it is time to learn about global parameters, which change those rules.
+
+With a global parameter, the parameter must still be *declared* before it can be used, but any step that sets a value to that parameter will affect *all* instances of that parameter in the workbook. 
+
+**Note:** because changing a global parameter has this "update all" behavior, The global setting should only be turned on for parameters that require this behavior. A combination of global parameters that depend on each other can create a cycle or oscillation where the competing globals change each other over and over.
+
+Common uses:
+
+1. synchronizing time ranges between many charts. 
+    - without a global parameter, any time range brush in a chart will only be exported *after* that chart, so selecting a time range in the 3rd chart will only update the 4th chart
+    - with a global parameter, you can create a global `timeRange` parameter up front, give it a default value, have all the other charts use that as their bound time range *and* as their time brush output (additionally setting the "only export the parameter when the range is brushed" setting). Now, any change of time range in *any* chart will update the global `timeRange` parameter at the top of the workbook. This can be used to make a workbook act like a dashboard.
+
+2. allowing selection of tabs in a links step
+    - without a global parameter, the links step only *outputs* a parameter for the selected tab
+    - with a global parameter, you can create a global `selectedTab` parameter, and use that parameter name in the tab selections in the links step. This allows you to pass that parameter value into the workbook from a link, or by using another button or link to change the selected tab. Using buttons from a links step in this way can make a wizard-like experience, where buttons at the bottom of a step can affect the visible sections above it.
+
+
+### Create a global parameter
+When creating the parameter in a parameters step, set the "Global" option. The only way to make a global parameter is to declare it with a parameters step. The other methods of creating parameters (via selections, brushing, links, buttons, tabs) can only update a global parameter, they cannot themselves declare one.
