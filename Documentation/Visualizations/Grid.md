@@ -246,5 +246,7 @@ For following JSON data
 ```
 and p1 parameter with value "test", and the following Threshold settings
 ![Image of threshold settings](../Images/ThresholdSettings.png)
+
 The 'online' columns value are rendered like following:
+
 ![Image of column representation with threshold settings](../Images/ThresholdResult.png)
