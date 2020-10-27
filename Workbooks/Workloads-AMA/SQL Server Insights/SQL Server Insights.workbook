@@ -302,7 +302,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let dbsInGroup = datatable(Type:string)[\r\n  \"Azure SQL Databases\",\r\n  \"Azure SQL Elastic Pools\"\r\n];\r\nlet data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance));\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| extend Val = iff(LastTimestamp < now() - 10m and Name != 'engine_edition', 0.0, Val)\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5 and OverallOnline > 0, 1.0, OverallOnline)\r\n| project-away Key, Key1, EngineEdition1\r\n| extend Type = case(\r\n            EngineEdition in (1, 2, 3, 4), 'SQL Server Instances',\r\n            EngineEdition in (5, 6, 9), 'Azure SQL Databases',\r\n            EngineEdition == 8, 'Azure SQL Managed Instances',\r\n            'Other')\r\n| project Database = strcat(Instance, '/', Database), Green = CurrentOnline, Yellow = OverallUnhealthy - CurrentUnhealthy, Red = CurrentUnhealthy, Total = OverallOnline + OverallUnhealthy, Gray =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy), Type, Computer\r\n| summarize Green = sum(Green), Yellow = sum(Yellow), Red = sum(Red), Gray = sum(Gray), Total = sum(Total) by Type\r\n| join kind = rightouter(dbsInGroup) on Type\r\n| extend Type = iff(Type == '', Type1, Type),\r\n    Yellow = iff(Type == '', 0.0, Yellow),\r\n    Red = iff(Type == '', 0.0, Red),\r\n    Gray = iff(Type == '', 0.0, Gray),\r\n    Green = iff(Type == '', 0.0, Green),\r\n    Total = iff(Type == '', 0.0, Total)\r\n| summarize ['Online dbs'] = sum(Green), ['Previously unhealthy dbs'] = sum(Yellow), ['Currently unhealthy dbs'] = sum(Red), [\"No telemetry dbs\"] = sum(Gray), Total = sum(Total) by Type\r\n| extend Subtitle = '━━━'\r\n| order by ['Currently unhealthy dbs'] desc, [\"No telemetry dbs\"] desc, ['Previously unhealthy dbs'] desc, ['Online dbs'] desc\r\n",
+              "query": "let dbsInGroup = datatable(Type:string)[\r\n  \"Azure SQL Databases\",\r\n  \"Azure SQL Elastic Pools\"\r\n];\r\nlet data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties' and Name in~ ('uptime', 'engine_edition')\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance));\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| extend Val = iff(Name == 'uptime', iff(LastTimestamp < now() - 10m , 0.0, 1.0), Val)\r\n| summarize CurrentOnline = sumif(Val, Name == 'uptime'),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| where EngineEdition == 5\r\n| summarize Online = sum(CurrentOnline), Total = count()\r\n| extend Type = \"Azure SQL Databases\", Unhealthy = Total - Online\r\n| join kind = rightouter (dbsInGroup) on Type\r\n| extend Online = iff(Type == '', 0.0, Online),\r\n    Unhealthy = iff(Type == '', 0.0, Unhealthy),\r\n    Total = iff(Type == '', 0, Total),\r\n    Type = Type1\r\n\r\n",
               "size": 4,
               "title": "Azure SQL Databases",
               "timeContext": {
@@ -366,20 +366,12 @@
                       "labelText": "[\"Total\"] database(s)",
                       "columnSettings": [
                         {
-                          "columnName": "Online dbs",
+                          "columnName": "Online",
                           "color": "green"
                         },
                         {
-                          "columnName": "No telemetry dbs",
-                          "color": "orange"
-                        },
-                        {
-                          "columnName": "Previously unhealthy dbs",
+                          "columnName": "Unhealthy",
                           "color": "yellow"
-                        },
-                        {
-                          "columnName": "Currently unhealthy dbs",
-                          "color": "redBright"
                         }
                       ]
                     }
