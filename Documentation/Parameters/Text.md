@@ -86,6 +86,13 @@ Text parameter supports following field style:
 
 > Note: while default example queries Application Insights data, the approach can be used for any log based data source - Log Analytics, Azure Resource Graph, etc.
 
+## Adding Validations
+For Standard/Password text parameters, user can add validations rule that are applied to the text field. Add a valid regex with error message. If message is set, it is shown as error when field is invalid.
+
+If match is selected, the field is valid if value matches the regex and if match is not selected then the field is valid if it doesn't match the regex.
+
+![Text Validation Settings](../Images/TextValidationSettings.png)
+
 ## Setting values using Criteria
 Refer to the [Criteria](Criteria.md) documentation.
 

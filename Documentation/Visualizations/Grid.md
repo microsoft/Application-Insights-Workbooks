@@ -73,6 +73,7 @@ Here is an example that styles the _Request_ column as a bar:
 | `Bar` | Renders a bar next to the cell based on the value of the cell | Color palette and min/max value used for scaling |
 | `Bar underneath` | Renders a bar near the bottom of the cell based on the value of the cell | Color palette and min/max value used for scaling |
 | `Composite bar` | Renders a composite bar using the specified columns in that row. Refer [Composite Bar](./CompositeBar.md) for details | Columns with corresponding colors to render the bar and a label to display at the top of the bar |
+| `Thresholds` | Renders the column value based on expressions and show respective icons or colors. The threshold expressions are evaluated in top to bottom order, icon/color of the first matching threshold will be assigned to a value. Default icon/color is assigned to a value that does not meet any of the defined thresholds| The operator, value, text, and the corresponding icon/color. The Text column takes a String format as an input. To use columns in the text, refer them as `["columnname"]`. Column name is case sensitive. Refer parameters as `{param}`. Use `{0}` and `{1}` in text to populate it with the column value and unit if specified. For example, Text can be `Success ({0} {1})`, it will be displayed as "Success (100 %)" for a value 100 and unit %. |
 | `Spark bars` | Renders a spark bar in the cell based on the values of a dynamic array in the cell. E.g the Trend column form the image at the top | Color palette and min/max value used for scaling |
 | `Spark lines` | Renders a spark line in the cell based on the values of a dynamic array in the cell | Color palette and min/max value used for scaling |
 | `Icon` | Renders icons based on the text values in the cell. Supported values include: _cancelled, critical, disabled, error, failed, info, none, pending. stopped. question, success, unknown, uninitialized, resource, up, down, left, right, trendup, trenddown, 4, 3, 2, 1, Sev0, Sev1, Sev2, Sev3, Sev4, Fired, Resolved, Available, Unavailable, Degraded, Unknown_ |  |
@@ -131,6 +132,17 @@ The author can customize the width of any column in the grid using the _Custom C
 * There is no minimum/maximum width as this is left up to the author's discretion.
 * The custom column width field is disabled for hidden columns.
 
+## Custom Tooltip
+
+Select "Apply custom tooltip" and add a custom tooltip which acts as a tooltip for the column. You can use a mix of static text, columns, and parameters.
+
+Use `{0}` to use the current column value
+
+Refer to columns with `["columnName"]`
+
+Refer to parameters with `{paramName}`
+
+Both column name and parameter name are case sensitive.
 
 ## Examples
 ### Spark lines and Bar Underneath
@@ -221,3 +233,18 @@ The image below shows the same table, except the first column is set to 50% widt
 
 Combining fr, %, px, and ch widths is possible and works similarly to the above examples. The widths that are set by the static units, ch and px, they're hard constants that won't change even if the window/resolution is changed. The columns set by % will take their % based on the total grid width (might not be exact due to the aforementioned minimum widths). The columns set with fr will just split up the remaining grid space based on the number of fractional units they are allotted.
 ![Image of columns in grid with assortment of different width units used](../Images/CustomColumnWidthFrExplanation3.png)
+
+### Thresholds with column and parameter reference in text and custom tooltip
+For following JSON data
+```
+[
+    {"sub":"X", "server": "A", "online": 20, "_recovering": [3,4,5], "offline": 4, "total": 27},
+    {"sub":"X", "server": "B", "online": 15, "_recovering": [2,2,5], "offline": 5, "total": 28},
+    {"sub":"Y", "server": "C", "online": 25, "_recovering": [3,6,5], "offline": 5, "total": 34},
+    {"sub":"Y", "server": "D", "online": 18, "_recovering": [3,5], "offline": 9, "total": 33}
+]
+```
+and p1 parameter with value "test", and the following Threshold settings
+![Image of threshold settings](../Images/ThresholdSettings.png)
+The 'online' columns value are rendered like following:
+![Image of column representation with threshold settings](../Images/ThresholdResult.png)
