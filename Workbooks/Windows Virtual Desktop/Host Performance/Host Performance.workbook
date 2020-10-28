@@ -130,7 +130,8 @@
             },
             "value": {
               "durationMs": 86400000
-            }
+            },
+            "label": "Time range"
           },
           {
             "id": "ff8c2838-aaf0-40f6-a604-d4bfe72fc92f",
@@ -217,7 +218,7 @@
                     "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Session\" and InstanceName == \"Max\" and CounterName == \"Max Input Delay\" \r\n| make-series Value=max(CounterValue) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by _ResourceId\r\n| project TimeGenerated, _ResourceId, Value, series_stats(Value), outliers=series_outliers(Value)\r\n| mv-expand TimeGenerated to typeof(datetime), outliers to typeof(double), Value to typeof(double)\r\n| project TimeGenerated, _ResourceId, Value, outliers_removed=iff(outliers > 1.5 and series_stats_Value_avg < Value, series_stats_Value_avg , Value), Variance=series_stats_Value_variance // replace outliers with the average\r\n| as SourceData\r\n| where Value > 0\r\n| summarize Median=percentile(Value, 50), Peak=max(Value) by _ResourceId, Variance\r\n| join kind=fullouter\r\n(\r\n    SourceData\r\n    | summarize Samples=dcountif(TimeGenerated, Value > 0), Spikes=dcountif(TimeGenerated, Value > outliers_removed) by _ResourceId\r\n) on _ResourceId\r\n| extend Spikes=(1.0 * Spikes / Samples)\r\n| project Host=coalesce(_ResourceId, _ResourceId1), Samples, Median, Peak, Spikes, StDev=sqrt(Variance)\r\n",
                     "size": 0,
                     "aggregation": 2,
-                    "title": "Summary of input delay by Host",
+                    "title": "Summary of input delay by host",
                     "timeContext": {
                       "durationMs": 0
                     },
@@ -369,7 +370,28 @@
                           }
                         }
                       ],
-                      "rowLimit": 25
+                      "rowLimit": 25,
+                      "labelSettings": [
+                        {
+                          "columnId": "Host"
+                        },
+                        {
+                          "columnId": "Samples"
+                        },
+                        {
+                          "columnId": "Median"
+                        },
+                        {
+                          "columnId": "Peak"
+                        },
+                        {
+                          "columnId": "Spikes"
+                        },
+                        {
+                          "columnId": "StDev",
+                          "label": "Std dev"
+                        }
+                      ]
                     },
                     "sortBy": [],
                     "tileSettings": {
@@ -418,7 +440,7 @@
                     }
                   },
                   "customWidth": "40",
-                  "name": "HostResponsibleForDelay - Copy - Copy",
+                  "name": "SummaryOfInputDelayByHost",
                   "styleSettings": {
                     "padding": "10px"
                   }
@@ -497,7 +519,7 @@
                     }
                   },
                   "customWidth": "60",
-                  "name": "HostResponsibleForDelay - Copy - Copy - Copy",
+                  "name": "InputDelayOverTime",
                   "styleSettings": {
                     "padding": "10px"
                   }
@@ -509,7 +531,7 @@
                     "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)           \r\n| where ObjectName in (\"Memory\", \"Processor Information\", \"Terminal Services\", \"Terminal Services Session Lag\")  //\"User Input Delay per Process\", \r\n| as InputData\r\n| where InstanceName in (\"Max\", \"All Average\", \"\", \"_Total\")\r\n| where CounterName in (\"% Processor Time\",  \"Max Input Delay\", \"% Committed Bytes In Use\")\r\n| summarize maxValue = max(CounterValue) by TimeBin = bin(TimeGenerated, 1h), ComputerName, CounterName\r\n| evaluate pivot(CounterName, max(maxValue))\r\n| join kind = inner\r\n(\r\n    InputData\r\n    | where ObjectName == \"Terminal Services\" and CounterName == \"Active Sessions\"\r\n    | summarize MaxBin = max(CounterValue) by TimeBin = bin(TimeGenerated, 1h), CounterName, ComputerName\r\n    | summarize TotalActiveSessions = sum(MaxBin) by TimeBin, ComputerName    \r\n) on TimeBin, ComputerName\r\n| project TimeBin, [\"% Committed Bytes In Use\"]=[\"% Committed Bytes In Use\"]/100.0, [\"% Processor Time\"]=[\"% Processor Time\"]/100.0, TotalActiveSessions\r\n| sort by TimeBin asc\r\n\r\n\r\n",
                     "size": 1,
                     "aggregation": 3,
-                    "title": "Host Compute Metrics",
+                    "title": "Host compute metrics",
                     "timeContext": {
                       "durationMs": 0
                     },
@@ -570,9 +592,9 @@
                       ],
                       "ySettings": {
                         "numberFormatSettings": {
-                          "unit": 1,
+                          "unit": 0,
                           "options": {
-                            "style": "decimal",
+                            "style": "percent",
                             "useGrouping": true,
                             "maximumSignificantDigits": 2
                           }
@@ -593,7 +615,7 @@
                     "query": "Perf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ObjectName == \"PhysicalDisk\"\r\n| where InstanceName == \"_Total\"\r\n| summarize maxValue = max(CounterValue) by TimeBin = bin(TimeGenerated, 1h), ComputerName, CounterName\r\n| evaluate pivot(CounterName, max(maxValue))\r\n| sort by TimeBin asc, ComputerName\r\n| project TimeBin, ComputerName, [\"Avg. Disk Queue Length\"], [\"Avg. Disk sec/Read\"], [\"Avg. Disk sec/Write\"], [\"Avg. Disk sec/Transfer\"]",
                     "size": 1,
                     "aggregation": 5,
-                    "title": "Host Disk Metrics",
+                    "title": "Host disk metrics",
                     "timeContext": {
                       "durationMs": 0
                     },
