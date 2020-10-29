@@ -144,7 +144,13 @@ function getLocalizeableStrings(obj, key, outputMap) {
       jsonKey = key.concat(".", field);
       const jsonVal = obj[field];
       if (canLocalize(jsonVal)) {
-        outputMap[jsonKey] = jsonVal;
+        if (outputMap[jsonKey] != null) {
+          console.error("ERROR: found duplicate key: ", jsonKey, "To fix error, change the step name or id")
+          // delete the key from being localized 
+          outputMap[jsonKey] = undefined;
+        } else {
+          outputMap[jsonKey] = jsonVal;
+        }
       }
       // Check for parameters that should be locked
       findAndGenerateLockedStringComment(jsonKey, objectEntry, outputMap);
