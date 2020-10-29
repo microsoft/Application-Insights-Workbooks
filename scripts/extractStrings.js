@@ -164,7 +164,8 @@ function canLocalize(text) {
 function getKeyForArrayObject(key, objectEntry, field) {
   const identifier = endsWithLocIdentifier(key);
   if (identifier !== "" && objectEntry[ArrayLocIdentifier[identifier]] != null) {
-    return key.concat(".", objectEntry[ArrayLocIdentifier[identifier]]);
+    // remove special characters from the identifier
+    return key.concat(".", removeNonAplhaNumeric(objectEntry[ArrayLocIdentifier[identifier]]));
   }
   return key.concat(".", field);
 }
@@ -202,6 +203,10 @@ function getSettingStrings(object, outputMap) {
   if (object && object.hasOwnProperty("name")) {
     outputMap["name"] = object.name;
   }
+}
+
+function removeNonAplhaNumeric(str) {
+  return str.replace(/[\W_]/g,"");
 }
 
 /** Needed as entry in resjson file to keep parameter names from being translated */
@@ -411,7 +416,7 @@ function getValueFromPath(paths, obj) {
       var index;
 
       if (Object.keys(ArrayLocIdentifier).includes(previousKey)) {
-        index = obj.findIndex(o => o[ArrayLocIdentifier[previousKey]].localeCompare(currentKey));
+        index = obj.findIndex(o => removeNonAplhaNumeric(o[ArrayLocIdentifier[previousKey]]).localeCompare(currentKey));
         if (index !== -1) {
           currentKey = index.toString();
         }
