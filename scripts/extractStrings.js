@@ -147,7 +147,7 @@ function getLocalizeableStrings(obj, key, outputMap) {
       getLocalizeableStrings(objectEntry, jsonKey, outputMap);
 
     } else if (LocKeys.includes(field)) {
-      jsonKey = key.concat(".", field);
+      jsonKey = key.concat(".", field).substring(1);
       const jsonVal = obj[field];
       if (canLocalize(jsonVal)) {
         if (outputMap[jsonKey] != null) {
