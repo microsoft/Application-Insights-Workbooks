@@ -151,7 +151,7 @@ function getLocalizeableStrings(obj, key, outputMap) {
       const jsonVal = obj[field];
       if (canLocalize(jsonVal)) {
         if (outputMap[jsonKey] != null) {
-          console.error("ERROR: found duplicate key: ", jsonKey, "To fix error, change the step name or id")
+          console.log("ERROR: found duplicate key: ", jsonKey, "To fix error, change the step name or id")
           // delete the key from being localized 
           outputMap[jsonKey] = undefined;
         } else {
