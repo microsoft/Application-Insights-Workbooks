@@ -199,14 +199,18 @@ function getCategoryResourceStrings(object, outputMap) {
       const name = category.settings["en-us"].name;
       const description = category.settings["en-us"].description;
       outputMap[key.concat(".name")] = name;
-      outputMap[key.concat(".description")] = description;
+      if (description != "") {
+        outputMap[key.concat(".description")] = description;
+      }
     });
     // No category
   } else if (object && object["en-us"]) {
     const name = object["en-us"].name;
     const description = object["en-us"].description;
     outputMap["en-us.name"] = name;
-    outputMap["en-us.description"] = description;
+    if (description != "") {
+      outputMap["en-us.description"] = description;
+    }
   }
 }
 
