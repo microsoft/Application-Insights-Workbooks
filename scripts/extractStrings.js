@@ -47,6 +47,12 @@ const Languages = [
   "cs", "de", "es", "fr", "hu", "it", "ja", "ko", "nl", "pl", "pl-BR", "pt-PT", "ru", "sv", "tr", "zh-Hans", "zh-Hant"
 ];
 
+const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
+const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
+const ParameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:" + ValidSpecifierRegex + ")?\}", "g");
+const NotAllSpecialCharsRegex = new RegExp("[a-z]+", "i")
+ 
+
 /**
  * FUNCTIONS 
  */
@@ -159,8 +165,7 @@ function getLocalizeableStrings(obj, key, outputMap) {
 }
 
 function canLocalize(text) {
-  const _notAllSpecialCharsRegex = new RegExp(".*[a-zA-Z].*", "g");
-  if (text != null && text.match(_notAllSpecialCharsRegex)) {
+  if (text != null && text.match(NotAllSpecialCharsRegex)) {
     return true;
   }
   return false;
@@ -229,12 +234,9 @@ function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
 
 /** Copied from InsightsPortal to find parameters in strings.*/
 function findParameterNames(text) {
-  const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
-  const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
-  var _parameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:" + ValidSpecifierRegex + ")?\}", "g");
   var params = null;
   try {
-    params = text.match(_parameterRegex);
+    params = text.match(ParameterRegex);
   } catch (e) {
     console.error("ERROR: Cannot extract parameter. ", "ERROR: ", e);
   }
