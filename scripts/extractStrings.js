@@ -216,7 +216,7 @@ function getCategoryResourceStrings(object, outputMap) {
 
 function getSettingStrings(object, outputMap) {
   if (object && object.hasOwnProperty("name")) {
-    outputMap["name"] = object.name;
+    outputMap["settings.name"] = object.name;
   }
 }
 
@@ -529,6 +529,8 @@ for (var d in directories) {
 
   // This is where we will output the resjson artifact
   const resjonOutputPath = generateOutputPath(templatePath, RESJSONOutputFolder);
+  var extracted = {};
+  var resJsonFileName; // Name of the file as entry for localization, since we are combining settings and template file
 
   for (var i in files) {
     const fileName = files[i];
@@ -543,52 +545,53 @@ for (var d in directories) {
     const fileData = openFile(filePath);
 
     // Parse the template for localizeable strings
-    var extracted = {};
     try {
       var jsonParsedData = JSON.parse(fileData);
       if (extensionType.localeCompare(CategoryResourcesFile) === 0) {
         // Special case for category resource strings
         getCategoryResourceStrings(jsonParsedData, extracted);
+        resJsonFileName = fileName;
       } else if (extensionType.localeCompare(SettingsFile) === 0) {
         getSettingStrings(jsonParsedData, extracted);
       } else {
         getLocalizeableStrings(jsonParsedData, '', extracted);
+        resJsonFileName = fileName;
       }
     } catch (error) {
       console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
       continue;
     }
-
-    if (Object.keys(extracted).length > 0) {
-      // Add LocProject entry
-      const locProjectEntry = generateLocProjectEntry(fileName, templatePath, resjonOutputPath);
-      locProjectOutput.push(locProjectEntry);
-
-      // Write extracted strings to file
-      writeToFileRESJSON(extracted, fileName, resjonOutputPath);
-
-      // TODO: un-comment this when localized strings are ready
-      // // Generate localized templates
-      // const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
-      // const locDirectory = getClonedLocDirectory(templatePath);
-      //   for (var l in Languages) {
-      //     var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
-      //     translatedDir = translatedDir.concat("\\", Languages[l]);
-      //     const generatedTemplatePath = translatedDir.concat("\\", fileName);
-      //     const fullLocPath = locDirectory.concat("\\", Languages[l], "\\", lclFileName);
-      //     if (fs.existsSync(fullLocPath)) {
-      //       // Do workbook string replacement here
-      //       const fileData = fs.readFileSync(fullLocPath, Encoding);
-      //       generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
-      //     } else {
-      //       // No loc file found, just push the workbook file as is in English
-      //       writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
-      //     }
-      //   }
-    } else {
-      console.log(">>>>> No localizeable strings found for template: ", filePath);
-    }
   };
+
+  if (Object.keys(extracted).length > 0) {
+    // Add LocProject entry
+    const locProjectEntry = generateLocProjectEntry(resJsonFileName, templatePath, resjonOutputPath);
+    locProjectOutput.push(locProjectEntry);
+
+    // Write extracted strings to file
+    writeToFileRESJSON(extracted, resJsonFileName, resjonOutputPath);
+
+    // TODO: un-comment this when localized strings are ready
+    // // Generate localized templates
+    // const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
+    // const locDirectory = getClonedLocDirectory(templatePath);
+    //   for (var l in Languages) {
+    //     var translatedDir = generateOutputPath(templatePath, TemplateOutputFolder);
+    //     translatedDir = translatedDir.concat("\\", Languages[l]);
+    //     const generatedTemplatePath = translatedDir.concat("\\", fileName);
+    //     const fullLocPath = locDirectory.concat("\\", Languages[l], "\\", lclFileName);
+    //     if (fs.existsSync(fullLocPath)) {
+    //       // Do workbook string replacement here
+    //       const fileData = fs.readFileSync(fullLocPath, Encoding);
+    //       generateTranslatedFile(fileData, jsonParsedData, translatedDir, generatedTemplatePath);
+    //     } else {
+    //       // No loc file found, just push the workbook file as is in English
+    //       writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
+    //     }
+    //   }
+  } else {
+    console.log(">>>>> No localizeable strings found for template: ", resJsonFileName);
+  }
 }
 
 // Generate and push locProject file
