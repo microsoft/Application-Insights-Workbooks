@@ -1,4 +1,6 @@
-const fs = require('fs'), path = require('path'), xml2js = require('xml2js');
+const fs = require('fs');
+const path = require('path');
+// const xml2js = require('xml2js');
 
 // Keys to localize. Add new keys here.
 const LocKeys = [
@@ -339,14 +341,14 @@ function generateLocProjectFile(locItems, directoryPath) {
  */
 
 
-function generateTranslatedFile(fileData, workbookJSON, templateDir, fullpath) {
-  xml2js.parseStringPromise(fileData /*, options */).then(function (result) {
-    parseXMLResult(result, workbookJSON, templateDir, fullpath);
-  }).catch(function (err) {
-    // Failed
-    console.error("ERROR: Could not parse XML file", err);
-  });
-}
+// function generateTranslatedFile(fileData, workbookJSON, templateDir, fullpath) {
+//   xml2js.parseStringPromise(fileData /*, options */).then(function (result) {
+//     parseXMLResult(result, workbookJSON, templateDir, fullpath);
+//   }).catch(function (err) {
+//     // Failed
+//     console.error("ERROR: Could not parse XML file", err);
+//   });
+// }
 
 function parseXMLResult(result, workbookJSON, templateDir, fullpath) {
   const lang = result.LCX.$.TgtCul; // language specified in LCL file
