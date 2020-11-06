@@ -36,7 +36,7 @@
             },
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
-          },
+                      },
           {
             "id": "2e3dfd9b-2d0f-4feb-94e8-107f220c4e28",
             "version": "KqlParameterItem/1.0",
@@ -1976,15 +1976,11 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // date furthest in past\r\nlet EndWin = startofday({TimeRange:end}); \r\nlet lookbackWindow = 28d;  // 4 even weeks\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= EndWin\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = iff(isnull(EndTime), EndWin, EndTime)\r\n| where EndTime >= StartWin - lookbackWindow\r\n| project StartTime, EndTime, CorrelationId, UserName\r\n| extend TimeSlot = range(StartTime, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime) limit 1000\r\n| evaluate sliding_window_counts(UserName, TimeSlot, StartWin, EndWin, lookbackWindow, 1d)\r\n| project Days = TimeSlot, RollingMAU = Dcount\r\n",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday(iff({TimeRange:start}+1d <= {TimeRange:end} , {TimeRange:start}+1d, {TimeRange:start})); //adjust # of days displayed\r\nlet EndWin = endofday({TimeRange:end});\r\nlet lookbackWindow = 28d;  // 4 even weeks\r\nlet StartCountDay = StartWin - lookbackWindow;\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)  // chop out hosts not selected by user\r\n| project CorrelationId, State, TimeGenerated, UserName  //chop down rows to just what we need\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin) // if connection not ended yet use lastday\r\n| where EndTime >= StartCountDay  // chop out connections the ended before our window started\r\n| extend StartTime = coalesce(StartTime, StartCountDay)  // if start aged off set at start of lookbackwindow\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)\r\n| project StartTime, EndTime, CorrelationId, UserName  // chop down colms to just what we need\r\n| extend _bin = bin_at(StartTime, 1d, StartCountDay)  // #1 start of first day connection appears\r\n| extend _endRange = iff(EndTime + lookbackWindow > EndWin, EndWin,\r\n                             iff(EndTime + lookbackWindow - 1d < StartTime, StartTime,\r\n                                    iff(EndTime + lookbackWindow - 1d < _bin, _bin, _bin + lookbackWindow - 1d))) // #2 last day connection will appear\r\n| extend _range = range(_bin, _endRange, 1d) // #3 create a start of day timestamp for every day connection existed and/or day it will be counted\r\n| mv-expand _range to typeof(datetime) // #4 \r\n| summarize Users = dcount(UserName) by Days=bin_at(_range, 1d, StartCountDay) // #5 sum startofday timestamps\r\n| where Days>= StartWin // #6 chop off days we dont want to display\r\n| sort by Days asc\r\n",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Monthly users (MAU)",
                     "noDataMessage": "No users detected",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -1993,7 +1989,7 @@
                     "visualization": "barchart",
                     "chartSettings": {
                       "yAxis": [
-                        "RollingMAU"
+                        "Users"
                       ],
                       "seriesLabelSettings": [
                         {
@@ -2018,15 +2014,11 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= EndWin\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = iff(isnull(EndTime), EndWin, EndTime)\r\n| where EndTime >= StartWin\r\n| project StartTime, EndTime, CorrelationId, UserName\r\n| extend TimeSlots = range(StartTime, EndTime, 1h)\r\n| mv-expand TimeSlots to typeof(datetime) limit 1000\r\n| make-series Users = dcount(UserName) default=0 on TimeSlots from StartWin to EndWin step 1d\r\n| project Days = TimeSlots, Users",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start}); // each day to start at midnight\r\nlet EndWin = endofday({TimeRange:end}); \r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| project StartTime, EndTime, CorrelationId, UserName\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlots = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlots to typeof(datetime)\r\n| make-series Users = dcount(UserName) default=0 on TimeSlots from StartWin to EndWin step 1d\r\n| project Days = TimeSlots, Users\r\n",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Daily users (DAU)",
                     "noDataMessage": "No users detected",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -2051,15 +2043,11 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= EndWin\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = iff(isnull(EndTime), EndWin, EndTime)\r\n| where EndTime >= StartWin\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend TimeSlot = range(StartTime, EndTime, 1h)\r\n| mv-expand TimeSlot to typeof(datetime) limit 1000\r\n| make-series Sessions = dcount(CorrelationId) default=0 on TimeSlot from StartWin to EndWin step 1d by State\r\n| project Days = TimeSlot, Sessions, State",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin) // if connection not ended yet use lastday\r\n| where EndTime >= StartWin  // chop out connections the ended before our window started\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off set at start of lookbackwindow\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlot = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime)\r\n| make-series Sessions = dcount(CorrelationId) default=0 on TimeSlot from StartWin to EndWin step 1d by State\r\n| project Days = TimeSlot, Sessions, State",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Daily sessions",
                     "noDataMessage": "No sessions detected",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -2084,15 +2072,11 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated\r\n| as Connections\r\n| where State == \"Started\" and TimeGenerated <= EndWin\r\n| extend StartTime = TimeGenerated\r\n| join kind=leftouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = iff(isnull(EndTime), EndWin, EndTime)\r\n| where EndTime >= StartWin\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend TimeSlot = range(StartTime, EndTime, 1h)\r\n| mv-expand TimeSlot to typeof(datetime) limit 1000\r\n| extend Seconds = iff(EndTime < TimeSlot + 1hr, EndTime - TimeSlot, 1h) / 1s\r\n| make-series Hours = sum(Seconds)/(60.0*60.0) default=0 on TimeSlot from StartWin to EndWin step 1d\r\n| project Days = TimeSlot, Hours\r\n\r\n",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday(iff({TimeRange:start}+1d <= {TimeRange:end} , {TimeRange:start}+1d, {TimeRange:start})); //adjust # of days displayed\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin) // if connection not ended yet use lastday\r\n| where EndTime >= StartWin  // chop out connections the ended before our window started\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off set at start of lookbackwindow\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlot = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime)\r\n| extend StartTm = iff(StartTime > TimeSlot, StartTime, TimeSlot)\r\n| extend EndTm = iff(EndTime < TimeSlot + 1d, EndTime, TimeSlot + 1d)\r\n| extend Hours = (EndTm - StartTm) / 1h\r\n| make-series Hours = sum(Hours)  default=0 on TimeSlot from StartWin to EndWin step 1d\r\n| project Days = TimeSlot, Hours\r\n\r\n",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Daily connected hours",
                     "noDataMessage": "No users detected",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
