@@ -12,9 +12,45 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
-        "query": "",
-        "crossComponentResources": [],
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "parameters": [
+          {
+            "id": "fd801222-af93-4ddc-a0c1-63e08e291f1d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "type": 5,
+            "isRequired": true,
+            "value": "value::1",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.kubernetes/connectedclusters": true,
+                "microsoft.containerservice/managedclusters": true
+              },
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            }
+          },
+          {
+            "id": "f1b1d7bc-b1b4-4adf-844f-6325e2cef3ad",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceType",
+            "type": 7,
+            "isRequired": true,
+            "query": "project '{Resource:resourcetype}'\r\n| take 1",
+            "value": "value::1",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
           {
             "id": "e2b5cd30-7276-477f-a6bb-07da25ba5e5f",
             "version": "KqlParameterItem/1.0",
@@ -117,6 +153,9 @@
             "quote": "'",
             "delimiter": ",",
             "query": "InsightsMetrics\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'container.azm.ms/net'\r\n| extend Tags = todynamic(Tags)\r\n| project HostName = tostring(Tags.hostName)\r\n| distinct HostName\r\n| sort by HostName asc\r\n\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
             "value": [
               "value::all"
             ],
@@ -131,7 +170,7 @@
             },
             "timeContextFromParameter": "timeRange",
             "queryType": 0,
-            "resourceType": "microsoft.containerservice/managedclusters"
+            "resourceType": "{ResourceType}"
           },
           {
             "id": "3201a4f3-4914-45cd-810e-551688fd9069",
@@ -144,6 +183,9 @@
             "quote": "'",
             "delimiter": ",",
             "query": "InsightsMetrics\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'container.azm.ms/net'\r\n| extend Tags = todynamic(Tags)\r\n| project HostName = tostring(Tags.hostName), Interface = tostring(Tags.interface)\r\n| where '*' in ({selectedNodes1}) or HostName in ({selectedNodes1})\r\n| distinct Interface\r\n| sort by Interface asc\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
             "value": [
               "value::all"
             ],
@@ -158,12 +200,12 @@
             },
             "timeContextFromParameter": "timeRange",
             "queryType": 0,
-            "resourceType": "microsoft.containerservice/managedclusters"
+            "resourceType": "{ResourceType}"
           }
         ],
         "style": "above",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters"
+        "resourceType": "{ResourceType}"
       },
       "name": "dropwdowns"
     },
@@ -187,14 +229,16 @@
         "version": "KqlItem/1.0",
         "query": "let data = InsightsMetrics\r\n| where Origin == 'container.azm.ms/telegraf'\r\n| where Namespace == 'container.azm.ms/net'\r\n| extend Tags = todynamic(Tags)\r\n| extend HostName = tostring(Tags.hostName), Interface = tostring(Tags.interface)\r\n| where \"*\" in ({selectedNodes1}) or HostName in ({selectedNodes1})\r\n| where \"*\" in ({selectedInterfaces1}) or Interface in ({selectedInterfaces1})\r\n| extend partitionKey = strcat(HostName, '/', Interface, '/', Name)\r\n| order by partitionKey asc, TimeGenerated asc\r\n| serialize\r\n| extend PrevVal = iif(prev(partitionKey) != partitionKey, 0.0, prev(Val)), PrevTimeGenerated = iif(prev(partitionKey) != partitionKey, datetime(null), prev(TimeGenerated))\r\n| where isnotnull(PrevTimeGenerated) and PrevTimeGenerated != TimeGenerated\r\n| extend Rate = iif(PrevVal > Val, Val / datetime_diff('Second', TimeGenerated, PrevTimeGenerated), (Val - PrevVal) / datetime_diff('Second', TimeGenerated, PrevTimeGenerated))\r\n| where isnotnull(Rate)\r\n| project TimeGenerated, HostName, Interface, Name, Rate;\r\nlet bytesSent = data\r\n| where Name == 'bytes_sent';\r\nlet bytesReceived = data\r\n| where Name == 'bytes_recv';\r\nlet errorsOut = data\r\n| where Name == 'err_out';\r\nlet errorsIn = data\r\n| where Name == 'err_in';\r\nlet maxOn = indexof(\"{aggregation1}\", 'Max');\r\nlet avgOn = indexof(\"{aggregation1}\", 'Average');\r\nlet minOn = indexof(\"{aggregation1}\", 'Min');\r\nlet bytesSentTableData = bytesSent // bytes sent per sec data\r\n| summarize BytesSentPerSecond = avg(Rate) by HostName, Interface // for interfaces, group by parentId (HostName) \r\n| join kind = inner (\r\n    bytesSent\r\n    | make-series BytesSentPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', BytesSentPerSecond, BytesSentPerSecondTrend;\r\nlet bytesReceivedTableData = bytesReceived // bytes received per sec data\r\n| summarize BytesReceivedPerSecond = avg(Rate) by HostName, Interface\r\n| join kind = inner (\r\n    bytesReceived\r\n    | make-series BytesReceivedPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', BytesReceivedPerSecond, BytesReceivedPerSecondTrend;\r\nlet errorsOutTableData = errorsOut // errors out per sec data\r\n| summarize ErrorsOutPerSecond = avg(Rate) by HostName, Interface\r\n| join kind = inner (\r\n    errorsOut\r\n    | make-series ErrorsOutPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', ErrorsOutPerSecond, ErrorsOutPerSecondTrend;\r\nlet errorsInTableData = errorsIn // errors in per sec data\r\n| summarize ErrorsInPerSecond = avg(Rate) by HostName, Interface\r\n| join kind = inner (\r\n    errorsIn\r\n    | make-series ErrorsInPerSecondTrend = iif(avgOn != -1, avg(Rate), iif(maxOn != -1, max(Rate), min(Rate))) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by HostName, Interface\r\n) on HostName\r\n| where Interface == Interface1\r\n| project Id = strcat(HostName, Interface), HostName, Interface, Name = strcat('🔹 ', Interface), ParentId = strcat('🖥️ ', HostName), Kind = 'Interface', ErrorsInPerSecond, ErrorsInPerSecondTrend;\r\nbytesSentTableData\r\n| join kind = inner ( bytesReceivedTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| join kind = inner ( errorsOutTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| join kind = inner ( errorsInTableData ) on Id\r\n| project-away Id1, Name1, ParentId1, Kind1, HostName1, Interface1\r\n| project-rename ['Sent Bytes/sec'] = BytesSentPerSecond, ['Sent Bytes/sec Trend'] = BytesSentPerSecondTrend, ['Received Bytes/sec'] = BytesReceivedPerSecond, ['Received Bytes/sec Trend'] = BytesReceivedPerSecondTrend, ['Errors Out/sec'] = ErrorsOutPerSecond, ['ErrorsOut/sec Trend'] = ErrorsOutPerSecondTrend, ['Errors In/sec'] = ErrorsInPerSecond, ['Errors In/sec Trend'] = ErrorsInPerSecondTrend\r\n| order by Id asc\r\n| project-rename FullId = Id, GridId = Name, Name = ParentId",
         "size": 0,
-        "exportDefaultValue": "{\"Kind\":\"Unselected\"}",
         "showAnalytics": true,
         "timeContext": {
           "durationMs": 0
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "table",
         "gridSettings": {
           "formatters": [
@@ -323,27 +367,6 @@
               "formatOptions": {
                 "showIcon": true
               }
-            },
-            {
-              "columnMatch": "Id",
-              "formatter": 0,
-              "formatOptions": {
-                "showIcon": true
-              }
-            },
-            {
-              "columnMatch": "DisplayName",
-              "formatter": 0,
-              "formatOptions": {
-                "showIcon": true
-              }
-            },
-            {
-              "columnMatch": "$gen_group",
-              "formatter": 0,
-              "formatOptions": {
-                "showIcon": true
-              }
             }
           ],
           "filter": true,
@@ -354,8 +377,7 @@
             ],
             "expandTopLevel": true,
             "finalBy": "GridId"
-          },
-          "labelSettings": []
+          }
         }
       },
       "showPin": true,
@@ -397,7 +419,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart",
         "tileSettings": {
           "showBorder": false
@@ -420,7 +445,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -448,7 +476,7 @@
         "json": "<h3>Total {unit:label} Received (by {timeRange:grain} intervals)</h3>"
       },
       "customWidth": "50",
-      "name": "text - 5 - Copy"
+      "name": "text - 5 - Copyb"
     },
     {
       "type": 3,
@@ -463,7 +491,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -483,7 +514,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -526,7 +560,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -546,7 +583,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -566,7 +606,7 @@
         "json": "<h3>Total Errors Out (by {timeRange:grain} intervals)</h3>"
       },
       "customWidth": "50",
-      "name": "text - 5 - Copy - Copy - Copy - Copy"
+      "name": "text - 5 - Copy - Copy - Copy - Copyb"
     },
     {
       "type": 1,
@@ -589,7 +629,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -609,7 +652,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart"
       },
       "customWidth": "50",
@@ -617,7 +663,5 @@
       "name": "total-errors-in"
     }
   ],
-  "fallbackResourceIds": [],
-  "styleSettings": {},
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }

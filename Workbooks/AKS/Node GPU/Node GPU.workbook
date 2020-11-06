@@ -7,6 +7,43 @@
         "version": "KqlParameterItem/1.0",
         "parameters": [
           {
+            "id": "bc0f6a37-c7c0-4001-b39b-dd0b1d620b4e",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "type": 5,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::1"
+          },
+          {
+            "id": "6dab12e6-26f4-4471-b214-85f624b5f64c",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceType",
+            "type": 7,
+            "isRequired": true,
+            "query": "project '{Resource:resourcetype}'\r\n| take 1",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.containerservice/managedclusters": true,
+                "microsoft.kubernetes/connectedclusters": true
+              },
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::1",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
             "id": "5de17819-f869-4a42-9c3d-27cf8f9085f0",
             "version": "KqlParameterItem/1.0",
             "name": "timeRange",
@@ -15,7 +52,7 @@
             "description": "Filter data by time range",
             "isRequired": true,
             "value": {
-              "durationMs": 14400000
+              "durationMs": 21600000
             },
             "typeSettings": {
               "selectableValues": [
@@ -78,18 +115,20 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "InsightsMetrics \r\n| where Name == \"nodeGpuAllocatable\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where Val > 0\r\n| distinct Computer",
-            "value": [
-              "value::all"
+            "query": "InsightsMetrics \r\n| where Name == \"nodeGpuCapacity\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where Val > 0\r\n| distinct Computer",
+            "crossComponentResources": [
+              "{Resource}"
             ],
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::all"
               ],
-              "selectAllValue": "*"
+              "selectAllValue": "*",
+              "showDefault": false
             },
+            "defaultValue": "value::all",
             "queryType": 0,
-            "resourceType": "microsoft.containerservice/managedclusters"
+            "resourceType": "{ResourceType}"
           },
           {
             "id": "e57ba893-b9ba-47b9-95d5-38bc7be4a455",
@@ -97,7 +136,8 @@
             "name": "clusterId",
             "type": 1,
             "description": "Filter the selected workspace by cluster id",
-            "isHiddenWhenLocked": true
+            "isHiddenWhenLocked": true,
+            "value": ""
           },
           {
             "id": "51f0a81e-6eef-4129-b8a4-dc7dd4114aff",
@@ -109,17 +149,16 @@
             "isHiddenWhenLocked": true,
             "criteriaData": [
               {
-                "condition": "if (clusterId is not empty ), result = '| where clusterId =~ \"{clusterId}\"'",
                 "criteriaContext": {
-                  "leftOperand": "clusterId",
-                  "operator": "isNotNull",
-                  "rightValType": "param",
+                  "leftOperand": "ResourceType",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "Microsoft.operationalinsights/workspaces",
                   "resultValType": "static",
                   "resultVal": "| where clusterId =~ \"{clusterId}\""
                 }
               },
               {
-                "condition": "else result = '| where \"a\" == \"a\"'",
                 "criteriaContext": {
                   "operator": "Default",
                   "rightValType": "param",
@@ -129,22 +168,22 @@
               }
             ],
             "timeContext": {
-              "durationMs": 0
+              "durationMs": 21600000
             },
             "timeContextFromParameter": "timeRange"
           }
         ],
         "style": "pills",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters"
+        "resourceType": "{ResourceType}"
       },
-      "name": "parameters - 2"
+      "name": "pills"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "union\r\n(InsightsMetrics \r\n| where Name == \"nodeGpuAllocatable\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| where Val > 0\r\n//add cluster filter\r\n| summarize GPUsPerComputer=arg_max(Val,*) by Computer, bin(TimeGenerated, {timeRange:grain})\r\n| make-series ['Total GPUs'] = toint(sum(GPUsPerComputer)) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} \r\n),\r\n(\r\nInsightsMetrics \r\n| where Name == \"containerGpuDutyCycle\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| where Val > 0\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| summarize count() by bin(TimeGenerated, {timeRange:grain}), gpuId\r\n| make-series ['Busy GPUs'] = count() default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} \r\n)",
+        "query": "union\r\n(InsightsMetrics \r\n| where Name == \"nodeGpuCapacity\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| where Val > 0\r\n//add cluster filter\r\n| summarize GPUsPerComputer=arg_max(Val,*) by Computer, bin(TimeGenerated, {timeRange:grain})\r\n| make-series ['Total GPUs'] = toint(sum(GPUsPerComputer)) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} \r\n),\r\n(\r\nInsightsMetrics \r\n| where Name == \"containerGpuDutyCycle\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| where Val > 0\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| summarize count() by bin(TimeGenerated, {timeRange:grain}), gpuId\r\n| make-series ['Busy GPUs'] = count() default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} \r\n)",
         "size": 0,
         "aggregation": 5,
         "showAnnotations": true,
@@ -152,7 +191,10 @@
         "title": "GPU Usage",
         "color": "turquoise",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "linechart",
         "tileSettings": {
           "showBorder": false,
@@ -217,7 +259,6 @@
       "name": "GPU-Usage",
       "styleSettings": {
         "maxWidth": "50",
-        "progressStyle": "loader",
         "showBorder": true
       }
     },
@@ -225,7 +266,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "union\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryTotalBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n//| extend tags=parse_json(Tags) \r\n| extend gpuVendor=tostring(Tags.gpuVendor)\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| extend gpuModel = tostring(Tags.gpuModel)\r\n| extend gpu=strcat(gpuVendor, \"/\", gpuModel)\r\n| summarize GpuMemoryBytes=max(Val) by bin(TimeGenerated,  {timeRange:grain}), gpu, gpuId, Computer//, metricname\r\n| make-series ['Total-GPUMemory'] = sum(GpuMemoryBytes) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} //by status\r\n),\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryUsedBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| make-series ['Max-Used'] = max(Val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain}\r\n),\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryUsedBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| make-series ['95th-ptile-Used'] = percentile(Val,95) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain}\r\n),\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryUsedBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| make-series ['99th-ptile-Used'] = percentile(Val,99) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain}\r\n)\r\n",
+        "query": "union\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryTotalBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n//| extend tags=parse_json(Tags) \r\n| extend gpuVendor=tostring(Tags.gpuVendor)\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| extend gpuModel = tostring(Tags.gpuModel)\r\n| extend gpu=strcat(gpuVendor, \"/\", gpuModel)\r\n| summarize GpuMemoryBytes=max(Val) by bin(TimeGenerated,  {timeRange:grain}), gpu, gpuId, Computer//, metricname\r\n| make-series ['Total-GPUMemory'] = sum(GpuMemoryBytes) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} //by status\r\n),\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryUsedBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| extend gpuVendor=tostring(Tags.gpuVendor)\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| extend gpuModel = tostring(Tags.gpuModel)\r\n| extend gpu=strcat(gpuVendor, \"/\", gpuModel)\r\n| summarize maxused=max(Val) by bin(TimeGenerated, {timeRange:grain}), gpu, gpuId, Computer\r\n| make-series ['Max-Used'] = sum(maxused) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain}\r\n),\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryUsedBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| extend gpuVendor=tostring(Tags.gpuVendor)\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| extend gpuModel = tostring(Tags.gpuModel)\r\n| extend gpu=strcat(gpuVendor, \"/\", gpuModel)\r\n| summarize ptile95used=percentile(Val,95) by bin(TimeGenerated, {timeRange:grain}), gpu, gpuId, Computer\r\n| make-series ['95th-ptile-Used'] = sum(ptile95used) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain}\r\n),\r\n(InsightsMetrics \r\n| where Name == \"containerGpumemoryUsedBytes\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| extend gpuVendor=tostring(Tags.gpuVendor)\r\n| extend gpuId = tostring(Tags.gpuId)\r\n| extend gpuModel = tostring(Tags.gpuModel)\r\n| extend gpu=strcat(gpuVendor, \"/\", gpuModel)\r\n| summarize ptile99used=percentile(Val,99) by bin(TimeGenerated, {timeRange:grain}), gpu, gpuId, Computer\r\n| make-series ['99th-ptile-Used'] = sum(ptile99used) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain}\r\n)\r\n",
         "size": 0,
         "aggregation": 5,
         "showAnnotations": true,
@@ -236,7 +277,10 @@
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "linechart",
         "chartSettings": {
           "showLegend": true,
@@ -259,18 +303,21 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let im  = InsightsMetrics\r\n| where Name == \"nodeGpuAllocatable\"\r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| where Val >= 1\r\n| distinct Computer;\r\nKubeNodeInventory\r\n| extend clusterId = ClusterId\r\n{clusterIdWhereClause}\r\n| where Computer in (im)\r\n| extend status=iif(strlen(Status) == 0 ,\"Unknown\", Status)\r\n| summarize count() by Computer, status, bin(TimeGenerated, {timeRange:grain})\r\n| summarize val=count() by status, bin(TimeGenerated, {timeRange:grain})\r\n| make-series ['Node Count by status'] = sum(val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by status\r\n\r\n",
+        "query": "let im  = InsightsMetrics\r\n| where Name == \"nodeGpuCapacity\"\r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| where Val >= 1\r\n| distinct Computer;\r\nKubeNodeInventory\r\n| extend clusterId = ClusterId\r\n{clusterIdWhereClause}\r\n| where Computer in (im)\r\n| extend status=iif(strlen(Status) == 0 ,\"Unknown\", Status)\r\n| summarize count() by Computer, status, bin(TimeGenerated, {timeRange:grain})\r\n| summarize val=count() by status, bin(TimeGenerated, {timeRange:grain})\r\n| make-series ['Node Count by status'] = sum(val) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by status\r\n\r\n",
         "size": 0,
         "aggregation": 5,
         "showAnnotations": true,
         "showAnalytics": true,
         "title": "GPU Node Count by Node Status",
         "timeContext": {
-          "durationMs": 0
+          "durationMs": 21600000
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "linechart",
         "tileSettings": {
           "titleContent": {
@@ -321,7 +368,6 @@
       "name": "GPU-NodeCountByNodeStatus",
       "styleSettings": {
         "maxWidth": "50",
-        "progressStyle": "loader",
         "showBorder": true
       }
     },
@@ -336,11 +382,14 @@
         "showAnalytics": true,
         "title": "GPU Pod Count by Pod Status",
         "timeContext": {
-          "durationMs": 0
+          "durationMs": 21600000
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "timechart",
         "chartSettings": {
           "showLegend": true,
@@ -379,11 +428,14 @@
         "showAnalytics": true,
         "title": "GPU Pod Count by Kubernetes Namespace",
         "timeContext": {
-          "durationMs": 0
+          "durationMs": 21600000
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "linechart",
         "tileSettings": {
           "titleContent": {
@@ -468,7 +520,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "InsightsMetrics \r\n| where Name == \"nodeGpuAllocatable\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| extend gpuVendor=strcat ('🔹 ',tostring(Tags.gpuVendor))\r\n| summarize gpuCountPerComputer=max(Val) by gpuVendor, Computer , bin(TimeGenerated, {timeRange:grain})\r\n| make-series ['GPU count by make'] =sum(gpuCountPerComputer) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by gpuVendor\r\n\r\n\r\n\r\n\r\n\r\n\r\n",
+        "query": "InsightsMetrics \r\n| where Name == \"nodeGpuCapacity\" \r\n| where Namespace == \"container.azm.ms/gpu\" \r\n| where Origin == \"container.azm.ms\"\r\n| where TimeGenerated >= {timeRange:start}\r\n| where TimeGenerated < {timeRange:end}\r\n| where '*' in ({selectedNodes}) or Computer in ({selectedNodes})\r\n| extend Tags = todynamic(Tags)\r\n| extend clusterId = tostring(Tags['container.azm.ms/clusterId'])\r\n{clusterIdWhereClause}\r\n| extend gpuVendor=strcat ('🔹 ',tostring(Tags.gpuVendor))\r\n| summarize gpuCountPerComputer=max(Val) by gpuVendor, Computer , bin(TimeGenerated, {timeRange:grain})\r\n| make-series ['GPU count by make'] =sum(gpuCountPerComputer) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step {timeRange:grain} by gpuVendor\r\n\r\n\r\n\r\n\r\n\r\n\r\n",
         "size": 0,
         "aggregation": 5,
         "showAnnotations": true,
@@ -476,11 +528,14 @@
         "title": "GPU Count by Make",
         "color": "blue",
         "timeContext": {
-          "durationMs": 0
+          "durationMs": 21600000
         },
         "timeContextFromParameter": "timeRange",
         "queryType": 0,
-        "resourceType": "microsoft.containerservice/managedclusters",
+        "resourceType": "{ResourceType}",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "visualization": "table",
         "gridSettings": {
           "formatters": [
@@ -565,23 +620,9 @@
       "name": "GPU-GpuCountByMake",
       "styleSettings": {
         "maxWidth": "50",
-        "progressStyle": "loader",
         "showBorder": true
       }
-    },
-    {
-      "type": 11,
-      "content": {
-        "version": "LinkItem/1.0",
-        "style": "tabs",
-        "links": []
-      },
-      "name": "links - 7"
     }
   ],
-  "fallbackResourceIds": [],
-  "styleSettings": {
-    "progressStyle": "loader"
-  },
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
