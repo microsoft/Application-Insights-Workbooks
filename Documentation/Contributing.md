@@ -42,7 +42,7 @@ The template galleries of the Workbooks tools are organized into categories, lik
 ![Image of category view](./Images/CategoryView.png)
 
 To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file may contain localized versions of the category name, and a description if you are performing localization yourself. Here's an example categoryResources.json file.
-```
+```json
 {
     "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
     "en-us": {"name":"Business Hypotheses", "description": "Long description goes here", "order": 100}
@@ -161,7 +161,7 @@ First, to associate the existing template, we need to create a virtual category 
         * order: The sort order of category.
 3. Now we need to modify template settings to associate it together.
 4. Go to your template and open settings.json file
-    ```json
+    ```jsonc
     {
         "$schema": "..//schema/settings.json",
         "name": "Bracket Retention",
@@ -249,21 +249,25 @@ If you are adding new items to a gallery, or adding new gallery entirely, you ca
 
 ### If you are running a local web server
 If you are already running something like Apache or IIS locally, you don't need to create any kind of storage account.
-1. Use your web server settings to expose the `outputs\package` folder as readable.  Ensure it is available via HTTPS.
+1. Use your web server settings to expose the `outputs\package` folder as readable.  Ensure it is available via HTTPS, and ensure that CORS is enabled to allow loading that url from the portal.
 2. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
    - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://localhost/package`
-3. As you make changes to your templates, rebuild the package and re-upload changed content.
+3. Test this in the portal. Ensure you have no network errors in the network console, this is where you will see CORS related errors about missing headers if CORS is not enabled.
+4. As you make changes to your templates, rebuild the package and re-upload changed content.
 
 
 ### setting up a storage account to deploy your package content
 1. Create azure storage account
 2. In that storage account create blob container, like "azure_monitor_workbook_templates"
-3. In that storage account, [enable CORS rules](https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) so your machine will be able to read frmo that storage account
-4. Upload contents of `outputs\package` directory to the blob container (so you now have a path like `azure_monitor_workbook_templates/package` in the storage account)
-5. Get the url to that folder.  it will be something like `https://[name of storage account].blob.core.windows.net/azure_monitor_workbook_templates/package`
-6. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
-   - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
-7. As you make changes to your templates, rebuild the package and re-upload changed content.
+3. In that storage account, [enable CORS rules](https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) so your machine will be able to read from that storage account
+4. In that storage account, [configure public access](https://docs.microsoft.com/en-us/azure/storage/blobs/anonymous-read-access-configure?tabs=portal) to enable unauthenticated access to that storage account.
+5. Upload contents of `outputs\package` directory to the blob container (so you now have a path like `azure_monitor_workbook_templates/package` in the storage account)
+6. Get the url to that folder; it will be something like `https://[name of storage account].blob.core.windows.net/azure_monitor_workbook_templates/package`
+   - At this point, attempt to navigate directly to that folder url from a browser to make sure you have the right settings. (note that navigating directly will not test CORS, only access from the portal will)
+7. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
+   - You'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
+8. Test this in the portal. Ensure you have no network errors in the network console, this is where you will see CORS related errors about missing headers if CORS is not enabled.
+9. As you make changes to your templates, rebuild the package and re-upload changed content.
 
 
 # How to publish your changes
@@ -273,3 +277,23 @@ If you are already running something like Apache or IIS locally, you don't need 
 3. A validation build will take place to make sure your workbook is valid json, doesn't have hardcoded resource ids, etc.
 4. If your build passes, and someone else with write access to the repo approves your PR, complete your PR
 5. Upon the next [deployment](Deployment.md), your template will appear in the portal
+
+# Testing Preview Workbook Templates
+
+You can test templates that are still work in progress or simply not ready to be exposed to all users. To do this you need to add the property `"isPreview: true"` in settings.json.
+Here is an example:
+
+```jsonc
+{
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
+    "name":"My template (preview)",
+    "author": "Microsoft",
+    "isPreview": true, // add this line to make this a preview template
+    "galleries": [
+        { "type": "workbook", "resourceType": "microsoft.operationalinsights/workspaces", "order": 300 }
+    ]
+}
+```
+
+Once you have add marked your template as `isPreview`, you can see this workbook by adding `feature.includePreviewTemplates` in your Azure Portal Url. So you URL looks something like [https://portal.azure.com/?feature.includePreviewTemplates=true](https://portal.azure.com/?feature.includePreviewTemplates=true)
+
