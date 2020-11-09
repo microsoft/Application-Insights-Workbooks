@@ -41,6 +41,8 @@ Text parameter supports following field style:
     - Kql
     - Toml
 
+    User can also specify the height for the multiline editor.
+
 ![Image showing multiline text field](../Images/KqlText.png)
 
 ## Referencing a text parameter
@@ -85,6 +87,25 @@ Text parameter supports following field style:
 ![Image showing a text parameter with default value from KQL](../Images/Parameters-Text-DefaultValue.png)
 
 > Note: while default example queries Application Insights data, the approach can be used for any log based data source - Log Analytics, Azure Resource Graph, etc.
+
+## Adding Validations
+For Standard/Password text parameters, user can add validations rule that are applied to the text field. Add a valid regex with error message. If message is set, it is shown as error when field is invalid.
+
+If match is selected, the field is valid if value matches the regex and if match is not selected then the field is valid if it doesn't match the regex.
+
+![Text Validation Settings](../Images/TextValidationSettings.png)
+
+## Format JSON Data
+
+If JSON is selected as the language for the multiline text field, then the field will have a button that will format the JSON data of the field. User can also use the shortcut `(ctrl + \)` to format the JSON data.
+
+![Format JSON data](../Images/FormatJSONData.png)
+
+
+If data is coming from a query, user can select the option to pre-format the JSON data returned by the query.
+
+![Pre-format JSON data](../Images/PreFormatJSONData.png)
+
 
 ## Setting values using Criteria
 Refer to the [Criteria](Criteria.md) documentation.
