@@ -141,6 +141,7 @@ function getProgressivePaths(rootPath, file) {
 
 var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
     var results = [];
+    console.log(dir)
     if (!dir.endsWith("{Lang}")) {
         fs.readdir(dir, function (err, list) {
             if (err) return done(err);
