@@ -9,5 +9,6 @@ If you choose to migrate your private workbook to a shared one, you can go to yo
 
 # How do I know if my workbook is private or not?
 ![Private vs Shared Workbook](../Images/PrivateVsSharedWB.png)
+
 One of the easiest ways is to identify a private workbook and shared workbook by their icon on the gallery view. The private workbook will have a blue icon with a person figure in the corner. The shared workbook will have a green icon with a stack figure in the corner.
 
