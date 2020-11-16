@@ -6,6 +6,6 @@ REM for now, rename the file to build.tgz
 cd /D "%~dp0"
 cd "..\output\package"
 
-move azure_monitor_workbook_templates-* build.tgz
+move azure_monitor_workbook_templates-*.tgz build.tgz
 
 cd /D "%~dp0"
