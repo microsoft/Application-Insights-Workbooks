@@ -81,6 +81,8 @@ describe('Validating Workbooks...', () => {
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file)
                     validateSettingsForWorkbook(settings, file);
+                    // verify there is a workbook file in this directory too
+                    validateWorkbookExistForSettings(file);
                 });
 
             done();
@@ -121,6 +123,16 @@ function validateJsonExistForWorkbook(rootPath, results, file) {
         });
         if (result.length === 0) {
             assert.fail("categoryResources.json or settings.json doesn't exist in folder '" + folder + "'")
+        }
+    });
+}
+
+function validateWorkbookExistForSettings(file) {
+    let folder = path.dirname(file);
+    fs.readdir(folder, (err, list) => {
+        let workbooks = list.filter(s => s.endsWith(".workbook"));
+        if (workbooks.length == 0 ) {
+            assert.fail("settings.json file exists with no corresponding .workbook in folder '" + folder + "'")
         }
     });
 }
