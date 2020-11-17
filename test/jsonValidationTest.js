@@ -81,8 +81,9 @@ describe('Validating Workbooks...', () => {
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file)
                     validateSettingsForWorkbook(settings, file);
+                    // verify there is a workbook file in this directory too
+                    validateWorkbookExistForSettings(file);
                 });
-
             done();
         });
     });
@@ -125,6 +126,16 @@ function validateJsonExistForWorkbook(rootPath, results, file) {
     });
 }
 
+function validateWorkbookExistForSettings(file) {
+    let folder = path.dirname(file);
+    fs.readdir(folder, (err, list) => {
+        let workbooks = list.filter(s => s.endsWith(".workbook"));
+        if (workbooks.length == 0 ) {
+            assert.fail("settings.json file exists with no corresponding .workbook in folder '" + folder + "'")
+        }
+    });
+}
+
 function getProgressivePaths(rootPath, file) {
     let paths = file.split("/").filter(folder => folder !== "." && folder !== ".." && folder.indexOf(".workbook") === -1 && folder.indexOf(".cohort") === -1);
     let files = [];
@@ -141,30 +152,32 @@ function getProgressivePaths(rootPath, file) {
 
 var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
     var results = [];
-    fs.readdir(dir, function (err, list) {
-        if (err) return done(err);
-        var i = 0;
-        (function next() {
-            var file = list[i++];
-            if (!file) return done(null, results);
-            file = dir + '/' + file;
-            fs.stat(file, function (err, stat) {
-                if (stat && stat.isDirectory()) {
-                    browseDirectory(file, function (err, res) {
-                        results = results.concat(res);
-                        next();
-                    });
-                } else {
-                    if (hasRoot && dir === rootDir) {
-                        next();
+    if (!dir.endsWith("{Lang}")) {
+        fs.readdir(dir, function (err, list) {
+            if (err) return done(err);
+            var i = 0;
+            (function next() {
+                var file = list[i++];
+                if (!file) return done(null, results);
+                file = dir + '/' + file;
+                fs.stat(file, function (err, stat) {
+                    if (stat && stat.isDirectory() && !file.endsWith("{Lang}")) {
+                        browseDirectory(file, function (err, res) {
+                            results = results.concat(res);
+                            next();
+                        });
                     } else {
-                        results.push(file);
-                        next();
+                        if (hasRoot && dir === rootDir) {
+                            next();
+                        } else {
+                            results.push(file);
+                            next();
+                        }
                     }
-                }
-            });
-        })();
-    });
+                });
+            })();
+        });
+    }
 };
 
 function validateJsonStringAndGetObject(file) {
