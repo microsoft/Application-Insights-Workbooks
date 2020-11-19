@@ -568,7 +568,7 @@ for (var d in directories) {
     }
   };
 
-  if (Object.keys(extracted).length > 0) {
+  if (Object.keys(extracted).length > 0 && !templatePath.endsWith("\\")) {
     // Add LocProject entry
     const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
     locProjectOutput.push(locProjectEntry);
