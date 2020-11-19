@@ -278,8 +278,8 @@ function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory)
 function getLocOutputPath(templatePath, extensionType, root) {
   const newTemplatePath = templatePath.replace(root, root.concat(LangOutputSpecifier))
   const templateSplit = newTemplatePath.split("\\");
-  const fileName = templateSplit[templateSplit.length -1];
-  return newTemplatePath.replace(fileName, fileName.concat(extensionType));
+  templateSplit[templateSplit.length -1] = templateSplit[templateSplit.length -1].concat(extensionType);
+  return templateSplit.join("\\");
 }
 
 function replaceFileExtension(fileName, extensionType) {
