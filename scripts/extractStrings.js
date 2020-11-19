@@ -43,7 +43,7 @@ const RESJSONOutputFolder = "\\output\\loc\\";
 const TemplateOutputFolder = "\\output\\templates\\"
 
 const LocProjectFileName = "LocProject.json";
-const LangOutputSpecifier = "{Lang}\\";
+const LangOutputSpecifier = "\\{Lang}";
 
 const Languages = [
   "cs", "de", "es", "fr", "hu", "it", "ja", "ko", "nl", "pl", "pl-BR", "pt-PT", "ru", "sv", "tr", "zh-Hans", "zh-Hant"
@@ -264,20 +264,22 @@ function findColumnNameReferences(text) {
 }
 
 /** Generate LocProject entry for localization tool */
-function generateLocProjectEntry(templatePath, resjsonOutputPath) {
+function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory) {
   // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
   return {
     "SourceFile": resjsonOutputPath.concat(ResJsonStringFileExtension),
-    "LclFile": getLocOutputPath(templatePath, LCLStringFileExtension),
+    "LclFile": getLocOutputPath(templatePath, LCLStringFileExtension, rootDirectory),
     "CopyOption": "LangIDOnPath",
-    "OutputPath": getLocOutputPath(templatePath, ResJsonStringFileExtension)
+    "OutputPath": getLocOutputPath(templatePath, ResJsonStringFileExtension, rootDirectory)
   };
 }
 
-function getLocOutputPath(templatePath, extensionType) {
-  const templateSplit = templatePath.split("\\");
+/** Return output path like root/{lang}/{TemplateType}/templatePath*/
+function getLocOutputPath(templatePath, extensionType, root) {
+  const newTemplatePath = templatePath.replace(root, root.concat(LangOutputSpecifier))
+  const templateSplit = newTemplatePath.split("\\");
   const fileName = templateSplit[templateSplit.length -1];
-  return templatePath.replace(fileName,LangOutputSpecifier.concat(fileName, extensionType));
+  return newTemplatePath.replace(fileName, fileName.concat(extensionType));
 }
 
 function replaceFileExtension(fileName, extensionType) {
@@ -525,6 +527,7 @@ const locProjectOutput = []; // List of localization file entries for LocProject
 
 for (var d in directories) {
   const templatePath = directories[d];
+  const rootDirectory = getRootFolder(templatePath);
 
   const files = fs.readdirSync(templatePath);
   if (!files || files.length === 0) {
@@ -567,7 +570,7 @@ for (var d in directories) {
 
   if (Object.keys(extracted).length > 0) {
     // Add LocProject entry
-    const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath);
+    const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
     locProjectOutput.push(locProjectEntry);
 
     // Write extracted strings to file
