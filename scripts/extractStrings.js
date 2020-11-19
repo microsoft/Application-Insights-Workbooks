@@ -103,7 +103,8 @@ function generateOutputPath(dir, folder) {
     outputPath = dir.replace(WorkbookTemplateFolder, folder);
   }
   if (!fs.existsSync(outputPath)) {
-    fs.mkdirSync(outputPath, { recursive: true });
+    const directoryPath = outputPath.substr(0, outputPath.lastIndexOf("\\"));
+    fs.mkdirSync(directoryPath, { recursive: true });
   }
   return outputPath;
 }
