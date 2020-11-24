@@ -51,7 +51,7 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 604800000
+              "durationMs": 14400000
             },
             "typeSettings": {
               "selectableValues": [
@@ -106,6 +106,7 @@
         "style": "tabs",
         "links": [
           {
+            "id": "9ba0a0e8-584b-421a-85e6-96c89eda5a17",
             "cellValue": "mainAction",
             "linkTarget": "parameter",
             "linkLabel": "Device list",
@@ -113,6 +114,7 @@
             "style": "link"
           },
           {
+            "id": "59f6773e-da9a-4780-a68f-37f4a7577249",
             "cellValue": "mainAction",
             "linkTarget": "parameter",
             "linkLabel": "Bird's eye view",
@@ -120,6 +122,7 @@
             "style": "link"
           },
           {
+            "id": "7f51665e-47ae-41fa-b716-30c1271eb7fe",
             "cellValue": "mainAction",
             "linkTarget": "parameter",
             "linkLabel": "Drill into details..",
@@ -234,10 +237,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet cpu_percent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.95\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = toint(Val)\n| project device, value, TimeGenerated\n| order by device, TimeGenerated\n| serialize\n| make-series cpu_used_percent = max(value) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet totalMemByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| order by device, TimeGenerated\n| serialize\n| make-series mem_used_percent = max(mem_used_percent) on TimeGenerated from startTime to endTime step timeBin by device\n| project-away TimeGenerated;\nlet cpu_and_mem = memUsedPercent\n| join cpu_percent on $left.device == $right.device\n| project-away device1;\nlet totalBytesByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname\n| summarize totalBytes=sum(Bytes) by device;\nlet used_disk_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname, TimeGenerated\n| summarize availBytes=sum(Bytes) by device, TimeGenerated\n| join kind=leftouter\n    totalBytesByDevice\non $left.device == $right.device\n| extend percentUsed = round((todouble(totalBytes) - todouble(availBytes))/todouble(totalBytes) * 100, 0)\n| project TimeGenerated, device, percentUsed\n| order by device, TimeGenerated\n| make-series disk_used_trend = max(percentUsed) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet cpu_mem_disk = cpu_and_mem\n| join\n    used_disk_trend\non $left.device == $right.device;\nlet messages_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend id = trim_start(@\"[^/]+/\", tostring(dimensions.id))\n| extend value = toint(Val)\n| extend id_device = strcat(id,\"+\",device)\n| project id, device, id_device, value, TimeGenerated\n| order by id_device, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextId = next(id_device, 1)\n| extend diff = iff((value - nextValue) >= 0, value - nextValue, value)\n| where id_device == nextId and diff >= 0\n| make-series device_messages_trend = sum(diff) on TimeGenerated from startTime to endTime step timeBin by device;\nlet messages_total = messages_trend\n| mv-expand with_itemindex=x device_messages_trend to typeof(long)\n| summarize device_messages_total=sum(device_messages_trend) by device\n| join\n    messages_trend\non $left.device == $right.device;\nlet allDevices = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| project TimeGenerated, device, qlen=0\n| summarize sum_qlen=max(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_1 = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_2 = totalQlenByDevice_1\n| join kind=rightanti allDevices on $left.device == $right.device;\nlet totalQlenByDevice = union withsource=\"TempTableName\" totalQlenByDevice_1, totalQlenByDevice_2\n| project TimeGenerated, device, qlen=sum_qlen\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| join kind=leftouter messages_total on device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText;                  \np95QLenAndLastUpdate\n| join kind=leftouter\n    cpu_mem_disk\non $left.device == $right.device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText, cpu_used_percent, mem_used_percent, disk_used_trend; \n",
+              "query": "let minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet cpu_percent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = toint(Val)\n| project device, value, TimeGenerated\n| order by device, TimeGenerated\n| serialize\n| make-series cpu_used_percent = max(value) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet totalMemByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| order by device, TimeGenerated\n| serialize\n| make-series mem_used_percent = max(mem_used_percent) on TimeGenerated from startTime to endTime step timeBin by device\n| project-away TimeGenerated;\nlet cpu_and_mem = memUsedPercent\n| join cpu_percent on $left.device == $right.device\n| project-away device1;\nlet totalBytesByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname\n| summarize totalBytes=sum(Bytes) by device;\nlet used_disk_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname, TimeGenerated\n| summarize availBytes=sum(Bytes) by device, TimeGenerated\n| join kind=leftouter\n    totalBytesByDevice\non $left.device == $right.device\n| extend percentUsed = round((todouble(totalBytes) - todouble(availBytes))/todouble(totalBytes) * 100, 0)\n| project TimeGenerated, device, percentUsed\n| order by device, TimeGenerated\n| make-series disk_used_trend = max(percentUsed) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet cpu_mem_disk = cpu_and_mem\n| join\n    used_disk_trend\non $left.device == $right.device;\nlet messages_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend id = trim_start(@\"[^/]+/\", tostring(dimensions.id))\n| extend value = toint(Val)\n| extend id_device = strcat(id,\"+\",device)\n| project id, device, id_device, value, TimeGenerated\n| order by id_device, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextId = next(id_device, 1)\n| extend diff = iff((value - nextValue) >= 0, value - nextValue, value)\n| where id_device == nextId and diff >= 0\n| make-series device_messages_trend = sum(diff) on TimeGenerated from startTime to endTime step timeBin by device;\nlet messages_total = messages_trend\n| mv-expand with_itemindex=x device_messages_trend to typeof(long)\n| summarize device_messages_total=sum(device_messages_trend) by device\n| join\n    messages_trend\non $left.device == $right.device;\nlet allDevices = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| project TimeGenerated, device, qlen=0\n| summarize sum_qlen=max(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_1 = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_2 = totalQlenByDevice_1\n| join kind=rightanti allDevices on $left.device == $right.device;\nlet totalQlenByDevice = union withsource=\"TempTableName\" totalQlenByDevice_1, totalQlenByDevice_2\n| project TimeGenerated, device, qlen=sum_qlen\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| join kind=leftouter messages_total on device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText;                  \np95QLenAndLastUpdate\n| join kind=leftouter\n    cpu_mem_disk\non $left.device == $right.device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText, cpu_used_percent, mem_used_percent, disk_used_trend; \n",
               "size": 3,
               "timeContext": {
-                "durationMs": 604800000
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "timeRange",
               "exportFieldName": "device",
@@ -426,6 +429,7 @@
               "style": "tabs",
               "links": [
                 {
+                  "id": "c1fa00aa-4f70-43a5-9d0b-87c86fbf4658",
                   "cellValue": "birdseye-view",
                   "linkTarget": "parameter",
                   "linkLabel": "Queue length (p95)",
@@ -433,6 +437,7 @@
                   "style": "link"
                 },
                 {
+                  "id": "64bc16b8-6144-4172-894f-b9f4d21b9522",
                   "cellValue": "birdseye-view",
                   "linkTarget": "parameter",
                   "linkLabel": "Memory (p95)",
@@ -458,7 +463,7 @@
               "query": "let totalMemByDevice = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| summarize p95MemPercent = percentile(mem_used_percent, 95) by device;\nmemUsedPercent\n",
               "size": 0,
               "timeContext": {
-                "durationMs": 604800000
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "timeRange",
               "exportFieldName": "device",
@@ -546,7 +551,7 @@
               "query": "let totalQlenByDevice = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where TimeGenerated < {timeRange:end}\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(\"Updated \", lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(\"Updated \", lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(\"Updated \", lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(\"Updated \", lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| extend colorHelper = case(lastUpdatedSeconds > 86400, -2,\n                            lastUpdatedSeconds > 3600, -1,\n                            p95Qlen);                     \np95QLenAndLastUpdate",
               "size": 0,
               "timeContext": {
-                "durationMs": 604800000
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "timeRange",
               "exportFieldName": "device",
@@ -658,7 +663,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "SelectedDevice",
                   "type": 1,
-                  "value": "metrics109",
+                  "value": "default",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -698,7 +703,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "SelectedDevice",
                   "type": 1,
-                  "value": "metrics109",
+                  "value": "default",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -773,12 +778,43 @@
                   }
                 },
                 {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "9b874032-306e-446a-bddf-122fe374e0dd",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "LastUpdated",
+                        "type": 1,
+                        "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where TimeGenerated < {timeRange:end}\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| summarize lastUpdateTime = max(TimeGenerated)\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| project agoText\n",
+                        "isHiddenWhenLocked": true,
+                        "timeContext": {
+                          "durationMs": 86400000
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.devices/iothubs"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.devices/iothubs"
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "NeverSet",
+                    "comparison": "isEqualTo",
+                    "value": "true"
+                  },
+                  "name": "parameters - 20"
+                },
+                {
                   "type": 11,
                   "content": {
                     "version": "LinkItem/1.0",
                     "style": "tabs",
                     "links": [
                       {
+                        "id": "0e8df9f0-363e-43ac-84b1-37d402a95936",
                         "cellValue": "ShowPane",
                         "linkTarget": "parameter",
                         "linkLabel": "Messaging",
@@ -786,6 +822,7 @@
                         "style": "link"
                       },
                       {
+                        "id": "715cf5f8-11f0-49de-82cf-0a2b7c5b9841",
                         "cellValue": "ShowPane",
                         "linkTarget": "parameter",
                         "linkLabel": "Modules",
@@ -793,6 +830,7 @@
                         "style": "link"
                       },
                       {
+                        "id": "76f391fa-7d82-4193-bdf1-1616ea803e44",
                         "cellValue": "ShowPane",
                         "linkTarget": "parameter",
                         "linkLabel": "Host",
@@ -801,7 +839,7 @@
                       }
                     ]
                   },
-                  "customWidth": "40",
+                  "customWidth": "50",
                   "conditionalVisibility": {
                     "parameterName": "SelectedDevice",
                     "comparison": "isNotEqualTo",
@@ -813,12 +851,25 @@
                   }
                 },
                 {
+                  "type": 1,
+                  "content": {
+                    "json": "<span style=\"color:teal\"> *Reported metrics {LastUpdated}* </span>"
+                  },
+                  "customWidth": "0",
+                  "name": "text - 21",
+                  "styleSettings": {
+                    "margin": "8px 0px",
+                    "maxWidth": "25"
+                  }
+                },
+                {
                   "type": 11,
                   "content": {
                     "version": "LinkItem/1.0",
                     "style": "tabs",
                     "links": [
                       {
+                        "id": "3de7168f-e5ed-4243-a819-01889d532441",
                         "cellValue": "messaging-view",
                         "linkTarget": "parameter",
                         "linkLabel": "Routing",
@@ -826,6 +877,7 @@
                         "style": "link"
                       },
                       {
+                        "id": "134dc0b0-8357-467e-8cdb-bd600a2cdd29",
                         "cellValue": "messaging-view",
                         "linkTarget": "parameter",
                         "linkLabel": "Health",
@@ -833,6 +885,7 @@
                         "style": "link"
                       },
                       {
+                        "id": "9020f302-2c21-4c48-9f22-0b95d75ba6f0",
                         "cellValue": "messaging-view",
                         "linkTarget": "parameter",
                         "linkLabel": "Graph",
@@ -1305,6 +1358,7 @@
                           "groupType": "editable",
                           "title": "Dropped messages details",
                           "expandable": true,
+                          "expanded": true,
                           "items": [
                             {
                               "type": 3,
@@ -1414,6 +1468,7 @@
                           "groupType": "editable",
                           "title": "Failed client connection details",
                           "expandable": true,
+                          "expanded": true,
                           "items": [
                             {
                               "type": 3,
@@ -1548,10 +1603,7 @@
                       "value": "messages"
                     }
                   ],
-                  "name": "health-group",
-                  "styleSettings": {
-                    "showBorder": true
-                  }
+                  "name": "health-group"
                 },
                 {
                   "type": 11,
@@ -1560,6 +1612,7 @@
                     "style": "tabs",
                     "links": [
                       {
+                        "id": "1405992b-9298-4604-9c3c-935bcaa1738f",
                         "cellValue": "module-tab",
                         "linkTarget": "parameter",
                         "linkLabel": "Availability",
@@ -1567,6 +1620,7 @@
                         "style": "link"
                       },
                       {
+                        "id": "aa77cc14-fe19-4b98-81b7-c5cb4071bf44",
                         "cellValue": "module-tab",
                         "linkTarget": "parameter",
                         "linkLabel": "Resource consumption",
@@ -1595,7 +1649,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "hostInfoOstype",
                         "type": 1,
-                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend ostype=tostring(host_info_json.OperatingSystemType)\n| project ostype\n",
+                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend ostype=tostring(host_info_json.OperatingSystemType)\n| top 1 by max_TimeGenerated desc\n| project ostype\n\n",
                         "isHiddenWhenLocked": true,
                         "timeContext": {
                           "durationMs": 86400000
@@ -1608,7 +1662,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "hostInfoArch",
                         "type": 1,
-                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend arch=tostring(host_info_json.Architecture)\n| project arch\n\n\n",
+                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend arch=tostring(host_info_json.Architecture)\n| top 1 by max_TimeGenerated desc\n| project arch\n\n\n",
                         "isHiddenWhenLocked": true,
                         "timeContext": {
                           "durationMs": 86400000
@@ -1621,7 +1675,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "hostInfoOs",
                         "type": 1,
-                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend os=tostring(host_info_json.OperatingSystem)\n| project os\n",
+                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend os=tostring(host_info_json.OperatingSystem)\n| top 1 by max_TimeGenerated desc\n| project os\n",
                         "isHiddenWhenLocked": true,
                         "timeContext": {
                           "durationMs": 86400000
@@ -1634,7 +1688,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "hostInfoEdgedVer",
                         "type": 1,
-                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend edgedver=tostring(host_info_json.Version)\n| extend edgedver = trim_end(@\"[ ](.*)\",edgedver)\n| project edgedver\n",
+                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend edgedver=tostring(host_info_json.Version)\n| extend edgedver = trim_end(@\"[ ](.*)\",edgedver)\n| top 1 by max_TimeGenerated desc\n| project edgedver\n",
                         "isHiddenWhenLocked": true,
                         "timeContext": {
                           "durationMs": 86400000
@@ -1647,7 +1701,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "hostInfoDockerVer",
                         "type": 1,
-                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend dockerver=tostring(host_info_json.ServerVersion)\n| project dockerver\n",
+                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend dockerver=tostring(host_info_json.ServerVersion)\n| top 1 by max_TimeGenerated desc\n| project dockerver\n",
                         "isHiddenWhenLocked": true,
                         "timeContext": {
                           "durationMs": 86400000
@@ -1660,7 +1714,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "hostInfoNumCpus",
                         "type": 1,
-                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend numcpu=tostring(host_info_json.NumCpus)\n| project numcpu\n",
+                        "query": "InsightsMetrics \n| where TimeGenerated > {timeRange:start}\n| where Name contains \"metadata\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend host_info=tostring(dimensions.host_information)\n| summarize max(TimeGenerated) by host_info\n| extend host_info_=replace(@'\\\\', @'', host_info)\n| extend host_info_json=parse_json(host_info_)\n| extend numcpu=tostring(host_info_json.NumCpus)\n| top 1 by max_TimeGenerated desc\n| project numcpu\n",
                         "isHiddenWhenLocked": true,
                         "timeContext": {
                           "durationMs": 86400000
@@ -1678,7 +1732,7 @@
                 {
                   "type": 1,
                   "content": {
-                    "json": "**<span style=\"color:black\">OS info<br></span>**\n{hostInfoOs}<br>\n{hostInfoOstype} {hostInfoArch}<br>\n\n**<span style=\"color:black\">IoT Edge daemon version<br></span>**\n{hostInfoEdgedVer}<br>\n\n**<span style=\"color:black\">Docker daemon version<br></span>**\n{hostInfoDockerVer}<br>\n\n**<span style=\"color:black\"># CPUs<br></span>**\n{hostInfoNumCpus}<br>\n\n\n\n"
+                    "json": "**OS info<br>**\n{hostInfoOs}<br>\n{hostInfoOstype} {hostInfoArch}<br>\n\n**IoT Edge daemon version<br>**\n{hostInfoEdgedVer}<br>\n\n**Docker daemon version<br>**\n{hostInfoDockerVer}<br>\n\n**# CPUs<br>**\n{hostInfoNumCpus}<br>\n\n\n\n"
                   },
                   "customWidth": "20",
                   "conditionalVisibility": {
@@ -1701,7 +1755,7 @@
                     "aggregation": 2,
                     "title": "Uptime",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -1767,12 +1821,12 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.95\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = round(toint(Val),2)\n| project value, TimeGenerated",
+                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = round(toint(Val),2)\n| project value, TimeGenerated",
                     "size": 1,
                     "aggregation": 3,
                     "title": "CPU utilization",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -1826,7 +1880,7 @@
                     "aggregation": 5,
                     "title": "Available disk space",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -1873,7 +1927,7 @@
                     "aggregation": 2,
                     "title": "Memory usage",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -1919,7 +1973,7 @@
                     "size": 0,
                     "noDataMessage": "No messages were routed",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportedParameters": [
@@ -2037,7 +2091,7 @@
                       },
                       "sortBy": [
                         {
-                          "itemKey": "Endpoint",
+                          "itemKey": "$gen_number_MsgRate_4",
                           "sortOrder": 1
                         }
                       ],
@@ -2072,7 +2126,7 @@
                     },
                     "sortBy": [
                       {
-                        "itemKey": "Endpoint",
+                        "itemKey": "$gen_number_MsgRate_4",
                         "sortOrder": 1
                       }
                     ]
@@ -2107,7 +2161,7 @@
                     "query": "let startTime = {timeRange:start};\nlet deviceid = '{SelectedDevice}';\nlet actual = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize actualUptime=max(Val) by module;\nlet expected = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_time_expected_running_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize expectedUptime=max(Val) by module;\nexpected\n| join actual on module\n| extend uptime=(actualUptime / expectedUptime) * 100\n| project module, uptime, expectedUptime, actualUptime\n\n\n\n",
                     "size": 0,
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportFieldName": "module",
@@ -2181,12 +2235,12 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.95\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module != \"host\"  \n| extend value = todouble(Val)\n| order by TimeGenerated, module, value\n| project TimeGenerated, module, value",
+                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module != \"host\"  \n| extend value = todouble(Val)\n| order by TimeGenerated, module, value\n| project TimeGenerated, module, value",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Average CPU usage across all cores",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportFieldName": "module",
@@ -2278,7 +2332,7 @@
                     "aggregation": 5,
                     "title": "Memory usage",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportFieldName": "module",
@@ -2372,12 +2426,12 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.95\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module == '{moduleName}'\n| extend value = todouble(Val)\n| project value, TimeGenerated",
+                          "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module == '{moduleName}'\n| extend value = todouble(Val)\n| project value, TimeGenerated",
                           "size": 1,
                           "aggregation": 5,
                           "title": "CPU usage by {moduleName}",
                           "timeContext": {
-                            "durationMs": 604800000
+                            "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
@@ -2415,7 +2469,7 @@
                           "aggregation": 5,
                           "title": "Memory consumed by {moduleName}",
                           "timeContext": {
-                            "durationMs": 604800000
+                            "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
@@ -2470,7 +2524,7 @@
                           "aggregation": 2,
                           "title": "Queue length trend for {ep}",
                           "timeContext": {
-                            "durationMs": 604800000
+                            "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
@@ -2507,7 +2561,7 @@
                           "aggregation": 3,
                           "title": "Message send latency from {ep} to {pid}",
                           "timeContext": {
-                            "durationMs": 604800000
+                            "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
@@ -2551,7 +2605,7 @@
                             "comparison": "isNotEqualTo"
                           }
                         ],
-                        "name": "query - 0 - Copy"
+                        "name": "query - 0 - Copyb"
                       },
                       {
                         "type": 3,
@@ -2561,7 +2615,7 @@
                           "size": 1,
                           "title": "Messages sent by {ep} to {pid}",
                           "timeContext": {
-                            "durationMs": 604800000
+                            "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
@@ -2599,7 +2653,7 @@
                           "size": 1,
                           "title": "Messages sent to {ep}",
                           "timeContext": {
-                            "durationMs": 604800000
+                            "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
@@ -2681,7 +2735,7 @@
                     "size": 0,
                     "noDataMessage": "No messages were routed",
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -2721,7 +2775,6 @@
                       "hivesMargin": 5
                     }
                   },
-                  "customWidth": "75",
                   "conditionalVisibilities": [
                     {
                       "parameterName": "SelectedDevice",
@@ -2789,7 +2842,7 @@
                       "value": "<default>"
                     }
                   ],
-                  "name": "text - 5"
+                  "name": "text - 5b"
                 }
               ]
             },
@@ -2805,7 +2858,11 @@
                 "value": "default"
               }
             ],
-            "name": "devicedetails-group"
+            "name": "devicedetails-group",
+            "styleSettings": {
+              "margin": "-8px 0px",
+              "showBorder": true
+            }
           }
         ]
       },
@@ -2816,7 +2873,7 @@
       },
       "name": "device-group",
       "styleSettings": {
-        "margin": "-18px 0px"
+        "margin": "-12px 0px"
       }
     }
   ],
