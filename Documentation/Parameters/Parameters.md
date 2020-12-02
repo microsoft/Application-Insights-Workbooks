@@ -146,18 +146,57 @@ Now that you've learned how parameters work, and the limitations about only bein
 
 With a global parameter, the parameter must still be *declared* before it can be used, but any step that sets a value to that parameter will affect *all* instances of that parameter in the workbook. 
 
-**Note:** because changing a global parameter has this "update all" behavior, The global setting should only be turned on for parameters that require this behavior. A combination of global parameters that depend on each other can create a cycle or oscillation where the competing globals change each other over and over.
+**Note:** because changing a global parameter has this "update all" behavior, The global setting should only be turned on for parameters that require this behavior. A combination of global parameters that depend on each other can create a cycle or oscillation where the competing globals change each other over and over. In order to avoid cycles, you cannot "redeclare" a parameter that's been declared as global. Any subsequent declarations of a parameter with the same name will create a read only parameter that cannot be edited in that place.
 
-Common uses:
+Common uses of global parameters:
 
-1. synchronizing time ranges between many charts. 
+1. Synchronizing time ranges between many charts. 
     - without a global parameter, any time range brush in a chart will only be exported *after* that chart, so selecting a time range in the 3rd chart will only update the 4th chart
     - with a global parameter, you can create a global `timeRange` parameter up front, give it a default value, have all the other charts use that as their bound time range *and* as their time brush output (additionally setting the "only export the parameter when the range is brushed" setting). Now, any change of time range in *any* chart will update the global `timeRange` parameter at the top of the workbook. This can be used to make a workbook act like a dashboard.
 
-2. allowing selection of tabs in a links step
+2. Allowing changing the selected tab in a links step via links or buttons
     - without a global parameter, the links step only *outputs* a parameter for the selected tab
     - with a global parameter, you can create a global `selectedTab` parameter, and use that parameter name in the tab selections in the links step. This allows you to pass that parameter value into the workbook from a link, or by using another button or link to change the selected tab. Using buttons from a links step in this way can make a wizard-like experience, where buttons at the bottom of a step can affect the visible sections above it.
 
 
 ### Create a global parameter
-When creating the parameter in a parameters step, set the "Global" option. The only way to make a global parameter is to declare it with a parameters step. The other methods of creating parameters (via selections, brushing, links, buttons, tabs) can only update a global parameter, they cannot themselves declare one.
+When creating the parameter in a parameters step, use the "Treat this parameter as a global" option in advanced settings. The only way to make a global parameter is to declare it with a parameters step. The other methods of creating parameters (via selections, brushing, links, buttons, tabs) can only update a global parameter, they cannot themselves declare one.
+
+![Global parameter setting](../Images/Parameters-global-setting.png)
+
+The parameter will be available and function as normal parameters do.
+
+#### Updating the value of a global parameter from other steps.
+For the chart example above, the most common way to update a global parameter is by using [Time Brushing](../Visualizations/Timebrush.md).  
+
+In this example, the `timerange` parameter above is declared as a global. In a query step below that, create and run a query that uses that `timerange` parameter in the query and returns a time chart result. In the advanced settings for the query step, enable the time range brushing setting, and use the *same* parameter name as the output for the time brush parameter, *and* also set the only export the parameter when brushed option.
+
+![Global time brush setting](../Images/Global-timerange-brush.png)
+
+Now, whenenever a time range is brushed in this chart, it will also update the `timerange` parameter *above* this query, and the query step itself (since it also depends on `timerange`!):
+
+1) Before brushing:
+
+   ![Before brushing](../Images/Global-before-brush.png)
+
+    * the time range is shown as "last hour"
+    * the chart shows the last hour of data
+
+2) During brushing:
+
+   ![During brushing](../Images/Global-during-brush.png)
+
+    * the time range is still last hour, and the brushing outlines are drawn
+    * no parameters/etc have changed. once you let go of the brush, the time range will be updated
+
+
+3) After brushing:
+
+    ![After brushing](../Images/Global-after-brush.png)
+
+    * the time range specified by the time brush will be set by this step, overriding the global value (the timerange dropdown now displays that custom time range)
+    * because the global value at the top has changed, and because this chart depends on `timerange` *as an input*, the time range of the query used in the chart will also update, causing the query to and the chart to update
+    * any other steps in the workbook that depend on `timerange` will also update.
+
+    (If you do *not* use a global parameter, the `timerange` parameter value will only change *below* this query step, things above or this item itself would not update)
+
