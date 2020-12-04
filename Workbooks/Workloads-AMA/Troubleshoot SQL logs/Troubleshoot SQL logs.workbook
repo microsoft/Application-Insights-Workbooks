@@ -7,46 +7,16 @@
         "version": "KqlParameterItem/1.0",
         "parameters": [
           {
-            "id": "af2af70b-7ea5-40a0-be60-2d87c0d17ed8",
-            "version": "KqlParameterItem/1.0",
-            "name": "SqlMonitoringProfile",
-            "label": "Subscription",
-            "type": 6,
-            "isRequired": true,
-            "query": "Resources\n| summarize Count = countif(type =~ 'Microsoft.Insights/dataCollectionRules' and tags contains 'SqlInsights') by subscriptionId\n| order by Count desc\n| extend Row = row_number()\n| project value = subscriptionId, label = subscriptionId, selected = Row == 1",
-            "crossComponentResources": [
-              "value::all"
-            ],
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
-            "timeContext": {
-              "durationMs": 86400000
-            },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
             "id": "b27b8a61-5aac-4066-a8a4-1fea34c1481b",
             "version": "KqlParameterItem/1.0",
             "name": "MonitoringProfile",
             "label": "Monitoring profile",
-            "type": 5,
+            "type": 1,
             "isRequired": true,
-            "query": "Resources\n| where type =~ 'Microsoft.Insights/dataCollectionRules' and tags contains 'SqlInsights'\n| order by resourceGroup asc, tolower(name) asc\n| extend Row = row_number()\n//| project value = id, label = id, selected = Row == 1, group = resourceGroup",
-            "crossComponentResources": [
-              "{SqlMonitoringProfile}"
-            ],
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
+            "isHiddenWhenLocked": true,
             "timeContext": {
               "durationMs": 86400000
-            },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
+            }
           },
           {
             "id": "0cebb139-7c97-434a-b077-07704c77c295",
@@ -74,13 +44,18 @@
             "id": "0a9b1be7-5981-4d35-9b5e-fd7c7f9e80ef",
             "version": "KqlParameterItem/1.0",
             "name": "Workspaces",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true
+          },
+          {
+            "id": "c7688036-0080-4174-94ae-51b64b5211d9",
+            "version": "KqlParameterItem/1.0",
+            "name": "OnboardedComputers",
+            "label": "Monitoring Virtual Machine",
             "type": 5,
             "isRequired": true,
-            "query": "Resources\n| where id =~ '{MonitoringProfile}'\n| project la = properties.destinations.logAnalytics\n| mvexpand la limit 400\n| project id = tostring (la.workspaceResourceId)\n| project value = id, label = id, selected = true",
-            "crossComponentResources": [
-              "{SqlMonitoringProfile}"
-            ],
-            "isHiddenWhenLocked": true,
+            "query": "Resources\r\n| take 1\r\n| project associations = dynamic([{Associations}])\r\n| mvexpand associations limit 400\r\n| project id = tolower(extract(@'(?i)/subscriptions/.+/resourcegroups/.+/providers/microsoft.compute/virtualmachines/(.+)/providers/microsoft.insights/datacollectionruleassociations/.+', 1, tostring(associations)))\r\n| project value = id, label = id, selected = true\r\n\r\n",
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
@@ -149,24 +124,6 @@
             }
           },
           {
-            "id": "c7688036-0080-4174-94ae-51b64b5211d9",
-            "version": "KqlParameterItem/1.0",
-            "name": "OnboardedComputers",
-            "label": "Onboarded Computers",
-            "type": 5,
-            "isRequired": true,
-            "query": "Resources\r\n| take 1\r\n| project associations = dynamic([{Associations}])\r\n| mvexpand associations limit 400\r\n| project id = tolower(extract(@'(?i)/subscriptions/.+/resourcegroups/.+/providers/microsoft.compute/virtualmachines/(.+)/providers/microsoft.insights/datacollectionruleassociations/.+', 1, tostring(associations)))\r\n| project value = id, label = id, selected = true\r\n\r\n",
-            "crossComponentResources": [
-              "{SqlMonitoringProfile}"
-            ],
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
             "id": "6051be4b-93ee-44ce-8436-6c7d3e062273",
             "version": "KqlParameterItem/1.0",
             "name": "LogsFilter",
@@ -180,33 +137,6 @@
               "showDefault": false
             },
             "jsonData": "[\"All Logs\", \"Errors\"]"
-          },
-          {
-            "id": "8d1e99a6-42f9-4aa1-8e58-57db68528610",
-            "version": "KqlParameterItem/1.0",
-            "name": "LogsFilterQuery",
-            "type": 1,
-            "isHiddenWhenLocked": true,
-            "criteriaData": [
-              {
-                "criteriaContext": {
-                  "leftOperand": "LogsFilter",
-                  "operator": "==",
-                  "rightValType": "static",
-                  "rightVal": "Errors",
-                  "resultValType": "static",
-                  "resultVal": "| where OperationStatus == \"Error\""
-                }
-              },
-              {
-                "criteriaContext": {
-                  "operator": "Default",
-                  "rightValType": "param",
-                  "resultValType": "static",
-                  "resultVal": "//"
-                }
-              }
-            ]
           }
         ],
         "style": "above",
@@ -244,7 +174,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Operation\n| where _ResourceId contains '{OnboardedComputers}'\n| where Detail !contains \"mssql: Incorrect syntax near ','.\"\n{LogsFilterQuery}\n| order by TimeGenerated desc\n| extend Action = case(\n    Detail contains 'Unable to open tcp connection with host' and Detail contains 'i/o timeout', \"Open Firewall\",\n    Detail contains 'Error: keyvault.BaseClient#GetSecret', \"Set permissions on Keyvault\",\n    Detail contains 'Failed to generate per VM TOML config with ID', \"Configure VM for SQL insights\",\n     \"\")\n| extend Link = case(\n    Detail contains 'Unable to open tcp connection with host' and Detail contains 'i/o timeout', \"https://docs.microsoft.com/en-us/azure/virtual-machines/windows/nsg-quickstart-portal\",\n    Detail contains 'Error: keyvault.BaseClient#GetSecret', \"https://go.microsoft.com/fwlink/?linkid=2125287\",\n    Detail contains 'Failed to generate per VM TOML config with ID', \"https://github.com/acearun/managedsolutions/blob/master/Documentation/Workloads/wli-configs.md\",\n    \"\")\n| project Time=TimeGenerated, OperationStatus, Message = Detail, Action, Link\n| take 500",
+              "query": "Operation\n| where _ResourceId contains '{OnboardedComputers}'\n| where Detail !contains \"mssql: Incorrect syntax near ','.\"\n| where OperationStatus == \"Error\" or \"{LogsFilter}\" == \"All Logs\"\n| order by TimeGenerated desc\n| extend Action = case(\n    Detail contains 'Unable to open tcp connection with host', \"Potential Firewall error\",\n    Detail contains 'does not have secrets get permission on key vault', \"Key Vault permission error\",\n    Detail contains 'Failed to generate per VM TOML config with ID', \"Configure VM for SQL insights\",\n    Detail contains 'login error', \"SQL login error\",\n    Detail contains 'SecretNotFound', \"Key Vault secret error\",\n    Detail contains 'disabled secret', \"Key Vault disabled secret error\",\n     \"\")\n| project OperationStatus, Time=TimeGenerated, Message = Detail, Action\n| take 500",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
@@ -259,6 +189,30 @@
               ],
               "gridSettings": {
                 "formatters": [
+                  {
+                    "columnMatch": "OperationStatus",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "linkTarget": "GenericDetails",
+                      "linkIsContextBlade": true,
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Error",
+                          "representation": "3",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ],
+                      "customColumnWidthSetting": "12ch"
+                    }
+                  },
                   {
                     "columnMatch": "Time",
                     "formatter": 6,
@@ -278,27 +232,39 @@
                     }
                   },
                   {
-                    "columnMatch": "OperationStatus",
-                    "formatter": 0,
-                    "formatOptions": {
-                      "customColumnWidthSetting": "12ch"
-                    }
-                  },
-                  {
                     "columnMatch": "Message",
-                    "formatter": 7,
+                    "formatter": 1,
                     "formatOptions": {
-                      "linkTarget": "GenericDetails",
-                      "linkIsContextBlade": true,
                       "customColumnWidthSetting": "150ch"
                     }
                   },
                   {
                     "columnMatch": "Action",
-                    "formatter": 1,
+                    "formatter": 7,
                     "formatOptions": {
-                      "linkColumn": "Link",
-                      "linkTarget": "Url"
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "workbook",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Troubleshooting details",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Label",
+                            "source": "cell"
+                          },
+                          {
+                            "name": "Error",
+                            "source": "column",
+                            "value": "Message"
+                          }
+                        ]
+                      }
                     }
                   },
                   {
@@ -310,11 +276,11 @@
                 "filter": true,
                 "labelSettings": [
                   {
-                    "columnId": "Time"
-                  },
-                  {
                     "columnId": "OperationStatus",
                     "label": "Status"
+                  },
+                  {
+                    "columnId": "Time"
                   },
                   {
                     "columnId": "Message"
