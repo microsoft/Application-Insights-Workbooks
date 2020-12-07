@@ -167,7 +167,7 @@ To make a query control use this data source, use the _Data source_ drop down to
 >
 > ```
 > WorkloadMonitorResources
-> |  where type =~ “microsoft.workloadmonitor/monitors”
+> |  where type =~ "microsoft.workloadmonitor/monitors"
 > ```
 >
 > See [Azure Resource Graph table reference Azure Docs](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources) 
