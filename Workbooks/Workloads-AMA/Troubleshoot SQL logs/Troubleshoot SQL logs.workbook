@@ -137,6 +137,20 @@
               "showDefault": false
             },
             "jsonData": "[\"All Logs\", \"Errors\"]"
+          },
+          {
+            "id": "4cc2a2af-8213-45d4-84bd-0728a196fdee",
+            "version": "KqlParameterItem/1.0",
+            "name": "CommonErrors",
+            "type": 1,
+            "isRequired": true,
+            "value": "",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "multiLineText": true,
+              "editorLanguage": "json",
+              "multiLineHeight": 10
+            }
           }
         ],
         "style": "above",
@@ -174,7 +188,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Operation\n| where _ResourceId contains '{OnboardedComputers}'\n| where Detail !contains \"mssql: Incorrect syntax near ','.\"\n| where OperationStatus == \"Error\" or \"{LogsFilter}\" == \"All Logs\"\n| order by TimeGenerated desc\n| extend Action = case(\n    Detail contains 'Unable to open tcp connection with host', \"Connection error\",\n    Detail contains 'does not have secrets get permission on key vault', \"Key Vault permission error\",\n    Detail contains 'Failed to generate per VM TOML config with ID', \"Configure VM for SQL insights\",\n    Detail contains 'login error' or Detail contains 'Login failed for user', \"SQL login error\",\n    Detail contains 'SecretNotFound', \"Key Vault secret error\",\n    Detail contains 'disabled secret', \"Key Vault disabled secret error\",\n    Detail contains 'user does not have permission' or Detail contains 'VIEW DATABASE STATE', \"User does not have permission\",\n    Detail contains 'Client with IP address' and Detail contains 'is not allowed to access the server', \"Firewall is blocking access\",\n    Detail contains 'The server was not found or was not accessible', \"Client machine is not in Virtual Network\",\n     \"\")\n| project OperationStatus, Time=TimeGenerated, Message = Detail, Action\n| take 500",
+              "query": "Operation\n| where _ResourceId contains '{OnboardedComputers}'\n| where Detail !contains \"mssql: Incorrect syntax near ','.\"\n| where OperationStatus == \"Error\" or \"{LogsFilter}\" == \"All Logs\"\n| extend jk=1\n| join kind=leftouter (\n    datatable (CommonErrors:dynamic)[dynamic({CommonErrors})]\n    | mv-expand CommonErrors\n    | extend jk=1) on jk\n| where Detail contains CommonErrors.key\n| project OperationStatus, Time = TimeGenerated, Message = Detail, Action = tostring(CommonErrors.action), Description = tostring(CommonErrors.description), Link = tostring(CommonErrors.link)\n| order by Time desc\n| take 500",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
@@ -253,17 +267,32 @@
                         "passSpecificParams": true,
                         "templateParameters": [
                           {
-                            "name": "Label",
-                            "source": "cell"
+                            "name": "Link",
+                            "source": "column",
+                            "value": "Link"
                           },
                           {
                             "name": "Error",
                             "source": "column",
                             "value": "Message"
+                          },
+                          {
+                            "name": "Action",
+                            "source": "column",
+                            "value": "Action"
+                          },
+                          {
+                            "name": "Description",
+                            "source": "column",
+                            "value": "Description"
                           }
                         ]
                       }
                     }
+                  },
+                  {
+                    "columnMatch": "Description",
+                    "formatter": 5
                   },
                   {
                     "columnMatch": "Link",
@@ -276,12 +305,6 @@
                   {
                     "columnId": "OperationStatus",
                     "label": "Status"
-                  },
-                  {
-                    "columnId": "Time"
-                  },
-                  {
-                    "columnId": "Message"
                   }
                 ]
               }
