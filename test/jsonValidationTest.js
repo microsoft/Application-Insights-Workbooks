@@ -89,6 +89,20 @@ describe('Validating Workbooks...', () => {
         });
     });
 
+    it('Verifying armtemplate.json files', function (done) {
+        browseDirectory(workbookPath, (error, results) => {
+            if (error) throw error;
+            results.filter(file => file.endsWith('.armtemplate'))
+                .forEach(file => {
+                    let settings = validateJsonStringAndGetObject(file);
+                    // "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    validateSettingsForArmTemplate(settings, file);
+                    validateWorkbookFilePathLength(file);
+                });
+            done();
+        });
+    });    
+
     it('Verifying workbook category json files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
             if (error) throw error;
@@ -166,7 +180,7 @@ function validateWorkbookFilePathLength(file) {
     workbookkey += ".json";
 
     if (fullPath > 200) {
-        assert.fail("workbook path " + fullPath + " longer than 200ch limit: '" + file + "' this file may fail to copy in build steps")
+        assert.fail("file path " + fullPath + " longer than 200ch limit: '" + file + "' this file may fail to copy in build steps")
     } if (workbookkey.length > 100) {
         assert.fail("packaged workbook key '" + workbookkey + "' = length " + workbookkey.length + ", longer than 100ch limit: '" + file + "'.  Reduce file/folder path depth or rename folders to reduce duplicate information")
     }
@@ -230,6 +244,10 @@ function validateSettingsForWorkbook(settings, file) {
     if (!Array.isArray(settings.galleries)) {
         assert.fail("The galleries should be an array with '" + file + "'");
     }
+}
+
+function validateSettingsForArmTemplate(settings, file) {
+    ["$schema"].forEach( field => checkProperty(settings, field, file) );
 }
 
 function validateNoResourceIds(settings, file) {
