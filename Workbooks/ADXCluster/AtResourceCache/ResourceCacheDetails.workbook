@@ -31,8 +31,7 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 5792400000,
-              "endTime": "2020-12-07T08:51:00.000Z"
+              "durationMs": 604800000
             },
             "isHiddenWhenLocked": true,
             "typeSettings": {
@@ -120,15 +119,15 @@
       "content": {
         "version": "NotebookGroup/1.0",
         "groupType": "editable",
-        "title": "Cache Details (Not affected by the Time Range)",
         "items": [
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "\r\nlet T = ADXTableUsageStatistics \r\n| extend LookBackPeriod = datetime_diff('day', StartedOn, MinCreatedOn) \r\n| summarize CountQueries=count() by DatabaseName, TableName, LookBackPeriod;\r\n\r\n\r\nlet T2= T | summarize percentile_LookbackDuration_ = percentilesw(LookBackPeriod, CountQueries, 95) by DatabaseName, TableName;\r\n\r\n\r\nlet defaultRetention = 365d * 10;\r\n\r\n\r\nADXTableDetails \r\n| summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),\r\n        CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n        | extend CacheStart = now() - ActiveCachingPolicy , CacheEnd = now() \r\n        | extend DataInCacheStart = iff(isnull(MinExtentsCreationTime), MinExtentsCreationTime, max_of(CacheStart, MinExtentsCreationTime)), DataInCacheEnd = iff(isnull(MaxExtentsCreationTime), MaxExtentsCreationTime, min_of(CacheEnd, MaxExtentsCreationTime)) \r\n        | extend TimespanOfDataInCache = iff(HotExtentSize == 0, time(0m), bin(DataInCacheEnd - DataInCacheStart, 1d) +1d) \r\n| join kind = leftouter (T2) on DatabaseName, TableName\r\n| project DatabaseName, TableName, CacheSize = HotExtentSize, CachingPolicy, TimespanOfDataInCache, iff(isempty(tostring(percentile_LookbackDuration_)), '-', tostring(percentile_LookbackDuration_))",
+              "query": "\r\nlet T = ADXTableUsageStatistics \r\n| extend LookBackPeriod = datetime_diff('day', StartedOn, MinCreatedOn) \r\n| summarize CountQueries=count() by DatabaseName, TableName, LookBackPeriod;\r\n\r\n\r\nlet T2= T | summarize percentile_LookbackDuration_ = percentilesw(LookBackPeriod, CountQueries, 95) by DatabaseName, TableName;\r\n\r\n\r\nlet defaultRetention = 365d * 10;\r\n\r\n\r\nADXTableDetails \r\n| summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),\r\n        CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n        | extend CacheStart = now() - ActiveCachingPolicy , CacheEnd = now() \r\n        | extend DataInCacheStart = iff(isnull(MinExtentsCreationTime), MinExtentsCreationTime, max_of(CacheStart, MinExtentsCreationTime)), DataInCacheEnd = iff(isnull(MaxExtentsCreationTime), MaxExtentsCreationTime, min_of(CacheEnd, MaxExtentsCreationTime)) \r\n        | extend TimespanOfDataInCache = iff(HotExtentSize == 0, time(0m), bin(DataInCacheEnd - DataInCacheStart, 1d) +1d) \r\n| join kind = leftouter (T2) on DatabaseName, TableName\r\n| where TimeGenerated >= ago(8h)\r\n| project DatabaseName, TableName, CacheSize = HotExtentSize, CachingPolicy, QueryPeriod = iff(isempty(tostring(percentile_LookbackDuration_)), '-', tostring(percentile_LookbackDuration_))",
               "size": 0,
               "showAnalytics": true,
+              "title": "Cache Details (Not affected by the Time Range)",
               "timeContext": {
                 "durationMs": 0
               },
@@ -205,16 +204,11 @@
                   },
                   {
                     "columnId": "CachingPolicy",
-                    "label": "Caching Policy (Days)"
+                    "label": "Caching Policy (Timespan)"
                   },
                   {
-                    "columnId": "TimespanOfDataInCache",
-                    "label": "Data In Cache (Days)"
-                  },
-                  {
-                    "columnId": "Column1",
-                    "label": "Query Period (Look Back of 95% of Queries In Days)",
-                    "comment": ""
+                    "columnId": "QueryPeriod",
+                    "label": "Query Period (Day Look Back of 95% of Queries)"
                   }
                 ]
               },
@@ -228,13 +222,20 @@
             "name": "TableSizesGrid"
           },
           {
+            "type": 1,
+            "content": {
+              "json": "💡 _Click on the above grid rows to see more details about cache usage_"
+            },
+            "name": "ClickOnTheCacheGridText"
+          },
+          {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
               "query": "let T =  ADXTableDetails | where DatabaseName == '{DatabaseName}'  \r\n| where TableName == '{TableName}' | summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| project DatabaseName, TableName,activeCachePolicyInDays = totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan);\r\n\r\n\r\n\r\n\r\nADXTableUsageStatistics \r\n| where DatabaseName == '{DatabaseName}' \r\n| where TableName == '{TableName}' \r\n| extend NumberOfDaysBefore = datetime_diff('day', StartedOn, MinCreatedOn)\r\n| summarize Count=count() by DatabaseName, TableName,NumberOfDaysBefore \r\n| join kind = leftouter (T) on DatabaseName, TableName\r\n| extend x= activeCachePolicyInDays/1d\r\n| sort by NumberOfDaysBefore asc\r\n| extend CacheType = iff(NumberOfDaysBefore < x, 'InCache', 'OutOfCache')\r\n| extend CumSum = row_cumsum(Count);",
               "size": 0,
-              "aggregation": 3,
               "showAnalytics": true,
+              "title": "Queries look back period (X-axis) and the number of queries (Y-axis)",
               "noDataMessage": "There were no queries on this table",
               "timeContext": {
                 "durationMs": 0
@@ -242,8 +243,8 @@
               "timeContextFromParameter": "TimeRange",
               "exportedParameters": [
                 {
-                  "fieldName": "Count",
-                  "parameterName": "Count",
+                  "fieldName": "x",
+                  "parameterName": "x",
                   "parameterType": 1
                 },
                 {
@@ -261,16 +262,20 @@
                   "Count"
                 ],
                 "group": "CacheType",
-                "createOtherGroup": null,
+                "createOtherGroup": 100,
                 "showLegend": true,
                 "seriesLabelSettings": [
                   {
                     "seriesName": "InCache",
-                    "color": "orange"
+                    "label": "In Cache",
+                    "color": "blue",
+                    "comment": ""
                   },
                   {
                     "seriesName": "OutOfCache",
-                    "color": "blue"
+                    "label": "Out of Cache",
+                    "color": "orange",
+                    "comment": ""
                   }
                 ],
                 "xSettings": {
@@ -293,7 +298,11 @@
                 }
               }
             },
-            "name": "query - 1"
+            "conditionalVisibility": {
+              "parameterName": "DatabaseName",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "CacheHistogram"
           },
           {
             "type": 3,
@@ -302,8 +311,9 @@
               "query": "let defaultRetention = 365d * 10;\r\n\r\nlet x = toscalar(ADXTableDetails\r\n| where DatabaseName == '{DatabaseName}' \r\n| where TableName == '{TableName}'\r\n| summarize arg_max(TimeGenerated, *) by '{DatabaseName}', '{TableName}'\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n        | extend CacheStart = now() - ActiveCachingPolicy , CacheEnd = now() \r\n        | extend DataInCacheStart = iff(isnull(MinExtentsCreationTime), MinExtentsCreationTime, max_of(CacheStart, MinExtentsCreationTime)), DataInCacheEnd = iff(isnull(MaxExtentsCreationTime), MaxExtentsCreationTime, min_of(CacheEnd, MaxExtentsCreationTime)) \r\n        | extend TimespanOfDataInCache = iff(HotExtentSize == 0, time(0m), bin(DataInCacheEnd - DataInCacheStart, 1d) +1d) \r\n| extend ActualCachingeTimeInDays = TimespanOfDataInCache/1d \r\n| project DataInCacheSizeForOneDay = iff(ActualCachingeTimeInDays > 1, HotExtentSize/ActualCachingeTimeInDays, HotExtentSize));\r\n\r\n\r\n\r\nlet T = ADXTableUsageStatistics \r\n| where DatabaseName == '{DatabaseName}' \r\n| where TableName == '{TableName}' \r\n| extend NumberOfDaysBefore = datetime_diff('day', StartedOn, MinCreatedOn)\r\n| summarize Count=count() by DatabaseName, TableName,NumberOfDaysBefore \r\n| sort by NumberOfDaysBefore asc\r\n| extend CumSum = row_cumsum(Count);\r\n\r\nlet total = toscalar(T | summarize max(CumSum));\r\n\r\nT | project NumberOfDaysBefore,  actualQueriesInCache = Count / toreal(total)*100.0, potentialQueriesInCache = CumSum / toreal(total)*100.0, potentialCacheSize = x*NumberOfDaysBefore;\r\n\r\n\r\n\r\n",
               "size": 0,
               "title": "Cache Details per Query Look Back Period",
+              "noDataMessage": "There were no queries on this table",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 604800000
               },
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
@@ -315,19 +325,28 @@
                     "formatter": 1,
                     "formatOptions": {
                       "customColumnWidthSetting": "20ch"
+                    },
+                    "numberFormat": {
+                      "unit": 27,
+                      "options": {
+                        "style": "decimal"
+                      }
                     }
                   },
                   {
                     "columnMatch": "actualQueriesInCache",
                     "formatter": 4,
                     "formatOptions": {
-                      "palette": "blue",
+                      "min": 0,
+                      "max": 100,
+                      "palette": "gray",
                       "customColumnWidthSetting": "363px"
                     },
                     "numberFormat": {
                       "unit": 1,
                       "options": {
-                        "style": "decimal"
+                        "style": "decimal",
+                        "useGrouping": false
                       }
                     }
                   },
@@ -335,7 +354,9 @@
                     "columnMatch": "potentialQueriesInCache",
                     "formatter": 4,
                     "formatOptions": {
-                      "palette": "blue",
+                      "min": 0,
+                      "max": 100,
+                      "palette": "gray",
                       "customColumnWidthSetting": "599px"
                     },
                     "numberFormat": {
@@ -350,13 +371,14 @@
                     "columnMatch": "potentialCacheSize",
                     "formatter": 8,
                     "formatOptions": {
-                      "palette": "blue",
+                      "palette": "gray",
                       "customColumnWidthSetting": "84.7143ch"
                     },
                     "numberFormat": {
                       "unit": 2,
                       "options": {
-                        "style": "decimal"
+                        "style": "decimal",
+                        "useGrouping": false
                       }
                     }
                   }
@@ -364,22 +386,26 @@
                 "labelSettings": [
                   {
                     "columnId": "NumberOfDaysBefore",
-                    "label": "Days Look Back"
+                    "label": "Look Back"
                   },
                   {
                     "columnId": "actualQueriesInCache",
-                    "label": "Actual Queries in Cache (not aggregated)"
+                    "label": "% of queries that looked back (not aggregated)"
                   },
                   {
                     "columnId": "potentialQueriesInCache",
-                    "label": "Potential Queries in Cache (Given that the Cache Policy would change to Days Look Back)"
+                    "label": "Potential Queries in Cache (Given that the Cache Policy would change to 'Look Back')"
                   },
                   {
                     "columnId": "potentialCacheSize",
-                    "label": "Potential Cache Size (Given that the Cache Policy would change to Days Look Back)"
+                    "label": "Potential Cache Size (Given that the Cache Policy would change to 'Look Back')"
                   }
                 ]
               }
+            },
+            "conditionalVisibility": {
+              "parameterName": "DatabaseName",
+              "comparison": "isNotEqualTo"
             },
             "name": "Cache Details per Query Look Back Period"
           }
@@ -401,7 +427,7 @@
           {
             "type": 1,
             "content": {
-              "json": "Additional monitoring coverage for tables is based on platform logs (diagnostic logs). </br>This tab surfaces table telemetry on your monitored clusters.</br></br>To activate additional monitoring, you must enable the **ADXTableDetails** and **ADXTableUsageStatistics** diagnostic settings and send them to Log Analytics. [Learn more](https://docs.microsoft.com/en-us/azure/data-explorer/using-diagnostic-logs?tabs=commands-and-queries#set-up-diagnostic-logs-for-an-azure-data-explorer-cluster)",
+              "json": "There is no relevant log data for the selected time range</br>\r\nAdditional monitoring coverage for tables is based on platform logs (diagnostic logs).</br>If you have not activated additional monitoring, you must enable the **ADXTableDetails** and **ADXTableUsageStatistics** diagnostic settings and send them to Log Analytics. [Learn more](https://docs.microsoft.com/en-us/azure/data-explorer/using-diagnostic-logs?tabs=commands-and-queries#set-up-diagnostic-logs-for-an-azure-data-explorer-cluster)",
               "style": "upsell"
             },
             "name": "text - 0"
@@ -427,9 +453,32 @@
       },
       "conditionalVisibility": {
         "parameterName": "CacheLogs",
-        "comparison": "isEqualTo"
+        "comparison": "isEqualTo",
+        "value": "not present"
       },
       "name": "On Boarding Message Group-Tables"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Loading",
+              "style": "info"
+            },
+            "name": "LoadingCacheGroup"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "CacheLogs",
+        "comparison": "isEqualTo"
+      },
+      "name": "On Boarding Message Group-Tables - Copy"
     }
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
