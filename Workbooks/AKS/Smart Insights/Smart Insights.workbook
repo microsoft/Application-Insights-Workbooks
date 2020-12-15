@@ -1,0 +1,719 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "value::selected"
+        ],
+        "parameters": [
+          {
+            "id": "2649ee25-3d71-404f-b4a9-d920dfdc454c",
+            "version": "KqlParameterItem/1.0",
+            "name": "queryTime",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ]
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "63904275-6270-4382-ab34-935932debe40",
+            "version": "KqlParameterItem/1.0",
+            "name": "query_resource_raw",
+            "label": "Kube Cluster",
+            "type": 5,
+            "isRequired": true,
+            "query": "where type =~ 'microsoft.containerservice/managedclusters' or type =~ 'microsoft.insights/components' or type =~ 'microsoft.operationalinsights/workspaces'\r\n| where iff(type =~ 'microsoft.containerservice/managedclusters', tostring(properties.addonProfiles.omsagent.config.logAnalyticsWorkspaceResourceID) contains \"subscriptions\", true)\r\n| project value = id, label = iff(type == 'microsoft.insights/components', strcat(name, ' (AI)'), iff(type == 'microsoft.operationalinsights/workspaces', strcat(name, ' (LA)'), name)), selected = false, group = resourceGroup",
+            "crossComponentResources": [
+              "value::selected"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.insights/components": true,
+                "microsoft.operationalinsights/workspaces": true,
+                "microsoft.containerservice/managedclusters": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": null
+          },
+          {
+            "id": "2cade9dd-06fb-4202-a251-8b0b59886c06",
+            "version": "KqlParameterItem/1.0",
+            "name": "query_resource",
+            "type": 5,
+            "query": "Resources \r\n| where type =~ 'microsoft.containerservice/managedclusters'\r\n| where id =~ '{query_resource_raw}' \r\n| project LA_workspace_ID = tostring(properties.addonProfiles.omsagent.config.logAnalyticsWorkspaceResourceID)\r\n| union ( Resources \r\n| where type =~ 'Microsoft.OperationalInsights/workspaces'\r\n| where id =~ '{query_resource_raw}'\r\n| project LA_workspace_ID = id)\r\n| extend selected = True",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "customWidth": "95",
+      "name": "smart detectors combined workbook - parameters",
+      "styleSettings": {
+        "margin": "0em"
+      }
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "1a37c397-59ca-4b6e-b60b-19b2dca70c21",
+            "cellValue": "currentTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Event Anomaly",
+            "subTarget": "EventAnomaly",
+            "style": "link"
+          },
+          {
+            "id": "47583c53-85bb-417f-a0c7-eb1f50f0339a",
+            "cellValue": "currentTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Liveness Probe Failures",
+            "subTarget": "Liveness Probe Failures",
+            "style": "link"
+          },
+          {
+            "id": "ae3e6ec3-f729-4716-b042-44bec65b0339",
+            "cellValue": "currentTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Limits and Requests",
+            "subTarget": "RequestsLimits",
+            "style": "link"
+          }
+        ]
+      },
+      "customWidth": "95",
+      "name": "smart detectors combined workbook - top-of-page tabs",
+      "styleSettings": {
+        "margin": "0em"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Select an event to see a graph of occurrences\r\n\r\nThis analyzer shows common \"classes\" of events and shows which event classes have increased in volume recently. \r\n- Events in the list below are grouped based on common phrases, so two events with messages \"pod-abc-123 failed, can not pull image\" and \"pod-def-456 failed, can not pull image\" would be grouped together.\r\n- The Spikiness column rates which events have occureed more recently. For example, if Events A and B occurred on average 10 times a day in the last month, but event A occurred 1000 times yesterday, and event B occurred 2 times yesterday, then event A would have a much higher spikiness rating than B.\r\n"
+            },
+            "name": "smart detectors combined workbook - event anomaly text explanation"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let startTime = {queryTime:start};\r\nlet endTime = {queryTime:end};\r\nlet timeRangeDays = (endTime - startTime) / 1d;\r\nlet timeBinSize = 60m;\r\nKubeEvents \r\n| where TimeGenerated > startTime and TimeGenerated < endTime\r\n//\r\n| extend MessageCleaned = replace(\"\\\\d\", \"0\", Message)\r\n| extend MessageCleaned = replace(\"[0-9a-f]{64}\", \"(64-char-hex-string)\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"\\\\d+ bytes\", \"____ bytes\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"[ ,\\\\.]\\\\d+Ki[ ,\\\\.]\", \" ____Ki \", MessageCleaned)\r\n| extend MessageCleaned = replace(\"0+\", \"0\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"\\\".+\\\"\", \"\\\"(quotedtext)\\\"\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"[^ ]*(/[^ ]*)+\", \"\\\"(path)\\\"\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"[Tt]he\", \"\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"to \", \"to_\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"if \", \"if_\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"not \", \"not_\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"was \", \"was_\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"on \", \"on_\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"are \", \"are_\", MessageCleaned)\r\n| extend MessageCleaned = replace(\"\\\\(combined from similar events\\\\): \", \"\", MessageCleaned)\r\n| extend MessageCleaned = extract(\"(^\\\\s*\\\\S+\\\\s*((\\\\S+)|$)\\\\s*((\\\\S+)|$))\", 0, MessageCleaned)\r\n//\r\n| extend timeBinned = bin(TimeGenerated, timeBinSize)\r\n| summarize timeBinCounts = count(), any(Message), any(Name) by timeBinned, ObjectKind, Namespace, Reason, MessageCleaned\r\n| as T\r\n// | make-series counts = sum(timeBinCounts) default=0 on timeBinned from startTime to endTime step timeBinSize by ObjectKind, Reason, MessageCleaned\r\n| summarize totalAverage = avg(timeBinCounts) by ObjectKind, Reason, MessageCleaned\r\n| join (T \r\n| where timeBinned > endTime - (endTime - startTime) / 10\r\n| summarize recentAverage = avg(timeBinCounts) by ObjectKind, Reason, MessageCleaned\r\n) on ObjectKind, Reason, MessageCleaned\r\n| project-away ObjectKind1, Reason1, MessageCleaned1\r\n| extend spikinessRating = recentAverage / totalAverage\r\n//\r\n| join (T \r\n| summarize totalSum = sum(timeBinCounts), any_Message = any(any_Message), any_Name = any(any_Name), any_Namespace = any(Namespace) by ObjectKind, Reason, MessageCleaned\r\n) on ObjectKind, Reason, MessageCleaned\r\n| project-away ObjectKind1, Reason1, MessageCleaned1\r\n//\r\n// connector logic\r\n//\r\n// origional workbook query\r\n//\r\n| sort by spikinessRating desc\r\n| project common_message_segment = MessageCleaned, objectKind = ObjectKind, reason = Reason, sample_messages = toobject(any_Message), namespaces = toobject(any_Namespace), rating = spikinessRating, total_occurrences = totalSum\r\n// | where rating > 1\r\n| extend base64_common_message_segment = base64_encode_tostring(common_message_segment)\r\n| sort by rating desc\r\n| serialize rn=row_number()\r\n| project-rename spikiness=rating",
+              "size": 0,
+              "showAnalytics": true,
+              "title": "Spiking kubernetes events:",
+              "noDataMessage": "No events found.",
+              "timeContext": {
+                "durationMs": 604800000
+              },
+              "timeContextFromParameter": "queryTime",
+              "exportFieldName": "base64_common_message_segment",
+              "exportParameterName": "selected_event_class_name",
+              "exportDefaultValue": "defaultvalue",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{query_resource}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "spikiness",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 4,
+                      "palette": "redBright"
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 4,
+                        "maximumSignificantDigits": 4
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "total_occurrences",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "orange"
+                    }
+                  },
+                  {
+                    "columnMatch": "base64_common_message_segment",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "rn",
+                    "formatter": 5
+                  }
+                ]
+              },
+              "sortBy": []
+            },
+            "name": "smart detectors combined workbook - Event Anomaly list all event anomaly groups"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "## Selected Event:"
+            },
+            "name": "smart detectors combined workbook - selected event text"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let startTime = {queryTime:start};\nlet endTime = {queryTime:end};\nlet timeBinSize = 60m;\nKubeEvents \n| where TimeGenerated > startTime and TimeGenerated < endTime\n//\n| extend MessageCleaned = replace(\"\\\\d\", \"0\", Message)\n| extend MessageCleaned = replace(\"[0-9a-f]{64}\", \"(64-char-hex-string)\", MessageCleaned)\n| extend MessageCleaned = replace(\"\\\\d+ bytes\", \"____ bytes\", MessageCleaned)\n| extend MessageCleaned = replace(\"[ ,\\\\.]\\\\d+Ki[ ,\\\\.]\", \" ____Ki \", MessageCleaned)\n| extend MessageCleaned = replace(\"0+\", \"0\", MessageCleaned)\n| extend MessageCleaned = replace(\"\\\".+\\\"\", \"\\\"(quotedtext)\\\"\", MessageCleaned)\n| extend MessageCleaned = replace(\"[^ ]*(/[^ ]*)+\", \"\\\"(path)\\\"\", MessageCleaned)\n| extend MessageCleaned = replace(\"[Tt]he\", \"\", MessageCleaned)\n| extend MessageCleaned = replace(\"to \", \"to_\", MessageCleaned)\n| extend MessageCleaned = replace(\"if \", \"if_\", MessageCleaned)\n| extend MessageCleaned = replace(\"not \", \"not_\", MessageCleaned)\n| extend MessageCleaned = replace(\"was \", \"was_\", MessageCleaned)\n| extend MessageCleaned = replace(\"on \", \"on_\", MessageCleaned)\n| extend MessageCleaned = replace(\"are \", \"are_\", MessageCleaned)\n| extend MessageCleaned = replace(\"\\\\(combined from similar events\\\\): \", \"\", MessageCleaned)\n| extend MessageCleaned = extract(\"(^\\\\s*\\\\S+\\\\s*((\\\\S+)|$)\\\\s*((\\\\S+)|$))\", 0, MessageCleaned)\n//\n| extend timeBinned = bin(TimeGenerated, timeBinSize)\n| summarize timeBinCounts = count(), any(Message), any(Name) by timeBinned, ObjectKind, Namespace, Reason, MessageCleaned\n| as T\n| make-series counts = sum(timeBinCounts) default=0 on timeBinned from startTime to endTime step timeBinSize by ObjectKind, Reason, MessageCleaned\n| join (T \n        | summarize totalSum = sum(timeBinCounts), any_Message = any(any_Message), any_Name = any(any_Name), any_Namespace = any(Namespace) by ObjectKind, Reason, MessageCleaned\n) on ObjectKind, Reason, MessageCleaned\n| project-away ObjectKind1, Reason1, MessageCleaned1\n//\n// connector logic\n//\n// origional workbook query\n//\n| where MessageCleaned == base64_decode_tostring(\"{selected_event_class_name}\")\n| project counts=toobject(counts), dates=toobject(timeBinned)\n| project a = zip(counts, dates)\n| mv-expand(a)\n| project counts=toint(a[0]), dates=todatetime(a[1])\n| make-series counts=avg(counts) on dates from startTime to endTime step 4h \n| extend fit=series_fit_line_dynamic(counts)\n| extend RSquare=fit.rsquare, Slope=fit.slope, Variance=fit.variance,RVariance=fit.rvariance,Interception=fit.interception,LineFit=fit.line_fit\n| render timechart",
+              "size": 0,
+              "title": "Events per hour",
+              "noDataMessage": "(please select a row in the above table)",
+              "noDataMessageStyle": 4,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{query_resource}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "smart detectors combined workbook - Event Anomaly graph"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "currentTab",
+        "comparison": "isEqualTo",
+        "value": "EventAnomaly"
+      },
+      "name": "smart detectors combined workbook - Event Anomaly",
+      "styleSettings": {
+        "margin": "4em"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Select a container to view liveness probe failures\r\n\r\nThis analyzer shows which liveness probes have failed recently and how often. Select one to see a time-series of occurrences.\r\n\r\nColumn explanation:\r\n- total: counts liveness probe failures over the entire time range\r\n- recentTotal: counts liveness probe failures in the last 1/10th of the time frame (so for a 30 day view, recentTotal would show failures in the last 3 days)\r\n- controllerTotal: counts liveness probe failures from all containers managed by a controller\r\n\r\n"
+            },
+            "name": "smart detectors combined workbook - event anomaly text explanation"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let startTime = {queryTime:start};\r\nlet endTime = {queryTime:end};\r\nlet timeBinSize = 60m;\r\nKubeEvents\r\n| where TimeGenerated > startTime and TimeGenerated < endTime\r\n| where Message matches regex \"^Liveness probe\"\r\n| extend timebinned = bin(TimeGenerated, timeBinSize)\r\n| summarize count_ = sum(Count) by Name, Namespace, KubeEventType, timebinned, Message, ClusterName\r\n| join kind=leftouter (\r\n    KubePodInventory\r\n    | where TimeGenerated >= startTime and TimeGenerated <= endTime\r\n    | project-rename PodName = Name\r\n    | summarize by PodName, Namespace, ControllerName, ControllerKind\r\n    | project-rename Name = PodName\r\n) on Name, Namespace | project-away Name1, Namespace1\r\n| as T\r\n| make-series counts = sum(count_) default=0 on timebinned from startTime to endTime step timeBinSize by Name, ControllerName, Namespace, KubeEventType, ClusterName\r\n//\r\n| join (T \r\n    | summarize total = sum(count_), messages = make_list(Message) by Name, ControllerName, Namespace, KubeEventType, ClusterName\r\n) on Name, ControllerName, Namespace, KubeEventType, ClusterName\r\n| project-away Name1, ControllerName1, Namespace1, KubeEventType1, ClusterName1\r\n//\r\n| extend dummy = 1\r\n| join kind=inner (T\r\n    | summarize controllerTotal = sum(count_) by ControllerName, Namespace, KubeEventType, ClusterName\r\n    | extend dummy = 1\r\n) on dummy, $left.ControllerName == $right.ControllerName, $left.Namespace == $right.Namespace, $left.KubeEventType == $right.KubeEventType, $left.ClusterName == $right.ClusterName\r\n| project-away ControllerName1, Namespace1, KubeEventType1, ClusterName1\r\n//\r\n| join kind=leftouter (T\r\n    | where timebinned > endTime - (endTime - startTime) / 10\r\n    | summarize recentTotalMaybeNull = sum(count_) by Name, ControllerName, Namespace, KubeEventType, ClusterName\r\n) on Name, ControllerName, Namespace, KubeEventType, ClusterName\r\n| project-away Name1, ControllerName1, Namespace1, KubeEventType1, ClusterName1\r\n| extend recentTotal = iff(isnull(recentTotalMaybeNull), 0.0, recentTotalMaybeNull)\r\n| sort by total\r\n| extend ReadinessProbeKey = base64_encode_tostring(strcat(ClusterName, \"/\", KubeEventType, \"/\", Namespace, \"/\", ControllerName, \"/\", Name))\r\n| project Name, ControllerName, Namespace, total, recentTotal, controllerTotal, ClusterName, ReadinessProbeKey",
+              "size": 0,
+              "noDataMessage": "No liveness probe failures found!",
+              "exportFieldName": "ReadinessProbeKey",
+              "exportParameterName": "ReadinessProbeKey",
+              "exportDefaultValue": "ZGVmYXVsdA==",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{query_resource}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "total",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "redBright"
+                    }
+                  },
+                  {
+                    "columnMatch": "recentTotal",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "redBright"
+                    },
+                    "tooltipFormat": {
+                      "tooltip": "How many probes failed in the last 10% of the time range. (for 30 days, this column would show failures in the last 3 days)"
+                    }
+                  },
+                  {
+                    "columnMatch": "controllerTotal",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "redBright"
+                    }
+                  },
+                  {
+                    "columnMatch": "ReadinessProbeKey",
+                    "formatter": 5
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "ControllerName"
+                  ],
+                  "expandTopLevel": true
+                }
+              }
+            },
+            "name": "smart detectors combined workbook - liveness probe select"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let selectedProbe = base64_decode_tostring(\"{ReadinessProbeKey}\");\r\nlet startTime = {queryTime:start};\r\nlet endTime = {queryTime:end};\r\nlet timeBinSize = (endTime - startTime) / 120;\r\nKubeEvents\r\n| where TimeGenerated > startTime and TimeGenerated < endTime\r\n| where Message matches regex \"^Liveness probe\"\r\n| extend timebinned = bin(TimeGenerated, timeBinSize)\r\n| summarize count_ = sum(Count) by Name, Namespace, KubeEventType, timebinned, Message, ClusterName\r\n| join kind=leftouter (\r\n    KubePodInventory\r\n    | where TimeGenerated >= startTime and TimeGenerated <= endTime\r\n    | project-rename PodName = Name\r\n    | summarize by PodName, Namespace, ControllerName, ControllerKind\r\n    | project-rename Name = PodName\r\n) on Name, Namespace | project-away Name1, Namespace1\r\n| extend foo = strcat(ClusterName, \"/\", KubeEventType, \"/\", Namespace, \"/\", ControllerName, \"/\", Name)\r\n| where foo == selectedProbe\r\n| make-series counts = sum(count_) default=0 on timebinned from startTime to endTime step timeBinSize by Name, ControllerName, Namespace, KubeEventType, ClusterName",
+              "size": 0,
+              "title": "Liveness Probe Failures",
+              "color": "redBright",
+              "noDataMessage": "no container selected",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{query_resource}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "smart detectors combined workbook - liveness probe show details"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "currentTab",
+        "comparison": "isEqualTo",
+        "value": "Liveness Probe Failures"
+      },
+      "name": "smart detectors combined workbook - liveness probe failures query",
+      "styleSettings": {
+        "margin": "4em"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Select a container to see recommended requests and limits\r\n\r\nThis analyzer shows containers with excessive cpu/memory limits and requests. Each tile can represent multiple containers with the same spec. (ex: If deployment A creates 100 identical pods, each with a container C1 and C2, then there will be a single tile for all C1 containers and a single tile for all C2 containers).\r\n\r\nTiles are colored like so:\r\n- white -> well set limits and requests  \r\n- orange -> excessive limits or requests\r\n- turquoise -> unset limits or requests"
+            },
+            "name": "smart detectors combined workbook - requests and limits text explanation"
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "tabs",
+              "links": [
+                {
+                  "id": "74b938cf-fd98-4d3c-a280-729bc0ced2dd",
+                  "cellValue": "limitrequest_containerselection",
+                  "linkTarget": "parameter",
+                  "linkLabel": "All",
+                  "subTarget": "all",
+                  "style": "link"
+                },
+                {
+                  "id": "fef55d21-802c-43e8-9930-9bef73f4d6b1",
+                  "cellValue": "limitrequest_containerselection",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Limits or requests not set",
+                  "subTarget": "notset",
+                  "style": "link"
+                },
+                {
+                  "id": "ba69d35d-1cd9-4919-bd4f-d4d63e2605d4",
+                  "cellValue": "limitrequest_containerselection",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Limits and requests set",
+                  "subTarget": "set",
+                  "style": "link"
+                }
+              ]
+            },
+            "name": "smart detectors combined workbook - limits and requests tabs"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let queryStartTime = {queryTime:start};\r\nlet queryEndTime = {queryTime:end};\r\nlet tollerance = 1;\r\nlet NODE_LIMITS = Perf\r\n| where TimeGenerated > ago(10m)\r\n| where CounterName == \"memoryAllocatableBytes\" or CounterName == \"cpuAllocatableNanoCores\"\r\n| as T\r\n| where CounterName == \"memoryAllocatableBytes\"\r\n| summarize memoryAllocatableBytes = any(CounterValue) by Computer\r\n| join (T \r\n| where CounterName == \"cpuAllocatableNanoCores\" \r\n| summarize cpuAllocatableNanoCores = any(CounterValue) by Computer\r\n)\r\non Computer\r\n| project memoryAllocatableBytes, cpuAllocatableNanoCores, Computer;\r\n//\r\nlet perfdata = materialize(Perf\r\n| project TimeGenerated, ObjectName, InstanceName, _ResourceId, CounterName, CounterValue, Computer\r\n| where TimeGenerated >= queryStartTime and TimeGenerated <= queryEndTime\r\n| where ObjectName == 'K8SContainer'\r\n| where ((CounterName == 'memoryLimitBytes' or CounterName == 'memoryRequestBytes' or CounterName == 'cpuLimitNanoCores' or CounterName == 'cpuRequestNanoCores') and TimeGenerated > (queryEndTime - 1h)) or CounterName == 'memoryRssBytes' or CounterName == 'cpuUsageNanoCores'\r\n| extend ClusterName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[8], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[4], split(InstanceName, '/')[0])))\r\n| extend PodUid = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[9], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[5], split(InstanceName, '/')[1])))\r\n| extend ContainerName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[10], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[6], split(InstanceName, '/')[2])))\r\n| where isnotempty(PodUid)\r\n| extend ResourceName = strcat(ClusterName, '/', PodUid, '/', ContainerName)\r\n| join kind = inner NODE_LIMITS on Computer\r\n| join kind = inner (\r\nKubePodInventory\r\n| where TimeGenerated >= queryEndTime - 10m and TimeGenerated <= queryEndTime\r\n| project-rename PodName = Name, ControllerNameMaybe = ControllerName, ControllerKindMaybe = ControllerKind\r\n| summarize by PodUid, PodName, Namespace, ControllerNameMaybe, ControllerKindMaybe\r\n)\r\non PodUid\r\n| project-away PodUid1\r\n// not all pods have controllers\r\n| extend ControllerName = iff(isnull(ControllerNameMaybe) or ControllerNameMaybe == \"\", strcat(PodName, \" (dummy value)\"), ControllerNameMaybe)\r\n| extend ControllerKind = iff(isnull(ControllerKindMaybe) or ControllerKindMaybe == \"\", \"single pod (dummy value)\", ControllerKindMaybe)\r\n| project-away ControllerKindMaybe, ControllerNameMaybe\r\n);\r\n//\r\nperfdata\r\n| where CounterName == 'memoryLimitBytes'\r\n| extend hasMemLimit = iff(CounterValue == memoryAllocatableBytes, real(null), CounterValue) // no limit check\r\n| summarize memLimitCount = count(), memLimitVal = max(hasMemLimit) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'memoryRequestBytes'\r\n| extend hasMemRequest = iff(CounterValue == memoryAllocatableBytes, real(null), CounterValue)  // no request check\r\n| summarize memRequestCount = count(), memRequestVal = max(hasMemRequest) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'memoryRssBytes'\r\n| summarize mem_measurement_counts = count(), mem_max = max(CounterValue), mem_p90=percentile(CounterValue, 90), mem_p99=percentile(CounterValue, 99), measurementEndTime = max(TimeGenerated), measurementStartTime = min(TimeGenerated)\r\nby ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project mem_measurement_counts, mem_max, mem_p90, mem_p99, measurementStartTime, measurementEndTime, ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'cpuRequestNanoCores'\r\n| extend hasCpuRequest = iff(CounterValue == cpuAllocatableNanoCores, real(null), CounterValue)  // no request check\r\n| summarize cpuRequestCount = count(), cpuRequestVal = max(hasCpuRequest) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'cpuLimitNanoCores'\r\n| extend hasCpuLimit = iff(CounterValue == cpuAllocatableNanoCores, real(null), CounterValue)  // no limit check\r\n| summarize cpuLimitCount = count(), cpuLimitVal = max(hasCpuLimit) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'cpuUsageNanoCores'\r\n| summarize cpu_measurement_counts = count(), cpu_max = max(CounterValue), cpu_p90=percentile(CounterValue, 90), cpu_p99=percentile(CounterValue, 99) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project cpu_measurement_counts, cpu_max, cpu_p90, cpu_p99, ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| where cpuLimitCount > 2 and memLimitCount > 2  // ensure there are enough measurements?\r\n| extend suggestedMemRequest = mem_p99 * 1.5\r\n| extend suggestedMemLimit = mem_p99 * 3\r\n| extend suggestedCpuRequest = cpu_p99 * 1.5 + 5\r\n| extend suggestedCpuLimit = cpu_p99 * 3 + 5\r\n| extend diffMemRequest = abs(suggestedMemRequest - memRequestVal) / suggestedMemRequest\r\n| extend diffMemLimit = abs(suggestedMemLimit - memLimitVal) / suggestedMemLimit\r\n| extend diffCpuRequest = abs(suggestedCpuRequest - cpuRequestVal) / suggestedCpuRequest\r\n| extend diffCpuLimit = abs(suggestedCpuLimit - cpuLimitVal) / suggestedCpuLimit\r\n| extend distAboveTolerance = max_of(diffMemRequest / tollerance, diffMemLimit / tollerance, diffCpuRequest / tollerance, diffCpuLimit / tollerance)\r\n| extend hasnulls = (isnull(cpuRequestVal) or isnull(cpuLimitVal) or isnull(memRequestVal) or isnull(memLimitVal))\r\n| extend colorKey = iff(hasnulls, real(null), log10(distAboveTolerance))\r\n| where (not(hasnulls) and (\"{limitrequest_containerselection}\" == \"set\" or \"{limitrequest_containerselection}\" == \"all\")) or (hasnulls and (\"{limitrequest_containerselection}\" == \"notset\" or \"{limitrequest_containerselection}\" == \"all\"))\r\n| extend containerKey = base64_encode_tostring(strcat(ClusterName, \"/\", Namespace, \"/\", ControllerKind, \"/\", ControllerName, \"/\", ContainerName))\r\n| project ClusterName, Namespace, ControllerName, ControllerKind, ContainerName, memRequestVal, memLimitVal, mem_p90, mem_p99, mem_max, cpuRequestVal, cpuLimitVal, cpu_p90, cpu_p99, cpu_max, suggestedMemRequest, suggestedMemLimit, suggestedCpuRequest, suggestedCpuLimit, distAboveTolerance, colorKey, containerKey\r\n//\r\n| extend memRequestVal_final = iff(isnull(memRequestVal), -1.0, memRequestVal), memLimitVal_final = iff(isnull(memLimitVal), -1.0, memLimitVal), cpuRequestVal_final = iff(isnull(cpuRequestVal), -1.0, cpuRequestVal), cpuLimitVal_final = iff(isnull(cpuLimitVal), -1.0, cpuLimitVal)\r\n| project-away memRequestVal, memLimitVal, cpuRequestVal, cpuLimitVal\r\n| project-rename memRequestVal = memRequestVal_final, memLimitVal = memLimitVal_final, cpuRequestVal = cpuRequestVal_final, cpuLimitVal = cpuLimitVal_final\r\n\r\n",
+              "size": 3,
+              "title": "Request/limit unoptimality",
+              "noDataMessage": "No pods found in cluster. Is monitoring enabled?",
+              "exportedParameters": [
+                {
+                  "fieldName": "containerKey",
+                  "parameterName": "limitrequestcontainerKey",
+                  "defaultValue": "////"
+                },
+                {
+                  "fieldName": "memRequestVal",
+                  "parameterName": "limitrequest_memRequestVal",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "memLimitVal",
+                  "parameterName": "limitrequest_memLimitVal",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "cpuRequestVal",
+                  "parameterName": "limitrequest_cpuRequestVal",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "cpuLimitVal",
+                  "parameterName": "limitrequest_cpuLimitVal",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "suggestedMemRequest",
+                  "parameterName": "limitrequest_suggestedMemRequest",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "suggestedMemLimit",
+                  "parameterName": "limitrequest_suggestedMemLimit",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "suggestedCpuRequest",
+                  "parameterName": "limitrequest_suggestedCpuRequest",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "suggestedCpuLimit",
+                  "parameterName": "limitrequest_suggestedCpuLimit",
+                  "parameterType": 1,
+                  "defaultValue": "-1"
+                },
+                {
+                  "fieldName": "ClusterName",
+                  "parameterName": "limitrequest_selected_ClusterName",
+                  "parameterType": 1,
+                  "defaultValue": " "
+                },
+                {
+                  "fieldName": "Namespace",
+                  "parameterName": "limitrequest_selected_Namespace",
+                  "parameterType": 1,
+                  "defaultValue": " "
+                },
+                {
+                  "fieldName": "ControllerKind",
+                  "parameterName": "limitrequest_selected_ControllerKind",
+                  "parameterType": 1,
+                  "defaultValue": " "
+                },
+                {
+                  "fieldName": "ControllerName",
+                  "parameterName": "limitrequest_selected_ControllerName",
+                  "parameterType": 1,
+                  "defaultValue": " "
+                },
+                {
+                  "fieldName": "ContainerName",
+                  "parameterName": "limitrequest_selected_ContainerName",
+                  "parameterType": 1,
+                  "defaultValue": " "
+                }
+              ],
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{query_resource}"
+              ],
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "ContainerName",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "distAboveTolerance",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 2,
+                      "maximumSignificantDigits": 3
+                    }
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "ControllerName"
+                },
+                "nodeIdField": "ControllerName",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 100,
+                "colorSettings": {
+                  "nodeColorField": "colorKey",
+                  "type": 4,
+                  "heatmapPalette": "orange",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "turquoise"
+                },
+                "hivesMargin": 8
+              }
+            },
+            "customWidth": "49",
+            "name": "smart detectors combined workbook - request/limits select container",
+            "styleSettings": {
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let queryStartTime = {queryTime:start};\r\nlet queryEndTime = {queryTime:end};\r\nlet targetContainer = base64_decode_tostring(\"{limitrequestcontainerKey}\");\r\nlet T = Perf\r\n| project TimeGenerated, ObjectName, InstanceName, _ResourceId, CounterName, CounterValue, Computer\r\n| where TimeGenerated >= queryStartTime and TimeGenerated <= queryEndTime\r\n| where ObjectName == 'K8SContainer'\r\n| where CounterName == 'memoryRssBytes'\r\n| extend ClusterName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[8], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[4], split(InstanceName, '/')[0])))\r\n| where ClusterName == \"{limitrequest_selected_ClusterName}\"\r\n| extend PodUid = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[9], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[5], split(InstanceName, '/')[1])))\r\n| extend ContainerName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[10], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[6], split(InstanceName, '/')[2])))\r\n| where ContainerName == \"{limitrequest_selected_ContainerName}\"\r\n| where isnotempty(PodUid)\r\n| extend ResourceName = strcat(ClusterName, '/', PodUid, '/', ContainerName)\r\n| join kind = inner (\r\nKubePodInventory\r\n| where TimeGenerated >= queryEndTime - 10m and TimeGenerated <= queryEndTime\r\n| project-rename PodName = Name, ControllerNameMaybe = ControllerName, ControllerKindMaybe = ControllerKind\r\n| where ControllerNameMaybe == \"{limitrequest_selected_ControllerName}\"\r\n| where ControllerKindMaybe == \"{limitrequest_selected_ControllerKind}\"\r\n| where Namespace == \"{limitrequest_selected_Namespace}\"\r\n| summarize PodName = any(PodName), Namespace = any(Namespace), ControllerNameMaybe = any(ControllerNameMaybe), ControllerKindMaybe = any(ControllerKindMaybe) by PodUid\r\n)\r\non PodUid\r\n| project-away PodUid1\r\n// not all pods have controllers\r\n| extend ControllerName = iff(isnull(ControllerNameMaybe) or ControllerNameMaybe == \"\", strcat(PodName, \" (dummy value)\"), ControllerNameMaybe)\r\n| extend ControllerKind = iff(isnull(ControllerKindMaybe) or ControllerKindMaybe == \"\", \"single pod (dummy value)\", ControllerKindMaybe)\r\n| project-away ControllerKindMaybe, ControllerNameMaybe\r\n| extend containerKey = strcat(ClusterName, \"/\", Namespace, \"/\", ControllerKind, \"/\", ControllerName, \"/\", ContainerName)\r\n| where containerKey == targetContainer;\r\n//\r\nlet firstTime = toscalar(T | summarize firstTime = min(TimeGenerated));\r\nT\r\n| extend memoryRequestBytes = toreal(\"{limitrequest_memRequestVal}\")\r\n| extend memoryLimitBytes = toreal(\"{limitrequest_memLimitVal}\")\r\n| extend cpuRequestVal = toreal(\"{limitrequest_cpuRequestVal}\")\r\n| extend cpuLimitVal = toreal(\"{limitrequest_cpuLimitVal}\")\r\n| extend suggestedMemRequest = toreal(\"{limitrequest_suggestedMemRequest}\")\r\n| extend suggestedMemLimit = toreal(\"{limitrequest_suggestedMemLimit}\")\r\n| extend suggestedCpuRequest = toreal(\"{limitrequest_suggestedCpuRequest}\")\r\n| extend suggestedCpuLimit = toreal(\"{limitrequest_suggestedCpuLimit}\")\r\n// | project ClusterName, Namespace, ControllerName, ContainerName, cpuRequestVal, suggestedCpuRequest, cpuLimitVal, suggestedCpuLimit, memRequestVal, suggestedMemRequest, memLimitVal, suggestedMemLimit\r\n// | project-rename current_cpu_request = cpuRequestVal, suggested_cpu_request = suggestedCpuRequest, current_cpu_limit = cpuLimitVal, suggested_cpu_limit = suggestedCpuLimit, current_memory_request = memRequestVal, suggested_mem_request = suggestedMemRequest, current_mem_limit = memLimitVal, suggested_mem_limit = suggestedMemLimit\r\n| project-rename memoryRssBytes = CounterValue\r\n| project TimeGenerated, memoryRssBytes, memoryRequestBytes, memoryLimitBytes, suggestedMemRequest, suggestedMemLimit\r\n//| make-series memoryRssBytes = max(memoryRssBytes) default=0, memoryRequestBytes = max(memoryRequestBytes) default=0, memoryLimitBytes = max(memoryLimitBytes) default=0, suggestedMemRequest = max(suggestedMemRequest) default=0, suggestedMemLimit = max(suggestedMemLimit) on TimeGenerated from queryStartTime to queryEndTime step (queryEndTime - queryStartTime) / 100\r\n| summarize memoryRssBytes = max(memoryRssBytes), current_request_raw = max(memoryRequestBytes), current_limit_raw = max(memoryLimitBytes), suggested_request = max(suggestedMemRequest), suggested_limit = max(suggestedMemLimit) by bin(TimeGenerated, (queryEndTime - firstTime) / 100)\r\n| extend current_request = iff(current_request_raw < 0, real(null), current_request_raw), current_limit = iff(current_limit_raw < 0, real(null), current_limit_raw)\r\n| project-away current_request_raw, current_limit_raw\r\n// | summarize min(TimeGenerated), max(TimeGenerated)",
+                    "size": 0,
+                    "aggregation": 3,
+                    "title": "Memory Usage vs Request & Limit",
+                    "noDataMessage": "Select a container to see recommended requests and limits",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "crossComponentResources": [
+                      "{query_resource}"
+                    ],
+                    "visualization": "linechart",
+                    "gridSettings": {
+                      "sortBy": [
+                        {
+                          "itemKey": "TimeGenerated",
+                          "sortOrder": 1
+                        }
+                      ]
+                    },
+                    "sortBy": [
+                      {
+                        "itemKey": "TimeGenerated",
+                        "sortOrder": 1
+                      }
+                    ],
+                    "tileSettings": {
+                      "showBorder": false
+                    },
+                    "chartSettings": {
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "memoryRssBytes",
+                          "label": "max memory usage (bytes)",
+                          "color": "blue"
+                        },
+                        {
+                          "seriesName": "current_request",
+                          "label": "current request",
+                          "color": "redBright"
+                        },
+                        {
+                          "seriesName": "current_limit",
+                          "label": "current limit",
+                          "color": "red"
+                        },
+                        {
+                          "seriesName": "suggested_request",
+                          "label": "suggested request",
+                          "color": "green"
+                        },
+                        {
+                          "seriesName": "suggested_limit",
+                          "label": "suggested limit",
+                          "color": "greenDark"
+                        }
+                      ]
+                    },
+                    "mapSettings": {
+                      "locInfo": "LatLong"
+                    }
+                  },
+                  "customWidth": "100",
+                  "name": "smart detectors combined workbook - request/limits memory chart"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let queryStartTime = {queryTime:start};\r\nlet queryEndTime = {queryTime:end};\r\nlet targetContainer = base64_decode_tostring(\"{limitrequestcontainerKey}\");\r\nlet T = Perf\r\n| project TimeGenerated, ObjectName, InstanceName, _ResourceId, CounterName, CounterValue, Computer\r\n| where TimeGenerated >= queryStartTime and TimeGenerated <= queryEndTime\r\n| where ObjectName == 'K8SContainer'\r\n| where CounterName == 'cpuUsageNanoCores'\r\n| extend ClusterName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[8], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[4], split(InstanceName, '/')[0])))\r\n| where ClusterName == \"{limitrequest_selected_ClusterName}\"\r\n| extend PodUid = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[9], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[5], split(InstanceName, '/')[1])))\r\n| extend ContainerName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[10], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[6], split(InstanceName, '/')[2])))\r\n| where ContainerName == \"{limitrequest_selected_ContainerName}\"\r\n| where isnotempty(PodUid)\r\n| extend ResourceName = strcat(ClusterName, '/', PodUid, '/', ContainerName)\r\n| join kind = inner (\r\nKubePodInventory\r\n| where TimeGenerated >= queryEndTime - 10m and TimeGenerated <= queryEndTime\r\n| project-rename PodName = Name, ControllerNameMaybe = ControllerName, ControllerKindMaybe = ControllerKind\r\n| where ControllerNameMaybe == \"{limitrequest_selected_ControllerName}\"\r\n| where ControllerKindMaybe == \"{limitrequest_selected_ControllerKind}\"\r\n| where Namespace == \"{limitrequest_selected_Namespace}\"\r\n| summarize PodName = any(PodName), Namespace = any(Namespace), ControllerNameMaybe = any(ControllerNameMaybe), ControllerKindMaybe = any(ControllerKindMaybe) by PodUid\r\n)\r\non PodUid\r\n| project-away PodUid1\r\n// not all pods have controllers\r\n| extend ControllerName = iff(isnull(ControllerNameMaybe) or ControllerNameMaybe == \"\", strcat(PodName, \" (dummy value)\"), ControllerNameMaybe)\r\n| extend ControllerKind = iff(isnull(ControllerKindMaybe) or ControllerKindMaybe == \"\", \"single pod (dummy value)\", ControllerKindMaybe)\r\n| project-away ControllerKindMaybe, ControllerNameMaybe\r\n| extend containerKey = strcat(ClusterName, \"/\", Namespace, \"/\", ControllerKind, \"/\", ControllerName, \"/\", ContainerName)\r\n| where containerKey == targetContainer;\r\n//\r\nlet firstTime = toscalar(T | summarize firstTime = min(TimeGenerated));\r\nT\r\n| extend memoryRequestBytes = toreal(\"{limitrequest_memRequestVal}\")\r\n| extend memoryLimitBytes = toreal(\"{limitrequest_memLimitVal}\")\r\n| extend cpuRequestVal = toreal(\"{limitrequest_cpuRequestVal}\")\r\n| extend cpuLimitVal = toreal(\"{limitrequest_cpuLimitVal}\")\r\n| extend suggestedMemRequest = toreal(\"{limitrequest_suggestedMemRequest}\")\r\n| extend suggestedMemLimit = toreal(\"{limitrequest_suggestedMemLimit}\")\r\n| extend suggestedCpuRequest = toreal(\"{limitrequest_suggestedCpuRequest}\")\r\n| extend suggestedCpuLimit = toreal(\"{limitrequest_suggestedCpuLimit}\")\r\n// | project ClusterName, Namespace, ControllerName, ContainerName, cpuRequestVal, suggestedCpuRequest, cpuLimitVal, suggestedCpuLimit, memRequestVal, suggestedMemRequest, memLimitVal, suggestedMemLimit\r\n// | project-rename current_cpu_request = cpuRequestVal, suggested_cpu_request = suggestedCpuRequest, current_cpu_limit = cpuLimitVal, suggested_cpu_limit = suggestedCpuLimit, current_memory_request = memRequestVal, suggested_mem_request = suggestedMemRequest, current_mem_limit = memLimitVal, suggested_mem_limit = suggestedMemLimit\r\n| project-rename cpuUsageNanoCores = CounterValue\r\n| project TimeGenerated, cpuUsageNanoCores, cpuRequestVal, cpuLimitVal, suggestedCpuRequest, suggestedCpuLimit\r\n//| make-series memoryRssBytes = max(memoryRssBytes) default=0, memoryRequestBytes = max(memoryRequestBytes) default=0, memoryLimitBytes = max(memoryLimitBytes) default=0, suggestedMemRequest = max(suggestedMemRequest) default=0, suggestedMemLimit = max(suggestedMemLimit) on TimeGenerated from queryStartTime to queryEndTime step (queryEndTime - queryStartTime) / 100\r\n| summarize cpuUsageNanoCores = max(cpuUsageNanoCores), current_request_raw = max(cpuRequestVal), current_limit_raw = max(cpuLimitVal), suggested_request = max(suggestedCpuRequest), suggested_limit = max(suggestedCpuLimit) by bin(TimeGenerated, (queryEndTime - firstTime) / 100)\r\n| extend current_request = iff(current_request_raw < 0, real(null), current_request_raw), current_limit = iff(current_limit_raw < 0, real(null), current_limit_raw)\r\n| project-away current_request_raw, current_limit_raw\r\n// | summarize min(TimeGenerated), max(TimeGenerated)",
+                    "size": 0,
+                    "aggregation": 3,
+                    "title": "CPU Usage vs Request & Limit",
+                    "noDataMessage": "Select a container to see recommended requests and limits",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "crossComponentResources": [
+                      "{query_resource}"
+                    ],
+                    "visualization": "linechart",
+                    "sortBy": [],
+                    "tileSettings": {
+                      "showBorder": false
+                    },
+                    "chartSettings": {
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "cpuUsageNanoCores",
+                          "label": "max cpu usage (nanocores)",
+                          "color": "blue"
+                        },
+                        {
+                          "seriesName": "current_request",
+                          "label": "current request",
+                          "color": "redBright"
+                        },
+                        {
+                          "seriesName": "current_limit",
+                          "label": "current limit",
+                          "color": "red"
+                        },
+                        {
+                          "seriesName": "suggested_request",
+                          "label": "suggested request",
+                          "color": "green"
+                        },
+                        {
+                          "seriesName": "suggested_limit",
+                          "label": "suggested limit"
+                        },
+                        {
+                          "color": "greenDark"
+                        }
+                      ]
+                    },
+                    "mapSettings": {
+                      "locInfo": "LatLong"
+                    }
+                  },
+                  "customWidth": "100",
+                  "name": "smart detectors combined workbook - request/limits cpu chart"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "smart detectors combined workbook - request/limits chart group",
+            "styleSettings": {
+              "maxWidth": "50%"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let queryEndTime = {queryTime:end};\r\nlet queryStartTime = queryEndTime - 20m;\r\nlet targetContainer = base64_decode_tostring(\"{limitrequestcontainerKey}\");\r\nlet NODE_LIMITS = Perf\r\n| where TimeGenerated > ago(10m)\r\n| where CounterName == \"memoryAllocatableBytes\" or CounterName == \"cpuAllocatableNanoCores\"\r\n| as T\r\n| where CounterName == \"memoryAllocatableBytes\"\r\n| summarize memoryAllocatableBytes = any(CounterValue) by Computer\r\n| join (T \r\n| where CounterName == \"cpuAllocatableNanoCores\" \r\n| summarize cpuAllocatableNanoCores = any(CounterValue) by Computer\r\n)\r\non Computer\r\n| project memoryAllocatableBytes, cpuAllocatableNanoCores, Computer;\r\nlet perfdata = materialize(Perf\r\n| project TimeGenerated, ObjectName, InstanceName, _ResourceId, CounterName, CounterValue, Computer\r\n| where TimeGenerated >= queryStartTime and TimeGenerated <= queryEndTime\r\n| where ObjectName == 'K8SContainer'\r\n| where ((CounterName == 'memoryLimitBytes' or CounterName == 'memoryRequestBytes' or CounterName == 'cpuLimitNanoCores' or CounterName == 'cpuRequestNanoCores') and TimeGenerated > (queryEndTime - 1h)) or CounterName == 'memoryRssBytes' or CounterName == 'cpuUsageNanoCores'\r\n| extend ClusterName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[8], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[4], split(InstanceName, '/')[0])))\r\n| extend PodUid = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[9], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[5], split(InstanceName, '/')[1])))\r\n| extend ContainerName = tostring(iff(InstanceName contains '/providers/Microsoft.ContainerService/managedClusters/', split(InstanceName, '/')[10], iff(InstanceName contains '/subscriptions/', split(InstanceName, '/')[6], split(InstanceName, '/')[2])))\r\n| where isnotempty(PodUid)\r\n| extend ResourceName = strcat(ClusterName, '/', PodUid, '/', ContainerName)\r\n| join kind = inner NODE_LIMITS on Computer\r\n| join kind = inner (\r\nKubePodInventory\r\n| where TimeGenerated >= queryEndTime - 10m and TimeGenerated <= queryEndTime\r\n| project-rename PodName = Name, ControllerNameMaybe = ControllerName, ControllerKindMaybe = ControllerKind\r\n| summarize by PodUid, PodName, Namespace, ControllerNameMaybe, ControllerKindMaybe\r\n)\r\non PodUid\r\n| project-away PodUid1\r\n// not all pods have controllers\r\n| extend ControllerName = iff(isnull(ControllerNameMaybe) or ControllerNameMaybe == \"\", strcat(PodName, \" (dummy value)\"), ControllerNameMaybe)\r\n| extend ControllerKind = iff(isnull(ControllerKindMaybe) or ControllerKindMaybe == \"\", \"single pod (dummy value)\", ControllerKindMaybe)\r\n| project-away ControllerKindMaybe, ControllerNameMaybe\r\n| extend containerKey = strcat(ClusterName, \"/\", Namespace, \"/\", ControllerKind, \"/\", ControllerName, \"/\", ContainerName)\r\n| where containerKey == targetContainer\r\n);\r\n//\r\nperfdata\r\n| where CounterName == 'memoryLimitBytes'\r\n| extend hasMemLimit = iff(CounterValue == memoryAllocatableBytes, real(null), CounterValue) // no limit check\r\n| summarize memLimitCount = count(), memLimitVal = max(hasMemLimit) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'memoryRequestBytes'\r\n| extend hasMemRequest = iff(CounterValue == memoryAllocatableBytes, real(null), CounterValue)  // no request check\r\n| summarize memRequestCount = count(), memRequestVal = max(hasMemRequest) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'memoryRssBytes'\r\n| summarize mem_measurement_counts = count(), mem_max = max(CounterValue), mem_p90=percentile(CounterValue, 90), mem_p99=percentile(CounterValue, 99), measurementEndTime = max(TimeGenerated), measurementStartTime = min(TimeGenerated)\r\nby ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project mem_measurement_counts, mem_max, mem_p90, mem_p99, measurementStartTime, measurementEndTime, ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'cpuRequestNanoCores'\r\n| extend hasCpuRequest = iff(CounterValue == cpuAllocatableNanoCores, real(null), CounterValue)  // no request check\r\n| summarize cpuRequestCount = count(), cpuRequestVal = max(hasCpuRequest) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'cpuLimitNanoCores'\r\n| extend hasCpuLimit = iff(CounterValue == cpuAllocatableNanoCores, real(null), CounterValue)  // no limit check\r\n| summarize cpuLimitCount = count(), cpuLimitVal = max(hasCpuLimit) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| join kind = fullouter (\r\nperfdata\r\n| where CounterName == 'cpuUsageNanoCores'\r\n| summarize cpu_measurement_counts = count(), cpu_max = max(CounterValue), cpu_p90=percentile(CounterValue, 90), cpu_p99=percentile(CounterValue, 99) by ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project cpu_measurement_counts, cpu_max, cpu_p90, cpu_p99, ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n)\r\non ClusterName, Namespace, ControllerName, ControllerKind, ContainerName\r\n| project-away ClusterName1, Namespace1, ControllerName1, ControllerKind1, ContainerName1\r\n//\r\n| where cpuLimitCount > 2 and memLimitCount > 2  // ensure there are enough measurements?\r\n| extend suggestedMemRequest = round(mem_p90 * 1.2, 1)\r\n| extend suggestedMemLimit = round(mem_p99 * 1.5, 1)\r\n| extend suggestedCpuRequest = round(cpu_p99 + 5, 1)\r\n| extend suggestedCpuLimit = round(cpu_p99 * 1.5 + 5, 1)\r\n| project ClusterName, Namespace, ControllerName, ContainerName, cpuRequestVal, suggestedCpuRequest, cpuLimitVal, suggestedCpuLimit, memRequestVal, suggestedMemRequest, memLimitVal, suggestedMemLimit\r\n| project-rename current_cpu_request_raw = cpuRequestVal, suggested_cpu_request = suggestedCpuRequest, current_cpu_limit_raw = cpuLimitVal, suggested_cpu_limit = suggestedCpuLimit, current_memory_request_raw = memRequestVal, suggested_mem_request = suggestedMemRequest, current_mem_limit_raw = memLimitVal, suggested_mem_limit = suggestedMemLimit\r\n//\r\n| extend current_cpu_request = iff(current_cpu_request_raw < 0, real(null), current_cpu_request_raw), current_cpu_limit = iff(current_cpu_limit_raw < 0, real(null), current_cpu_limit_raw), current_memory_request = iff(current_memory_request_raw < 0, real(null), current_memory_request_raw), current_mem_limit = iff(current_mem_limit_raw < 0, real(null), current_mem_limit_raw)\r\n| project-away current_cpu_request_raw, current_cpu_limit_raw, current_memory_request_raw, current_mem_limit_raw\r\n| project ClusterName, Namespace, ControllerName, ContainerName, current_cpu_request, suggested_cpu_request, current_cpu_limit, suggested_cpu_limit, current_memory_request, suggested_mem_request, current_mem_limit, suggested_mem_limit",
+              "size": 4,
+              "noDataMessage": "Select a container to see recommended requests and limits",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{query_resource}"
+              ],
+              "gridSettings": {
+                "sortBy": [
+                  {
+                    "itemKey": "ControllerName",
+                    "sortOrder": 1
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "ControllerName",
+                  "sortOrder": 1
+                }
+              ]
+            },
+            "name": "smart detectors combined workbook - request/limits show selected container details"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "currentTab",
+        "comparison": "isEqualTo",
+        "value": "RequestsLimits"
+      },
+      "name": "smart detectors combined workbook - request/limits",
+      "styleSettings": {
+        "margin": "4em"
+      }
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
