@@ -460,8 +460,9 @@
       "content": {
         "version": "KqlItem/1.0",
         "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet pvStatusFilter = '{PVStatusFilter:value}';\r\nlet capacityData =\r\nInsightsMetrics\r\n| where TimeGenerated < endDateTime + trendBinSize\r\n| where TimeGenerated >= startDateTime - trendBinSize\r\n| where Namespace == 'container.azm.ms/pv'\r\n| where Name == 'pvUsedBytes'\r\n| extend Tags = todynamic(Tags)\r\n| extend Capacity = tolong(Tags.pvCapacityBytes), PVCName = tostring(Tags.pvcName), PVCNamespace = tostring(Tags.pvcNamespace), PodName = tostring(Tags.podName);\r\n\r\nKubePVInventory\r\n{ClusterIdWhereClause}\r\n{TypeWhereClause}\r\n| extend PVStorageClassName = iff(PVStorageClassName == '', '<None>', PVStorageClassName)\r\n{StorageClassWhereClause}\r\n| extend PVStorageClassName = iff(PVStorageClassName == '<None>', '--', PVStorageClassName)\r\n| extend PVCNamespace = iff(PVCNamespace == '', '<None>', PVCNamespace)\r\n{NamespaceWhereClause}\r\n| extend PVCNamespace = iff(PVCNamespace == '<None>', '--', PVCNamespace)\r\n{AccessModeWhereClause}\r\n| extend PVStatusFilter = pvStatusFilter\r\n| where PVStatus == iff(PVStatusFilter == 'All PVs', PVStatus, PVStatusFilter)  \r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | project TimeGenerated, Capacity, PVCName, PVCNamespace, UsagePercent\r\n    | make-series Trend = max(UsagePercent) default = 0 on TimeGenerated step trendBinSize by PVCName, Capacity, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | summarize Nodes = make_set(Computer) by PVCName, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | join hint.strategy=shuffle kind=leftouter (\r\n        KubePodInventory\r\n        | extend PodName = Name\r\n        | project ControllerName, PodName\r\n    ) on PodName\r\n    | summarize ControllerNames = make_set(ControllerName) by PVCName, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| summarize arg_max(TimeGenerated, *) by PVName\r\n| extend Capacity = PVCapacityBytes\r\n| extend PVCapacityBytes = format_bytes(PVCapacityBytes, 2)\r\n| extend AzureDisk = iff(PVType == 'azureDisk', PVTypeInfo.DiskUri, '--')\r\n| extend PVAccessModes = replace('ReadWriteOnce', 'RWO', PVAccessModes)\r\n| extend PVAccessModes = replace('ReadWriteMany', 'RWX', PVAccessModes)\r\n| extend PVAccessModes = replace('ReadOnlyMany', 'ROX', PVAccessModes)\r\n| extend PVCNamespaceAndName = iff(PVCName != '', strcat(PVCNamespace, \"/\", PVCName), \"\")\r\n| extend PVDetails = iff(PVType == 'azureDisk', pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"Disk Name\", tostring(PVTypeInfo.DiskName), \"Creation Timestamp\", PVCreationTimeStamp, \"PVC  Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes), iff(PVType == 'azureFile', pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"File Share Name\", tostring(PVTypeInfo.FileShareName),\"Creation Timestamp\", PVCreationTimeStamp, \"PVC Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes), pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"Creation Timestamp\", PVCreationTimeStamp, \"PVC Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes)))\r\n| extend LastUsagePercent = Trend[-1]\r\n| project PVName, PVStatus, Trend, LastUsagePercent, PVCNamespace, PVCNamespaceAndName, PVAccessModes, PVStorageClassName, PVType, AzureDisk, ClusterId, PVDetails, ControllerNames[0]\r\n| order by todouble(LastUsagePercent) desc",
-        "size": 3,
+        "size": 2,
         "showAnalytics": true,
+        "title": "💡 Click on the usage trend to open the workload details",
         "noDataMessage": "There are no persistent volumes for the selected criteria",
         "timeContext": {
           "durationMs": 0
@@ -490,8 +491,29 @@
             },
             {
               "columnMatch": "PVStatus",
-              "formatter": 0,
+              "formatter": 18,
               "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Released",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "failed",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ],
                 "customColumnWidthSetting": "75px"
               }
             },
@@ -604,7 +626,7 @@
               "formatter": 13,
               "formatOptions": {
                 "linkTarget": "Resource",
-                "linkIsContextBlade": true,
+                "linkIsContextBlade": false,
                 "showIcon": true
               },
               "numberFormat": {
@@ -679,6 +701,7 @@
               }
             }
           ],
+          "filter": true,
           "labelSettings": [
             {
               "columnId": "PVName",
