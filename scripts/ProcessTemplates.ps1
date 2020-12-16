@@ -449,6 +449,13 @@ Function CreatePackageContent() {
 
             # add the item to the full index
             $filename = $setting.filename
+
+            # not currently blocking - local builds don't actually have an issue here but something on the build machine
+            # is truncating files?
+            if ($filename.length -gt 99) {
+                 Write-Host "ERROR: file name exceeds 99ch limit $filename ($($filename.length))"
+            }
+
             $index.($setting.id) = $filename
             # copy the file to the package output
             $destination = "$reportTypePath\$filename"
