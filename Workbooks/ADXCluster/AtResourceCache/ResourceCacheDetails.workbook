@@ -1,0 +1,485 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "label": "ADX-Cluster",
+            "type": 5,
+            "isRequired": true,
+            "value": "value::1",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.kusto/clusters": true
+              },
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false
+            }
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                }
+              ],
+              "allowCustom": false
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.kusto/clusters"
+      },
+      "name": "parameters - 0",
+      "styleSettings": {
+        "margin": "15px 0 0 0"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "CacheLogs",
+            "type": 1,
+            "isRequired": true,
+            "query": "let hasNonEmptyTable = (T:string, T2:string) \r\n{ \r\n   toscalar( \r\n   union isfuzzy=true \r\n   ( table(T) | take 1 | count as Count ),\r\n   ( table(T2) | take 1 | count as Count),\r\n   (print Count=0) \r\n   | summarize sum(Count) \r\n   ) > 1\r\n};\r\nlet TableName = 'ADXTableDetails';\r\nlet TableName2 = 'ADXTableUsageStatistics';\r\nprint  IsPresent=iif(hasNonEmptyTable(TableName,TableName2 ), \"present\", \"not present\")",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 604800000
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.kusto/clusters"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.kusto/clusters"
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "2"
+      },
+      "name": "parameters - 4"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "\r\nlet T = ADXTableUsageStatistics \r\n| extend LookBackPeriod = datetime_diff('day', StartedOn, MinCreatedOn) \r\n| summarize CountQueries=count() by DatabaseName, TableName, LookBackPeriod;\r\n\r\n\r\nlet T2= T | summarize percentile_LookbackDuration_ = percentilesw(LookBackPeriod, CountQueries, 95) by DatabaseName, TableName;\r\n\r\n\r\nlet defaultRetention = 365d * 10;\r\n\r\n\r\nADXTableDetails \r\n| summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),\r\n        CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n        | extend CacheStart = now() - ActiveCachingPolicy , CacheEnd = now() \r\n        | extend DataInCacheStart = iff(isnull(MinExtentsCreationTime), MinExtentsCreationTime, max_of(CacheStart, MinExtentsCreationTime)), DataInCacheEnd = iff(isnull(MaxExtentsCreationTime), MaxExtentsCreationTime, min_of(CacheEnd, MaxExtentsCreationTime)) \r\n        | extend TimespanOfDataInCache = iff(HotExtentSize == 0, time(0m), bin(DataInCacheEnd - DataInCacheStart, 1d) +1d) \r\n| join kind = leftouter (T2) on DatabaseName, TableName\r\n| where TimeGenerated >= ago(8h)\r\n| project DatabaseName, TableName, CacheSize = HotExtentSize, CachingPolicy, QueryPeriod = iff(isempty(tostring(percentile_LookbackDuration_)), '-', tostring(percentile_LookbackDuration_))",
+              "size": 0,
+              "showAnalytics": true,
+              "title": "Cache Details (Not affected by the Time Range)",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "exportedParameters": [
+                {
+                  "fieldName": "DatabaseName",
+                  "parameterName": "DatabaseName",
+                  "parameterType": 1
+                },
+                {
+                  "fieldName": "TableName",
+                  "parameterName": "TableName",
+                  "parameterType": 1
+                }
+              ],
+              "queryType": 0,
+              "resourceType": "microsoft.kusto/clusters",
+              "crossComponentResources": [
+                "{Resource}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DatabaseName",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "39ch"
+                    }
+                  },
+                  {
+                    "columnMatch": "TableName",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "30ch"
+                    }
+                  },
+                  {
+                    "columnMatch": "CacheSize",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "palette": "blue",
+                      "customColumnWidthSetting": "15ch"
+                    },
+                    "numberFormat": {
+                      "unit": 2,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ],
+                "rowLimit": 350,
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "DatabaseName",
+                    "sortOrder": 1
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "DatabaseName",
+                    "label": "Database Name"
+                  },
+                  {
+                    "columnId": "TableName",
+                    "label": "Table Name"
+                  },
+                  {
+                    "columnId": "CacheSize",
+                    "label": "Cache Size"
+                  },
+                  {
+                    "columnId": "CachingPolicy",
+                    "label": "Caching Policy (Timespan)"
+                  },
+                  {
+                    "columnId": "QueryPeriod",
+                    "label": "Query Period (Day Look Back of 95% of Queries)"
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "DatabaseName",
+                  "sortOrder": 1
+                }
+              ]
+            },
+            "name": "TableSizesGrid"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "💡 _Click on the above grid rows to see more details about cache usage_"
+            },
+            "name": "ClickOnTheCacheGridText"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let T =  ADXTableDetails | where DatabaseName == '{DatabaseName}'  \r\n| where TableName == '{TableName}' | summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| project DatabaseName, TableName,activeCachePolicyInDays = totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan);\r\n\r\n\r\n\r\n\r\nADXTableUsageStatistics \r\n| where DatabaseName == '{DatabaseName}' \r\n| where TableName == '{TableName}' \r\n| extend NumberOfDaysBefore = datetime_diff('day', StartedOn, MinCreatedOn)\r\n| summarize Count=count() by DatabaseName, TableName,NumberOfDaysBefore \r\n| join kind = leftouter (T) on DatabaseName, TableName\r\n| extend x= activeCachePolicyInDays/1d\r\n| sort by NumberOfDaysBefore asc\r\n| extend CacheType = iff(NumberOfDaysBefore < x, 'InCache', 'OutOfCache')\r\n| extend CumSum = row_cumsum(Count);",
+              "size": 0,
+              "showAnalytics": true,
+              "title": "Queries look back period (X-axis) and the number of queries (Y-axis)",
+              "noDataMessage": "There were no queries on this table",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "exportedParameters": [
+                {
+                  "fieldName": "x",
+                  "parameterName": "x",
+                  "parameterType": 1
+                },
+                {
+                  "fieldName": "NumberOfDaysBefore",
+                  "parameterName": "NumberOfDaysBefore",
+                  "parameterType": 1
+                }
+              ],
+              "queryType": 0,
+              "resourceType": "microsoft.kusto/clusters",
+              "visualization": "categoricalbar",
+              "chartSettings": {
+                "xAxis": "NumberOfDaysBefore",
+                "yAxis": [
+                  "Count"
+                ],
+                "group": "CacheType",
+                "createOtherGroup": 100,
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "InCache",
+                    "label": "In Cache",
+                    "color": "blue",
+                    "comment": ""
+                  },
+                  {
+                    "seriesName": "OutOfCache",
+                    "label": "Out of Cache",
+                    "color": "orange",
+                    "comment": ""
+                  }
+                ],
+                "xSettings": {
+                  "numberFormatSettings": {
+                    "unit": 27,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                },
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "DatabaseName",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "CacheHistogram"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let defaultRetention = 365d * 10;\r\n\r\nlet x = toscalar(ADXTableDetails\r\n| where DatabaseName == '{DatabaseName}' \r\n| where TableName == '{TableName}'\r\n| summarize arg_max(TimeGenerated, *) by '{DatabaseName}', '{TableName}'\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n        | extend CacheStart = now() - ActiveCachingPolicy , CacheEnd = now() \r\n        | extend DataInCacheStart = iff(isnull(MinExtentsCreationTime), MinExtentsCreationTime, max_of(CacheStart, MinExtentsCreationTime)), DataInCacheEnd = iff(isnull(MaxExtentsCreationTime), MaxExtentsCreationTime, min_of(CacheEnd, MaxExtentsCreationTime)) \r\n        | extend TimespanOfDataInCache = iff(HotExtentSize == 0, time(0m), bin(DataInCacheEnd - DataInCacheStart, 1d) +1d) \r\n| extend ActualCachingeTimeInDays = TimespanOfDataInCache/1d \r\n| project DataInCacheSizeForOneDay = iff(ActualCachingeTimeInDays > 1, HotExtentSize/ActualCachingeTimeInDays, HotExtentSize));\r\n\r\n\r\n\r\nlet T = ADXTableUsageStatistics \r\n| where DatabaseName == '{DatabaseName}' \r\n| where TableName == '{TableName}' \r\n| extend NumberOfDaysBefore = datetime_diff('day', StartedOn, MinCreatedOn)\r\n| summarize Count=count() by DatabaseName, TableName,NumberOfDaysBefore \r\n| sort by NumberOfDaysBefore asc\r\n| extend CumSum = row_cumsum(Count);\r\n\r\nlet total = toscalar(T | summarize max(CumSum));\r\n\r\nT | project NumberOfDaysBefore,  actualQueriesInCache = Count / toreal(total)*100.0, potentialQueriesInCache = CumSum / toreal(total)*100.0, potentialCacheSize = x*NumberOfDaysBefore;\r\n\r\n\r\n\r\n",
+              "size": 0,
+              "title": "Cache Details per Query Look Back Period",
+              "noDataMessage": "There were no queries on this table",
+              "timeContext": {
+                "durationMs": 604800000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.kusto/clusters",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "NumberOfDaysBefore",
+                    "formatter": 1,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "20ch"
+                    },
+                    "numberFormat": {
+                      "unit": 27,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "actualQueriesInCache",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "gray",
+                      "customColumnWidthSetting": "363px"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "potentialQueriesInCache",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "gray",
+                      "customColumnWidthSetting": "599px"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "potentialCacheSize",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "gray",
+                      "customColumnWidthSetting": "84.7143ch"
+                    },
+                    "numberFormat": {
+                      "unit": 2,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "NumberOfDaysBefore",
+                    "label": "Look Back"
+                  },
+                  {
+                    "columnId": "actualQueriesInCache",
+                    "label": "% of queries that looked back (not aggregated)"
+                  },
+                  {
+                    "columnId": "potentialQueriesInCache",
+                    "label": "Potential Queries in Cache (Given that the Cache Policy would change to 'Look Back')"
+                  },
+                  {
+                    "columnId": "potentialCacheSize",
+                    "label": "Potential Cache Size (Given that the Cache Policy would change to 'Look Back')"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "DatabaseName",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "Cache Details per Query Look Back Period"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "CacheLogs",
+        "comparison": "isEqualTo",
+        "value": "present"
+      },
+      "name": "CacheDetailsGoup"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "There is no relevant log data for the selected time range</br>\r\nAdditional monitoring coverage for tables is based on platform logs (diagnostic logs).</br>If you have not activated additional monitoring, you must enable the **ADXTableDetails** and **ADXTableUsageStatistics** diagnostic settings and send them to Log Analytics. [Learn more](https://docs.microsoft.com/en-us/azure/data-explorer/using-diagnostic-logs?tabs=commands-and-queries#set-up-diagnostic-logs-for-an-azure-data-explorer-cluster)",
+              "style": "upsell"
+            },
+            "name": "text - 0"
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "paragraph",
+              "links": [
+                {
+                  "cellValue": "{Resource}",
+                  "linkTarget": "Resource",
+                  "linkLabel": "Configure Logs for Monitoring >",
+                  "subTarget": "diagnostics",
+                  "style": "primary"
+                }
+              ]
+            },
+            "name": "On Boarding Button Tables"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "CacheLogs",
+        "comparison": "isEqualTo",
+        "value": "not present"
+      },
+      "name": "On Boarding Message Group-Tables"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Loading",
+              "style": "info"
+            },
+            "name": "LoadingCacheGroup"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "CacheLogs",
+        "comparison": "isEqualTo"
+      },
+      "name": "On Boarding Message Group-Tables - Copy"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
