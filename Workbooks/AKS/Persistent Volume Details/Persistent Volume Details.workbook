@@ -131,7 +131,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "KubePVInventory\r\n| distinct PVType",
+            "query": "KubePVInventory\r\n| distinct PVType\r\n| order by PVType asc",
             "crossComponentResources": [
               "{resource}"
             ],
@@ -162,7 +162,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "KubePVInventory\r\n| extend PVStorageClassName = iff(PVStorageClassName == '', '<None>', PVStorageClassName)\r\n| distinct PVStorageClassName",
+            "query": "KubePVInventory\r\n| extend PVStorageClassName = iff(PVStorageClassName == '', '<None>', PVStorageClassName)\r\n| distinct PVStorageClassName\r\n| order by PVStorageClassName asc",
             "crossComponentResources": [
               "{resource}"
             ],
@@ -218,7 +218,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "KubePVInventory\r\n| distinct PVCNamespace\r\n| extend PVCNamespace = iff(PVCNamespace == '', '<None>', PVCNamespace)",
+            "query": "KubePVInventory\r\n| distinct PVCNamespace\r\n| extend PVCNamespace = iff(PVCNamespace == '', '<None>', PVCNamespace)\r\n| order by PVCNamespace asc",
             "crossComponentResources": [
               "{resource}"
             ],
@@ -237,8 +237,7 @@
             "timeContextFromParameter": "timeRange",
             "defaultValue": "value::1",
             "queryType": 0,
-            "resourceType": "{resourceType}",
-            "id": "56c2fb7d-1242-4c91-ac3f-22a003cb1b1c"
+            "resourceType": "{resourceType}"
           },
           {
             "id": "9a43c357-ce0c-4a5d-b57e-906962415b75",
@@ -271,7 +270,7 @@
             "timeContext": {
               "durationMs": 3600000
             },
-            "timeContextFromParameter": "timeRange",
+            "timeContextFromParameter": "timeRange"
           },
           {
             "id": "58eb5e5f-adcf-4b39-b100-c7f38329b38e",
@@ -304,7 +303,7 @@
             "timeContext": {
               "durationMs": 3600000
             },
-            "timeContextFromParameter": "timeRange",
+            "timeContextFromParameter": "timeRange"
           },
           {
             "id": "6118000b-84ca-49d4-b3f9-4a60d816f9c0",
@@ -337,7 +336,7 @@
             "timeContext": {
               "durationMs": 3600000
             },
-            "timeContextFromParameter": "timeRange",
+            "timeContextFromParameter": "timeRange"
           },
           {
             "id": "656826d2-6faa-43fa-9ec4-bc7f8dfa9035",
@@ -459,10 +458,10 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet pvStatusFilter = '{PVStatusFilter:value}';\r\nlet capacityData =\r\nInsightsMetrics\r\n| where TimeGenerated < endDateTime + trendBinSize\r\n| where TimeGenerated >= startDateTime - trendBinSize\r\n| where Namespace == 'container.azm.ms/pv'\r\n| where Name == 'pvUsedBytes'\r\n| extend Tags = todynamic(Tags)\r\n| extend Capacity = tolong(Tags.pvCapacityBytes), PVCName = tostring(Tags.pvcName), PVCNamespace = tostring(Tags.pvcNamespace), PodName = tostring(Tags.podName);\r\n\r\nKubePVInventory\r\n{ClusterIdWhereClause}\r\n{TypeWhereClause}\r\n| extend PVStorageClassName = iff(PVStorageClassName == '', '<None>', PVStorageClassName)\r\n{StorageClassWhereClause}\r\n| extend PVStorageClassName = iff(PVStorageClassName == '<None>', '--', PVStorageClassName)\r\n| extend PVCNamespace = iff(PVCNamespace == '', '<None>', PVCNamespace)\r\n{NamespaceWhereClause}\r\n| extend PVCNamespace = iff(PVCNamespace == '<None>', '--', PVCNamespace)\r\n{AccessModeWhereClause}\r\n| extend PVStatusFilter = pvStatusFilter\r\n| where PVStatus == iff(PVStatusFilter == 'All PVs', PVStatus, PVStatusFilter)  \r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | project TimeGenerated, Capacity, PVCName, PVCNamespace, UsagePercent\r\n    | make-series Trend = max(UsagePercent) default = 0 on TimeGenerated step trendBinSize by PVCName, Capacity, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | summarize Nodes = make_set(Computer) by PVCName, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | join hint.strategy=shuffle kind=leftouter (\r\n        KubePodInventory\r\n        | extend PodName = Name\r\n        | project ControllerName, PodName\r\n    ) on PodName\r\n    | summarize ControllerNames = make_set(ControllerName) by PVCName, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| summarize arg_max(TimeGenerated, *) by PVName\r\n| extend Capacity = PVCapacityBytes\r\n| extend PVCapacityBytes = format_bytes(PVCapacityBytes, 2)\r\n| extend AzureDisk = iff(PVType == 'azureDisk', PVTypeInfo.DiskUri, '--')\r\n| extend PVAccessModes = replace('ReadWriteOnce', 'RWO', PVAccessModes)\r\n| extend PVAccessModes = replace('ReadWriteMany', 'RWX', PVAccessModes)\r\n| extend PVAccessModes = replace('ReadOnlyMany', 'ROX', PVAccessModes)\r\n| extend PVCNamespaceAndName = iff(PVCName != '', strcat(PVCNamespace, \"/\", PVCName), \"\")\r\n| extend PVDetails = iff(PVType == 'azureDisk', pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"Disk Name\", tostring(PVTypeInfo.DiskName), \"Creation Timestamp\", PVCreationTimeStamp, \"PVC  Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes), iff(PVType == 'azureFile', pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"File Share Name\", tostring(PVTypeInfo.FileShareName),\"Creation Timestamp\", PVCreationTimeStamp, \"PVC Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes), pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"Creation Timestamp\", PVCreationTimeStamp, \"PVC Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes)))\r\n| extend LastUsagePercent = Trend[-1]\r\n| project PVName, PVStatus, Trend, LastUsagePercent, PVCNamespace, PVCNamespaceAndName, PVAccessModes, PVStorageClassName, PVType, AzureDisk, ClusterId, PVDetails, ControllerNames[0]\r\n| order by todouble(LastUsagePercent) desc",
-        "size": 2,
+        "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet pvStatusFilter = '{PVStatusFilter:value}';\r\nlet capacityData =\r\nInsightsMetrics\r\n| where TimeGenerated < endDateTime + trendBinSize\r\n| where TimeGenerated >= startDateTime - trendBinSize\r\n| where Namespace == 'container.azm.ms/pv'\r\n| where Name == 'pvUsedBytes'\r\n| extend Tags = todynamic(Tags)\r\n| extend Capacity = tolong(Tags.pvCapacityBytes), PVCName = tostring(Tags.pvcName), PVCNamespace = tostring(Tags.pvcNamespace), PodName = tostring(Tags.podName);\r\n\r\nKubePVInventory\r\n{ClusterIdWhereClause}\r\n{TypeWhereClause}\r\n| extend PVStorageClassName = iff(PVStorageClassName == '', '<None>', PVStorageClassName)\r\n{StorageClassWhereClause}\r\n| extend PVStorageClassName = iff(PVStorageClassName == '<None>', '--', PVStorageClassName)\r\n| extend PVCNamespace = iff(PVCNamespace == '', '<None>', PVCNamespace)\r\n{NamespaceWhereClause}\r\n| extend PVCNamespace = iff(PVCNamespace == '<None>', '--', PVCNamespace)\r\n{AccessModeWhereClause}\r\n| extend PVStatusFilter = pvStatusFilter\r\n| where PVStatus == iff(PVStatusFilter == 'All PVs', PVStatus, PVStatusFilter)  \r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | extend UsagePercent = (Val / Capacity) * 100\r\n    | project TimeGenerated, Capacity, PVCName, PVCNamespace, UsagePercent\r\n    | make-series Trend = max(UsagePercent) default = 0 on TimeGenerated step trendBinSize by PVCName, Capacity, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | summarize Nodes = make_set(Computer) by PVCName, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| join hint.strategy=shuffle kind=leftouter (\r\n    capacityData\r\n    | join hint.strategy=shuffle kind=leftouter (\r\n        KubePodInventory\r\n        | extend PodName = Name\r\n        | project ControllerName, PodName\r\n    ) on PodName\r\n    | summarize ControllerNames = make_set(ControllerName) by PVCName, PVCNamespace\r\n) on PVCName, PVCNamespace\r\n| summarize arg_max(TimeGenerated, *) by PVName\r\n| extend Capacity = PVCapacityBytes\r\n| extend PVCapacityBytes = format_bytes(PVCapacityBytes, 2)\r\n| extend AzureDisk = iff(PVType == 'azureDisk', PVTypeInfo.DiskUri, '--')\r\n| extend PVAccessModes = replace('ReadWriteOnce', 'RWO', PVAccessModes)\r\n| extend PVAccessModes = replace('ReadWriteMany', 'RWX', PVAccessModes)\r\n| extend PVAccessModes = replace('ReadOnlyMany', 'ROX', PVAccessModes)\r\n| extend PVCNamespaceAndName = iff(PVCName != '', strcat(PVCNamespace, \"/\", PVCName), \"\")\r\n| extend PVDetails = iff(PVType == 'azureDisk', pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"Disk Name\", tostring(PVTypeInfo.DiskName), \"Creation Timestamp\", PVCreationTimeStamp, \"PVC  Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes), iff(PVType == 'azureFile', pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"File Share Name\", tostring(PVTypeInfo.FileShareName),\"Creation Timestamp\", PVCreationTimeStamp, \"PVC Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes), pack(\"PV Name\", PVName, \"Status\", PVStatus, \"Capacity\", PVCapacityBytes, \"Access Modes\", PVAccessModes, \"Storage Class\", PVStorageClassName, \"Type\", PVType, \"Creation Timestamp\", PVCreationTimeStamp, \"PVC Namespace/Name\", PVCNamespaceAndName, \"Nodes\", Nodes)))\r\n| extend LastUsagePercent = Trend[-1]\r\n| extend LastUsagePercent = iff(isnull(LastUsagePercent), iff(PVStatus == 'Bound', 'not mounted', '--'), LastUsagePercent)\r\n| project PVName, PVStatus, Trend, LastUsagePercent, PVCNamespace, PVCNamespaceAndName, PVAccessModes, PVStorageClassName, PVType, AzureDisk, ClusterId, PVDetails, ControllerNames[0]\r\n| order by todouble(LastUsagePercent) desc, tostring(LastUsagePercent), PVStatus",
+        "size": 3,
         "showAnalytics": true,
-        "title": "💡 Click on the usage trend to open the workload details",
+        "title": "💡 Click on the usage trend to view workload usage details",
         "noDataMessage": "There are no persistent volumes for the selected criteria",
         "timeContext": {
           "durationMs": 0
@@ -486,7 +485,7 @@
                 "bladeOpenContext": {
                   "bladeParameters": []
                 },
-                "customColumnWidthSetting": "175px"
+                "customColumnWidthSetting": "155px"
               }
             },
             {
@@ -514,7 +513,7 @@
                     "text": "{0}{1}"
                   }
                 ],
-                "customColumnWidthSetting": "75px"
+                "customColumnWidthSetting": "81px"
               }
             },
             {
@@ -581,7 +580,7 @@
               "columnMatch": "LastUsagePercent",
               "formatter": 1,
               "formatOptions": {
-                "customColumnWidthSetting": "75px"
+                "customColumnWidthSetting": "88px"
               },
               "numberFormat": {
                 "unit": 1,
@@ -687,18 +686,6 @@
             {
               "columnMatch": "Computer",
               "formatter": 5
-            },
-            {
-              "columnMatch": "CurrentUsage",
-              "formatter": 5,
-              "numberFormat": {
-                "unit": 1,
-                "options": {
-                  "style": "decimal",
-                  "useGrouping": false,
-                  "maximumFractionDigits": 2
-                }
-              }
             }
           ],
           "filter": true,
