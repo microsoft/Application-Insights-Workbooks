@@ -33,8 +33,8 @@ const CategoryResourcesFile = "categoryResources.json";
 const SettingsFile = "settings.json";
 
 const Encoding = 'utf8';
-const ResJsonStringFileExtension = 'resjson';
-const LCLStringFileExtension = "resjson.lcl";
+const ResJsonStringFileExtension = '.resjson';
+const LCLStringFileExtension = ".resjson.lcl";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
@@ -43,7 +43,7 @@ const RESJSONOutputFolder = "\\output\\loc\\";
 const TemplateOutputFolder = "\\output\\templates\\"
 
 const LocProjectFileName = "LocProject.json";
-const LangOutputSpecifier = "\\{Lang}\\";
+const LangOutputSpecifier = "\\{Lang}";
 
 const Languages = [
   "cs", "de", "es", "fr", "hu", "it", "ja", "ko", "nl", "pl", "pl-BR", "pt-PT", "ru", "sv", "tr", "zh-Hans", "zh-Hant"
@@ -103,7 +103,8 @@ function generateOutputPath(dir, folder) {
     outputPath = dir.replace(WorkbookTemplateFolder, folder);
   }
   if (!fs.existsSync(outputPath)) {
-    fs.mkdirSync(outputPath, { recursive: true });
+    const directoryPath = outputPath.substr(0, outputPath.lastIndexOf("\\"));
+    fs.mkdirSync(directoryPath, { recursive: true });
   }
   return outputPath;
 }
@@ -263,17 +264,22 @@ function findColumnNameReferences(text) {
 }
 
 /** Generate LocProject entry for localization tool */
-function generateLocProjectEntry(fileName, templatePath, resjsonOutputPath) {
-  const resjsonFileName = replaceFileExtension(fileName, ResJsonStringFileExtension);
-  const lclFileName = replaceFileExtension(fileName, LCLStringFileExtension);
-
+function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory) {
   // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
   return {
-    "SourceFile": resjsonOutputPath.concat("\\", resjsonFileName),
-    "LclFile": templatePath.concat(LangOutputSpecifier, lclFileName),
+    "SourceFile": resjsonOutputPath.concat(ResJsonStringFileExtension),
+    "LclFile": getLocOutputPath(templatePath, LCLStringFileExtension, rootDirectory),
     "CopyOption": "LangIDOnPath",
-    "OutputPath": templatePath.concat(LangOutputSpecifier, resjsonFileName)
+    "OutputPath": getLocOutputPath(templatePath, ResJsonStringFileExtension, rootDirectory)
   };
+}
+
+/** Return output path like root/{lang}/{TemplateType}/templatePath*/
+function getLocOutputPath(templatePath, extensionType, root) {
+  const newTemplatePath = templatePath.replace(root, root.concat(LangOutputSpecifier))
+  const templateSplit = newTemplatePath.split("\\");
+  templateSplit[templateSplit.length -1] = templateSplit[templateSplit.length -1].concat(extensionType);
+  return templateSplit.join("\\");
 }
 
 function replaceFileExtension(fileName, extensionType) {
@@ -283,13 +289,12 @@ function replaceFileExtension(fileName, extensionType) {
 }
 
 /** Write string file as RESJSON */
-function writeToFileRESJSON(data, fileName, outputPath) {
-  const resjsonFileName = replaceFileExtension(fileName, ResJsonStringFileExtension);
-  const fullpath = outputPath.concat("\\", resjsonFileName);
+function writeToFileRESJSON(data, outputPath) {
+  const fullpath = outputPath.concat(ResJsonStringFileExtension);
 
   const content = JSON.stringify(data, null, "\t");
   if (content.localeCompare("{}") === 0) {
-    console.log(">>>>> No strings found for: ", fileName);
+    console.log(">>>>> No strings found for: ", fullpath);
     return;
   }
 
@@ -522,6 +527,7 @@ const locProjectOutput = []; // List of localization file entries for LocProject
 
 for (var d in directories) {
   const templatePath = directories[d];
+  const rootDirectory = getRootFolder(templatePath);
 
   const files = fs.readdirSync(templatePath);
   if (!files || files.length === 0) {
@@ -532,7 +538,6 @@ for (var d in directories) {
   // This is where we will output the resjson artifact
   const resjonOutputPath = generateOutputPath(templatePath, RESJSONOutputFolder);
   var extracted = {};
-  var resJsonFileName; // Name of the file as entry for localization, since we are combining settings and template file
 
   for (var i in files) {
     const fileName = files[i];
@@ -552,12 +557,10 @@ for (var d in directories) {
       if (extensionType.localeCompare(CategoryResourcesFile) === 0) {
         // Special case for category resource strings
         getCategoryResourceStrings(jsonParsedData, extracted);
-        resJsonFileName = fileName;
       } else if (extensionType.localeCompare(SettingsFile) === 0) {
         getSettingStrings(jsonParsedData, extracted);
       } else {
         getLocalizeableStrings(jsonParsedData, '', extracted);
-        resJsonFileName = fileName;
       }
     } catch (error) {
       console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
@@ -565,13 +568,13 @@ for (var d in directories) {
     }
   };
 
-  if (Object.keys(extracted).length > 0) {
+  if (Object.keys(extracted).length > 0 && !templatePath.endsWith("\\")) {
     // Add LocProject entry
-    const locProjectEntry = generateLocProjectEntry(resJsonFileName, templatePath, resjonOutputPath);
+    const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
     locProjectOutput.push(locProjectEntry);
 
     // Write extracted strings to file
-    writeToFileRESJSON(extracted, resJsonFileName, resjonOutputPath);
+    writeToFileRESJSON(extracted, resjonOutputPath);
 
     // TODO: un-comment this when localized strings are ready
     // // Generate localized templates
@@ -591,8 +594,6 @@ for (var d in directories) {
     //       writeTranslatedWorkbookToFile(jsonParsedData, translatedDir, generatedTemplatePath, Languages[l]);
     //     }
     //   }
-  } else {
-    console.log(">>>>> No localizeable strings found for template: ", resJsonFileName);
   }
 }
 
