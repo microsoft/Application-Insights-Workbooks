@@ -219,7 +219,7 @@ If you are only changing the contents of an existing template, not adding new te
 
 1. Make your changes to your branch
 2. Push the branch to github
-3. Add `?feature.workbookGalleryBranch=[name of branch]` to the portal url.
+3. Add `?feature.workbookGalleryBranch=[name of branch]` to the portal url. So you URL looks something like [https://portal.azure.com/?feature.workbookGalleryBranch=master](https://portal.azure.com/?feature.workbookGalleryBranch=master)
 
    If it works correctly, you'll see a banner in the gallery:
    ![Gallery Redirect Banner](Images/GalleryBranchRedirect.png)
@@ -295,5 +295,5 @@ Here is an example:
 }
 ```
 
-Once you have add marked your template as `isPreview`, you can see this workbook by adding `feature.includePreviewTemplates` in your Azure Portal Url. So you URL looks something like [https://portal.azure.com/?feature.includePreviewTemplates=true](https://portal.azure.com/?feature.includePreviewTemplates=true)
+Once you have add marked your template as `isPreview`, you can see this workbook by adding `feature.includePreviewTemplates` in your Azure Portal Url. So you URL looks something like [https://portal.azure.com/?feature.includePreviewTemplates=true](https://portal.azure.com/?feature.includePreviewTemplates=true). (Include & between feature flags if also deploying your own gallery or redirecting to a github branch)
 
