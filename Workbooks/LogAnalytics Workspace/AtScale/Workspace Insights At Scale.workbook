@@ -5,18 +5,21 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
         "parameters": [
           {
             "id": "1f74ed9a-e3ed-498d-bd5b-f68f3836a117",
             "version": "KqlParameterItem/1.0",
             "name": "Subscription",
             "type": 6,
-            "description": "All subscriptions with ADX Cluster",
+            "description": "All subscriptions",
             "isRequired": true,
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "summarize by subscriptionId\r\n| project value = strcat(\"/subscriptions/\", subscriptionId), label = subscriptionId",
+            "query": "where type =~ 'microsoft.operationalinsights/workspaces'\r\n| distinct subscriptionId\r\n//| summarize Count = count() by subscriptionId\r\n//| order by Count desc\r\n//| extend Rank = row_number()\r\n//| project value = subscriptionId, label = subscriptionId, selected = Rank == 1",
             "crossComponentResources": [
               "value::selected"
             ],
@@ -34,34 +37,36 @@
             "name": "ResourceGroup",
             "label": " Resource Group",
             "type": 5,
-            "query": "resources\r\n| where type =~ 'microsoft.operationalinsights/workspaces'\r\n| project resourceGroup",
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "where type =~ 'microsoft.operationalinsights/workspaces'\r\n| summarize Count = count() by resourceGroup\r\n| order by Count desc\r\n| extend Rank = row_number()\r\n| project value = resourceGroup, label = resourceGroup, selected = Rank == 1",
             "crossComponentResources": [
               "{Subscription}"
             ],
-            "value": null,
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
             "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": []
           },
           {
             "id": "f60ea0a0-3703-44ca-a59b-df0246423f41",
             "version": "KqlParameterItem/1.0",
             "name": "Workspace",
             "type": 5,
+            "isRequired": true,
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "where type =~ 'microsoft.operationalinsights/workspaces'\r\n| project id",
+            "query": "where type =~ 'microsoft.operationalinsights/workspaces'\r\n| where resourceGroup in ({ResourceGroup:value})\r\n| order by name asc\r\n| extend Rank = row_number()\r\n| project id, value = name, label = name, selected = Rank <= 5\r\n",
             "crossComponentResources": [
               "{Subscription}"
             ],
-            "value": [],
             "typeSettings": {
-              "additionalResourceOptions": [
-                "value::all"
-              ],
+              "additionalResourceOptions": [],
               "showDefault": false
             },
             "queryType": 1,
@@ -160,7 +165,7 @@
           }
         ],
         "style": "above",
-        "queryType": 0,
+        "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources"
       },
       "name": "Log Analytics Workspace parameters",
@@ -194,33 +199,11 @@
       }
     },
     {
-      "type": 11,
-      "content": {
-        "version": "LinkItem/1.0",
-        "style": "tabs",
-        "links": [
-          {
-            "id": "be8a35c5-0d35-4ef5-9370-1034690eb7b1",
-            "cellValue": "selectedTab",
-            "linkTarget": "parameter",
-            "linkLabel": "Overview",
-            "subTarget": "Overview",
-            "style": "link"
-          }
-        ]
-      },
-      "name": "At Scale sections",
-      "styleSettings": {
-        "margin": "-15px 0px -15px 0px"
-      }
-    },
-    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
         "query": "where type =~ 'microsoft.operationalinsights/workspaces'\r\n| where '{Workspace:name}' has name\r\n| extend \r\n  state = trim(' ', tostring(properties.provisioningState)),\r\n  sku   = trim(' ', tostring(properties.sku.name)),\r\n  skuUpdate = trim(' ', tostring(properties.sku.lastSkuUpdate)),\r\n  retentionDays = trim(' ', tostring(properties.retentionInDays)),\r\n  dailyquotaGB  = trim(' ', tostring(properties.workspaceCapping.dailyQuotaGb))\r\n| extend dailyquotaGB = iif(dailyquotaGB !=-1.0, dailyquotaGB,\"Not set\")\r\n| extend skuUpdate    = iif(strlen(skuUpdate) > 0, skuUpdate,\"Unknown\")\r\n| extend sentinel     = iif(toint(retentionDays) < 90,\"If you have Sentinel, you can change your retention to 90days (free)?\",\"\")\r\n| project ['Workspace']=id, Name=name, ['Resource Group']=resourceGroup, location, ['Data Retention (days)']=retentionDays, \r\n  ['Last known SKU update']=skuUpdate, ['Daily Data Cap']=dailyquotaGB, ['Licence']=sku, ['Notes'] = sentinel",
         "size": 3,
-        "title": "Select a workspace for detailed info",
         "exportFieldName": "Name",
         "exportParameterName": "SelectedWS",
         "queryType": 1,
@@ -233,6 +216,13 @@
             {
               "columnMatch": "Name",
               "formatter": 5
+            },
+            {
+              "columnMatch": "Notes",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "60ch"
+              }
             }
           ],
           "labelSettings": [
@@ -263,12 +253,12 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "workspace('{SelectedWS}').Usage\r\n| summarize BillableDataMB =sum(Quantity) by bin(TimeGenerated, {TimeRange:grain})\r\n",
+              "query": "workspace('{SelectedWS}').Usage\r\n| summarize BillableDataMB =sum(Quantity) by bin(TimeGenerated, {TimeRange:grain})",
               "size": 1,
               "title": "Ingested Volume (MB) ({TimeRange:label})",
               "color": "green",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 86400000
               },
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
@@ -323,6 +313,120 @@
               }
             },
             "name": "Usage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "workspace('{SelectedWS}').Operation\r\n| where OperationStatus in (\"Warning\", \"Error\")\r\n| summarize arg_max(TimeGenerated, *) by OperationStatus, OperationCategory, Solution, Computer, Detail\r\n| project TimeGenerated, OperationStatus=tolower(OperationStatus), OperationCategory, Solution, Computer, Detail\r\n| sort by TimeGenerated asc",
+              "size": 3,
+              "title": "Operational errors and warnings ({TimeRange:label})",
+              "noDataMessage": "No operational errors or warnings",
+              "noDataMessageStyle": 3,
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "OperationStatus",
+                    "formatter": 11
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "OperationStatus",
+                    "OperationCategory"
+                  ],
+                  "expandTopLevel": true
+                },
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Time"
+                  },
+                  {
+                    "columnId": "OperationStatus",
+                    "label": "Status"
+                  },
+                  {
+                    "columnId": "OperationCategory",
+                    "label": "Category"
+                  },
+                  {
+                    "columnId": "Detail",
+                    "label": "Details"
+                  }
+                ]
+              }
+            },
+            "customWidth": "70",
+            "name": "Operation"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "workspace('{SelectedWS}').Heartbeat\r\n| distinct Computer\r\n| count",
+              "size": 1,
+              "title": "Connected machines count ({TimeRange:label})",
+              "color": "green",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Count",
+                    "formatter": 1
+                  }
+                ]
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "green"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "showBorder": false,
+                "size": "auto"
+              }
+            },
+            "customWidth": "30",
+            "name": "Connected Machines"
           }
         ]
       },
@@ -334,116 +438,16 @@
       "name": "Workspace Summary"
     },
     {
-      "type": 3,
+      "type": 1,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "workspace('{SelectedWS}').Operation\r\n| where OperationStatus in (\"Warning\", \"Error\")\r\n| summarize arg_max(TimeGenerated, *) by OperationStatus, OperationCategory, Solution, Computer, Detail\r\n| project TimeGenerated, OperationStatus=tolower(OperationStatus), OperationCategory, Solution, Computer, Detail\r\n| sort by TimeGenerated asc",
-        "size": 3,
-        "title": "Operational errors and warnings",
-        "timeContext": {
-          "durationMs": 0
-        },
-        "timeContextFromParameter": "TimeRange",
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces",
-        "crossComponentResources": [
-          "{Workspace}"
-        ],
-        "visualization": "table",
-        "gridSettings": {
-          "formatters": [
-            {
-              "columnMatch": "OperationStatus",
-              "formatter": 11
-            }
-          ],
-          "hierarchySettings": {
-            "treeType": 1,
-            "groupBy": [
-              "OperationStatus",
-              "OperationCategory"
-            ],
-            "expandTopLevel": true
-          },
-          "labelSettings": [
-            {
-              "columnId": "TimeGenerated",
-              "label": "Time"
-            },
-            {
-              "columnId": "OperationStatus",
-              "label": "Status"
-            },
-            {
-              "columnId": "OperationCategory",
-              "label": "Category"
-            },
-            {
-              "columnId": "Detail",
-              "label": "Details"
-            }
-          ]
-        }
+        "json": "Select a workspace in the table above for detailed info",
+        "style": "info"
       },
-      "customWidth": "70",
-      "name": "Operation"
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "workspace('{SelectedWS}').Heartbeat\r\n| distinct Computer\r\n| count",
-        "size": 1,
-        "title": "Machines Sending Heartbeats (Count)",
-        "color": "green",
-        "timeContext": {
-          "durationMs": 0
-        },
-        "timeContextFromParameter": "TimeRange",
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces",
-        "crossComponentResources": [
-          "{Workspace}"
-        ],
-        "visualization": "tiles",
-        "gridSettings": {
-          "formatters": [
-            {
-              "columnMatch": "Count",
-              "formatter": 1
-            }
-          ]
-        },
-        "tileSettings": {
-          "titleContent": {
-            "numberFormat": {
-              "unit": 17,
-              "options": {
-                "style": "decimal",
-                "useGrouping": false
-              }
-            }
-          },
-          "rightContent": {
-            "columnMatch": "Count",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "green"
-            },
-            "numberFormat": {
-              "unit": 17,
-              "options": {
-                "style": "decimal",
-                "useGrouping": false
-              }
-            }
-          },
-          "showBorder": false,
-          "size": "auto"
-        }
+      "conditionalVisibility": {
+        "parameterName": "SelectedWS",
+        "comparison": "isEqualTo"
       },
-      "customWidth": "30",
-      "name": "Connected Machines"
+      "name": "Select a workspace message"
     }
   ],
   "workbookPin": "Overview",
