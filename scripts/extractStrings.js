@@ -42,6 +42,7 @@ const CohortsTemplateFolder = "\\Cohorts\\";
 const RESJSONOutputFolder = "\\output\\loc\\";
 const LocalizationRepoFolder = "\\scripts\\localization\\"
 const PackageOutputFolder = "\\output\\package\\"
+const IndexFile = "_index.json"
 
 const LocProjectFileName = "LocProject.json";
 const LangOutputSpecifier = "\\{Lang}";
@@ -50,6 +51,7 @@ const LanguagesMap = {
   "cs": "cs-cz",
   "de": "de-de",
   "es": "es-es",
+  "en": "en-us",
   "fr": "fr-fr",
   "hu": "hu-hu",
   "it": "it-it",
@@ -519,7 +521,7 @@ function getClonedLocFilePath(templatePath) {
 }
 
 /** Returns the path of the translated template */
-function getPackageOutputPath(templatePath, fileName) {
+function getPackageOutputPath(templatePath, fileName, cohortsIndexMap, workbooksIndexMap ) {
   const rootDirectory = getRootFolder(templatePath);
   var result = rootDirectory.concat(PackageOutputFolder, "{Lang}");
   var removedIndex = templatePath.replace(rootDirectory, "");
@@ -541,7 +543,31 @@ function getPackageOutputPath(templatePath, fileName) {
     }
   }
   result = result.concat(workbookName, ".json");
+  if (cohortsIndexMap || workbooksIndexMap) {
+    const indexEntry = workbookName.concat(".json");
+    const indexKey = removedIndex.substr(1).split("\\").join("/");
+
+    if (templatePath.includes(CohortsTemplateFolder)) {
+      cohortsIndexMap[indexKey] = indexEntry;
+    } else {
+      workbooksIndexMap[indexKey] = indexEntry;
+    }
+  }
   return result;
+}
+
+
+function generateIndexFiles(indexData, outputPath) {
+  const content = JSON.stringify(indexData);
+  for (var lang in LanguagesMap) { 
+    const fullPath = outputPath.replace("{Lang}", LanguagesMap[lang]);
+    try {
+      fs.writeFileSync(fullPath, content);
+      console.log(">>>>> Generated Gallery Index File: ", fullPath);
+    } catch (e) {
+      console.error("ERROR: Cannot write to file: ", fullPath, "ERROR: ", e);
+    }
+  }
 }
 
 /**
@@ -578,10 +604,15 @@ if (process.argv[3] === "test") {
 }
 
 const locProjectOutput = []; // List of localization file entries for LocProject.json output
+var cohortIndexEntries = {};
+var workbookIndexEntries = {};
+var rootDirectory;
 
 for (var d in directories) {
   const templatePath = directories[d];
-  const rootDirectory = getRootFolder(templatePath);
+  if (!rootDirectory) {
+    rootDirectory = getRootFolder(templatePath);
+  }
 
   const files = fs.readdirSync(templatePath);
   if (!files || files.length === 0) {
@@ -626,11 +657,12 @@ for (var d in directories) {
         getLocalizeableStrings(jsonParsedData, '', extracted);
         file = fileName;
         jsonParsedData = JSON.parse(fileData);
-        translatedPath = getPackageOutputPath(templatePath, file);
+        translatedPath = getPackageOutputPath(templatePath, file, cohortIndexEntries, workbookIndexEntries);
         generatedTemplatePath = translatedPath.substr(0, translatedPath.lastIndexOf("\\"));
       }
     } catch (error) {
       console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
+      // TODO: just write everything to file
       continue;
     }
   };
@@ -652,17 +684,21 @@ for (var d in directories) {
         const translatedResultPath = translatedPath.replace("{Lang}", LanguagesMap[lang]);
         const generatedTemplatePath = translatedResultPath.substr(0, translatedResultPath.lastIndexOf("\\"));
 
-        if (fs.existsSync(localizedFilePath)) {
-          // Do workbook string replacement here
-          const xmlData = fs.readFileSync(localizedFilePath, Encoding);
-
-          generateTranslatedFile(xmlData, jsonParsedData, generatedTemplatePath, translatedResultPath);
+        if (lang === "en-us") {
+          writeTranslatedWorkbookToFile(jsonParsedData, generatedTemplatePath, translatedResultPath);
         } else {
-          // No loc file found, just push the workbook file as is in English
-          // TODO, uncomment
-          // writeTranslatedWorkbookToFile(jsonParsedData, generatedTemplatePath, translatedResultPath);
+          if (fs.existsSync(localizedFilePath)) {
+            // Do workbook string replacement here
+            const xmlData = fs.readFileSync(localizedFilePath, Encoding);
+  
+            generateTranslatedFile(xmlData, jsonParsedData, generatedTemplatePath, translatedResultPath);
+          } else {
+            // No loc file found, just push the workbook file as is in English
+            writeTranslatedWorkbookToFile(jsonParsedData, generatedTemplatePath, translatedResultPath);
+          }
         }
       }
+      
     }
   }
 }
@@ -671,3 +707,6 @@ for (var d in directories) {
 if (locProjectOutput.length > 0) {
   generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));
 }
+
+generateIndexFiles(cohortIndexEntries, rootDirectory.concat(PackageOutputFolder, "{Lang}", CohortsTemplateFolder, IndexFile));
+generateIndexFiles(workbookIndexEntries, rootDirectory.concat(PackageOutputFolder, "{Lang}", WorkbookTemplateFolder, IndexFile));
