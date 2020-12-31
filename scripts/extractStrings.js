@@ -1,3 +1,4 @@
+const { settings } = require('cluster');
 const fs = require('fs');
 const path = require('path');
 const xml2js = require('xml2js');
@@ -40,9 +41,11 @@ const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
 
 const RESJSONOutputFolder = "\\output\\loc\\";
-const LocalizationRepoFolder = "\\scripts\\localization\\"
-const PackageOutputFolder = "\\output\\package\\"
-const IndexFile = "_index.json"
+const LocalizationRepoFolder = "\\scripts\\localization\\";
+const PackageOutputFolder = "\\output\\package\\";
+const IndexFile = "_index.json";
+const GalleryFile = "_gallery.";
+
 
 const LocProjectFileName = "LocProject.json";
 const LangOutputSpecifier = "\\{Lang}";
@@ -215,6 +218,7 @@ function endsWithLocIdentifier(key) {
 
 // Category resources strings for category names
 function getCategoryResourceStrings(object, outputMap) {
+  // TODO: do we need this? 
   if (object && object.categories) {
     object.categories.forEach(category => {
       const key = category.key;
@@ -291,6 +295,75 @@ function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory)
     "CopyOption": "LangIDOnPath",
     "OutputPath": getLocOutputPath(templatePath, ResJsonStringFileExtension, rootDirectory)
   };
+}
+
+function addGalleryEntry(settingsData, galleryMap, categoryResourcesMap, templatePath) {
+  if (settingsData && settingsData.galleries) {
+
+    const rootDirectory = getRootFolder(templatePath);
+    var removedIndex = templatePath.replace(rootDirectory, "");
+    var workbookName = "";
+
+    const split = removedIndex.split("\\");
+    for (s = 2; s < split.length; s++) {
+      if (workbookName === "") {
+        workbookName = workbookName.concat(split[s]);
+      } else {
+        workbookName = workbookName.concat("-", split[s]);
+      }
+    }
+
+    const indexEntry = workbookName.concat(".json");
+    const indexKey = removedIndex.substr(1).split("\\").join("/");
+
+    const templateSplit = templatePath.split("\\");
+    const key = templateSplit[templateSplit.length - 2];
+
+    for (var g in settingsData.galleries) {
+      const galleryEntry = settingsData.galleries[g];
+      const galleryKey = GalleryFile.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
+
+      if (!galleryMap[galleryKey]) {
+        galleryMap[galleryKey] = {};
+      }
+      // add entry for gallery
+      if (!galleryMap[galleryKey][key]) {
+        galleryMap[galleryKey][key] = {};
+      }
+      if (!galleryMap[galleryKey][key].description || !galleryMap[galleryKey][key].name) {
+        if (categoryResourcesMap[key]) {
+          galleryMap[galleryKey][key].description = categoryResourcesMap[key].description;
+          galleryMap[galleryKey][key].name = categoryResourcesMap[key].name;
+          galleryMap[galleryKey][key].order = categoryResourcesMap[key].order;
+        }
+      }
+      if (!galleryMap[galleryKey][key].templates) {
+        galleryMap[galleryKey][key].templates = [];
+      }
+
+      galleryMap[galleryKey][key].templates.push({
+        id: indexKey, //dir,
+        fileName: indexEntry,
+        order: galleryEntry.order,
+        author: settingsData.author,
+        name: settingsData.name,
+        isPreview: settingsData.isPreview ? true : false
+      });
+    }
+  }
+}
+
+function addCategoryResourcesEntry(object, categoryResourcesMap, templatePath) {
+  const templateSplit = templatePath.split("\\");
+  const key = templateSplit[templateSplit.length - 1];
+  if (key && object && object["en-us"]) {
+    const entry = object["en-us"];
+    categoryResourcesMap[key] = {
+      name: entry.name,
+      description: entry.description,
+      order: entry.order
+    }
+  }
 }
 
 /** Return output path like root/{lang}/{TemplateType}/templatePath*/
@@ -453,7 +526,7 @@ function getValueFromPath(paths, obj) {
       if (Object.keys(ArrayLocIdentifier).includes(previousKey)) {
         index = obj.findIndex(o => {
           const id = o[ArrayLocIdentifier[previousKey]];
-          if (id) {     
+          if (id) {
             const compare = id.localeCompare(currentKey);
             return compare === 0;
           } else {
@@ -521,7 +594,7 @@ function getClonedLocFilePath(templatePath) {
 }
 
 /** Returns the path of the translated template */
-function getPackageOutputPath(templatePath, fileName, cohortsIndexMap, workbooksIndexMap ) {
+function getPackageOutputPath(templatePath, fileName, cohortsIndexMap, workbooksIndexMap) {
   const rootDirectory = getRootFolder(templatePath);
   var result = rootDirectory.concat(PackageOutputFolder, "{Lang}");
   var removedIndex = templatePath.replace(rootDirectory, "");
@@ -559,13 +632,27 @@ function getPackageOutputPath(templatePath, fileName, cohortsIndexMap, workbooks
 
 function generateIndexFiles(indexData, outputPath) {
   const content = JSON.stringify(indexData);
-  for (var lang in LanguagesMap) { 
+  for (var lang in LanguagesMap) {
     const fullPath = outputPath.replace("{Lang}", LanguagesMap[lang]);
     try {
       fs.writeFileSync(fullPath, content);
       console.log(">>>>> Generated Gallery Index File: ", fullPath);
     } catch (e) {
       console.error("ERROR: Cannot write to file: ", fullPath, "ERROR: ", e);
+    }
+  }
+}
+
+function generateGalleryFiles(galleryMap, outputPath) {
+  for (var g in galleryMap) {
+    const galleryName = g.concat(".json");
+    const galleryFilePath = outputPath.concat("en-us\\Workbooks\\",galleryName);
+    const galleryJSON = JSON.stringify(galleryMap[g]);
+    try {
+      fs.writeFileSync(galleryFilePath, galleryJSON);
+      console.log(">>>>> Generated Gallery File: ", galleryFilePath);
+    }  catch (e) {
+      console.error("ERROR: Cannot write to file: ", galleryFilePath, "ERROR: ", e);
     }
   }
 }
@@ -607,6 +694,8 @@ const locProjectOutput = []; // List of localization file entries for LocProject
 var cohortIndexEntries = {};
 var workbookIndexEntries = {};
 var rootDirectory;
+var galleryMap = {};
+var categoryResourcesData = {};
 
 for (var d in directories) {
   const templatePath = directories[d];
@@ -646,13 +735,17 @@ for (var d in directories) {
     // Parse the template for localizeable strings
     try {
       if (extensionType.localeCompare(CategoryResourcesFile) === 0) {
+        const categoryResourceData = JSON.parse(fileData);
         // Special case for category resource strings
-        getCategoryResourceStrings(jsonParsedData, extracted);
+        getCategoryResourceStrings(categoryResourceData, extracted);
         file = fileName;
+        addCategoryResourcesEntry(categoryResourceData, categoryResourcesData, templatePath);
         translatedPath = getPackageOutputPath(templatePath, file);
         generatedTemplatePath = translatedPath.substr(0, translatedPath.lastIndexOf("\\"));
       } else if (extensionType.localeCompare(SettingsFile) === 0) {
-        getSettingStrings(jsonParsedData, extracted);
+        const settingsData = JSON.parse(fileData);
+        getSettingStrings(settingsData, extracted);
+        addGalleryEntry(settingsData, galleryMap, categoryResourcesData, templatePath);
       } else {
         getLocalizeableStrings(jsonParsedData, '', extracted);
         file = fileName;
@@ -690,7 +783,7 @@ for (var d in directories) {
           if (fs.existsSync(localizedFilePath)) {
             // Do workbook string replacement here
             const xmlData = fs.readFileSync(localizedFilePath, Encoding);
-  
+
             generateTranslatedFile(xmlData, jsonParsedData, generatedTemplatePath, translatedResultPath);
           } else {
             // No loc file found, just push the workbook file as is in English
@@ -698,7 +791,7 @@ for (var d in directories) {
           }
         }
       }
-      
+
     }
   }
 }
@@ -707,6 +800,8 @@ for (var d in directories) {
 if (locProjectOutput.length > 0) {
   generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));
 }
+
+generateGalleryFiles(galleryMap, rootDirectory.concat(PackageOutputFolder));
 
 generateIndexFiles(cohortIndexEntries, rootDirectory.concat(PackageOutputFolder, "{Lang}", CohortsTemplateFolder, IndexFile));
 generateIndexFiles(workbookIndexEntries, rootDirectory.concat(PackageOutputFolder, "{Lang}", WorkbookTemplateFolder, IndexFile));
