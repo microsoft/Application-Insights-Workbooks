@@ -1,4 +1,3 @@
-const { settings } = require('cluster');
 const fs = require('fs');
 const path = require('path');
 const xml2js = require('xml2js');
@@ -298,27 +297,61 @@ function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory)
 }
 
 function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePath) {
-  if (settingsData && settingsData.galleries) {
-    const galleryMap = gallery["en-us"];
-    const rootDirectory = getRootFolder(templatePath);
-    var removedIndex = templatePath.replace(rootDirectory, "");
-    var workbookName = "";
+  const galleryMap = gallery["en-us"];
+  const rootDirectory = getRootFolder(templatePath);
+  var removedIndex = templatePath.replace(rootDirectory, "");
+  var workbookName = "";
 
-    const split = removedIndex.split("\\");
-    for (s = 2; s < split.length; s++) {
-      if (workbookName === "") {
-        workbookName = workbookName.concat(split[s]);
-      } else {
-        workbookName = workbookName.concat("-", split[s]);
-      }
+  const split = removedIndex.split("\\");
+  for (s = 2; s < split.length; s++) {
+    if (workbookName === "") {
+      workbookName = workbookName.concat(split[s]);
+    } else {
+      workbookName = workbookName.concat("-", split[s]);
     }
+  }
 
-    const indexEntry = workbookName.concat(".json");
-    const indexKey = removedIndex.substr(1).split("\\").join("/");
+  const indexEntry = workbookName.concat(".json");
+  const indexKey = removedIndex.substr(1).split("\\").join("/");
 
-    const templateSplit = templatePath.split("\\");
-    const key = templateSplit[templateSplit.length - 2];
+  const templateSplit = templatePath.split("\\");
+  const key = templateSplit[templateSplit.length - 2];
+  if (templatePath.includes(CohortsTemplateFolder)) {
+    if (settingsData && !settingsData.galleries && settingsData.name && settingsData.description) {
+      const galleryKey = GalleryFile.concat("Cohorts-microsoft.insights-components");
+      if (!galleryMap[galleryKey]) {
+        galleryMap[galleryKey] = {};
+      }
 
+      if (!galleryMap[galleryKey][key]) {
+        galleryMap[galleryKey][key] = {};
+      }
+
+      if (!galleryMap[galleryKey][key].description || !galleryMap[galleryKey][key].name) {
+        if (categoryResourcesMap[key]["en-us"]) {
+          galleryMap[galleryKey][key].description = categoryResourcesMap[key]["en-us"].description;
+          galleryMap[galleryKey][key].name = categoryResourcesMap[key]["en-us"].name;
+          galleryMap[galleryKey][key].order = categoryResourcesMap[key]["en-us"].order;
+        }
+      }
+      if (!galleryMap[galleryKey][key].templates) {
+        galleryMap[galleryKey][key].templates = [];
+      }
+
+      galleryMap[galleryKey][key].templates.push({
+        id: indexKey, //dir,
+        fileName: indexEntry,
+        order: 0,
+        author: settingsData.author,
+        name: settingsData.name,
+        isPreview: settingsData.isPreview ? true : undefined,
+        tags: []
+      });
+    } else {
+      // TODO
+    }
+  }
+  if (settingsData && settingsData.galleries) {
     for (var g in settingsData.galleries) {
       const galleryEntry = settingsData.galleries[g];
       const galleryKey = GalleryFile.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
@@ -347,7 +380,7 @@ function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePa
         order: galleryEntry.order,
         author: settingsData.author,
         name: settingsData.name,
-        isPreview: settingsData.isPreview ? true : false
+        isPreview: settingsData.isPreview ? true : undefined
       });
     }
   }
@@ -355,11 +388,7 @@ function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePa
 
 function addLocalizedGalleryEntry(nameSettings, settingsData, path, gallery, categoryResourcesMap, templatePath, language) {
   const lang = language.toLowerCase();
-  // 1. get directory
-  // 2. open up the file
-  // 3. replace text
   const rootDirectory = getRootFolder(path);
-  //const outputPath = rootDirectory.concat(PackageOutputFolder);
   var outputPath = getRootFolder(templatePath);
   if (templatePath.includes(CohortsTemplateFolder)) {
     outputPath = outputPath.concat(CohortsTemplateFolder);
@@ -385,6 +414,46 @@ function addLocalizedGalleryEntry(nameSettings, settingsData, path, gallery, cat
 
   const templateSplit = path.split("\\");
   const key = templateSplit[templateSplit.length - 2];
+
+  if (templatePath.includes(CohortsTemplateFolder)) {
+    if (settingsData && settingsData.name && settingsData.description) {
+      const galleryKey = GalleryFile.concat("Cohorts-microsoft.insights-components");
+      const galleryFilePath = outputPath.concat(galleryKey, ".json");
+      try {
+        var result = fs.readFileSync(galleryFilePath);
+        var parsed = JSON.parse(result);
+        if (parsed && parsed[key]) {
+          var templateEntry = parsed[key];
+          if (templateEntry.description && templateEntry.description !== "" && categoryResourcesMap && categoryResourcesMap[key]
+            && categoryResourcesMap[key][lang] && categoryResourcesMap[key][lang].description) {
+            if (templateEntry.description === categoryResourcesMap[key][lang].description["en-us"]) {
+              templateEntry.description = categoryResourcesMap[key][lang].description.value;
+            }
+          }
+          if (templateEntry.name && templateEntry.name !== "" && categoryResourcesMap && categoryResourcesMap[key] && categoryResourcesMap[key][lang] && categoryResourcesMap[key][lang].name) {
+            if (templateEntry.name === categoryResourcesMap[key][lang].name["en-us"]) {
+              templateEntry.name = categoryResourcesMap[key][lang].name.value;
+            }
+          }
+          if (templateEntry.templates) {
+            const templatePathSplit = templatePath.split("\\");
+            const id = templatePathSplit[templatePathSplit.length - 1];
+            var template = templateEntry.templates.find(x => x.fileName === id);
+            if (template && template.name === nameSettings["en-us"]) {
+              template.name = nameSettings.value;
+            }
+          }
+  
+          // replace category json info
+          // go to templates and replace there too
+          const content = JSON.stringify(parsed, null, "\t");
+          fs.writeFileSync(galleryFilePath, content);
+        }
+        } catch {
+          console.log("failed to read gallery path");
+        }
+    }  
+  }
 
   for (var g in settingsData.galleries) {
     const galleryEntry = settingsData.galleries[g];
@@ -763,7 +832,11 @@ function generateGalleryFiles(galleryMap, outputPath) {
     const galleryName = g.concat(".json");
     for (var lang in LanguagesMap) {
       const language = LanguagesMap[lang];
-      const galleryFilePath = outputPath.concat(language, "\\Workbooks\\", galleryName);
+      var subdir = WorkbookTemplateFolder;
+      if (g === "_gallery.Cohorts-microsoft.insights-components") {
+        subdir = CohortsTemplateFolder;
+      }
+      const galleryFilePath = outputPath.concat(language, subdir, galleryName);
       const galleryJSON = JSON.stringify(engGallery[g]);
       try {
         if (!fs.existsSync(galleryFilePath)) {
@@ -842,7 +915,6 @@ for (var d in directories) {
   const locFilePath = getClonedLocFilePath(templatePath);
   // location of package for translated workbook
   var translatedPath;
-  var generatedTemplatePath;
 
   for (var i in files) {
     const fileName = files[i];
