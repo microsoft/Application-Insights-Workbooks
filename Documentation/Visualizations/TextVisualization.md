@@ -28,7 +28,7 @@ You can see that this query returned a single column of data, which appears to b
 ### Plain example
 When the visualization is set to `Text` and the `Plain` style is selected, the text appears as a standard portal text block:
 
-![Image showing a text visualization in workbooks](../Images/TextVizualizationExample.png)
+![Image showing a text visualization in workbooks](../Images/TextVisualizationExample.png)
 
 Text will wrap, and any special formatting values will be displayed as is, with no formatting.
 
