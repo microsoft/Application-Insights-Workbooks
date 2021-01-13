@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { exit } = require('process');
 const xml2js = require('xml2js');
 
 // Keys to localize. Add new keys here.
@@ -17,6 +18,7 @@ const LocKeys = [
   "noDataMessage"
 ];
 
+// For Workbook items that are arrays, these are the following field names that uniquely identify them
 const ArrayLocIdentifier = {
   "items": "name",
   "parameters": "id",
@@ -31,6 +33,10 @@ const LocalizableFileTypes = [
 
 const CategoryResourcesFile = "categoryResources.json";
 const SettingsFile = "settings.json";
+const LocProjectFileName = "LocProject.json";
+const IndexFile = "_index.json";
+const GalleryFilePrefix = "_gallery.";
+const CohortsGalleryFileName = "_gallery.Cohorts-microsoft.insights-components";
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = '.resjson';
@@ -38,15 +44,9 @@ const LCLStringFileExtension = ".resjson.lcl";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
-
 const RESJSONOutputFolder = "\\output\\loc\\";
 const LocalizationRepoFolder = "\\scripts\\localization\\";
 const PackageOutputFolder = "\\output\\package\\";
-const IndexFile = "_index.json";
-const GalleryFile = "_gallery.";
-
-
-const LocProjectFileName = "LocProject.json";
 const LangOutputSpecifier = "\\{Lang}";
 
 const LanguagesMap = {
@@ -73,8 +73,10 @@ const LanguagesMap = {
 const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
 const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
 const ParameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:" + ValidSpecifierRegex + ")?\}", "g");
-const NotAllSpecialCharsRegex = new RegExp("[a-z]+", "i")
+const NotAllSpecialCharsRegex = new RegExp("[a-z]+", "i");
 
+// Flag to turn on or off console logs
+const LogInfo = true;
 
 /**
  * FUNCTIONS 
@@ -82,11 +84,11 @@ const NotAllSpecialCharsRegex = new RegExp("[a-z]+", "i")
 
 /** Enure given path is valid */
 function testPath(path) {
-  console.log(">>>>> Processing template path: ", path);
+  logMessage("Processing template path: " + path);
   if (fs.existsSync(path)) {
     return true;
   } else {
-    console.error("ERROR: Template path does not exist: ", path);
+    logError("Template path does not exist: " + path);
     return false;
   }
 }
@@ -146,13 +148,26 @@ function getLocalizeableFileType(filename) {
   return null;
 }
 
+function logMessage(message) {
+  if (LogInfo) {
+    console.log("INFO: ", message);
+  }
+}
+
+function logError(message, shouldExit) {
+  console.error(message);
+  if (shouldExit) {
+    exit(1);
+  }  
+}
+
 function openFile(file) {
   try {
-    console.log(">>>>> Processing workbook or file: ", file);
+    logMessage("Processing workbook or file: " + file);
     const data = fs.readFileSync(file, Encoding);
     return data;
   } catch (err) {
-    console.error("ERROR: Cannot open file: ", file, "ERROR: ", err);
+    logError("Cannot open file: " + file + " Error: " + err);
   }
 }
 
@@ -175,7 +190,7 @@ function getLocalizeableStrings(obj, key, outputMap) {
       const jsonVal = obj[field];
       if (canLocalize(jsonVal)) {
         if (outputMap[jsonKey] != null) {
-          console.log("ERROR: found duplicate key: ", jsonKey, "To fix error, change the step name or id")
+          logError("Found duplicate key: "+ jsonKey + " To fix this error, change the step name or id");
           // delete the key from being localized 
           outputMap[jsonKey] = undefined;
         } else {
@@ -188,14 +203,12 @@ function getLocalizeableStrings(obj, key, outputMap) {
   }
 }
 
+/** Returns true if string has localizeable text  */
 function canLocalize(text) {
-  if (text != null && text.match(NotAllSpecialCharsRegex)) {
-    return true;
-  }
-  return false;
+  return text !== null && text !== "" && text.match(NotAllSpecialCharsRegex);
 }
 
-// Gets unique key identifier for array object
+/** Gets unique key identifier for array object */
 function getKeyForArrayObject(key, objectEntry, field) {
   const identifier = endsWithLocIdentifier(key);
   if (identifier !== "" && objectEntry[ArrayLocIdentifier[identifier]] != null) {
@@ -215,21 +228,9 @@ function endsWithLocIdentifier(key) {
   return null
 }
 
-// Category resources strings for category names
+/** Get localizeable strings from category resources file */
 function getCategoryResourceStrings(object, outputMap) {
-  // TODO: do we need this? 
-  if (object && object.categories) {
-    object.categories.forEach(category => {
-      const key = category.key;
-      const name = category.settings["en-us"].name;
-      const description = category.settings["en-us"].description;
-      outputMap[key.concat(".name")] = name;
-      if (description != "") {
-        outputMap[key.concat(".description")] = description;
-      }
-    });
-    // No category
-  } else if (object && object["en-us"]) {
+  if (object && object["en-us"]) {
     const name = object["en-us"].name;
     const description = object["en-us"].description;
     outputMap["en-us.name"] = name;
@@ -239,6 +240,7 @@ function getCategoryResourceStrings(object, outputMap) {
   }
 }
 
+/** Get localizeable strings from settings file */
 function getSettingStrings(object, outputMap) {
   if (object && object.hasOwnProperty("name")) {
     outputMap["settings.name"] = object.name;
@@ -267,9 +269,8 @@ function findParameterNames(text) {
   try {
     params = text.match(ParameterRegex);
   } catch (e) {
-    console.error("ERROR: Cannot extract parameter. ", "ERROR: ", e);
+    logError("Cannot extract parameter. Error: " + e);
   }
-
   return params;
 }
 
@@ -280,7 +281,7 @@ function findColumnNameReferences(text) {
   try {
     columnRefs = text.match(_columnRegex);
   } catch (e) {
-    console.error("ERROR: Cannot extract parameter. ", "ERROR: ", e);
+    logError("Cannot extract parameter. Error: " + e);
   }
   return columnRefs;
 }
@@ -316,73 +317,43 @@ function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePa
 
   const templateSplit = templatePath.split("\\");
   const key = templateSplit[templateSplit.length - 2];
-  if (templatePath.includes(CohortsTemplateFolder)) {
-    if (settingsData && !settingsData.galleries && settingsData.name && settingsData.description) {
-      const galleryKey = GalleryFile.concat("Cohorts-microsoft.insights-components");
-      if (!galleryMap[galleryKey]) {
-        galleryMap[galleryKey] = {};
-      }
+  const isCohorts = templatePath.includes(CohortsTemplateFolder);
+  var galleryKey = CohortsGalleryFileName;
+  const galleries = isCohorts ? [settingsData] : settingsData.galleries || [];
 
-      if (!galleryMap[galleryKey][key]) {
-        galleryMap[galleryKey][key] = {};
-      }
-
-      if (!galleryMap[galleryKey][key].description || !galleryMap[galleryKey][key].name) {
-        if (categoryResourcesMap[key]["en-us"]) {
-          galleryMap[galleryKey][key].description = categoryResourcesMap[key]["en-us"].description;
-          galleryMap[galleryKey][key].name = categoryResourcesMap[key]["en-us"].name;
-          galleryMap[galleryKey][key].order = categoryResourcesMap[key]["en-us"].order;
-        }
-      }
-      if (!galleryMap[galleryKey][key].templates) {
-        galleryMap[galleryKey][key].templates = [];
-      }
-
-      galleryMap[galleryKey][key].templates.push({
-        id: indexKey, //dir,
-        fileName: indexEntry,
-        order: 0,
-        author: settingsData.author,
-        name: settingsData.name,
-        isPreview: settingsData.isPreview ? true : undefined,
-        tags: []
-      });
-    } else {
-      // TODO
-    }
-  }
-  if (settingsData && settingsData.galleries) {
-    for (var g in settingsData.galleries) {
+  for (var g in galleries) {
+    if (!isCohorts) {
       const galleryEntry = settingsData.galleries[g];
-      const galleryKey = GalleryFile.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
-
-      if (!galleryMap[galleryKey]) {
-        galleryMap[galleryKey] = {};
-      }
-      // add entry for gallery
-      if (!galleryMap[galleryKey][key]) {
-        galleryMap[galleryKey][key] = {};
-      }
-      if (!galleryMap[galleryKey][key].description || !galleryMap[galleryKey][key].name) {
-        if (categoryResourcesMap[key]["en-us"]) {
-          galleryMap[galleryKey][key].description = categoryResourcesMap[key]["en-us"].description;
-          galleryMap[galleryKey][key].name = categoryResourcesMap[key]["en-us"].name;
-          galleryMap[galleryKey][key].order = categoryResourcesMap[key]["en-us"].order;
-        }
-      }
-      if (!galleryMap[galleryKey][key].templates) {
-        galleryMap[galleryKey][key].templates = [];
-      }
-
-      galleryMap[galleryKey][key].templates.push({
-        id: indexKey, //dir,
-        fileName: indexEntry,
-        order: galleryEntry.order,
-        author: settingsData.author,
-        name: settingsData.name,
-        isPreview: settingsData.isPreview ? true : undefined
-      });
+      galleryKey = GalleryFilePrefix.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
     }
+
+    if (!galleryMap[galleryKey]) {
+      galleryMap[galleryKey] = {};
+    }
+    // add entry for gallery
+    if (!galleryMap[galleryKey][key]) {
+      galleryMap[galleryKey][key] = {};
+    }
+    if (!galleryMap[galleryKey][key].description || !galleryMap[galleryKey][key].name) {
+      if (categoryResourcesMap[key]["en-us"]) {
+        galleryMap[galleryKey][key].description = categoryResourcesMap[key]["en-us"].description;
+        galleryMap[galleryKey][key].name = categoryResourcesMap[key]["en-us"].name;
+        galleryMap[galleryKey][key].order = categoryResourcesMap[key]["en-us"].order;
+      }
+    }
+    if (!galleryMap[galleryKey][key].templates) {
+      galleryMap[galleryKey][key].templates = [];
+    }
+
+    galleryMap[galleryKey][key].templates.push({
+      id: indexKey,
+      fileName: indexEntry,
+      order: isCohorts ? 0 : galleries[g].order,
+      author: settingsData.author,
+      name: settingsData.name,
+      isPreview: settingsData.isPreview ? true : undefined,
+      tags: isCohorts ? [] : undefined
+    });
   }
 }
 
@@ -408,56 +379,14 @@ function addLocalizedGalleryEntry(nameSettings, settingsData, path, gallery, cat
     }
   }
 
-  const indexEntry = workbookName;
-  const indexKey = removedIndex.substr(1).split("\\").join("/").replace(".json", "");
-  const entry = gallery[indexKey];
-
   const templateSplit = path.split("\\");
   const key = templateSplit[templateSplit.length - 2];
+  const isCohorts = templatePath.includes(CohortsTemplateFolder);
+  const galleries = isCohorts ? [settingsData] : settingsData.galleries || [];
 
-  if (templatePath.includes(CohortsTemplateFolder)) {
-    if (settingsData && settingsData.name && settingsData.description) {
-      const galleryKey = GalleryFile.concat("Cohorts-microsoft.insights-components");
-      const galleryFilePath = outputPath.concat(galleryKey, ".json");
-      try {
-        var result = fs.readFileSync(galleryFilePath);
-        var parsed = JSON.parse(result);
-        if (parsed && parsed[key]) {
-          var templateEntry = parsed[key];
-          if (templateEntry.description && templateEntry.description !== "" && categoryResourcesMap && categoryResourcesMap[key]
-            && categoryResourcesMap[key][lang] && categoryResourcesMap[key][lang].description) {
-            if (templateEntry.description === categoryResourcesMap[key][lang].description["en-us"]) {
-              templateEntry.description = categoryResourcesMap[key][lang].description.value;
-            }
-          }
-          if (templateEntry.name && templateEntry.name !== "" && categoryResourcesMap && categoryResourcesMap[key] && categoryResourcesMap[key][lang] && categoryResourcesMap[key][lang].name) {
-            if (templateEntry.name === categoryResourcesMap[key][lang].name["en-us"]) {
-              templateEntry.name = categoryResourcesMap[key][lang].name.value;
-            }
-          }
-          if (templateEntry.templates) {
-            const templatePathSplit = templatePath.split("\\");
-            const id = templatePathSplit[templatePathSplit.length - 1];
-            var template = templateEntry.templates.find(x => x.fileName === id);
-            if (template && template.name === nameSettings["en-us"]) {
-              template.name = nameSettings.value;
-            }
-          }
-  
-          // replace category json info
-          // go to templates and replace there too
-          const content = JSON.stringify(parsed, null, "\t");
-          fs.writeFileSync(galleryFilePath, content);
-        }
-        } catch {
-          console.log("failed to read gallery path");
-        }
-    }  
-  }
-
-  for (var g in settingsData.galleries) {
-    const galleryEntry = settingsData.galleries[g];
-    const galleryKey = GalleryFile.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
+  for (var g in galleries) {
+    const galleryEntry = galleries[g];
+    const galleryKey = isCohorts ? CohortsGalleryFileName : GalleryFilePrefix.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
     const galleryFilePath = outputPath.concat(galleryKey, ".json");
     try {
       var result = fs.readFileSync(galleryFilePath);
@@ -489,8 +418,8 @@ function addLocalizedGalleryEntry(nameSettings, settingsData, path, gallery, cat
         const content = JSON.stringify(parsed, null, "\t");
         fs.writeFileSync(galleryFilePath, content);
       }
-    } catch {
-      console.log("failed to read gallery path");
+    } catch (error) {
+      logError(error);
     }
   }
 }
@@ -518,27 +447,21 @@ function getLocOutputPath(templatePath, extensionType, root) {
   return templateSplit.join("\\");
 }
 
-function replaceFileExtension(fileName, extensionType) {
-  var a = fileName.split(".");
-  const extension = a.pop();
-  return fileName.replace(extension, extensionType);
-}
-
 /** Write string file as RESJSON */
 function writeToFileRESJSON(data, outputPath) {
   const fullpath = outputPath.concat(ResJsonStringFileExtension);
 
   const content = JSON.stringify(data, null, "\t");
   if (content.localeCompare("{}") === 0) {
-    console.log(">>>>> No strings found for: ", fullpath);
+    logMessage("No strings found for: " + fullpath);
     return;
   }
 
   try {
     fs.writeFileSync(fullpath, content);
-    console.log(">>>>> Wrote to file: ", fullpath);
+    logMessage("Wrote to file: " + fullpath);
   } catch (e) {
-    console.error("ERROR: Cannot write to file: ", fullpath, "ERROR: ", e);
+    logError("Cannot write to file: " + fullpath + " Error: " + e);
   }
 }
 
@@ -554,7 +477,7 @@ function getRootFolder(dir) {
 
 /** Write a LocProject.json file needed to point the loc tool to the resjson files + where to output LCL files  */
 function generateLocProjectFile(locItems, directoryPath) {
-  console.log(">>>>> Generating LocProject.json file...");
+  logMessage("Generating LocProject.json file");
 
   const locProjectJson = {
     "Projects": [
@@ -565,15 +488,15 @@ function generateLocProjectFile(locItems, directoryPath) {
     ]
   };
   const content = JSON.stringify(locProjectJson, null, "\t");
+  const pathToLocProjectFile = getRootFolder(directoryPath).concat("\\src");;
   try {
-    const pathToLocProjectFile = getRootFolder(directoryPath).concat("\\src");;
     if (!fs.existsSync(pathToLocProjectFile)) {
       fs.mkdirSync(pathToLocProjectFile, { recursive: true });
     }
     fs.writeFileSync(pathToLocProjectFile.concat("\\", LocProjectFileName), content);
-    console.log(">>>>> Generated LocProject.json file: ", pathToLocProjectFile);
+    logMessage("Generated LocProject.json file: " + pathToLocProjectFile);
   } catch (e) {
-    console.error("ERROR: Cannot write LocProject.json file: ", pathToLocProjectFile, "ERROR: ", e);
+    logError("Cannot write LocProject.json file: " + pathToLocProjectFile + " Error: " + e);
   }
 }
 
@@ -646,9 +569,9 @@ function writeTranslatedWorkbookToFile(data, templateDir, fullPath) {
       fs.mkdirSync(templateDir, { recursive: true });
     }
     fs.writeFileSync(fullPath, content);
-    console.log(">>>>> Generated translated file: ", fullPath);
+    logMessage("Generated translated file: " + fullPath);
   } catch (e) {
-    console.error("ERROR: Cannot write to file: ", fullPath, "ERROR: ", e);
+    logError("Cannot write to file file: " + fullPath + "Error : " + e);
   }
 }
 
@@ -681,7 +604,7 @@ function replaceText(workbookTemplate, settingsJSON, stringMap, templatePath, ou
       const translatedVal = stringMap[key]["value"]; // translated value in the lcl file
       const engVal = stringMap[key]["en-us"]; // original english value in the lcl file
 
-      if (templateVal && translatedVal && templateVal.localeCompare(engVal)) { // if the text from the lcl file and template file match, we can go ahead and replace it
+      if (templateVal && translatedVal && templateVal.localeCompare(engVal) === 0) { // if the text from the lcl file and template file match, we can go ahead and replace it
         // change the template value
         var source = {};
         assignValueToPath(source, actualKeyPaths, translatedVal);
@@ -697,7 +620,6 @@ function convertStringKeyToPath(key) {
   return vals;
 }
 
-// TODO: this needs to change
 function getValueFromPath(paths, obj) {
   const keyPaths = [];
   for (var i = 0; i < paths.length; i++) {
@@ -710,7 +632,8 @@ function getValueFromPath(paths, obj) {
         index = obj.findIndex(o => {
           const id = o[ArrayLocIdentifier[previousKey]];
           if (id) {
-            const compare = id.localeCompare(currentKey);
+            const alphaNumericId = removeNonAplhaNumeric(id);
+            const compare = alphaNumericId.localeCompare(currentKey);
             return compare === 0;
           } else {
             return false;
@@ -817,11 +740,15 @@ function generateIndexFiles(indexData, outputPath) {
   const content = JSON.stringify(indexData);
   for (var lang in LanguagesMap) {
     const fullPath = outputPath.replace("{Lang}", LanguagesMap[lang]);
+    const directory = fullPath.substr(0, fullPath.lastIndexOf("\\"));
     try {
+      if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory, { recursive: true });
+      }
       fs.writeFileSync(fullPath, content);
-      console.log(">>>>> Generated Gallery Index File: ", fullPath);
+      logMessage("Generated Gallery Index File: " + fullPath);
     } catch (e) {
-      console.error("ERROR: Cannot write to file: ", fullPath, "ERROR: ", e);
+      logError("Cannot write to file: " + fullPath + "Error: " + e);
     }
   }
 }
@@ -833,18 +760,22 @@ function generateGalleryFiles(galleryMap, outputPath) {
     for (var lang in LanguagesMap) {
       const language = LanguagesMap[lang];
       var subdir = WorkbookTemplateFolder;
-      if (g === "_gallery.Cohorts-microsoft.insights-components") {
+      if (g === CohortsGalleryFileName) {
         subdir = CohortsTemplateFolder;
       }
       const galleryFilePath = outputPath.concat(language, subdir, galleryName);
       const galleryJSON = JSON.stringify(engGallery[g]);
       try {
+        const directory = galleryFilePath.substr(0, galleryFilePath.lastIndexOf("\\"));
+        if (!fs.existsSync(directory)) {
+          fs.mkdirSync(directory, { recursive: true });
+        }
         if (!fs.existsSync(galleryFilePath)) {
           fs.writeFileSync(galleryFilePath, galleryJSON);
         }
-        console.log(">>>>> Generated Gallery File: ", galleryFilePath);
+        logMessage("Generated Gallery File: " + galleryFilePath);
       } catch (e) {
-        console.error("ERROR: Cannot write to file: ", galleryFilePath, "ERROR: ", e);
+        logError("Cannot write to file: " + galleryFilePath + "Error: " + e);
       }
     }
   }
@@ -857,13 +788,11 @@ function generateGalleryFiles(galleryMap, outputPath) {
  */
 
 if (!process.argv[2]) { // Path to extract strings from 
-  console.error('ERROR: Workbook path not provided. Please provide the path to the workbook folder.');
-  return;
+  logError("Workbook path not provided. Please provide the path to the workbook folder.", true);
 }
 
 if (!process.argv[3]) { // Flag to specify root or test directory
-  console.error("ERROR: Please specify if the given directory is root or test. 'root' means the given path is the root directory of the repository. 'test' means the given path is a subdirectory eg. workbook folder with template.");
-  return;
+  logError("Please specify if the given directory is root or test. 'root' means the given path is the root directory of the repository. 'test' means the given path is a subdirectory eg. workbook folder with template.", true);
 }
 
 const directoryPath = process.argv[2];
@@ -949,7 +878,7 @@ for (var d in directories) {
         generatedTemplatePath = translatedPath.substr(0, translatedPath.lastIndexOf("\\"));
       }
     } catch (error) {
-      console.error("ERROR: Cannot extract JSON: ", filePath, "ERROR: ", error);
+      logError("Cannot extract JSON: " + filePath + "Error: " + error);
       // TODO: just write everything to file
       continue;
     }
@@ -999,7 +928,6 @@ for (var d in directories) {
           }
         }
       }
-
     }
   }
 }
