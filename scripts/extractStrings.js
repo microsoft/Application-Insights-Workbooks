@@ -216,7 +216,7 @@ function getLocalizeableStrings(obj, key, outputMap, templatePath) {
       const jsonVal = obj[field];
       if (canLocalize(jsonVal)) {
         if (outputMap[jsonKey] != null) {
-          logError("Found duplicate key: " + jsonKey + "in template: " + templatePath + ". To fix this error, change the step name or id");
+          logError("Found duplicate key: " + jsonKey + "in template: " + templatePath + ". To fix this error, change the step name or id", /**true**/);
           // delete the key from being localized 
           outputMap[jsonKey] = undefined;
         } else {
@@ -381,7 +381,7 @@ function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePa
       author: settingsData.author,
       name: settingsData.name,
       isPreview: settingsData.isPreview ? true : undefined,
-      tags: isCohorts ? [] : undefined
+      tags: isCohorts ? [] : settingsData.tags || undefined
     });
   }
 }
@@ -819,6 +819,8 @@ if (!process.argv[3]) { // Flag to specify root or test directory
   logError("Please specify if the given directory is root or test. 'root' means the given path is the root directory of the repository. 'test' means the given path is a subdirectory eg. workbook folder with template.", true);
 }
 
+const createPackage = process.argv[4] === "createPackage";
+
 const directoryPath = process.argv[2];
 const exists = testPath(directoryPath); // Verify directory path
 if (!exists) {
@@ -897,7 +899,7 @@ for (var d in directories) {
   };
 
   // Template Generation 
-  if (Object.keys(localizeableStrings).length > 0 && !templatePath.endsWith("\\")) {
+  if (createPackage && Object.keys(localizeableStrings).length > 0 && !templatePath.endsWith("\\")) {
     // Add LocProject entry
     const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
     locProjectOutput.push(locProjectEntry);
@@ -943,7 +945,9 @@ for (var d in directories) {
   }
 }
 
-generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));
-generateGalleryFiles(galleryMap, rootDirectory.concat(PackageOutputFolder));
-generateIndexFiles(cohortIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
-generateIndexFiles(workbookIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, WorkbookTemplateFolder, IndexFile));
+if (createPackage) {
+  generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));
+  generateGalleryFiles(galleryMap, rootDirectory.concat(PackageOutputFolder));
+  generateIndexFiles(cohortIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
+  generateIndexFiles(workbookIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, WorkbookTemplateFolder, IndexFile));
+}
