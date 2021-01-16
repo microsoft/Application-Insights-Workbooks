@@ -74,6 +74,7 @@ This is how the graph will look like in read mode:
 |:------------- |:-------------|
 | `None` | All nodes have the same color |
 | `Categorical` | Nodes are assigned colors based on the value or category from a column in the result set. In the example above, the coloring is based on the column _Kind_ of the result set. Supported palettes are `Default`, `Pastel` and `Cool tone`  |
+| `Thresholds` | In this type, node colors are set by threshold rules (e.g. _CPU > 90%  => Red, 60% > CPU > 90% => Yellow, CPU < 60% => Green_). The value property in Thresholds can refer to columns and parameters. Refer to columns with `["columnName"]`. Refer to parameters with `{paramName}`. Both column name and parameter name are case sensitive.|
 | `Field Based` | In this type, a column provides specific RGB values to use for the node. Provides the most flexibility but usually requires more work to enable.  |
 
 ## Node Format Settings
