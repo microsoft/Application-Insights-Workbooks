@@ -84,7 +84,7 @@ const ParameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:" + ValidS
 const NotAllSpecialCharsRegex = new RegExp("[a-z]+", "i");
 
 // Flag to turn on or off console logs
-const LogInfo = true;
+const LogInfo = false;
 
 /**
  * FUNCTIONS 
@@ -216,7 +216,7 @@ function getLocalizeableStrings(obj, key, outputMap, templatePath) {
       const jsonVal = obj[field];
       if (canLocalize(jsonVal)) {
         if (outputMap[jsonKey] != null) {
-          logError("Found duplicate key: " + jsonKey + "in template: " + templatePath + ". To fix this error, change the step name or id", /**true**/);
+          logError("Found duplicate key: " + jsonKey + " in template: " + templatePath + ". To fix this error, change the step name or id", /**true**/);
           // delete the key from being localized 
           outputMap[jsonKey] = undefined;
         } else {
@@ -388,7 +388,6 @@ function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePa
 
 function addLocalizedGalleryEntry(nameSettings, settingsData, path, categoryResourcesMap, templatePath, language) {
   const lang = language.toLowerCase();
-  const rootDirectory = getRootFolder(path);
   var outputPath = getRootFolder(templatePath);
   if (templatePath.includes(CohortsTemplateFolder)) {
     outputPath = outputPath.concat(CohortsTemplateFolder);
@@ -396,17 +395,6 @@ function addLocalizedGalleryEntry(nameSettings, settingsData, path, categoryReso
     outputPath = outputPath.concat(WorkbookTemplateFolder);
   }
 
-  var removedIndex = templatePath.replace(rootDirectory, "");
-  var workbookName = "";
-
-  const split = removedIndex.split("\\");
-  for (s = 2; s < split.length; s++) {
-    if (workbookName === "") {
-      workbookName = workbookName.concat(split[s]);
-    } else {
-      workbookName = workbookName.concat("-", split[s]);
-    }
-  }
 
   const templateSplit = path.split("\\");
   const key = templateSplit[templateSplit.length - 2];
