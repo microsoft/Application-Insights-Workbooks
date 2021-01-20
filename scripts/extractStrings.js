@@ -431,7 +431,6 @@ function addLocalizedGalleryEntry(nameSettings, settingsData, path, categoryReso
         }
 
         // replace category json info
-        // go to templates and replace there too
         const content = JSON.stringify(parsed, null, "\t");
         writeJSONToFile(content, galleryFilePath);
       }
@@ -606,6 +605,12 @@ function parseXMLResult(result, workbookJSON, settingsJSON, templatePath, fullpa
 
 /** Write file as new workbook  */
 function writeTranslatedWorkbookToFile(data, fullPath) {
+  const fileName = fullPath.split('\\').pop().split('/').pop();
+  if (fileName.length > 99) {
+    // not currently blocking - local builds don't actually have an issue here but something on the build machine is truncating files?
+    logInfo("ERROR: File name exceeds 99ch limit " + fileName);
+  }
+
   const content = JSON.stringify(data, null, "\t");
   writeJSONToFile(content, fullPath, true);
   logMessage("Generated translated file: " + fullPath);
