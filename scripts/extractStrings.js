@@ -84,7 +84,7 @@ const ParameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:" + ValidS
 const NotAllSpecialCharsRegex = new RegExp("[a-z]+", "i");
 
 // Flag to turn on or off console logs
-const LogInfo = false;
+const LogInfo = true;
 
 /**
  * FUNCTIONS 
