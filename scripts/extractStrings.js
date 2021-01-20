@@ -608,7 +608,7 @@ function writeTranslatedWorkbookToFile(data, fullPath) {
   const fileName = fullPath.split('\\').pop().split('/').pop();
   if (fileName.length > 99) {
     // not currently blocking - local builds don't actually have an issue here but something on the build machine is truncating files?
-    logInfo("ERROR: File name exceeds 99ch limit " + fileName);
+    logMessage("ERROR: File name exceeds 99ch limit " + fileName);
   }
 
   const content = JSON.stringify(data, null, "\t");
