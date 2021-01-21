@@ -943,4 +943,16 @@ if (createPackage) {
   generateGalleryFiles(galleryMap, rootDirectory.concat(PackageOutputFolder));
   generateIndexFiles(cohortIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
   generateIndexFiles(workbookIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, WorkbookTemplateFolder, IndexFile));
+
+  // copy package.json into the output/package directory
+  fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), rootDirectory.concat(PackageOutputFolder, "package.json"), (err) => {
+    if (err) throw err;
+  });
+  // copy .npmrc into output/package directory
+  fs.copyFile(rootDirectory.concat("\\scripts\\.npmrc"), rootDirectory.concat(PackageOutputFolder, ".npmrc"), (err) => {
+    if (err) throw err;
+  });
+
+
+
 }
