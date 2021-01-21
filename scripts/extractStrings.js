@@ -870,6 +870,7 @@ for (var d in directories) {
     const fileType = getFileType(extensionType);
     if (fileType !== LocalizeableFileType.Settings) {
       file = fileName;
+      console.log("Template path: " + templatePath + "root Directory: " + rootDirectory);
       packageOutputPath = getPackageOutputPath(templatePath, rootDirectory);
     }
 
