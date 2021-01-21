@@ -330,10 +330,13 @@ function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory)
 function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePath, rootDirectory) {
   const galleryMap = gallery[DefaultLang];
   var removedIndex = templatePath.replace(rootDirectory, "");
+  if (removedIndex.startsWith("\\")) {
+    removedIndex = removedIndex.substring(1);
+  }
   var workbookName = "";
 
   const split = removedIndex.split("\\");
-  for (s = 2; s < split.length; s++) {
+  for (s = 1; s < split.length; s++) {
     if (workbookName === "") {
       workbookName = workbookName.concat(split[s]);
     } else {
@@ -342,7 +345,7 @@ function addGalleryEntry(settingsData, gallery, categoryResourcesMap, templatePa
   }
 
   const indexEntry = workbookName.concat(".json");
-  const indexKey = removedIndex.substr(1).split("\\").join("/");
+  const indexKey = removedIndex.split("\\").join("/");
 
   const templateSplit = templatePath.split("\\");
   const key = templateSplit[templateSplit.length - 2];
@@ -740,13 +743,20 @@ function getClonedLocFilePath(templatePath, rootDirectory) {
 
 /** Returns the path of the translated template */
 function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, workbooksIndexMap) {
-  var result = rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier);
+  var result = rootDirectory;
+  if (result.endsWith("\\")) {
+    result = result.substring(0, result.length - 1);  
+  }
+  result = result.concat(PackageOutputFolder, LangOutputSpecifier);
   var removedIndex = templatePath.replace(rootDirectory, "");
+  if (removedIndex.startsWith("\\")) {
+    removedIndex = removedIndex.substring(1);
+  }
 
   const split = removedIndex.split("\\");
   var workbookName = "";
-  for (s = 1; s < split.length; s++) {
-    if (s === 1) {
+  for (s = 0; s < split.length; s++) {
+    if (s === 0) {
       result = result.concat("\\", split[s], "\\");
       continue;
     }
@@ -759,7 +769,7 @@ function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, work
   result = result.concat(workbookName, ".json");
   if (cohortsIndexMap || workbooksIndexMap) {
     const indexEntry = workbookName.concat(".json");
-    const indexKey = removedIndex.substr(1).split("\\").join("/");
+    const indexKey = removedIndex.split("\\").join("/");
 
     if (templatePath.includes(CohortsTemplateFolder)) {
       cohortsIndexMap[indexKey] = indexEntry;
@@ -870,7 +880,6 @@ for (var d in directories) {
     const fileType = getFileType(extensionType);
     if (fileType !== LocalizeableFileType.Settings) {
       file = fileName;
-      console.log("Template path: " + templatePath + "root Directory: " + rootDirectory);
       packageOutputPath = getPackageOutputPath(templatePath, rootDirectory);
     }
 
