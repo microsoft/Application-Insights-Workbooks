@@ -85,7 +85,7 @@
             "label": "Virtual machine",
             "type": 5,
             "isRequired": true,
-            "query": "Resources\r\n| where type =~ 'microsoft.compute/virtualmachines' and properties.storageProfile.imageReference.offer =~ 'ubuntuserver' and properties.storageProfile.imageReference.sku =~ '18.04-LTS' and location in (dynamic(['australiasoutheast','centralus', 'eastus','eastus2','eastus2euap','northeurope','southeastasia','uksouth','westeurope','westus','westus2'])) \r\n| order by resourceGroup asc, name asc\r\n| project value = id, label = name, selected = false, group = resourceGroup",
+            "query": "Resources\r\n| where type =~ 'microsoft.compute/virtualmachines' and location in (dynamic(['australiasoutheast','centralus', 'eastus','eastus2','eastus2euap','northeurope','southeastasia','uksouth','westeurope','westus','westus2'])) \r\n| order by resourceGroup asc, name asc\r\n| project value = id, label = name, selected = false, group = resourceGroup",
             "crossComponentResources": [
               "{Subscription}"
             ],
@@ -136,6 +136,22 @@
             },
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "9aa90695-2b17-44e9-a468-ebf8270c69b1",
+            "version": "KqlParameterItem/1.0",
+            "name": "vmOS",
+            "type": 1,
+            "query": "Resources\r\n| where id =~ '{VmId}'\r\n| extend offer = properties.storageProfile.imageReference.offer\r\n| extend sku = properties.storageProfile.imageReference.sku\r\n| project iff(isnotempty(offer) and isnotempty(sku), strcat(\"The operating system on the virtual machine is \", offer, \" \", sku, \".\"), \"\") ",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "formVertical",
@@ -144,6 +160,19 @@
       },
       "customWidth": "60",
       "name": "parameters - 2"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "{vmOS} The recommended virtual machine OS is Ubuntu 18.04-LTS.",
+        "style": "info"
+      },
+      "conditionalVisibility": {
+        "parameterName": "vmOS",
+        "comparison": "isNotEqualTo",
+        "value": "The operating system on the virtual machine is UbuntuServer 18.04-LTS."
+      },
+      "name": "Recommend vm version message"
     },
     {
       "type": 1,
@@ -166,7 +195,7 @@
             "name": "savedConfig",
             "type": 1,
             "isRequired": true,
-            "query": "Resources\r\n| where id startswith '{VmId}' and name =~ 'Workload.WLILinuxExtension' and type =~ 'microsoft.compute/virtualmachines/extensions'\r\n| project tostring(properties.settings.workloadConfig)",
+            "query": "Resources\r\n| where id =~ strcat('{VmId}','/extensions/Workload.WLILinuxExtension') and name =~ 'Workload.WLILinuxExtension' and type =~ 'microsoft.compute/virtualmachines/extensions'\r\n| project tostring(properties.settings.workloadConfig)",
             "crossComponentResources": [
               "value::all"
             ],
@@ -274,6 +303,36 @@
             "timeContext": {
               "durationMs": 86400000
             }
+          },
+          {
+            "id": "b267e868-5a38-462e-b506-957caa359c7f",
+            "version": "KqlParameterItem/1.0",
+            "name": "isValidJson",
+            "type": 1,
+            "value": "false",
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "Config",
+                  "operator": "isValidJson",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "true"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "false"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
           }
         ],
         "style": "formVertical",
@@ -289,161 +348,196 @@
     {
       "type": 1,
       "content": {
-        "json": "#### Enable access to Azure Key Vaults (Optional)\nIf your connection strings reference secrets from Key Vaults, you need to provide access to it from the virtual machine via a Managed Service Identity."
+        "json": "Please ensure the configuration is a valid JSON before proceeding.",
+        "style": "error"
       },
-      "name": "Key vault access label"
+      "conditionalVisibility": {
+        "parameterName": "isValidJson",
+        "comparison": "isEqualTo",
+        "value": "false"
+      },
+      "name": "Check Json"
     },
     {
-      "type": 9,
+      "type": 12,
       "content": {
-        "version": "KqlParameterItem/1.0",
-        "crossComponentResources": [
-          "value::all"
-        ],
-        "parameters": [
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
           {
-            "id": "7886d36e-4db3-43e4-813b-c6427ac0cf0b",
-            "version": "KqlParameterItem/1.0",
-            "name": "KeyVaultSubscriptions",
-            "label": "Key vault subscriptions",
-            "type": 6,
-            "multiSelect": true,
-            "quote": "'",
-            "delimiter": ",",
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "includeAll": true,
-              "showDefault": false
-            },
-            "timeContext": {
-              "durationMs": 86400000
-            }
-          },
-          {
-            "id": "d082b467-a4fc-4023-869f-d97476f10e9b",
-            "version": "KqlParameterItem/1.0",
-            "name": "KeyVaults",
-            "type": 5,
-            "multiSelect": true,
-            "quote": "'",
-            "delimiter": ",",
-            "query": "Resources\n| where type =~ 'microsoft.keyvault/vaults'\n| order by resourceGroup asc, name asc\n| project value = id, label = id, selected = false, group = resourceGroup",
-            "crossComponentResources": [
-              "{KeyVaultSubscriptions}"
-            ],
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
-            "timeContext": {
-              "durationMs": 86400000
-            },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
-            "id": "14eddd17-2dc7-467b-bc41-f302a75d6b79",
-            "version": "KqlParameterItem/1.0",
-            "name": "KvDetails",
             "type": 1,
-            "query": "Resources\n| where id in~ (dynamic([{KeyVaults:value}]))\n| summarize tostring(makelist(pack('name', name, 'subscription', subscriptionId, 'resourceGroup', resourceGroup)))",
-            "crossComponentResources": [
-              "value::all"
-            ],
-            "isHiddenWhenLocked": true,
-            "timeContext": {
-              "durationMs": 86400000
+            "content": {
+              "json": "#### Enable access to Azure Key Vaults (Optional)\nIf your connection strings reference secrets from Key Vaults, you need to provide access to it from the virtual machine via a Managed Service Identity."
             },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          }
-        ],
-        "style": "formVertical",
-        "queryType": 1,
-        "resourceType": "microsoft.resourcegraph/resources"
-      },
-      "customWidth": "60",
-      "name": "Key vault parameters"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "#### Enable monitoring from this virtual machine\n\nUse the button below to deploy the required components and start monitoring."
-      },
-      "name": "Enable monitoring label",
-      "styleSettings": {
-        "margin": "10px 0 0 0"
-      }
-    },
-    {
-      "type": 11,
-      "content": {
-        "version": "LinkItem/1.0",
-        "style": "paragraph",
-        "links": [
+            "name": "Key vault access label"
+          },
           {
-            "id": "e95dc155-3fda-479a-9beb-ba9a851ee930",
-            "linkTarget": "ArmTemplate",
-            "linkLabel": "Add monitoring virtual machine",
-            "style": "primary",
-            "linkIsContextBlade": true,
-            "templateRunContext": {
-              "componentIdSource": "parameter",
-              "componentId": "ResourceGroup",
-              "templateUriSource": "static",
-              "templateUri": "https://azmonsolutions.blob.core.windows.net/workloadinsights/add-monitoring-vm-azuredeploy.json",
-              "templateParameters": [
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "crossComponentResources": [
+                "value::all"
+              ],
+              "parameters": [
                 {
-                  "name": "vmName",
-                  "source": "static",
-                  "value": "{VmId:name}",
-                  "kind": "stringValue"
+                  "id": "7886d36e-4db3-43e4-813b-c6427ac0cf0b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "KeyVaultSubscriptions",
+                  "label": "Key vault subscriptions",
+                  "type": 6,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "includeAll": true,
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 86400000
+                  }
                 },
                 {
-                  "name": "dataCollectionRuleId",
-                  "source": "parameter",
-                  "value": "MonitoringProfile",
-                  "kind": "stringValue"
+                  "id": "d082b467-a4fc-4023-869f-d97476f10e9b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "KeyVaults",
+                  "type": 5,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "Resources\n| where type =~ 'microsoft.keyvault/vaults'\n| order by resourceGroup asc, name asc\n| project value = id, label = id, selected = false, group = resourceGroup",
+                  "crossComponentResources": [
+                    "{KeyVaultSubscriptions}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
                 },
                 {
-                  "name": "workloadconfig",
-                  "source": "parameter",
-                  "value": "Config",
-                  "kind": "objectValue"
-                },
-                {
-                  "name": "vmLocation",
-                  "source": "parameter",
-                  "value": "VmLocation",
-                  "kind": "stringValue"
-                },
-                {
-                  "name": "vmSubscription",
-                  "source": "static",
-                  "value": "{VmId:subscription}",
-                  "kind": "stringValue"
-                },
-                {
-                  "name": "vmResourceGroup",
-                  "source": "static",
-                  "value": "{VmId:resourceGroup}",
-                  "kind": "stringValue"
-                },
-                {
-                  "name": "linkedVaults",
-                  "source": "parameter",
-                  "value": "KvDetails",
-                  "kind": "arrayValue"
+                  "id": "14eddd17-2dc7-467b-bc41-f302a75d6b79",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "KvDetails",
+                  "type": 1,
+                  "query": "Resources\n| where id in~ (dynamic([{KeyVaults:value}]))\n| summarize tostring(makelist(pack('name', name, 'subscription', subscriptionId, 'resourceGroup', resourceGroup)))",
+                  "crossComponentResources": [
+                    "value::all"
+                  ],
+                  "isHiddenWhenLocked": true,
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
                 }
               ],
-              "titleSource": "static",
-              "descriptionSource": "static",
-              "runLabelSource": "static"
+              "style": "formVertical",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "customWidth": "60",
+            "name": "Key vault parameters"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "#### Enable monitoring from this virtual machine\n\nUse the button below to deploy the required components and start monitoring."
+            },
+            "name": "Enable monitoring label",
+            "styleSettings": {
+              "margin": "10px 0 0 0"
             }
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "paragraph",
+              "links": [
+                {
+                  "id": "e95dc155-3fda-479a-9beb-ba9a851ee930",
+                  "linkTarget": "ArmTemplate",
+                  "linkLabel": "Add monitoring virtual machine",
+                  "style": "primary",
+                  "linkIsContextBlade": true,
+                  "templateRunContext": {
+                    "componentIdSource": "parameter",
+                    "componentId": "ResourceGroup",
+                    "templateUriSource": "static",
+                    "templateUri": "https://azmonsolutions.blob.core.windows.net/workloadinsights/add-monitoring-vm-azuredeploy.json",
+                    "templateParameters": [
+                      {
+                        "name": "vmName",
+                        "source": "static",
+                        "value": "{VmId:name}",
+                        "kind": "stringValue"
+                      },
+                      {
+                        "name": "dataCollectionRuleId",
+                        "source": "parameter",
+                        "value": "MonitoringProfile",
+                        "kind": "stringValue"
+                      },
+                      {
+                        "name": "workloadconfig",
+                        "source": "parameter",
+                        "value": "Config",
+                        "kind": "objectValue"
+                      },
+                      {
+                        "name": "vmLocation",
+                        "source": "parameter",
+                        "value": "VmLocation",
+                        "kind": "stringValue"
+                      },
+                      {
+                        "name": "vmSubscription",
+                        "source": "static",
+                        "value": "{VmId:subscription}",
+                        "kind": "stringValue"
+                      },
+                      {
+                        "name": "vmResourceGroup",
+                        "source": "static",
+                        "value": "{VmId:resourceGroup}",
+                        "kind": "stringValue"
+                      },
+                      {
+                        "name": "linkedVaults",
+                        "source": "parameter",
+                        "value": "KvDetails",
+                        "kind": "arrayValue"
+                      }
+                    ],
+                    "title": "Enable monitoring on virtual machine",
+                    "descriptionSource": "static",
+                    "description": "All set to use **{VmId:name}** to start monitoring.\r\n\r\nThe ARM template used to deploy the workload insights extension can be inspected by clicking on the `View Template`.\r\n\r\nClick the `Start monitoring` button to onboard this virtual machine to the monitoring profile and begin monitoring.\r\n\r\n> **Note:** This process may take up to 2 minutes. Please refresh the workbook to see the onboarded virtual machine.",
+                    "runLabelSource": "static",
+                    "runLabel": "Start monitoring"
+                  }
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "isValidJson",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "links - 5"
           }
         ]
       },
-      "name": "links - 5"
+      "conditionalVisibility": {
+        "parameterName": "isValidJson",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "name": "Steps after valid json"
     }
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
