@@ -185,38 +185,6 @@
       "type": 11,
       "content": {
         "version": "LinkItem/1.0",
-        "style": "nav",
-        "links": [
-          {
-            "id": "8a20242a-c536-4b22-a012-10128ad5fa92",
-            "linkTarget": "WorkbookTemplate",
-            "linkLabel": "Create new profile",
-            "style": "secondary",
-            "linkIsContextBlade": true,
-            "workbookContext": {
-              "componentIdSource": "workbook",
-              "resourceIdsSource": "workbook",
-              "templateIdSource": "static",
-              "templateId": "Community-Workbooks/Workloads-AMA/Create new profile",
-              "typeSource": "static",
-              "type": "workload-onboarding",
-              "gallerySource": "static",
-              "gallery": "Azure Monitor",
-              "locationSource": "default"
-            }
-          }
-        ]
-      },
-      "customWidth": "0",
-      "name": "links - 1",
-      "styleSettings": {
-        "margin": "35px 0 0 -5px"
-      }
-    },
-    {
-      "type": 11,
-      "content": {
-        "version": "LinkItem/1.0",
         "style": "tabs",
         "links": [
           {
@@ -383,48 +351,32 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in~ ({SqlServers});\r\nlet results = data\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer, TenantId\r\n| extend Val = iff(LastTimestamp < now() - 10m and Name != 'engine_edition', 0.0, Val)\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer, TenantId\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5 and OverallOnline > 0, 1.0, OverallOnline)\r\n;\r\nresults\r\n| where EngineEdition == 5\r\n| summarize \r\n        CurrentOnline = sum(CurrentOnline),\r\n        CurrentUnhealthy = sum(CurrentUnhealthy),\r\n        OverallUnhealthy = sum(OverallUnhealthy),\r\n        OverallOnline = sum(OverallOnline)\r\n    by Id = Instance, Parent = '', Name = Instance, key = Instance, Instance, TenantId, Database = '*'\r\n| extend EngineEdition = 20.0\r\n| union (results\r\n    | where EngineEdition == 5\r\n    | project Id = strcat(Computer, '/', Instance, '/', Database), Parent = Instance, Name = Database, CurrentOnline, CurrentUnhealthy, OverallOnline, OverallUnhealthy, EngineEdition, Computer, Instance, Database, TenantId\r\n    | extend key = Id)\r\n| union (results\r\n    | where EngineEdition != 5\r\n    | project Id = strcat(Computer, '/', Instance), Parent = '', Name = Instance, CurrentOnline, CurrentUnhealthy, OverallOnline, OverallUnhealthy, EngineEdition, Computer, key = strcat(Computer, '/', Instance, '/', Database), Instance, Database, TenantId)\r\n| join kind = inner (\r\ndata\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by key = strcat(Computer, '/', Instance, '/', Database)\r\n| union (\r\ndata\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | where EngineEdition == 5\r\n    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = sum(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by key = Instance\r\n)\r\n) on key\r\n| extend Type = case(\r\n            EngineEdition == 1, 'SQL Server Personal',\r\n            EngineEdition == 2, 'SQL Server Standard',\r\n            EngineEdition == 3, 'SQL Server Enterprise',\r\n            EngineEdition == 4, 'SQL Server Express',\r\n            EngineEdition == 5, 'Azure SQL Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Azure SQL Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            EngineEdition == 20, 'Azure Logical SQL Server',            '-')\r\n| project Id, Parent, Name, Status = case(CurrentUnhealthy > 0, 'Unhealthy', CurrentOnline + CurrentUnhealthy < OverallOnline + OverallUnhealthy, 'No telemetry', OverallUnhealthy - CurrentUnhealthy > 0, 'Previously unhealthy', OverallUnhealthy == 0, 'Online', ''), ['Online dbs'] = CurrentOnline, ['Previously unhealthy dbs'] = OverallUnhealthy - CurrentUnhealthy, ['Currently unhealthy dbs'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Trend, Type, Computer, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', Instance, '/database/', Database), Title = strcat(Type, ' > ', iff(EngineEdition == 5, strcat(Instance, '/', Database), Instance)), [\"No telemetry dbs\"] =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy)\r\n| order by ['Currently unhealthy dbs'] desc, [\"No telemetry dbs\"] desc, ['Previously unhealthy dbs'] desc, ['Online dbs'] desc, Name asc, Computer asc",
-                    "size": 2,
-                    "showAnalytics": true,
-                    "title": "Server details",
+                    "query": "let aGdata = InsightsMetrics\r\n    | where Computer in~ ({OnboardedComputers})\r\n    | where Namespace == \"sqlserver_hadr_replica_states\"\r\n    | extend Tags = todynamic(Tags)\r\n    | extend health = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend groupId = tostring(Tags.group_id)\r\n    | extend groupName = tostring(Tags.group_name)\r\n    | where groupId in ({AvailabilityGroups})\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | extend Failover = tostring(Tags.failover_mode_desc);\r\nlet results = aGdata\r\n    | where TimeGenerated between(ago(10m)..now()) and Name == \"connected_state\"\r\n    | summarize by groupId, health, Computer, groupName, Instance, Failover\r\n    | summarize CurrentOnlineInstances = countif(health == \"HEALTHY\"), CurrentUnhealthyInstances = countif(health != \"HEALTHY\") by groupId, groupName, Computer, Instance, Failover\r\n    | join kind = inner (\r\n        aGdata\r\n        | where Name == \"connected_state\"\r\n        | summarize by groupId, health, Computer, groupName, Instance, Failover\r\n        | summarize OverallOnlineInstances = countif(health == \"HEALTHY\"), OverallUnhealthyInstances = countif(health != \"HEALTHY\") by groupId, groupName, Computer, Instance, Failover) on groupId, Instance, Computer, Failover;\r\nresults\r\n| join kind = rightouter (\r\n    aGdata\r\n    | where Name == \"role\" and Val == 1\r\n    | summarize by PrimInstance = Instance, groupId, groupName) on groupId, groupName\r\n| summarize\r\n    CurrentOnline = sum(CurrentOnlineInstances),\r\n    CurrentUnhealthy = sum(CurrentUnhealthyInstances),\r\n    OverallOnline = sum(OverallOnlineInstances),\r\n    OverallUnhealthy = sum(OverallUnhealthyInstances)\r\n    by groupId, groupName, Computer, Failover, PrimInstance\r\n| extend Status = case(CurrentUnhealthy > 0, 'Unhealthy', CurrentOnline + CurrentUnhealthy < OverallOnline + OverallUnhealthy, 'No telemetry', OverallUnhealthy - CurrentUnhealthy > 0, 'Previously unhealthy', OverallUnhealthy == 0, 'Online', ''), ['Online servers'] = CurrentOnline, ['Previously offline servers'] = OverallUnhealthy - CurrentUnhealthy, ['Currently offline servers'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Computer, [\"No telemetry\"] =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy)\r\n| project-reorder groupName, Status, PrimInstance, ['Online servers'], Failover, Computer\r\n| order by ['Currently offline servers'] desc, [\"No telemetry\"] desc, ['Previously offline servers'] desc, ['Online servers'] desc, groupName asc, Computer asc",
+                    "size": 0,
                     "timeContext": {
                       "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
-                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
                       "{Workspaces}"
                     ],
-                    "visualization": "table",
                     "gridSettings": {
                       "formatters": [
                         {
-                          "columnMatch": "Id",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Parent",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Name",
+                          "columnMatch": "groupName",
                           "formatter": 7,
                           "formatOptions": {
                             "linkTarget": "WorkbookTemplate",
                             "workbookContext": {
-                              "componentIdSource": "column",
-                              "componentId": "Title",
-                              "resourceIdsSource": "column",
-                              "resourceIds": "DbId",
-                              "templateIdSource": "static",
-                              "templateId": "Community-Workbooks/Workloads-AMA/SQL Server",
-                              "typeSource": "static",
-                              "type": "workbook",
+                              "componentIdSource": "workbook",
+                              "resourceIdsSource": "workbook",
+                              "templateIdSource": "cell",
+                              "typeSource": "workbook",
                               "gallerySource": "static",
                               "gallery": "Azure Monitor",
-                              "locationSource": "default"
+                              "locationSource": "workbook"
                             }
                           }
                         },
@@ -436,13 +388,19 @@
                             "thresholdsGrid": [
                               {
                                 "operator": "==",
-                                "thresholdValue": "Unhealthy",
-                                "representation": "critical",
+                                "thresholdValue": "Offline",
+                                "representation": "4",
                                 "text": "{0}{1}"
                               },
                               {
                                 "operator": "==",
-                                "thresholdValue": "Previously unhealthy",
+                                "thresholdValue": "Previously offline",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "No telemetry",
                                 "representation": "2",
                                 "text": "{0}{1}"
                               },
@@ -450,12 +408,6 @@
                                 "operator": "==",
                                 "thresholdValue": "Online",
                                 "representation": "Blank",
-                                "text": "{0}{1}"
-                              },
-                              {
-                                "operator": "==",
-                                "thresholdValue": "No telemetry",
-                                "representation": "warning",
                                 "text": "{0}{1}"
                               },
                               {
@@ -468,26 +420,26 @@
                           }
                         },
                         {
-                          "columnMatch": "Online dbs",
+                          "columnMatch": "Online servers",
                           "formatter": 22,
                           "formatOptions": {
                             "compositeBarSettings": {
-                              "labelText": "[\"Online dbs\"] / [\"Total\"]",
+                              "labelText": "[\"Online servers\"] / [\"Total\"]",
                               "columnSettings": [
                                 {
-                                  "columnName": "Online dbs",
+                                  "columnName": "Online servers",
                                   "color": "green"
                                 },
                                 {
-                                  "columnName": "No telemetry dbs",
+                                  "columnName": "No telemetry",
                                   "color": "orange"
                                 },
                                 {
-                                  "columnName": "Previously unhealthy dbs",
+                                  "columnName": "Previously offline servers",
                                   "color": "yellow"
                                 },
                                 {
-                                  "columnName": "Currently unhealthy dbs",
+                                  "columnName": "Currently offline servers",
                                   "color": "redBright"
                                 }
                               ]
@@ -495,11 +447,31 @@
                           }
                         },
                         {
-                          "columnMatch": "Previously unhealthy dbs",
+                          "columnMatch": "groupId",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "Currently unhealthy dbs",
+                          "columnMatch": "CurrentOnline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "CurrentUnhealthy",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "OverallOnline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "OverallUnhealthy",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Previously offline servers",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Currently offline servers",
                           "formatter": 5
                         },
                         {
@@ -507,137 +479,64 @@
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "Trend",
-                          "formatter": 21,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "grayBlue"
-                          }
-                        },
-                        {
-                          "columnMatch": "DbId",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Title",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "No telemetry dbs",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Server memory",
-                          "formatter": 0,
-                          "numberFormat": {
-                            "unit": 3,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "HealthLabel",
+                          "columnMatch": "No telemetry",
                           "formatter": 5
                         }
                       ],
-                      "rowLimit": 1000,
-                      "filter": true,
-                      "hierarchySettings": {
-                        "idColumn": "Id",
-                        "parentColumn": "Parent",
-                        "treeType": 0,
-                        "expanderColumn": "Name",
-                        "expandTopLevel": true
-                      },
                       "labelSettings": [
                         {
-                          "columnId": "Id"
-                        },
-                        {
-                          "columnId": "Parent"
-                        },
-                        {
-                          "columnId": "Name",
-                          "label": "Sql Servers"
+                          "columnId": "groupName",
+                          "label": "Name"
                         },
                         {
                           "columnId": "Status"
                         },
                         {
-                          "columnId": "Online dbs",
-                          "label": "Online databases"
+                          "columnId": "PrimInstance",
+                          "label": "Primary Instance"
                         },
                         {
-                          "columnId": "Previously unhealthy dbs",
-                          "label": ""
+                          "columnId": "Online servers"
                         },
                         {
-                          "columnId": "Currently unhealthy dbs"
-                        },
-                        {
-                          "columnId": "Total"
-                        },
-                        {
-                          "columnId": "Trend",
-                          "label": "Online database trend"
-                        },
-                        {
-                          "columnId": "Type",
-                          "label": "Database type"
+                          "columnId": "Failover",
+                          "label": "Failover mode"
                         },
                         {
                           "columnId": "Computer",
                           "label": "Monitored by"
                         },
                         {
-                          "columnId": "DbId"
+                          "columnId": "groupId"
                         },
                         {
-                          "columnId": "Title"
+                          "columnId": "CurrentOnline"
+                        },
+                        {
+                          "columnId": "CurrentUnhealthy"
+                        },
+                        {
+                          "columnId": "OverallOnline"
+                        },
+                        {
+                          "columnId": "OverallUnhealthy"
+                        },
+                        {
+                          "columnId": "Previously offline servers"
+                        },
+                        {
+                          "columnId": "Currently offline servers"
+                        },
+                        {
+                          "columnId": "Total"
+                        },
+                        {
+                          "columnId": "No telemetry"
                         }
                       ]
-                    },
-                    "sortBy": [],
-                    "tileSettings": {
-                      "titleContent": {
-                        "columnMatch": "Name",
-                        "formatter": 1,
-                        "formatOptions": {
-                          "showIcon": true
-                        }
-                      },
-                      "leftContent": {
-                        "columnMatch": "Value",
-                        "formatter": 12,
-                        "formatOptions": {
-                          "min": 0,
-                          "palette": "blue",
-                          "showIcon": true
-                        },
-                        "numberFormat": {
-                          "unit": 17,
-                          "options": {
-                            "style": "decimal",
-                            "maximumFractionDigits": 1
-                          }
-                        }
-                      },
-                      "secondaryContent": {
-                        "columnMatch": "Trend",
-                        "formatter": 21,
-                        "formatOptions": {
-                          "min": 0,
-                          "palette": "blue",
-                          "showIcon": true
-                        }
-                      },
-                      "showBorder": false
                     }
                   },
-                  "showPin": true,
-                  "name": "Server details"
+                  "name": "Availability groups details"
                 }
               ]
             },
@@ -646,11 +545,6 @@
                 "parameterName": "selectedTab",
                 "comparison": "isEqualTo",
                 "value": "Overview"
-              },
-              {
-                "parameterName": "OnboardedComputerCount",
-                "comparison": "isNotEqualTo",
-                "value": "0"
               }
             ],
             "name": "Overview"
