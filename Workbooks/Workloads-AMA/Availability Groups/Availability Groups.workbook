@@ -16,7 +16,7 @@
             "label": "Monitoring profile",
             "type": 5,
             "isRequired": true,
-            "value": null,
+            "value": "/subscriptions/51748562-b7c6-417c-96f7-29c2f2503e0b/resourceGroups/oychan-sql-rg/providers/Microsoft.Insights/dataCollectionRules/oychan-sql-profile",
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [],
@@ -276,7 +276,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let aGdata = InsightsMetrics\r\n    | where Computer in~ ({OnboardedComputers})\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"connected_state\"\r\n    | extend Tags = todynamic(Tags)\r\n    | extend health = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend groupId = tostring(Tags.group_id)\r\n    | extend groupName = tostring(Tags.group_name)\r\n    | where groupId in ({AvailabilityGroups})\r\n    | extend Instance = tostring(Tags.sql_instance);\r\naGdata\r\n    | where TimeGenerated between(ago(10m)..now())\r\n    | summarize by groupId, health, Computer, groupName\r\n    | summarize CurrentOnline = countif(health == \"HEALTHY\"), CurrentUnhealthy = countif(health != \"HEALTHY\") by groupId, groupName, Computer\r\n    | join kind = inner (\r\n        aGdata\r\n        | summarize by groupId, health, Computer, groupName\r\n        | summarize OverallOnline = countif(health == \"HEALTHY\"), OverallUnhealthy = countif(health != \"HEALTHY\") by groupId, groupName, Computer)\r\n        on groupId\r\n    | extend Type = \"Availability Groups\"\r\n| project Green = CurrentOnline, Yellow = OverallUnhealthy - CurrentUnhealthy, Red = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Gray =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy), Type, Computer\r\n| summarize ['Online dbs'] = sum(Green), ['Previously unhealthy dbs'] = sum(Yellow), ['Currently unhealthy dbs'] = sum(Red), [\"No telemetry dbs\"] = sum(Gray), Total = sum(Total) by Type\r\n| extend Subtitle = '━━━'\r\n| order by ['Currently unhealthy dbs'] desc, [\"No telemetry dbs\"] desc, ['Previously unhealthy dbs'] desc, ['Online dbs'] desc\r\n",
+                    "query": "let aGdata = InsightsMetrics\r\n    | where Computer in~ ({OnboardedComputers})\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"connected_state\"\r\n    | extend Tags = todynamic(Tags)\r\n    | where tostring(Tags.role_desc) == \"PRIMARY\"\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name);\r\naGdata\r\n    | where TimeGenerated between(ago(10m)..now()) and Name == \"connected_state\"\r\n    | summarize CurrentOnline = min(Val), CurrentTotal = max(Val) by GroupId, Computer, GroupName\r\n    | join kind = inner (\r\n        aGdata\r\n        | where Name == \"connected_state\"\r\n        | summarize OverallOnline = min(Val), OverallTotal = max(Val) by GroupId, GroupName, Computer)\r\n        on GroupId\r\n    | extend Type = \"Availability Groups\"\r\n    | extend OverallUnhealthy = OverallTotal - OverallOnline\r\n    | extend CurrentUnhealthy = CurrentTotal - CurrentOnline\r\n    | project Green = CurrentOnline, Yellow = OverallUnhealthy - CurrentUnhealthy, Red = CurrentUnhealthy, Total = CurrentTotal, Gray =  (OverallTotal) - (CurrentTotal), Type, Computer\r\n| summarize ['Online dbs'] = sum(Green), ['Previously unhealthy dbs'] = sum(Yellow), ['Currently unhealthy dbs'] = sum(Red), [\"No telemetry dbs\"] = sum(Gray), Total = sum(Total) by Type\r\n| extend Subtitle = '━━━'\r\n| order by ['Currently unhealthy dbs'] desc, [\"No telemetry dbs\"] desc, ['Previously unhealthy dbs'] desc, ['Online dbs'] desc\r\n",
                     "size": 4,
                     "timeContext": {
                       "durationMs": 0
@@ -351,10 +351,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let aGdata = InsightsMetrics\r\n    | where Computer in~ ({OnboardedComputers})\r\n    | where Namespace == \"sqlserver_hadr_replica_states\"\r\n    | extend Tags = todynamic(Tags)\r\n    | extend health = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend groupId = tostring(Tags.group_id)\r\n    | extend groupName = tostring(Tags.group_name)\r\n    | where groupId in ({AvailabilityGroups})\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | extend Failover = tostring(Tags.failover_mode_desc);\r\nlet results = aGdata\r\n    | where TimeGenerated between(ago(10m)..now()) and Name == \"connected_state\"\r\n    | summarize by groupId, health, Computer, groupName, Instance, Failover\r\n    | summarize CurrentOnlineInstances = countif(health == \"HEALTHY\"), CurrentUnhealthyInstances = countif(health != \"HEALTHY\") by groupId, groupName, Computer, Instance, Failover\r\n    | join kind = inner (\r\n        aGdata\r\n        | where Name == \"connected_state\"\r\n        | summarize by groupId, health, Computer, groupName, Instance, Failover\r\n        | summarize OverallOnlineInstances = countif(health == \"HEALTHY\"), OverallUnhealthyInstances = countif(health != \"HEALTHY\") by groupId, groupName, Computer, Instance, Failover) on groupId, Instance, Computer, Failover;\r\nresults\r\n| join kind = rightouter (\r\n    aGdata\r\n    | where Name == \"role\" and Val == 1\r\n    | summarize by PrimInstance = Instance, groupId, groupName) on groupId, groupName\r\n| summarize\r\n    CurrentOnline = sum(CurrentOnlineInstances),\r\n    CurrentUnhealthy = sum(CurrentUnhealthyInstances),\r\n    OverallOnline = sum(OverallOnlineInstances),\r\n    OverallUnhealthy = sum(OverallUnhealthyInstances)\r\n    by groupId, groupName, Computer, Failover, PrimInstance\r\n| extend Status = case(CurrentUnhealthy > 0, 'Unhealthy', CurrentOnline + CurrentUnhealthy < OverallOnline + OverallUnhealthy, 'No telemetry', OverallUnhealthy - CurrentUnhealthy > 0, 'Previously unhealthy', OverallUnhealthy == 0, 'Online', ''), ['Online servers'] = CurrentOnline, ['Previously offline servers'] = OverallUnhealthy - CurrentUnhealthy, ['Currently offline servers'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Computer, [\"No telemetry\"] =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy)\r\n| project-reorder groupName, Status, PrimInstance, ['Online servers'], Failover, Computer\r\n| order by ['Currently offline servers'] desc, [\"No telemetry\"] desc, ['Previously offline servers'] desc, ['Online servers'] desc, groupName asc, Computer asc",
+                    "query": "let aGdata = InsightsMetrics\r\n    | where Computer in~ ({OnboardedComputers})\r\n    | where Namespace == \"sqlserver_hadr_replica_states\"\r\n    | extend Tags = todynamic(Tags)\r\n    | extend health = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend groupId = tostring(Tags.group_id)\r\n    | extend groupName = tostring(Tags.group_name)\r\n    | where groupId in ({AvailabilityGroups})\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | extend Failover = tostring(Tags.failover_mode_desc);\r\nlet results = aGdata\r\n    | where TimeGenerated between(ago(10m)..now()) and Name == \"connected_state\"\r\n    | summarize CurrentOnlineInstances = min(Val), CurrentTotal = max(Val) by groupId, Computer, groupName, Instance, Failover, TenantId\r\n    | join kind = inner (\r\n        aGdata\r\n        | where Name == \"connected_state\"\r\n        | summarize OverallOnlineInstances = min(Val), OverallTotal = max(Val) by groupId, groupName, Computer, Instance, Failover, TenantId)\r\n        on groupId, Instance, Computer;\r\nresults\r\n| join kind = rightouter (\r\n    aGdata\r\n    | where Name == \"role\" and Val == 1\r\n    | summarize by PrimInstance = Instance, groupId, groupName)\r\n    on groupId, groupName\r\n| summarize\r\n    CurrentOnline = sum(CurrentOnlineInstances),\r\n    CurrentUnhealthy = sum(CurrentOnlineInstances - CurrentTotal),\r\n    OverallOnline = sum(OverallOnlineInstances),\r\n    OverallUnhealthy = sum(OverallOnlineInstances - OverallTotal)\r\n    by groupId, groupName, Computer, Failover, PrimInstance, TenantId\r\n| extend Status = case(CurrentUnhealthy > 0, 'Unhealthy', CurrentOnline + CurrentUnhealthy < OverallOnline + OverallUnhealthy, 'No telemetry', OverallUnhealthy - CurrentUnhealthy > 0, 'Previously unhealthy', OverallUnhealthy == 0, 'Online', ''), ['Online servers'] = CurrentOnline, ['Previously offline servers'] = OverallUnhealthy - CurrentUnhealthy, ['Currently offline servers'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Computer, [\"No telemetry\"] =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy), DbId = strcat('/workspace/', TenantId, '/computer/', Computer, '/availabilityGroupId/', groupId), Title = strcat(\"Availability Group >\", groupName)\r\n| project-reorder groupName, Status, PrimInstance, ['Online servers'], Failover, Computer\r\n| order by ['Currently offline servers'] desc, [\"No telemetry\"] desc, ['Previously offline servers'] desc, ['Online servers'] desc, groupName asc, Computer asc",
                     "size": 0,
                     "timeContext": {
-                      "durationMs": 0
+                      "durationMs": 14400000
                     },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
@@ -370,9 +370,12 @@
                           "formatOptions": {
                             "linkTarget": "WorkbookTemplate",
                             "workbookContext": {
-                              "componentIdSource": "workbook",
-                              "resourceIdsSource": "workbook",
-                              "templateIdSource": "cell",
+                              "componentIdSource": "column",
+                              "componentId": "Title",
+                              "resourceIdsSource": "column",
+                              "resourceIds": "DbId",
+                              "templateIdSource": "static",
+                              "templateId": "Community-Workbooks/Workloads-AMA/Availability Group",
                               "typeSource": "workbook",
                               "gallerySource": "static",
                               "gallery": "Azure Monitor",
@@ -451,6 +454,10 @@
                           "formatter": 5
                         },
                         {
+                          "columnMatch": "TenantId",
+                          "formatter": 5
+                        },
+                        {
                           "columnMatch": "CurrentOnline",
                           "formatter": 5
                         },
@@ -480,6 +487,14 @@
                         },
                         {
                           "columnMatch": "No telemetry",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "DbId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Title",
                           "formatter": 5
                         }
                       ],
@@ -540,13 +555,11 @@
                 }
               ]
             },
-            "conditionalVisibilities": [
-              {
-                "parameterName": "selectedTab",
-                "comparison": "isEqualTo",
-                "value": "Overview"
-              }
-            ],
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "Overview"
+            },
             "name": "Overview"
           }
         ]
