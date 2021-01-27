@@ -248,8 +248,8 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let agData = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend SyncHealth = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\"\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}';\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags\r\n| evaluate bag_unpack(Tags)\r\n| where sql_instance == replica_server_name\r\n| extend IsOperational = iff(operational_state_desc == \"ONLINE\", 1, 0)\r\n| extend IsHealthy = iff(replica_synchronization_health_desc == \"HEALTHY\", 1, 0)\r\n| summarize \r\n  CurrentOperational = min(IsOperational), TotalOperational = 1,\r\n  CurrentHealth = min(IsHealthy), TotalHealth = 1 by replica_server_name, seeding_mode_desc, group_name, group_id, availability_mode_desc, role_desc, failover_mode_desc\r\n| join kind = inner (\r\n    agData\r\n    | project Tags\r\n    | evaluate bag_unpack(Tags)\r\n    | where sql_instance == replica_server_name\r\n    | extend IsOperational = iff(operational_state_desc == \"ONLINE\", 1, 0)\r\n    | extend IsHealthy = iff(replica_synchronization_health_desc == \"HEALTHY\", 1, 0)\r\n    | summarize \r\n        OverallOperational = min(IsOperational), TotalOperational = 1,\r\n        OverallHealth = min(IsHealthy), TotalHealth = 1 by replica_server_name, seeding_mode_desc, group_name, group_id, AvailabilityDescription = replace(@'([A-Z]+)_([A-Z]+)$', @'\\1 \\2', availability_mode_desc), role_desc, failover_mode_desc) on replica_server_name, group_id\r\n| project replica_server_name, Status = case(CurrentOperational == 1, 'Online', OverallOperational == 1, 'Previously Online', 'Offline'), role_desc, AvailabilityDescription, failover_mode_desc, seeding_mode_desc, SynchronizationState = case(CurrentHealth == 1, 'Synchronized', OverallHealth == 1, 'Previously Synchronized', 'Not Synchronized')\r\n| order by role_desc asc, replica_server_name asc",
-              "size": 4,
+              "query": "let agData = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend SyncHealth = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\"\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}';\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags\r\n| evaluate bag_unpack(Tags)\r\n| where sql_instance == replica_server_name\r\n| extend IsOperational = iff(operational_state_desc == \"ONLINE\", 1, 0)\r\n| extend IsHealthy = iff(replica_synchronization_health_desc == \"HEALTHY\", 1, 0)\r\n| summarize \r\n  CurrentOperational = min(IsOperational),\r\n  CurrentHealth = min(IsHealthy) by replica_server_name, seeding_mode_desc, group_name, group_id, availability_mode_desc, role_desc, failover_mode_desc\r\n| join kind = inner (\r\n    agData\r\n    | project Tags\r\n    | evaluate bag_unpack(Tags)\r\n    | where sql_instance == replica_server_name\r\n    | extend IsOperational = iff(operational_state_desc == \"ONLINE\", 1, 0)\r\n    | extend IsHealthy = iff(replica_synchronization_health_desc == \"HEALTHY\", 1, 0)\r\n    | summarize \r\n        OverallOperational = min(IsOperational),\r\n        OverallHealth = min(IsHealthy) by replica_server_name, seeding_mode_desc, group_name, group_id, AvailabilityDescription = replace(@'([A-Z]+)_([A-Z]+)$', @'\\1 \\2', availability_mode_desc), role_desc, failover_mode_desc) on replica_server_name, group_id\r\n| project replica_server_name, Status = case(CurrentOperational == 1, 'Online', OverallOperational == 1, 'Previously Online', 'Offline'), role_desc, AvailabilityDescription, failover_mode_desc, seeding_mode_desc, SynchronizationState = case(CurrentHealth == 1, 'Synchronized', OverallHealth == 1, 'Previously Synchronized', 'Not Synchronized')\r\n| order by role_desc asc, replica_server_name asc",
+              "size": 1,
               "title": "Availability Replicas",
               "timeContext": {
                 "durationMs": 0
@@ -358,7 +358,110 @@
                 "showBorder": false
               }
             },
-            "name": "Key stats"
+            "name": "Availability Replicas"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let InstancesInGroupId = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\"\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}'\r\n    | summarize by Instance;\r\nlet data = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_dbreplica_states\";\r\nlet agData = data\r\n| join kind = leftsemi (InstancesInGroupId) on Instance\r\n| where Name == \"database_state\";\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags\r\n| evaluate bag_unpack(Tags)\r\n| where sql_instance == replica_server_name\r\n| extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n| extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n| summarize CurrentSynced = min(isSync), CurrentOnline = min(isOnline) by database_name, replica_server_name\r\n| join kind = inner (\r\n    agData\r\n    | project Tags\r\n    | evaluate bag_unpack(Tags)\r\n    | where sql_instance == replica_server_name\r\n    | extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n    | extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n    | summarize OverallSynced = min(isSync), OverallOnline = min(isOnline) by database_name, replica_server_name) on replica_server_name, database_name\r\n| project replica_server_name, database_name, Status= case(CurrentOnline == 1, 'Online', OverallOnline == 1, 'Previously Online', 'Offline'), SynchronizationState = case(CurrentSynced == 1, 'Synchronized', OverallSynced == 1, 'Previously Synchronized', 'Not Synchronized')\r\n| order by replica_server_name asc",
+              "size": 0,
+              "noDataMessage": "The query returned no results. Ensure the query name 'SQLServerDatabaseReplicaStates' is enabled in your telegraf settings.",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "$gen_group",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "WorkbookTemplate",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "workbook",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Availability Group Details",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "replica_server_name",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "database_name",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Online",
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Previously Online",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Offline",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "replica_server_name"
+                  ],
+                  "expandTopLevel": true,
+                  "finalBy": "database_name"
+                },
+                "labelSettings": [
+                  {
+                    "columnId": "replica_server_name",
+                    "label": "Database Replica"
+                  },
+                  {
+                    "columnId": "database_name"
+                  },
+                  {
+                    "columnId": "Status"
+                  },
+                  {
+                    "columnId": "SynchronizationState"
+                  }
+                ]
+              }
+            },
+            "name": "Database Replicas"
           }
         ]
       },
