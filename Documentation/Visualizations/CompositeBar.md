@@ -87,7 +87,15 @@ In below example, the online, offline, and the recovering, all have Max aggregat
 
 #### Custom Tooltip
 
-Select "Apply custom tooltip" and add a custom tooltip which acts as a tooltip for the label.
+Select "Apply custom tooltip" and add a custom tooltip which acts as a tooltip for the label. You can use a mix of static text, columns, and parameters.
+
+Use `{0}` to use the current column value
+
+Refer to columns with `["columnName"]`
+
+Refer to parameters with `{paramName}`
+
+Both column name and parameter name are case sensitive.
 
 ## Sorting
 

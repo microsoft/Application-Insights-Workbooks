@@ -42,6 +42,7 @@ Users may also wish to pin multiple visualizations from the Workbook or the enti
 
 
 ## Sharing and Viewing Permissions <a id="Share"></a>
+### _[Private Workbooks is being Deprecated](DataSources\PrivateWorkbooksDeprecation.md)_
 Workbooks have the benefit of either being a private or shared document. By default, saved workbooks will be saved under "My Reports", meaning that only the creator can view this workbook.
 
 Users can share their workbooks by selecting the Share icon from the top tool bar while in `Edit Mode`. Users will be prompted to move their workbook to "Shared Reports", which will generate a link that provides direct access to the workbook.

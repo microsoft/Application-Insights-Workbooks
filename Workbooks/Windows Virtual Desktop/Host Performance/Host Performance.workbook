@@ -209,16 +209,15 @@
             "content": {
               "version": "NotebookGroup/1.0",
               "groupType": "editable",
-              "title": "Host responsiveness",
               "items": [
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Session\" and InstanceName == \"Max\" and CounterName == \"Max Input Delay\" \r\n| make-series Value=max(CounterValue) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by _ResourceId\r\n| project TimeGenerated, _ResourceId, Value, series_stats(Value), outliers=series_outliers(Value)\r\n| mv-expand TimeGenerated to typeof(datetime), outliers to typeof(double), Value to typeof(double)\r\n| project TimeGenerated, _ResourceId, Value, outliers_removed=iff(outliers > 1.5 and series_stats_Value_avg < Value, series_stats_Value_avg , Value), Variance=series_stats_Value_variance // replace outliers with the average\r\n| as SourceData\r\n| where Value > 0\r\n| summarize Median=percentile(Value, 50), Peak=max(Value) by _ResourceId, Variance\r\n| join kind=fullouter\r\n(\r\n    SourceData\r\n    | summarize Samples=dcountif(TimeGenerated, Value > 0), Spikes=dcountif(TimeGenerated, Value > outliers_removed) by _ResourceId\r\n) on _ResourceId\r\n| extend Spikes=(1.0 * Spikes / Samples)\r\n| project Host=coalesce(_ResourceId, _ResourceId1), Samples, Median, Peak, Spikes, StDev=sqrt(Variance)\r\n",
+                    "query": "// Reference: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Process\" and CounterName == \"Max Input Delay\" and InstanceName !in (\"Max\", \"Average\") and CounterValue > 0\r\n| parse InstanceName with SessionId \":\" ProcessId \" <\" ProcessName\r\n| extend ProcessName=trim_end(\">\", ProcessName)\r\n| summarize (Median, p95)=percentiles(CounterValue, 50, 95), Samples=count(), Processes=dcount(ProcessName), SessionIds=dcount(SessionId) by Host=_ResourceId\r\n| sort by Host asc\r\n",
                     "size": 0,
                     "aggregation": 2,
-                    "title": "Summary of input delay by host",
+                    "title": "Input delay by host",
                     "timeContext": {
                       "durationMs": 0
                     },
@@ -226,6 +225,7 @@
                     "exportFieldName": "Host",
                     "exportParameterName": "InputDelayHost",
                     "exportDefaultValue": "*",
+                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -242,35 +242,27 @@
                           }
                         },
                         {
-                          "columnMatch": "Samples",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "blue"
-                          }
-                        },
-                        {
-                          "columnMatch": "Median",
+                          "columnMatch": "Median|p95",
                           "formatter": 18,
                           "formatOptions": {
                             "thresholdsOptions": "icons",
                             "thresholdsGrid": [
                               {
-                                "operator": ">",
-                                "thresholdValue": "500",
-                                "representation": "error",
-                                "text": "{0}{1}"
-                              },
-                              {
-                                "operator": ">",
-                                "thresholdValue": "200",
-                                "representation": "2",
-                                "text": "{0}{1}"
-                              },
-                              {
-                                "operator": ">",
-                                "thresholdValue": "0",
+                                "operator": "<",
+                                "thresholdValue": "150",
                                 "representation": "success",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "<",
+                                "thresholdValue": "500",
+                                "representation": "Normal",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "<",
+                                "thresholdValue": "2000",
+                                "representation": "2",
                                 "text": "{0}{1}"
                               },
                               {
@@ -291,109 +283,60 @@
                           }
                         },
                         {
-                          "columnMatch": "Peak",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 1000,
-                            "palette": "redBright"
-                          },
-                          "numberFormat": {
-                            "unit": 23,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false,
-                              "maximumSignificantDigits": 2
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Spikes",
+                          "columnMatch": "Samples",
                           "formatter": 4,
                           "formatOptions": {
                             "min": 0,
-                            "max": 0.5,
-                            "palette": "greenRed",
-                            "compositeBarSettings": {
-                              "labelText": "",
-                              "columnSettings": []
-                            }
-                          },
-                          "numberFormat": {
-                            "unit": 0,
-                            "options": {
-                              "style": "percent",
-                              "useGrouping": false
-                            }
+                            "palette": "blue"
                           }
                         },
                         {
-                          "columnMatch": "StDev",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "palette": "gray",
-                            "customColumnWidthSetting": "12ch"
-                          },
-                          "numberFormat": {
-                            "unit": 23,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false,
-                              "maximumFractionDigits": 1,
-                              "maximumSignificantDigits": 3
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Variance",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "13.1429ch"
-                          },
-                          "numberFormat": {
-                            "unit": 23,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Outlier",
+                          "columnMatch": "Processes",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "Computer",
-                          "formatter": 13,
+                          "columnMatch": "SessionIds",
+                          "formatter": 5,
                           "formatOptions": {
-                            "linkTarget": null,
-                            "showIcon": true
+                            "customColumnWidthSetting": "111px"
                           }
                         }
                       ],
-                      "rowLimit": 25,
+                      "rowLimit": 2000,
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_link_Host_0",
+                          "sortOrder": 1
+                        }
+                      ],
                       "labelSettings": [
                         {
                           "columnId": "Host"
                         },
                         {
-                          "columnId": "Samples"
-                        },
-                        {
                           "columnId": "Median"
                         },
                         {
-                          "columnId": "Peak"
+                          "columnId": "p95"
                         },
                         {
-                          "columnId": "Spikes"
+                          "columnId": "Samples"
                         },
                         {
-                          "columnId": "StDev",
-                          "label": "Std dev"
+                          "columnId": "Processes"
+                        },
+                        {
+                          "columnId": "SessionIds",
+                          "label": "Session IDs"
                         }
                       ]
                     },
-                    "sortBy": [],
+                    "sortBy": [
+                      {
+                        "itemKey": "$gen_link_Host_0",
+                        "sortOrder": 1
+                      }
+                    ],
                     "tileSettings": {
                       "titleContent": {
                         "columnMatch": "CounterName",
@@ -439,26 +382,213 @@
                       }
                     }
                   },
-                  "customWidth": "40",
-                  "name": "SummaryOfInputDelayByHost",
-                  "styleSettings": {
-                    "padding": "10px"
-                  }
+                  "name": "SummaryOfInputDelayByHost"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Session\" and InstanceName == \"Max\" and CounterName == \"Max Input Delay\" \r\n| make-series Value=max(CounterValue) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer\r\n| as SourceData\r\n| project TimeGenerated, Computer, Value, series_stats(Value), outliers=series_outliers(Value)\r\n| mv-expand TimeGenerated to typeof(datetime), outliers to typeof(double), Value to typeof(double)\r\n| project TimeGenerated, Computer, Value, outliers_removed=iff(outliers > 1.5 and series_stats_Value_avg < Value, series_stats_Value_avg , Value ) // replace outliers with the average",
+                    "query": "// Reference: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Process\" and CounterName == \"Max Input Delay\" and InstanceName !in (\"Max\", \"Average\") and CounterValue > 0\r\n| parse InstanceName with SessionId \":\" ProcessId \" <\" ProcessName\r\n| extend ProcessName=trim_end(\">\", ProcessName)\r\n| summarize (Median, p95)=percentiles(CounterValue, 50, 95), Samples=count(), Hosts=dcount(_ResourceId), SessionIds=dcount(SessionId) by ProcessName\r\n| sort by Samples desc",
                     "size": 0,
-                    "aggregation": 3,
-                    "title": "Input delay over time",
+                    "aggregation": 2,
+                    "title": "Input delay by process",
                     "timeContext": {
                       "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
-                    "exportFieldName": "ComputerName",
-                    "exportParameterName": "ResponsivenessFilterWVDHosts",
+                    "exportFieldName": "ProcessName",
+                    "exportParameterName": "InputDelayProcess",
+                    "exportDefaultValue": "*",
+                    "showExportToExcel": true,
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "crossComponentResources": [
+                      "{Workspace}"
+                    ],
+                    "visualization": "table",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "ProcessName",
+                          "formatter": 0,
+                          "formatOptions": {
+                            "customColumnWidthSetting": "25ch"
+                          }
+                        },
+                        {
+                          "columnMatch": "Median|p95",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "<",
+                                "thresholdValue": "150",
+                                "representation": "success",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "<",
+                                "thresholdValue": "500",
+                                "representation": "Normal",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "<",
+                                "thresholdValue": "2000",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "Blank",
+                                "text": "{0}{1}"
+                              }
+                            ],
+                            "customColumnWidthSetting": "14.1429ch"
+                          },
+                          "numberFormat": {
+                            "unit": 23,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "maximumSignificantDigits": 3
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Samples",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "palette": "blue",
+                            "customColumnWidthSetting": "96px"
+                          }
+                        },
+                        {
+                          "columnMatch": "Hosts",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "customColumnWidthSetting": "85px"
+                          }
+                        },
+                        {
+                          "columnMatch": "SessionIds",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "customColumnWidthSetting": "117px"
+                          }
+                        }
+                      ],
+                      "rowLimit": 2000,
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_bar_Samples_3",
+                          "sortOrder": 2
+                        }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "ProcessName",
+                          "label": "Process name"
+                        },
+                        {
+                          "columnId": "Median"
+                        },
+                        {
+                          "columnId": "p95"
+                        },
+                        {
+                          "columnId": "Samples"
+                        },
+                        {
+                          "columnId": "SessionIds",
+                          "label": "Session IDs"
+                        }
+                      ]
+                    },
+                    "sortBy": [
+                      {
+                        "itemKey": "$gen_bar_Samples_3",
+                        "sortOrder": 2
+                      }
+                    ],
+                    "tileSettings": {
+                      "titleContent": {
+                        "columnMatch": "CounterName",
+                        "formatter": 1
+                      },
+                      "leftContent": {
+                        "columnMatch": "CounterValue",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "palette": "auto"
+                        },
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": false,
+                            "maximumFractionDigits": 2,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      },
+                      "secondaryContent": {
+                        "columnMatch": "TimeGenerated"
+                      },
+                      "showBorder": false
+                    },
+                    "chartSettings": {
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "Value",
+                          "color": "redBright"
+                        }
+                      ],
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 23,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "name": "SummaryOfInputDelayByProcess"
+                }
+              ],
+              "exportParameters": true
+            },
+            "customWidth": "33",
+            "name": "InputDelaySummaryTables",
+            "styleSettings": {
+              "maxWidth": "800px"
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "// Reference: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Process\" and CounterName == \"Max Input Delay\" and InstanceName !in (\"Max\", \"Average\") and CounterValue > 0\r\n| parse InstanceName with SessionId \":\" ProcessId \" <\" ProcessName\r\n| extend ProcessName=trim_end(\">\", ProcessName), Host=trim_end(@\"\\..*\", Computer)\r\n| where \"{InputDelayProcess}\" == \"*\" or ProcessName == \"{InputDelayProcess}\"\r\n| make-series Median=percentile(CounterValue, 50) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Host\r\n| sort by Host asc",
+                    "size": 1,
+                    "aggregation": 5,
+                    "title": "Median input delay over time",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "TimeRange",
+                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -496,6 +626,8 @@
                       "showBorder": false
                     },
                     "chartSettings": {
+                      "showMetrics": false,
+                      "showLegend": true,
                       "seriesLabelSettings": [
                         {
                           "seriesName": "Value",
@@ -518,30 +650,27 @@
                       }
                     }
                   },
-                  "customWidth": "60",
-                  "name": "InputDelayOverTime",
-                  "styleSettings": {
-                    "padding": "10px"
-                  }
+                  "name": "InputDelayOverTime"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)           \r\n| where ObjectName in (\"Memory\", \"Processor Information\", \"Terminal Services\", \"Terminal Services Session Lag\")  //\"User Input Delay per Process\", \r\n| as InputData\r\n| where InstanceName in (\"Max\", \"All Average\", \"\", \"_Total\")\r\n| where CounterName in (\"% Processor Time\",  \"Max Input Delay\", \"% Committed Bytes In Use\")\r\n| summarize maxValue = max(CounterValue) by TimeBin = bin(TimeGenerated, 1h), ComputerName, CounterName\r\n| evaluate pivot(CounterName, max(maxValue))\r\n| join kind = inner\r\n(\r\n    InputData\r\n    | where ObjectName == \"Terminal Services\" and CounterName == \"Active Sessions\"\r\n    | summarize MaxBin = max(CounterValue) by TimeBin = bin(TimeGenerated, 1h), CounterName, ComputerName\r\n    | summarize TotalActiveSessions = sum(MaxBin) by TimeBin, ComputerName    \r\n) on TimeBin, ComputerName\r\n| project TimeBin, [\"% Committed Bytes In Use\"]=[\"% Committed Bytes In Use\"]/100.0, [\"% Processor Time\"]=[\"% Processor Time\"]/100.0, TotalActiveSessions\r\n| sort by TimeBin asc\r\n\r\n\r\n",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend ComputerName = strcat(HostPool, \"/\", Computer)       \r\n| where WVDHosts contains ComputerName\r\n| where ObjectName in (\"Memory\", \"Processor Information\") and InstanceName in (\"Max\", \"All Average\", \"\", \"_Total\") and CounterName in (\"% Processor Time\", \"% Committed Bytes In Use\")\r\n| make-series Value = avg(CounterValue) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by CounterName\r\n\r\n\r\n",
                     "size": 1,
                     "aggregation": 3,
-                    "title": "Host compute metrics",
+                    "title": "Host CPU and memory metrics",
                     "timeContext": {
                       "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
+                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
                       "{Workspace}"
                     ],
-                    "visualization": "linechart",
+                    "visualization": "timechart",
                     "gridSettings": {
                       "rowLimit": 25
                     },
@@ -572,10 +701,8 @@
                       "showBorder": false
                     },
                     "chartSettings": {
-                      "yAxis": [
-                        "% Committed Bytes In Use",
-                        "% Processor Time"
-                      ],
+                      "showMetrics": false,
+                      "showLegend": true,
                       "seriesLabelSettings": [
                         {
                           "seriesName": "Max Input Delay",
@@ -592,40 +719,37 @@
                       ],
                       "ySettings": {
                         "numberFormatSettings": {
-                          "unit": 0,
+                          "unit": 1,
                           "options": {
-                            "style": "percent",
+                            "style": "decimal",
                             "useGrouping": true,
-                            "maximumSignificantDigits": 2
+                            "maximumSignificantDigits": 3
                           }
                         }
                       }
                     }
                   },
-                  "customWidth": "50",
-                  "name": "Session Compute",
-                  "styleSettings": {
-                    "padding": "10px"
-                  }
+                  "name": "Session Compute"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "Perf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ObjectName == \"PhysicalDisk\"\r\n| where InstanceName == \"_Total\"\r\n| summarize maxValue = max(CounterValue) by TimeBin = bin(TimeGenerated, 1h), ComputerName, CounterName\r\n| evaluate pivot(CounterName, max(maxValue))\r\n| sort by TimeBin asc, ComputerName\r\n| project TimeBin, ComputerName, [\"Avg. Disk Queue Length\"], [\"Avg. Disk sec/Read\"], [\"Avg. Disk sec/Write\"], [\"Avg. Disk sec/Transfer\"]",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend ComputerName = strcat(HostPool, \"/\", Computer)       \r\n| where WVDHosts contains ComputerName\r\n| where ObjectName == \"PhysicalDisk\" and InstanceName == \"_Total\" and CounterName in (\"Avg. Disk sec/Transfer\", \"Avg. Disk sec/Write\", \"Avg. Disk sec/Read\")\r\n| make-series Value = max(CounterValue) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by CounterName",
                     "size": 1,
                     "aggregation": 5,
-                    "title": "Host disk metrics",
+                    "title": "Host disk timing metrics",
                     "timeContext": {
-                      "durationMs": 0
+                      "durationMs": 86400000
                     },
                     "timeContextFromParameter": "TimeRange",
+                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
                       "{Workspace}"
                     ],
-                    "visualization": "linechart",
+                    "visualization": "timechart",
                     "gridSettings": {
                       "rowLimit": 25
                     },
@@ -656,6 +780,87 @@
                       "showBorder": false
                     },
                     "chartSettings": {
+                      "showMetrics": false,
+                      "showLegend": true,
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "Max Input Delay",
+                          "label": "Max Input Delay (seconds)"
+                        },
+                        {
+                          "seriesName": "% Processor Time",
+                          "label": "Max Host % Processor Time"
+                        },
+                        {
+                          "seriesName": "TotalActiveSessions",
+                          "label": "Total Active Sessions"
+                        }
+                      ],
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 24,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "name": "Session Disk Timings"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{InputDelayHost}\" == \"*\" or _ResourceId == \"{InputDelayHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend ComputerName = strcat(HostPool, \"/\", Computer)       \r\n| where WVDHosts contains ComputerName\r\n| where ObjectName == \"PhysicalDisk\" and InstanceName == \"_Total\" and CounterName == \"Avg. Disk Queue Length\"\r\n| make-series Value = max(CounterValue) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by CounterName",
+                    "size": 1,
+                    "aggregation": 5,
+                    "title": "Host disk queue length",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "TimeRange",
+                    "showExportToExcel": true,
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "crossComponentResources": [
+                      "{Workspace}"
+                    ],
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "rowLimit": 25
+                    },
+                    "tileSettings": {
+                      "titleContent": {
+                        "columnMatch": "CounterName",
+                        "formatter": 1
+                      },
+                      "leftContent": {
+                        "columnMatch": "CounterValue",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "palette": "auto"
+                        },
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": false,
+                            "maximumFractionDigits": 2,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      },
+                      "secondaryContent": {
+                        "columnMatch": "TimeGenerated"
+                      },
+                      "showBorder": false
+                    },
+                    "chartSettings": {
+                      "showMetrics": false,
+                      "showLegend": true,
                       "seriesLabelSettings": [
                         {
                           "seriesName": "Max Input Delay",
@@ -672,16 +877,14 @@
                       ]
                     }
                   },
-                  "customWidth": "50",
-                  "name": "Session Disk",
-                  "styleSettings": {
-                    "padding": "10px"
-                  }
+                  "name": "Session Disk Queue Length"
                 }
               ]
             },
-            "name": "Host responsiveness",
+            "customWidth": "66",
+            "name": "InputDelayCorrelatedPerfCounters",
             "styleSettings": {
+              "margin": "10px",
               "showBorder": true
             }
           }
