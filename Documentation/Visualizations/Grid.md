@@ -234,7 +234,16 @@ The image below shows the same table, except the first column is set to 50% widt
 Combining fr, %, px, and ch widths is possible and works similarly to the above examples. The widths that are set by the static units, ch and px, they're hard constants that won't change even if the window/resolution is changed. The columns set by % will take their % based on the total grid width (might not be exact due to the aforementioned minimum widths). The columns set with fr will just split up the remaining grid space based on the number of fractional units they are allotted.
 ![Image of columns in grid with assortment of different width units used](../Images/CustomColumnWidthFrExplanation3.png)
 
-### Thresholds with column and parameter reference in text and custom tooltip
+## Column and parameter reference in text/value property for Thresholds and custom tooltips
+
+The value and text property in Thresholds and the custom tooltips can use a mix of static text, columns, and parameters.
+
+Refer to columns with `["columnName"]`
+
+Refer to parameters with `{paramName}`
+
+Both column name and parameter name are case sensitive.
+
 For following JSON data
 ```
 [
@@ -250,3 +259,7 @@ and p1 parameter with value "test", and the following Threshold settings
 The 'online' columns value are rendered like following:
 
 ![Image of column representation with threshold settings](../Images/ThresholdResult.png)
+
+The following settings also render the same grid as the param {server_val} has the value 18 and is referenced in value property of Threshold.
+
+![Image of column representation with threshold settings](../Images/ThresholdResult1.png)

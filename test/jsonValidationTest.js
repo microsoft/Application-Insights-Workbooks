@@ -68,6 +68,7 @@ describe('Validating Workbooks...', () => {
                     validateNoResourceIds(settings, file);
                     validateNoFromTemplateId(settings, file);
                     validateSingleWorkbookFile(settings, file);
+                    validateWorkbookFilePathLength(file);
                 });
 
             done();
@@ -87,6 +88,20 @@ describe('Validating Workbooks...', () => {
             done();
         });
     });
+
+    it('Verifying armtemplate.json files', function (done) {
+        browseDirectory(workbookPath, (error, results) => {
+            if (error) throw error;
+            results.filter(file => file.endsWith('.armtemplate'))
+                .forEach(file => {
+                    let settings = validateJsonStringAndGetObject(file);
+                    // "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    validateSettingsForArmTemplate(settings, file);
+                    validateWorkbookFilePathLength(file);
+                });
+            done();
+        });
+    });    
 
     it('Verifying workbook category json files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
@@ -150,6 +165,27 @@ function getProgressivePaths(rootPath, file) {
     return files;
 }
 
+function validateWorkbookFilePathLength(file) {
+    // validate the length of the category+file name. this is hard to do directly because of galleries and the specifics
+    // of where the build machine/users put these folders when they clone. on the build machine it appears to be S:\Workbooks\
+    // which is 13 ch.  will "reserve" 55 for now, leaving 200 for full path names
+    let fullPath = file.length;
+    // the path of the workbook when packaged is really its folder name, its containing folder names, .json
+    let folders = file.split("/");
+    // folders 0 and 1 are "." and "workbooks", and the last part is the filename
+    let workbookkey = folders[2]
+    for (let i = 3; i < folders.length-1; i++) {
+        workbookkey += "-" + folders[i];
+    }
+    workbookkey += ".json";
+
+    if (fullPath > 200) {
+        assert.fail("file path " + fullPath + " longer than 200ch limit: '" + file + "' this file may fail to copy in build steps")
+    } if (workbookkey.length > 100) {
+        assert.fail("packaged workbook key '" + workbookkey + "' = length " + workbookkey.length + ", longer than 100ch limit: '" + file + "'.  Reduce file/folder path depth or rename folders to reduce duplicate information")
+    }
+}
+
 var browseDirectory = function (dir, done, hasRoot=false, rootDir="") {
     var results = [];
     if (!dir.endsWith("{Lang}")) {
@@ -208,6 +244,10 @@ function validateSettingsForWorkbook(settings, file) {
     if (!Array.isArray(settings.galleries)) {
         assert.fail("The galleries should be an array with '" + file + "'");
     }
+}
+
+function validateSettingsForArmTemplate(settings, file) {
+    ["$schema"].forEach( field => checkProperty(settings, field, file) );
 }
 
 function validateNoResourceIds(settings, file) {
