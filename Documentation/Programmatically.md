@@ -174,7 +174,7 @@ This template show how to deploy a simple workbook that displays a 'Hello World!
 | `workbookType` | The gallery that the workbook will been shown under. Supported values include workbook, tsg, Azure Monitor, etc. |
 | `workbookSourceId` | The id of resource instance to which the workbook will be associated. The new workbook will show up related to this resource instances - for example in the resource's table of content under _Workbook_. If you want your workbook to show up in the workbook gallery in Azure Monitor, use the string _Azure Monitor_ instead of a resource id. |
 | `workbookId` | The unique guid for this workbook instance. Use _[newGuid()]_ to automatically create a new guid. |
-| `kind` | Used to specify if the created workbook is shared or private. Use value _shared_ for shared workbooks and _user_ for private ones. |
+| `kind` | Used to specify if the created workbook is shared or private. Use value _shared_ for shared workbooks and _user_ for private ones.  _[Private Workbooks is being Deprecated](DataSources\PrivateWorkbooksDeprecation.md)_ |
 | `location` | The Azure location where the workbook will be created. Use _[resourceGroup().location]_ to create it in the same location as the resource group |
 | `serializedData` | Contains the content or payload to be used in the workbook. Use the ARM template from the workbooks UI to get the value |
 

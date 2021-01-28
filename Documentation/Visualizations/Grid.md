@@ -73,6 +73,7 @@ Here is an example that styles the _Request_ column as a bar:
 | `Bar` | Renders a bar next to the cell based on the value of the cell | Color palette and min/max value used for scaling |
 | `Bar underneath` | Renders a bar near the bottom of the cell based on the value of the cell | Color palette and min/max value used for scaling |
 | `Composite bar` | Renders a composite bar using the specified columns in that row. Refer [Composite Bar](./CompositeBar.md) for details | Columns with corresponding colors to render the bar and a label to display at the top of the bar |
+| `Thresholds` | Renders the column value based on expressions and show respective icons or colors. The threshold expressions are evaluated in top to bottom order, icon/color of the first matching threshold will be assigned to a value. Default icon/color is assigned to a value that does not meet any of the defined thresholds| The operator, value, text, and the corresponding icon/color. The Text column takes a String format as an input. To use columns in the text, refer them as `["columnname"]`. Column name is case sensitive. Refer parameters as `{param}`. Use `{0}` and `{1}` in text to populate it with the column value and unit if specified. For example, Text can be `Success ({0} {1})`, it will be displayed as "Success (100 %)" for a value 100 and unit %. |
 | `Spark bars` | Renders a spark bar in the cell based on the values of a dynamic array in the cell. E.g the Trend column form the image at the top | Color palette and min/max value used for scaling |
 | `Spark lines` | Renders a spark line in the cell based on the values of a dynamic array in the cell | Color palette and min/max value used for scaling |
 | `Icon` | Renders icons based on the text values in the cell. Supported values include: _cancelled, critical, disabled, error, failed, info, none, pending. stopped. question, success, unknown, uninitialized, resource, up, down, left, right, trendup, trenddown, 4, 3, 2, 1, Sev0, Sev1, Sev2, Sev3, Sev4, Fired, Resolved, Available, Unavailable, Degraded, Unknown_ |  |
@@ -116,6 +117,32 @@ Date formatting options include
 | `Style` | The format to render a date as short, long, full formats, or a time as short or long time formats. |
 | `Show time as` | Allows the author to decide between showing the time in local time (default), or as UTC. depending on the date format style selected, the UTC/time zone information may not be displayed. |
 
+## Custom Column Width Setting
+![Image of column settings with the custom column width field indicated in a red box](../Images/CustomColumnWidthSetting.png)
+
+The author can customize the width of any column in the grid using the _Custom Column Width_ field in _Column Settings_. 
+* If the field is left blank, then the width will be automatically determined based on the number of characters in the column and the number of visible columns. Default unit is "ch" (characters)
+* Clicking the blue _(Current Width)_ button in the label will fill the text field with the selected column's current width. 
+* If a value is present in the custom width field with no unit of measurement, the default will be used. The units of measurement available are: 
+    * ch - characters (Default)
+    * px - pixels
+    * fr - fractional unit * example below
+    * % - percentage
+* Input validation - if validation fails, a red guidance message will popup below the field, but user can still apply the width. If a value is present in the input, it will be parsed out and if no valid unit of measure is found, then the default will be used.   
+* There is no minimum/maximum width as this is left up to the author's discretion.
+* The custom column width field is disabled for hidden columns.
+
+## Custom Tooltip
+
+Select "Apply custom tooltip" and add a custom tooltip which acts as a tooltip for the column. You can use a mix of static text, columns, and parameters.
+
+Use `{0}` to use the current column value
+
+Refer to columns with `["columnName"]`
+
+Refer to parameters with `{paramName}`
+
+Both column name and parameter name are case sensitive.
 
 ## Examples
 ### Spark lines and Bar Underneath
@@ -194,3 +221,45 @@ Will result in the following grid:
 
 Where each link in the grid opens up a different workbook template for that Application Insights resource.
 
+
+### Fractional Units and Percentages
+The fractional unit is a commonly used dynamic unit of measurement in various types of grids. As the window size/resolution changes, the fr width changes as well. 
+
+The below image shows a table with 8 columns that are 1fr width each and are all equal widths. As the window size changes, the width of each column changes proportionally. 
+![Image of columns in grid with column width value of 1fr each](../Images/CustomColumnWidthFrExplanation1.png)
+
+The image below shows the same table, except the first column is set to 50% width. This will set the column to half of the total grid width dynamically. Resizing the window will continue to retain the 50% width unless the window size gets too small - these dynamic columns have a minimum width based on their contents. The remaining 50% of the grid is divided up by the 8 total fractional units. The "kind" column below is set to 2fr, so it takes up 2/8ths of remaining space. As the other columns are 1fr each, they each take up 1/8th of the right half of the grid. 
+![Image of columns in grid with 1 column width value of 50% and the rest as 1fr each](../Images/CustomColumnWidthFrExplanation2.png)
+
+Combining fr, %, px, and ch widths is possible and works similarly to the above examples. The widths that are set by the static units, ch and px, they're hard constants that won't change even if the window/resolution is changed. The columns set by % will take their % based on the total grid width (might not be exact due to the aforementioned minimum widths). The columns set with fr will just split up the remaining grid space based on the number of fractional units they are allotted.
+![Image of columns in grid with assortment of different width units used](../Images/CustomColumnWidthFrExplanation3.png)
+
+## Column and parameter reference in text/value property for Thresholds and custom tooltips
+
+The value and text property in Thresholds and the custom tooltips can use a mix of static text, columns, and parameters.
+
+Refer to columns with `["columnName"]`
+
+Refer to parameters with `{paramName}`
+
+Both column name and parameter name are case sensitive.
+
+For following JSON data
+```
+[
+    {"sub":"X", "server": "A", "online": 20, "_recovering": [3,4,5], "offline": 4, "total": 27},
+    {"sub":"X", "server": "B", "online": 15, "_recovering": [2,2,5], "offline": 5, "total": 28},
+    {"sub":"Y", "server": "C", "online": 25, "_recovering": [3,6,5], "offline": 5, "total": 34},
+    {"sub":"Y", "server": "D", "online": 18, "_recovering": [3,5], "offline": 9, "total": 33}
+]
+```
+and p1 parameter with value "test", and the following Threshold settings
+![Image of threshold settings](../Images/ThresholdSettings.png)
+
+The 'online' columns value are rendered like following:
+
+![Image of column representation with threshold settings](../Images/ThresholdResult.png)
+
+The following settings also render the same grid as the param {server_val} has the value 18 and is referenced in value property of Threshold.
+
+![Image of column representation with threshold settings](../Images/ThresholdResult1.png)

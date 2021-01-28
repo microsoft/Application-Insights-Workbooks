@@ -1,18 +1,18 @@
-# Text Visualization
+# Text Steps
 
 Workbooks allow authors to include text blocks in their workbooks. The text can be human analysis of the telemetry, information to help users interpret the data, section headings, etc. 
 
-![Image showing a text visualization in workbooks](../Images/TextExample.png)
+![Image showing a text step in workbooks](../Images/TextExample.png)
 
-Text is added through a markdown control - into which an author can add their content. An author can leverage the full formatting capability of markdown to make their documents appear just how they want it. These include different heading and font styles, hyperlinks, tables, etc. This allows authors to create rich Word- or Ibiza-like reports or analytic narratives.
+Text is added through a markdown control - into which an author can add their content. An author can leverage the full formatting capability of markdown to make their documents appear just how they want it. These include different heading and font styles, hyperlinks, tables, etc. This allows authors to create rich Word- or Portal-like reports or analytic narratives.  Text Steps can contain parameter values in the markdown text, and those parameter references will be updated as the parameters change.
 
 #### Edit mode:
-![Image showing a text visualization in workbooks in edit mode](../Images/TextControlInEditMode.png)
+![Image showing a text step in workbooks in edit mode](../Images/TextControlInEditMode.png)
 
 #### preview mode:
-![Image showing a text visualization in workbooks in preview mode](../Images/TextControlInEditModePreview.png)
+![Image showing a text step in workbooks in preview mode](../Images/TextControlInEditModePreview.png)
 
-## Add a text control
+## Add a text step
 1. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
 2. Use the _Add_ button below a step or at the bottom of the workbook, and choose "Add Text" to add a text control to the workbook. 
 3. Enter markdown text into the editor field

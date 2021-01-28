@@ -270,6 +270,37 @@ Function LoadSettingsJson() {
     return $templateMetadata
 }
 
+Function GetArmTemplateEncodedFileName() {
+    param([string] $filepath, 
+    [string] $reportType)
+
+    $name = Split-Path $filepath -Leaf;
+
+    $templateFolderPath = Split-Path $filepath -Parent
+    $templateFolderName = Split-Path $templateFolderPath -Leaf
+    $templateCategoryFolderPath = Split-Path $templateFolderPath
+    $templateCategory = Split-Path $templateCategoryFolderPath -Leaf
+    $templateCategoryName = $templateCategory # the FIRST folder path found is the category name
+    $templateReportTypePath = Split-Path $templateCategoryFolderPath
+    $templateReportType = Split-Path $templateReportTypePath -Leaf
+    # if there were nested folders, keep working up the hierarchy, prepending folders to template category
+    while ($templateReportType -ne $reportType) {
+        if ([string]::IsNullOrWhitespace($templateReportType)) {
+            # this was somehow in a folder that was NOT inside the report type folder?
+            throw "GetArmTemplateEncodedFileName had file '$filePath' not inside '$reportType' folder?"
+        }
+        $templateFolderName = "$templateCategory/$templateFolderName"
+        $templateFolderPath = Split-Path $templateFolderPath -Parent
+        $templateCategoryFolderPath = Split-Path $templateFolderPath
+        $templateCategory = Split-Path $templateCategoryFolderPath -Leaf
+        $templateReportTypePath = Split-Path $templateCategoryFolderPath
+        $templateReportType = Split-Path $templateReportTypePath -Leaf
+    }    
+    # for now, all of the template in the package are just .json to simplify deployment and not need special rules for .cohort, .workbook on web services for content type
+    # and replace any / in filenames with - to avoid any filesystem issues
+    return "$templateCategory-$templateFolderName-$name.json".Replace("/", "-")
+}
+
 #----------------------------------------------------------------------------
 # add a given template (settings file) to a given gallery inside a specified category
 #----------------------------------------------------------------------------
@@ -370,7 +401,7 @@ Function CreatePackageContent() {
                 $allCategories.$($category.key) = $category
             }
         }
-        
+
         $settings = Get-ChildItem "$currentPath\$reporttype" -Recurse -file -Include "settings.json"
         foreach ($settingFile in $settings) {
             # foreach settings file, find the first item in the folder and warn if there's more than one
@@ -449,6 +480,13 @@ Function CreatePackageContent() {
 
             # add the item to the full index
             $filename = $setting.filename
+
+            # not currently blocking - local builds don't actually have an issue here but something on the build machine
+            # is truncating files?
+            if ($filename.length -gt 99) {
+                 Write-Host "ERROR: file name exceeds 99ch limit $filename ($($filename.length))"
+            }
+
             $index.($setting.id) = $filename
             # copy the file to the package output
             $destination = "$reportTypePath\$filename"
@@ -456,9 +494,24 @@ Function CreatePackageContent() {
 
             # not generally possible, but could happen if people created folder a, filename b-c and folder a-b, filename c, as both would end up "a-b-c"
             if (Test-Path $destination) {
-                 Write-Host "ERROR: duplicate file name $destination"
+                # Write-Host "ERROR: duplicate file name $destination"
             }
             Copy-Item -Path $template.FullName -Destination $destination -Force
+
+            # also process any arm templates in this folder
+            $armTemplates = Get-ChildItem $folder -Recurse -file -Include "*.armtemplate"
+            foreach ($templateFile in $armTemplates) {
+                $encodedName = GetArmTemplateEncodedFileName $templateFile $reporttype
+
+                # not currently blocking - local builds don't actually have an issue here but something on the build machine
+                # is truncating files? but if long enough even powershell will choke on it
+                if ($encodedName.length -gt 99) {
+                    Write-Host "ERROR: file name exceeds 99ch limit $encodedName ($($encodedName.length))"
+                }
+
+                $armTemplateDestination = "$reportTypePath\$encodedName"
+                Copy-Item -Path $templateFile.FullName -Destination $armTemplateDestination -Force
+            }
         }
 
         # split this single file up into one file per gallery
@@ -466,13 +519,13 @@ Function CreatePackageContent() {
             $value = $fullGallery.$($key)
             $key = $key.Replace("/", "-")
             $galleryFileName = "$reportTypePath\_gallery.$key.json"
-            $value | ConvertTo-Json -depth 10 -Compress | Out-File -FilePath $galleryFileName -Force
+            $value | ConvertTo-Json -depth 10 -Compress | Out-File -Encoding "UTF8" -FilePath $galleryFileName -Force
         }
 
         # if you want to see the full gallery of everything, this would generate it
         if ($generateFullGalleryFile) {
             $galleryFileName = "$reportTypePath\_gallery.json"
-            $fullGallery | ConvertTo-Json -depth 10 -Compress | Out-File -FilePath $galleryFileName -Force
+            $fullGallery | ConvertTo-Json -depth 10 -Compress | Out-File -Encoding "UTF8" -FilePath $galleryFileName -Force
         }
 
         # create an index that has every path mapped to a file name
@@ -480,11 +533,11 @@ Function CreatePackageContent() {
         # client side code could generate the right filenames, but then you don't know if you got a 404 because
         # of missing files or inaccuate generation.  Whether the client uses it or not, the package has it!
         $indexFileName = "$reportTypePath\_index.json"
-        $index | ConvertTo-Json -depth 2 -Compress | Out-File -FilePath $indexFileName -Force
+        $index | ConvertTo-Json -depth 2 -Compress | Out-File -Encoding "UTF8" -FilePath $indexFileName -Force
 
         if ($generateFullCategoriesFile) {
             $categoryFileName = "$reportTypePath\_categories.json"
-            $allCategories | ConvertTo-Json -depth 2 -Compress | Out-File -FilePath $categoryFileName -Force
+            $allCategories | ConvertTo-Json -depth 2 -Compress | Out-File -Encoding "UTF8" -FilePath $categoryFileName -Force
         }
 
         Write-Host "... DONE building gallery: $reporttype "
@@ -507,7 +560,7 @@ Function SyncWithEnUs() {
         $reportPath = Join-Path -Path $sourcePath -ChildPath $reportType
         $langPath = Join-Path -Path $sourcePath -ChildPath "scripts\$lang\$reporttype"
         Write-Host "INFO: Syncing $lang with en-us from '$reportPath' to '$langPath'"
-        $files = Get-ChildItem $reportPath -Recurse -file -Include $categoryMetadataFileName, "*.workbook", "*.cohort", "settings.json", "*.svg"
+        $files = Get-ChildItem $reportPath -Recurse -file -Include $categoryMetadataFileName, "*.workbook", "*.cohort", "settings.json", "*.armtemplate", "*.svg"
         if ($files.Count -eq 0) {
             throw "SyncWithEnUs didn't find any files to copy from '$reportPath' to '$langPath'"
         }
