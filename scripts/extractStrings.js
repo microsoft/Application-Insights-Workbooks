@@ -736,7 +736,11 @@ function assignValueToObject(obj, keys, value) {
 
 /** Returns matching localized file location */
 function getClonedLocFilePath(templatePath, rootDirectory) {
-  var result = rootDirectory.concat(LocalizationRepoFolder, LangOutputSpecifier);
+  var result = rootDirectory;
+  if (rootDirectory.endsWith("\\")) {
+    result = result.substring(0, result.length - 1);  
+  }
+  result = result.concat(LocalizationRepoFolder, LangOutputSpecifier);
   var removedIndex = templatePath.replace(rootDirectory, "");
   if (!removedIndex.startsWith("\\")) {
     result = result.concat("\\");
