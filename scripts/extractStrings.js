@@ -939,6 +939,7 @@ for (var d in directories) {
 
             generateTranslatedFile(xmlData, templateParsedData, settingsParsedData, templatePath, translatedResultPath, categoryResourcesData);
           } else {
+            console.log("Test: Didn't find template in ", localizedFilePath);
             // No loc file found, just push the workbook file as is in English
             writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
           }
