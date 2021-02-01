@@ -739,7 +739,7 @@ function getClonedLocFilePath(templatePath, rootDirectory) {
   var result = rootDirectory.concat(LocalizationRepoFolder, LangOutputSpecifier);
   var removedIndex = templatePath.replace(rootDirectory, "");
   if (!removedIndex.startsWith("\\")) {
-    result.concat("\\");
+    result = result.concat("\\");
   }
   return result.concat(removedIndex, LCLStringFileExtension);
 }
