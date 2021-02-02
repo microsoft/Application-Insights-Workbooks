@@ -69,7 +69,7 @@ const LanguagesMap = {
   "ko": "ko-kr",
   "nl": "nl-nl",
   "pl": "pl-pl",
-  "pl-BR": "pl-br",
+  "pt-BR": "pt-br",
   "pt-PT": "pt-pt",
   "ru": "ru-ru",
   "sv": "sv-se",
@@ -937,7 +937,7 @@ for (var d in directories) {
         // location of package for translated workbook
         const translatedResultPath = packageOutputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
 
-        if (lang === DefaultLang) {
+        if (LanguagesMap[lang] === DefaultLang) {
           writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
         } else {
           if (fs.existsSync(localizedFilePath)) {
@@ -946,7 +946,7 @@ for (var d in directories) {
 
             generateTranslatedFile(xmlData, templateParsedData, settingsParsedData, templatePath, translatedResultPath, categoryResourcesData);
           } else {
-            console.log("Test: Didn't find template in ", localizedFilePath);
+            LogInfo("Did not find template in: " + localizedFilePath);
             // No loc file found, just push the workbook file as is in English
             writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
           }
