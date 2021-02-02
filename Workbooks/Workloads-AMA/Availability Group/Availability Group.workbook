@@ -463,7 +463,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let InstancesInGroupId = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\"\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}'\r\n    | summarize by Instance;\r\nlet data = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_dbreplica_states\";\r\nlet agData = data\r\n| join kind = leftsemi (InstancesInGroupId) on Instance\r\n| where Name == \"database_state\";\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags\r\n| evaluate bag_unpack(Tags)\r\n| where sql_instance == replica_server_name\r\n| extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n| extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n| summarize CurrentSynced = min(isSync), CurrentOnline = min(isOnline) by database_name, replica_server_name\r\n| join kind = inner (\r\n    agData\r\n    | project Tags\r\n    | evaluate bag_unpack(Tags)\r\n    | where sql_instance == replica_server_name\r\n    | extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n    | extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n    | summarize OverallSynced = min(isSync), OverallOnline = min(isOnline) by database_name, replica_server_name) on replica_server_name, database_name\r\n| project replica_server_name, database_name, Status= case(CurrentOnline == 1, 'Online', OverallOnline == 1, 'Previously Online', 'Offline'), SynchronizationState = case(CurrentSynced == 1, 'Synchronized', OverallSynced == 1, 'Previously Synchronized', 'Not Synchronized')\r\n| order by replica_server_name asc",
+              "query": "let InstancesInGroupId = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\"\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}'\r\n    | summarize by Instance;\r\nlet data = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_dbreplica_states\";\r\nlet agData = data\r\n| join kind = leftsemi (InstancesInGroupId) on Instance\r\n| where Name == \"database_state\";\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags, TenantId, Instance\r\n| evaluate bag_unpack(Tags)\r\n| where Instance == replica_server_name\r\n| extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n| extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n| summarize CurrentSynced = min(isSync), CurrentOnline = min(isOnline) by database_name, Instance, TenantId\r\n| join kind = inner (\r\n    agData\r\n    | project Tags, TenantId, Instance\r\n    | evaluate bag_unpack(Tags)\r\n    | where Instance == replica_server_name\r\n    | extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n    | extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n    | summarize OverallSynced = min(isSync), OverallOnline = min(isOnline) by database_name, Instance, TenantId) on Instance, database_name\r\n| project Instance, database_name, Status= case(CurrentOnline == 1, 'Online', OverallOnline == 1, 'Previously Online', 'Offline'), SynchronizationState = case(CurrentSynced == 1, 'Synchronized', OverallSynced == 1, 'Previously Synchronized', 'Not Synchronized'), DbId = strcat('/workspace/', '{WorkspaceId}', '/computer/', '{Computer}', '/sqlinstance/', Instance, '/database/', database_name), Title = strcat('SQL Server > ', Instance)\r\n| order by Instance asc",
               "size": 0,
               "showAnalytics": true,
               "noDataMessage": "The query returned no results. Ensure the query name 'SQLServerDatabaseReplicaStates' is enabled in your telegraf settings.",
@@ -484,14 +484,16 @@
                     "columnMatch": "$gen_group",
                     "formatter": 1,
                     "formatOptions": {
-                      "linkColumn": "replica_server_name",
+                      "linkColumn": "DbId",
                       "linkTarget": "WorkbookTemplate",
                       "linkIsContextBlade": true,
                       "workbookContext": {
-                        "componentIdSource": "workbook",
-                        "resourceIdsSource": "workbook",
+                        "componentIdSource": "column",
+                        "componentId": "Title",
+                        "resourceIdsSource": "column",
+                        "resourceIds": "DbId",
                         "templateIdSource": "static",
-                        "templateId": "Community-Workbooks/Workloads-AMA/Availability Group Details",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Replica Details",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default"
@@ -499,7 +501,7 @@
                     }
                   },
                   {
-                    "columnMatch": "replica_server_name",
+                    "columnMatch": "Instance",
                     "formatter": 5
                   },
                   {
@@ -538,22 +540,26 @@
                         }
                       ]
                     }
+                  },
+                  {
+                    "columnMatch": "DbId",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Title",
+                    "formatter": 5
                   }
                 ],
                 "filter": true,
                 "hierarchySettings": {
                   "treeType": 1,
                   "groupBy": [
-                    "replica_server_name"
+                    "Instance"
                   ],
                   "expandTopLevel": true,
                   "finalBy": "database_name"
                 },
                 "labelSettings": [
-                  {
-                    "columnId": "replica_server_name",
-                    "label": "Database Replica"
-                  },
                   {
                     "columnId": "database_name"
                   },
