@@ -5,6 +5,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
         "parameters": [
           {
             "id": "8106c7c6-2936-466b-a8f8-025753099f3f",
@@ -110,19 +113,6 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
-            "id": "7c1a41ad-89a0-4290-8b0c-cea32428c28a",
-            "version": "KqlParameterItem/1.0",
-            "name": "SqlDatabase",
-            "type": 1,
-            "query": "Resources\r\n| take 1\r\n| project value = extract(@'/workspace/.+/computer/.+/sqlinstance/.+/database/(.*)', 1, '{DatabaseId}')",
-            "crossComponentResources": [
-              "value::selected"
-            ],
-            "isHiddenWhenLocked": true,
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
             "id": "0e3dc5eb-7634-4267-931d-7f1f42dcfcf8",
             "version": "KqlParameterItem/1.0",
             "name": "Workspace",
@@ -151,6 +141,19 @@
               "editorLanguage": "json",
               "multiLineHeight": 20
             }
+          },
+          {
+            "id": "46b95f86-f116-40cd-9f1b-8767481e1518",
+            "version": "KqlParameterItem/1.0",
+            "name": "Role",
+            "type": 1,
+            "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| extend Instance = tostring(Tags.replica_server_name)\r\n| where Namespace == 'sqlserver_hadr_replica_states' and Name == 'role'\r\n| where Computer == '{Computer}' and Instance == '{SqlInstance}'\r\n| summarize by Role = iff(Val == 1, \"Primary\", \"Secondary\")",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
           }
         ],
         "style": "above",
@@ -192,10 +195,20 @@
       "name": "links - 3"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "Role: __{Role}__"
+      },
+      "name": "text - 5",
+      "styleSettings": {
+        "padding": "0px 0px 0px 10px"
+      }
+    },
+    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let data = InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace == 'sqlserver_hadr_replica_states'\r\n| extend Tags = todynamic(Tags)\r\n| extend Instance = tostring(Tags.replica_server_name)\r\n| where Instance == \"{SqlInstance}\";\r\ndata\r\n| summarize (Time, Val) = arg_min(TimeGenerated, Val) by Name\r\n| join kind = leftouter(\r\n    datatable(DescriptionTable: dynamic)[dynamic({DescriptionParam})]\r\n    | mv-expand DescriptionTable\r\n    | evaluate bag_unpack(DescriptionTable)) on Name\r\n\t| extend Description = iff(isnotnull(Description[toint(Val)]), Description[toint(Val)], Description[array_length(Description)-1])\r\n| order by Name asc",
+        "query": "let data = InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace == 'sqlserver_hadr_replica_states'\r\n| extend Tags = todynamic(Tags)\r\n| extend Instance = tostring(Tags.sql_instance)\r\n| extend ReplicaName = tostring(Tags.replica_server_name)\r\n| where Instance == \"{SqlInstance}\";\r\ndata\r\n| summarize (Time, Val) = arg_min(TimeGenerated, Val) by ReplicaName, Name\r\n| join kind = leftouter(\r\n    datatable(DescriptionTable: dynamic)[dynamic({DescriptionParam})]\r\n    | mv-expand DescriptionTable\r\n    | evaluate bag_unpack(DescriptionTable)) on Name\r\n\t| extend Description = iff(isnotnull(Description[toint(Val)]), Description[toint(Val)], Description[array_length(Description)-1])\r\n| order by ReplicaName asc, Name asc",
         "size": 1,
         "showAnalytics": true,
         "timeContext": {
@@ -212,22 +225,54 @@
         "gridSettings": {
           "formatters": [
             {
+              "columnMatch": "Name",
+              "formatter": 5
+            },
+            {
               "columnMatch": "Time",
               "formatter": 5
             },
             {
               "columnMatch": "Name1",
               "formatter": 5
+            },
+            {
+              "columnMatch": "Description",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "71ch"
+              }
             }
           ],
           "filter": true,
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "ReplicaName"
+            ],
+            "expandTopLevel": true,
+            "finalBy": "Name"
+          },
           "labelSettings": [
+            {
+              "columnId": "ReplicaName",
+              "label": "Instance"
+            },
             {
               "columnId": "Name"
             },
             {
+              "columnId": "Time"
+            },
+            {
               "columnId": "Val",
               "label": "Current Value"
+            },
+            {
+              "columnId": "Name1"
+            },
+            {
+              "columnId": "Description"
             }
           ]
         }
@@ -290,7 +335,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\n| extend Tags = todynamic(Tags)\n| where Computer =~ '{Computer}'\n| where Tags.sql_instance == '{SqlInstance}' or Tags.sql_instance == ''\n{Metric}\n| make-series Trend = min(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain}\n",
+              "query": "InsightsMetrics\n| extend Tags = todynamic(Tags)\n| where Computer =~ '{Computer}'\n| where Tags.sql_instance == '{SqlInstance}' or Tags.sql_instance == ''\n{Metric}\n| make-series Trend = min(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by tostring(Tags.replica_server_name)\n",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
