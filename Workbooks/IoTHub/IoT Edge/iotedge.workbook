@@ -178,7 +178,7 @@
     {
       "type": 1,
       "content": {
-        "json": "*Instructions: [aka.ms/edgemon-preview](https://aka.ms/edgemon-preview)*"
+                  "json": "*Instructions: [aka.ms/edgemon-preview](https://aka.ms/edgemon-preview)*"
       },
       "conditionalVisibilities": [
         {
@@ -237,7 +237,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet cpu_percent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = toint(Val)\n| project device, value, TimeGenerated\n| order by device, TimeGenerated\n| serialize\n| make-series cpu_used_percent = max(value) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet totalMemByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| order by device, TimeGenerated\n| serialize\n| make-series mem_used_percent = max(mem_used_percent) on TimeGenerated from startTime to endTime step timeBin by device\n| project-away TimeGenerated;\nlet cpu_and_mem = memUsedPercent\n| join cpu_percent on $left.device == $right.device\n| project-away device1;\nlet totalBytesByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname\n| summarize totalBytes=sum(Bytes) by device;\nlet used_disk_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname, TimeGenerated\n| summarize availBytes=sum(Bytes) by device, TimeGenerated\n| join kind=leftouter\n    totalBytesByDevice\non $left.device == $right.device\n| extend percentUsed = round((todouble(totalBytes) - todouble(availBytes))/todouble(totalBytes) * 100, 0)\n| project TimeGenerated, device, percentUsed\n| order by device, TimeGenerated\n| make-series disk_used_trend = max(percentUsed) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet cpu_mem_disk = cpu_and_mem\n| join\n    used_disk_trend\non $left.device == $right.device;\nlet messages_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend id = trim_start(@\"[^/]+/\", tostring(dimensions.id))\n| extend value = toint(Val)\n| extend id_device = strcat(id,\"+\",device)\n| project id, device, id_device, value, TimeGenerated\n| order by id_device, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextId = next(id_device, 1)\n| extend diff = iff((value - nextValue) >= 0, value - nextValue, value)\n| where id_device == nextId and diff >= 0\n| make-series device_messages_trend = sum(diff) on TimeGenerated from startTime to endTime step timeBin by device;\nlet messages_total = messages_trend\n| mv-expand with_itemindex=x device_messages_trend to typeof(long)\n| summarize device_messages_total=sum(device_messages_trend) by device\n| join\n    messages_trend\non $left.device == $right.device;\nlet allDevices = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| project TimeGenerated, device, qlen=0\n| summarize sum_qlen=max(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_1 = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_2 = totalQlenByDevice_1\n| join kind=rightanti allDevices on $left.device == $right.device;\nlet totalQlenByDevice = union withsource=\"TempTableName\" totalQlenByDevice_1, totalQlenByDevice_2\n| project TimeGenerated, device, qlen=sum_qlen\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| join kind=leftouter messages_total on device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText;                  \np95QLenAndLastUpdate\n| join kind=leftouter\n    cpu_mem_disk\non $left.device == $right.device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText, cpu_used_percent, mem_used_percent, disk_used_trend; \n",
+              "query": "let minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet cpu_percent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = toint(Val)\n| project device, value, TimeGenerated\n| order by device, TimeGenerated\n| serialize\n| make-series cpu_used_percent = max(value) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet totalMemByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| order by device, TimeGenerated\n| serialize\n| make-series mem_used_percent = max(mem_used_percent) on TimeGenerated from startTime to endTime step timeBin by device\n| project-away TimeGenerated;\nlet cpu_and_mem = memUsedPercent\n| join cpu_percent on $left.device == $right.device\n| project-away device1;\nlet totalBytesByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname\n| summarize totalBytes=sum(Bytes) by device;\nlet used_disk_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname, TimeGenerated\n| summarize availBytes=sum(Bytes) by device, TimeGenerated\n| join kind=leftouter\n    totalBytesByDevice\non $left.device == $right.device\n| extend percentUsed = round((todouble(totalBytes) - todouble(availBytes))/todouble(totalBytes) * 100, 0)\n| project TimeGenerated, device, percentUsed\n| order by device, TimeGenerated\n| make-series disk_used_trend = max(percentUsed) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet cpu_mem_disk = cpu_and_mem\n| join\n    used_disk_trend\non $left.device == $right.device;\nlet messages_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend id = trim_start(@\"[^/]+/\", tostring(dimensions.id))\n| extend value = toint(Val)\n| extend id_device = strcat(id,\"+\",device)\n| project id, device, id_device, value, TimeGenerated\n| order by id_device, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextId = next(id_device, 1)\n| extend diff = iff((value - nextValue) >= 0, value - nextValue, value)\n| where id_device == nextId and diff >= 0\n| make-series device_messages_trend = sum(diff) on TimeGenerated from startTime to endTime step timeBin by device;\nlet messages_total = messages_trend\n| mv-expand with_itemindex=x device_messages_trend to typeof(long)\n| summarize device_messages_total=sum(device_messages_trend) by device\n| join\n    messages_trend\non $left.device == $right.device;\nlet allDevices = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| project TimeGenerated, device, qlen=0\n| summarize sum_qlen=max(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_1 = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_2 = totalQlenByDevice_1\n| join kind=rightanti allDevices on $left.device == $right.device;\nlet totalQlenByDevice = union withsource=\"TempTableName\" totalQlenByDevice_1, totalQlenByDevice_2\n| project TimeGenerated, device, qlen=sum_qlen\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet trendQLenAndLastUpdate = totalQlenByDevice \n| make-series qlenTrend = percentile(sum_qlen, 95) on TimeGenerated from startTime to endTime step timeBin by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| join kind=leftouter messages_total on device\n| project device, device_messages_total, device_messages_trend, qlenTrend, agoText, lastUpdatedSeconds;                  \ntrendQLenAndLastUpdate\n| join kind=leftouter\n    cpu_mem_disk\non $left.device == $right.device\n| project device, device_messages_total, device_messages_trend, qlenTrend, agoText, cpu_used_percent, mem_used_percent, disk_used_trend, lastUpdatedSeconds; \n",
               "size": 3,
               "timeContext": {
                 "durationMs": 14400000
@@ -255,7 +255,7 @@
                     "columnMatch": "device_messages_total",
                     "formatter": 0,
                     "formatOptions": {
-                      "customColumnWidthSetting": "12.7143ch"
+                      "customColumnWidthSetting": "11.4286ch"
                     },
                     "numberFormat": {
                       "unit": 17,
@@ -278,58 +278,32 @@
                     }
                   },
                   {
-                    "columnMatch": "p95Qlen",
-                    "formatter": 18,
+                    "columnMatch": "qlenTrend",
+                    "formatter": 10,
                     "formatOptions": {
-                      "thresholdsOptions": "colors",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "<=",
-                          "thresholdValue": "20",
-                          "representation": "green",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "<=",
-                          "thresholdValue": "100",
-                          "representation": "orange"
-                        },
-                        {
-                          "operator": ">",
-                          "thresholdValue": "100",
-                          "representation": "redBright"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "blue",
-                          "text": "{0}{1}"
-                        }
-                      ],
-                      "customColumnWidthSetting": "15.5714ch"
-                    },
-                    "numberFormat": {
-                      "unit": 0,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": true
+                      "min": 0,
+                      "max": 100,
+                      "palette": "greenRed",
+                      "compositeBarSettings": {
+                        "labelText": "",
+                        "columnSettings": []
                       }
                     }
                   },
                   {
                     "columnMatch": "agoText",
-                    "formatter": 0,
+                    "formatter": 2,
                     "formatOptions": {
                       "customColumnWidthSetting": "13.1429ch"
                     }
                   },
                   {
                     "columnMatch": "cpu_used_percent",
-                    "formatter": 9,
+                    "formatter": 21,
                     "formatOptions": {
                       "min": 0,
                       "max": 100,
-                      "palette": "greenRed"
+                      "palette": "turquoise"
                     },
                     "numberFormat": {
                       "unit": 0,
@@ -341,36 +315,41 @@
                   },
                   {
                     "columnMatch": "mem_used_percent",
-                    "formatter": 9,
+                    "formatter": 21,
                     "formatOptions": {
                       "min": 0,
                       "max": 100,
-                      "palette": "greenRed"
+                      "palette": "turquoise"
                     },
                     "numberFormat": {
                       "unit": 0,
                       "options": {
                         "style": "decimal",
+                        "useGrouping": false,
                         "maximumFractionDigits": 1
                       }
                     }
                   },
                   {
                     "columnMatch": "disk_used_trend",
-                    "formatter": 9,
+                    "formatter": 21,
                     "formatOptions": {
                       "min": 0,
                       "max": 100,
-                      "palette": "greenRed"
+                      "palette": "turquoise"
                     }
+                  },
+                  {
+                    "columnMatch": "lastUpdatedSeconds",
+                    "formatter": 5
                   }
                 ],
                 "rowLimit": 10000,
                 "filter": true,
                 "sortBy": [
                   {
-                    "itemKey": "device",
-                    "sortOrder": 1
+                    "itemKey": "agoText",
+                    "sortOrder": 2
                   }
                 ],
                 "labelSettings": [
@@ -387,8 +366,8 @@
                     "label": "Processed messages"
                   },
                   {
-                    "columnId": "p95Qlen",
-                    "label": "QLen (p95)"
+                    "columnId": "qlenTrend",
+                    "label": "QLen"
                   },
                   {
                     "columnId": "agoText",
@@ -410,8 +389,8 @@
               },
               "sortBy": [
                 {
-                  "itemKey": "device",
-                  "sortOrder": 1
+                  "itemKey": "agoText",
+                  "sortOrder": 2
                 }
               ]
             },
@@ -548,7 +527,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let totalQlenByDevice = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where TimeGenerated < {timeRange:end}\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(\"Updated \", lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(\"Updated \", lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(\"Updated \", lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(\"Updated \", lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| extend colorHelper = case(lastUpdatedSeconds > 86400, -2,\n                            lastUpdatedSeconds > 3600, -1,\n                            p95Qlen);                     \np95QLenAndLastUpdate",
+              "query": "\n\nlet minPeriod = 5m;\nlet numPeriods = 15;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet totalQlenByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet qlenTrend = totalQlenByDevice\n| make-series qTrend = percentile(sum_qlen, 95) on TimeGenerated from startTime to endTime step timeBin by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice\n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter qlenTrend on device\n| project-away device1\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(\"seen \", lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(\"seen \", lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(\"seen \", lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(\"Updated \", lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| extend colorHelper = case(lastUpdatedSeconds > 86400, -2,\n                            lastUpdatedSeconds > 3600, -1,\n                            p95Qlen);                     \np95QLenAndLastUpdate",
               "size": 0,
               "timeContext": {
                 "durationMs": 14400000
@@ -577,29 +556,39 @@
               "graphSettings": {
                 "type": 2,
                 "topContent": {
-                  "columnMatch": "device",
-                  "formatter": 1,
-                  "formatOptions": {}
+                  "columnMatch": "qTrend",
+                  "formatter": 9,
+                  "formatOptions": {
+                    "min": 0,
+                    "max": 75,
+                    "palette": "blackWhite"
+                  }
                 },
-                "centerContent": {
+                "leftContent": {
                   "columnMatch": "p95Qlen",
-                  "formatOptions": {},
+                  "formatter": 1,
                   "numberFormat": {
                     "unit": 17,
                     "options": {
                       "style": "decimal",
-                      "useGrouping": false,
+                      "useGrouping": true,
                       "maximumFractionDigits": 1
                     }
                   }
                 },
+                "centerContent": {
+                  "columnMatch": "device",
+                  "formatter": 1
+                },
                 "bottomContent": {
                   "columnMatch": "agoText",
-                  "formatOptions": {}
+                  "formatter": 1
                 },
                 "nodeIdField": "device",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
                 "nodeSize": null,
-                "staticNodeSize": 100,
+                "staticNodeSize": 140,
                 "colorSettings": {
                   "nodeColorField": "colorHelper",
                   "type": 3,
