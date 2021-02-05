@@ -24,8 +24,8 @@ Other repos you might be looking for:
 ## Recommended setup for contributing
 - In order to contribute, you'll need contributor access to the repo in order to push your branch and create a PR. 
     - If you are a Microsoft employee:
-      1) Ensure your github user is already a member of the Microsoft organization 
-      2) Look at the `CODEOWNERS` file to find if there is already a team set up for the area you are looking to contribute.  
+      1) Ensure your github user is already a member of the [Microsoft organization](https://repos.opensource.microsoft.com/orgs)
+      2) Look at the `CODEOWNERS` file to find if there is already a team set up for the area you are looking to contribute.
       3) If there is an existing team, ask the owners of that team to add you there if appropriate.
       4) if there is *not* an existing team, and you're looking to add workbook templates to new areas, in most cases you'll need to create a new team in the Microsoft organization in GitHub.
       5) If you created a new team, or you don't fall under one of the existing teams, send mail to `azmonworkbooks` with all the relavant information, including GitHub team name and details about the area you want to contribute to, so we can direct your request to the appropriate teams.
