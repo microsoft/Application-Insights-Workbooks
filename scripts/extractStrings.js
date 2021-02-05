@@ -204,7 +204,7 @@ function getLocalizeableStrings(obj, key, outputMap, templatePath) {
     if (typeof objectEntry === 'object') {
       // If the last field is a number, it is part of an array.
       // See if there's another identifier such that if a template order is edited, the string does not need to be re-localized
-      if (!isNaN(parseInt(field))) {
+      if (isNumeric(field)) {
         jsonKey = getKeyForArrayObject(key, objectEntry, field);
       } else {
         jsonKey = key.concat(".", field);
@@ -596,7 +596,7 @@ function parseXMLResult(result, workbookJSON, settingsJSON, templatePath, fullpa
   // strings 
   const strings = result.LCX.Item[0].Item[0].Item
   var locStringData = {};
-  // Extract strings from XML LCL file to map 
+  // Extract strings from XML LCL file to map
   strings.forEach(entry => {
     parseStringEntry(entry, locStringData);
   });
@@ -622,6 +622,12 @@ function writeTranslatedWorkbookToFile(data, fullPath) {
 function parseStringEntry(entry, locStringData) {
   // strings always start with ; so get rid of the first char
   var itemId = entry.$.ItemId.substring(1);
+  // if the itemId starts with @, that means the id was very long and cut short, the rest of the id is in the metadata
+  if (itemId.startsWith("@")) {
+    var restOfString = entry.Item[0].$.ItemId;
+    restOfString = restOfString.replace(";(...) ", "");
+    itemId = itemId.substring(1).concat(restOfString);
+  }
   locStringData[itemId] = {};
   const entryInput = entry.Item && entry.Item[0] || entry;
   const originalEngText = entryInput.Str[0].Val[0];
@@ -648,7 +654,7 @@ function replaceText(workbookTemplate, settingsJSON, stringMap, templatePath, fu
       const translatedVal = stringMap[key]["value"]; // translated value in the lcl file
       const engVal = stringMap[key][DefaultLang]; // original english value in the lcl file
 
-      if (templateVal && translatedVal && templateVal.localeCompare(engVal) === 0) { // if the text from the lcl file and template file match, we can go ahead and replace it
+      if (templateVal && translatedVal && typeof templateVal == "string" && templateVal.localeCompare(engVal) === 0) { // if the text from the lcl file and template file match, we can go ahead and replace it
         // change the template value
         var source = {};
         assignValueToPath(source, actualKeyPaths, translatedVal);
@@ -663,11 +669,15 @@ function convertStringKeyToPath(key) {
   return key.split(".");
 }
 
+function isNumeric(n) {
+  return !isNaN(parseFloat(n)) && isFinite(n);
+}
+
 function getValueFromPath(paths, obj) {
   const keyPaths = [];
   for (var i = 0; i < paths.length; i++) {
     var currentKey = paths[i];
-    if (Array.isArray(obj) && isNaN(parseInt(currentKey))) { // If a key is not a number but comes after an array, check if its a unique identifer
+    if (Array.isArray(obj) && !isNumeric(currentKey)) { // If a key is not a number but comes after an array, check if its a unique identifer
       const previousKey = i > 0 ? paths[i - 1] : "";
       var index;
 
