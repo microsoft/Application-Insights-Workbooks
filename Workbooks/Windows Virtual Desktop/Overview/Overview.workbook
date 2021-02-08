@@ -74,16 +74,15 @@
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::all"
-              ]
+              ],
+              "showDefault": false
             },
             "timeContext": {
               "durationMs": 0
             },
             "timeContextFromParameter": "TimeRange",
-            "queryType": 12,
-            "value": [
-              "value::all"
-            ]
+            "defaultValue": "value::all",
+            "queryType": 12
           },
           {
             "id": "04a8ead2-1fb2-4666-a7b0-6d92e3c29b46",
@@ -192,7 +191,7 @@
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources"
       },
-      "name": "parameters - 2"
+      "name": "parameters_general"
     },
     {
       "type": 12,
@@ -771,7 +770,7 @@
                     "query": "let FullList = datatable(Value:string)[\"Host\", \"User\", \"Resource\", \"Client\"];\r\nlet GetConnectionFailures = (BaseData:(Slicer:string, CorrelationId:string, UserName:string, ResourceAlias:string, SessionHostName:string, Client:string, TimeGenerated:datetime , Connected:bool), ViewName:string)\r\n{\r\n    BaseData\r\n    | summarize Users=dcount(UserName), Resources=dcount(ResourceAlias), Hosts=dcount(SessionHostName), Clients=dcount(Client), LastAttempt=max(TimeGenerated), Attempts=dcount(CorrelationId), View=ViewName, Activities=makeset(CorrelationId) by Slicer, Connected\r\n    | as BySlicer\r\n    | where Connected != true\r\n    | join kind=leftanti\r\n    (\r\n        BySlicer\r\n        | where Connected\r\n    ) on Slicer\r\n    | project-away Connected\r\n};\r\nWVDConnections\r\n| where State == \"Completed\"\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend SessionHostName==trim_end(@\"\\..*\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| as BaseData\r\n| extend Slicer=UserName\r\n| invoke GetConnectionFailures(\"User\")\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=Client\r\n    | invoke GetConnectionFailures(\"Client\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=SessionHostName\r\n    | invoke GetConnectionFailures(\"Host\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=ResourceAlias\r\n    | invoke GetConnectionFailures(\"Resource\")\r\n)\r\n| where strlen(Slicer) > 2\r\n| sort by View, Attempts desc \r\n| summarize Items=dcount(Slicer) by Value=View\r\n| join kind=fullouter FullList on Value\r\n| project Value=strcat(coalesce(Value, Value1), \"s\"), Items=coalesce(Items, 0), Subtitle=\"with potential issues\"",
                     "size": 1,
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
@@ -798,12 +797,15 @@
                           "unit": 17,
                           "options": {
                             "style": "decimal",
+                            "useGrouping": false,
                             "maximumFractionDigits": 2,
                             "maximumSignificantDigits": 3
                           }
                         }
                       },
-                      "showBorder": false
+                      "showBorder": false,
+                      "sortCriteriaField": "Items",
+                      "sortOrderField": 2
                     }
                   },
                   "customWidth": "30",
@@ -869,7 +871,7 @@
                     "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in (WVDHosts)\r\n| as ConnectionData\r\n| where State in (\"Started\")\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | evaluate bag_unpack(Parameters)   \r\n    | where LoadBalanceOutcome == \"NewSession\" //Include both Disconnected & Active as reesablishing a session\r\n    | summarize ConnectedTime=min(TimeGenerated) by CorrelationId\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State in (\"Connected\")\r\n    | project ConnectedTime=TimeGenerated, CorrelationId, UserName, State\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n//| make-series Average=avg(ConnectionTime) default=int(null), Median=percentile(ConnectionTime, 50) default=int(null), p95=percentile(ConnectionTime, 95) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n| summarize Min=min(ConnectionTime), Median=percentile(ConnectionTime, 50), Average=avg(ConnectionTime), p95=percentile(ConnectionTime, 95)\r\n| evaluate narrow()\r\n| project Title=\"Time to connect\", Metric=Column, Value",
                     "size": 1,
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
@@ -889,7 +891,7 @@
                         "columnMatch": "Value",
                         "formatter": 12,
                         "formatOptions": {
-                          "min": 20,
+                          "min": 0,
                           "max": 60,
                           "palette": "greenRed"
                         },
@@ -897,6 +899,7 @@
                           "unit": 24,
                           "options": {
                             "style": "decimal",
+                            "useGrouping": false,
                             "maximumSignificantDigits": 2
                           }
                         }
@@ -958,7 +961,7 @@
                     "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nEvent\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts) and EventLog in (\"Application\", \"System\") and EventLevel <= 1\r\n| summarize TotalEvents=count(), UniqueEvents=dcount(EventID) by Computer=trim_end(@\"\\..*\", Computer), Subtitle=\"Unique events / Total events\"",
                     "size": 1,
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
@@ -979,6 +982,7 @@
                         "columnMatch": "UniqueEvents",
                         "formatter": 12,
                         "formatOptions": {
+                          "min": 0,
                           "palette": "greenRed"
                         }
                       },
@@ -986,10 +990,13 @@
                         "columnMatch": "TotalEvents",
                         "formatter": 12,
                         "formatOptions": {
+                          "min": 0,
                           "palette": "greenRed"
                         }
                       },
-                      "showBorder": false
+                      "showBorder": false,
+                      "sortCriteriaField": "TotalEvents",
+                      "sortOrderField": 2
                     },
                     "chartSettings": {
                       "showMetrics": false
@@ -1064,7 +1071,7 @@
                     "size": 1,
                     "aggregation": 3,
                     "timeContext": {
-                      "durationMs": 604800000
+                      "durationMs": 0
                     },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
@@ -1108,7 +1115,7 @@
                             {
                               "operator": "Default",
                               "thresholdValue": null,
-                              "representation": "Blank",
+                              "representation": "3",
                               "text": "{0}{1}"
                             }
                           ]
@@ -1124,7 +1131,9 @@
                       "secondaryContent": {
                         "columnMatch": "Bottom"
                       },
-                      "showBorder": false
+                      "showBorder": false,
+                      "sortCriteriaField": "Median",
+                      "sortOrderField": 2
                     }
                   },
                   "customWidth": "30",
