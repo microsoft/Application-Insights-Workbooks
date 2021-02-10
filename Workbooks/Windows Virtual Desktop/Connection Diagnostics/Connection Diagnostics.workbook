@@ -80,6 +80,7 @@
               "durationMs": 0
             },
             "timeContextFromParameter": "TimeRange",
+            "defaultValue": "value::all",
             "queryType": 12
           },
           {
@@ -183,14 +184,14 @@
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "parameters - 2"
+      "name": "parameters_general"
     },
     {
       "type": 1,
       "content": {
         "json": "# Connection Diagnostics"
       },
-      "name": "text - 0"
+      "name": "Title_Description"
     },
     {
       "type": 9,
@@ -217,7 +218,7 @@
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "parameters - 7"
+      "name": "parameters_debug"
     },
     {
       "type": 12,
@@ -235,6 +236,7 @@
               "aggregation": 5,
               "title": "Volume of connections by connection result",
               "timeBrushParameterName": "ConnectionTimeBrush",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -268,6 +270,7 @@
               "title": "Connection success rate",
               "color": "blue",
               "noDataMessage": "No connections were started in the selected time range",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -304,6 +307,7 @@
               "query": "// Success rate of establishing a connection state when attempted by the user\r\nWVDConnections\r\n| join kind=leftsemi\r\n(\r\n    WVDConnections\r\n    | where TimeGenerated {TimeRange}\r\n    | distinct CorrelationId\r\n) on CorrelationId\r\n| summarize arg_max(TimeGenerated, *) by CorrelationId\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend Connected=coalesce(Connected, false)\r\n// Split the activity ID into the \"session ID\" (first 36-4=32 characters of the GUID, same value for all reconnections) and the last 4 characters are the attempt index (0 for initial connection, increment for each reconnect)\r\n| extend SessionId=substring(CorrelationId, 0, 36 - 4),\r\n         AttemptIndex=toint(strcat(\"0x\", substring(CorrelationId, 36 - 2), substring(CorrelationId, 36 - 4, 2))) // Swap the last two pairs of characters, and intrepret as hex\r\n// For each attempt in a session, verify that checkpoints from the host confirm the connection\r\n| summarize Attempts=dcount(CorrelationId), Success=countif(Connected)>0, FirstAttempt=min(TimeGenerated) by UserName, SessionId\r\n| where bin_at(FirstAttempt, {TimeRange:grain}, {TimeRange:start}) between(({ConnectionTimeBrush:start})..({ConnectionTimeBrush:end}))\r\n| sort by FirstAttempt asc\r\n| where not(Success) or not(\"{FocusFailures}\" contains \"Focus on failures\")\r\n| project FirstAttempt, SessionId=strcat(iif(Success, \"🟢\", \"🔴\"), \" \", SessionId, \"*\"), UserName, Attempts\r\n| take 250 // prevent the tooltip that takes up vertical space. is 250 reasonable? can be adjusted by customers by editing the query and visual config",
               "size": 1,
               "aggregation": 5,
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -397,6 +401,7 @@
               "aggregation": 5,
               "title": "Volume of users by connection result",
               "timeBrushParameterName": "ConnectionTimeBrush",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -429,6 +434,7 @@
               "aggregation": 5,
               "title": "User-based success rate",
               "color": "turquoise",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -477,6 +483,7 @@
               "query": "// % of users able to reach a session host\r\nWVDConnections\r\n| join kind=leftsemi\r\n(\r\n    WVDConnections\r\n    | where TimeGenerated {TimeRange}\r\n    | distinct CorrelationId\r\n) on CorrelationId\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| summarize arg_max(TimeGenerated, *) by CorrelationId\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend Connected=coalesce(Connected, false)\r\n// Split the activity ID into the \"session ID\" (first 36-4=32 characters of the GUID, same value for all reconnections) and the last 4 characters are the attempt index (0 for initial connection, increment for each reconnect)\r\n| extend SessionId=substring(CorrelationId, 0, 36 - 4),\r\n         AttemptIndex=toint(strcat(\"0x\", substring(CorrelationId, 36 - 2), substring(CorrelationId, 36 - 4, 2))) // Swap the last two pairs of characters, and intrepret as hex\r\n| summarize FirstAttempt=min(TimeGenerated), TotalAttempts=dcount(CorrelationId), Success=dcountif(CorrelationId, Connected)>0, SampleSession=any(SessionId) by UserName, BinnedTime=bin_at(TimeGenerated, {TimeRange:grain}, {TimeRange:start})\r\n| where BinnedTime between(({ConnectionTimeBrush:start})..({ConnectionTimeBrush:end}))\r\n| where not(Success) or not(\"{FocusFailures}\" contains \"Focus on failures\")\r\n| sort by FirstAttempt desc, Success asc, UserName asc\r\n| project FirstAttempt, UserName=strcat(iif(Success, \"🟢\", \"🔴\"), \" \", UserName), SampleSession=strcat(SampleSession, \"*\"), Attempts=TotalAttempts\r\n| take 250 // prevent the tooltip that takes up vertical space. is 250 reasonable? can be adjusted by customers by editing the query and visual config",
               "size": 1,
               "aggregation": 5,
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -484,15 +491,6 @@
               ],
               "visualization": "table",
               "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "Attempts",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "palette": "blue"
-                    }
-                  }
-                ],
                 "sortBy": [
                   {
                     "itemKey": "UserName",
@@ -576,7 +574,7 @@
                   "label": "Report by",
                   "type": 10,
                   "isRequired": true,
-                  "query": "let FullList = datatable(Value:string)[\"Host\", \"User\", \"Resource\", \"Client\"];\r\nlet GetConnectionFailures = (BaseData:(Slicer:string, CorrelationId:string, UserName:string, ResourceAlias:string, SessionHostName:string, Client:string, TimeGenerated:datetime , Connected:bool), ViewName:string)\r\n{\r\n    BaseData\r\n    | summarize Users=dcount(UserName), Resources=dcount(ResourceAlias), Hosts=dcount(SessionHostName), Clients=dcount(Client), LastAttempt=max(TimeGenerated), Attempts=dcount(CorrelationId), View=ViewName, Activities=makeset(CorrelationId) by Slicer, Connected\r\n    | as BySlicer\r\n    | where Connected != true\r\n    | join kind=leftanti\r\n    (\r\n        BySlicer\r\n        | where Connected\r\n    ) on Slicer\r\n    | project-away Connected\r\n};\r\nWVDConnections\r\n| where State == \"Completed\"\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend SessionHostName=replace(\".redmond.corp.microsoft.com\",\"\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| as BaseData\r\n| extend Slicer=UserName\r\n| invoke GetConnectionFailures(\"User\")\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=Client\r\n    | invoke GetConnectionFailures(\"Client\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=SessionHostName\r\n    | invoke GetConnectionFailures(\"Host\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=ResourceAlias\r\n    | invoke GetConnectionFailures(\"Resource\")\r\n)\r\n| where strlen(Slicer) > 2\r\n| sort by View, Attempts desc \r\n| summarize Items=dcount(Slicer) by Value=View\r\n| join kind=fullouter FullList on Value\r\n| project Value=coalesce(Value, Value1), Items=coalesce(Items, 0)\r\n| project Value, Label=strcat(Value, \" (\", Items, \")\")",
+                  "query": "let FullList = datatable(Value:string)[\"Host\", \"User\", \"Resource\", \"Client\"];\r\nlet GetConnectionFailures = (BaseData:(Slicer:string, CorrelationId:string, UserName:string, ResourceAlias:string, SessionHostName:string, Client:string, TimeGenerated:datetime , Connected:bool), ViewName:string)\r\n{\r\n    BaseData\r\n    | summarize Users=dcount(UserName), Resources=dcount(ResourceAlias), Hosts=dcount(SessionHostName), Clients=dcount(Client), LastAttempt=max(TimeGenerated), Attempts=dcount(CorrelationId), View=ViewName, Activities=makeset(CorrelationId) by Slicer, Connected\r\n    | as BySlicer\r\n    | where Connected != true\r\n    | join kind=leftanti\r\n    (\r\n        BySlicer\r\n        | where Connected\r\n    ) on Slicer\r\n    | project-away Connected\r\n};\r\nWVDConnections\r\n| where State == \"Completed\"\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend SessionHostName=trim_end(@\"\\..*\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| as BaseData\r\n| extend Slicer=UserName\r\n| invoke GetConnectionFailures(\"User\")\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=Client\r\n    | invoke GetConnectionFailures(\"Client\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=SessionHostName\r\n    | invoke GetConnectionFailures(\"Host\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=ResourceAlias\r\n    | invoke GetConnectionFailures(\"Resource\")\r\n)\r\n| where strlen(Slicer) > 2\r\n| sort by View, Attempts desc \r\n| summarize Items=dcount(Slicer) by Value=View\r\n| join kind=fullouter FullList on Value\r\n| project Value=coalesce(Value, Value1), Items=coalesce(Items, 0)\r\n| project Value, Label=strcat(Value, \" (\", Items, \")\")",
                   "crossComponentResources": [
                     "{poolla}"
                   ],
@@ -596,13 +594,13 @@
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
-            "name": "parameters - 4"
+            "name": "parameters_connectivity"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let GetConnectionFailures = (BaseData:(Slicer:string, CorrelationId:string, UserName:string, ResourceAlias:string, SessionHostName:string, Client:string, TimeGenerated:datetime , Connected:bool), ViewName:string)\r\n{\r\n    BaseData\r\n    | summarize Users=dcount(UserName), Resources=dcount(ResourceAlias), Hosts=dcount(SessionHostName), Clients=dcount(Client), LastAttempt=max(TimeGenerated), Attempts=dcount(CorrelationId), View=ViewName, Activities=makeset(CorrelationId)\r\n             by Slicer, Connected\r\n    | as BySlicer\r\n    | where Connected != true\r\n    | join kind=leftanti // Exclude the users that managed to connect\r\n    (\r\n        BySlicer\r\n        | where Connected\r\n    ) on Slicer\r\n    | project-away Connected\r\n};\r\nWVDConnections\r\n| where State == \"Completed\"\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend SessionHostName=replace(\".redmond.corp.microsoft.com\",\"\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| as BaseData\r\n| extend Slicer=UserName\r\n| invoke GetConnectionFailures(\"User\")\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=Client\r\n    | invoke GetConnectionFailures(\"Client\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=SessionHostName\r\n    | invoke GetConnectionFailures(\"Host\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=ResourceAlias\r\n    | invoke GetConnectionFailures(\"Resource\")\r\n)\r\n| where strlen(Slicer) > 2\r\n| where View == \"{ReportBy}\"\r\n| sort by View, Attempts desc \r\n| project {ReportBy}=Slicer, Attempts, LastAttempt, Users, Resources, Hosts, Clients, Activities, Slicer\r\n| project-away {ReportBy}s // Remove the count of the dimension used as a slicer, since it will always be 1\r\n          ",
+              "query": "let GetConnectionFailures = (BaseData:(Slicer:string, CorrelationId:string, UserName:string, ResourceAlias:string, SessionHostName:string, Client:string, TimeGenerated:datetime , Connected:bool), ViewName:string)\r\n{\r\n    BaseData\r\n    | summarize Users=dcount(UserName), Resources=dcount(ResourceAlias), Hosts=dcount(SessionHostName), Clients=dcount(Client), LastAttempt=max(TimeGenerated), Attempts=dcount(CorrelationId), View=ViewName, Activities=makeset(CorrelationId)\r\n             by Slicer, Connected\r\n    | as BySlicer\r\n    | where Connected != true\r\n    | join kind=leftanti // Exclude the users that managed to connect\r\n    (\r\n        BySlicer\r\n        | where Connected\r\n    ) on Slicer\r\n    | project-away Connected\r\n};\r\nWVDConnections\r\n| where State == \"Completed\"\r\n| where _ResourceId startswith \"{HostPool}\"\r\n| extend HostPool = '{HostPool:label}/'\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in ({WVDHosts})\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend SessionHostName=trim_end(@\"\\..*\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| as BaseData\r\n| extend Slicer=UserName\r\n| invoke GetConnectionFailures(\"User\")\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=Client\r\n    | invoke GetConnectionFailures(\"Client\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=SessionHostName\r\n    | invoke GetConnectionFailures(\"Host\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=ResourceAlias\r\n    | invoke GetConnectionFailures(\"Resource\")\r\n)\r\n| where strlen(Slicer) > 2\r\n| where View == \"{ReportBy}\"\r\n| sort by View, Attempts desc \r\n| project {ReportBy}=Slicer, Attempts, LastAttempt, Users, Resources, Hosts, Clients, Activities, Slicer\r\n| project-away {ReportBy}s // Remove the count of the dimension used as a slicer, since it will always be 1\r\n          ",
               "size": 0,
               "aggregation": 5,
               "title": "{ReportBy}s unable to connect in {TimeRange:label}",
@@ -623,6 +621,7 @@
                   "parameterType": 1
                 }
               ],
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -635,6 +634,7 @@
                     "columnMatch": "Attempts",
                     "formatter": 4,
                     "formatOptions": {
+                      "min": 0,
                       "palette": "redBright",
                       "compositeBarSettings": {
                         "labelText": "",
@@ -648,10 +648,10 @@
                     }
                   },
                   {
-                    "columnMatch": "Resources",
+                    "columnMatch": "Users",
                     "formatter": 4,
                     "formatOptions": {
-                      "palette": "yellow"
+                      "palette": "turquoise"
                     }
                   },
                   {
@@ -677,10 +677,10 @@
                     "formatter": 5
                   },
                   {
-                    "columnMatch": "Users",
+                    "columnMatch": "Resources",
                     "formatter": 4,
                     "formatOptions": {
-                      "palette": "turquoise"
+                      "palette": "yellow"
                     }
                   },
                   {
@@ -736,13 +736,14 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let SelectedActivities = dynamic([{ExpandActivities}]);\r\nWVDConnections\r\n| where SelectedActivities contains CorrelationId\r\n| extend SessionHostName=replace(\".redmond.corp.microsoft.com\",\"\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| summarize Activities=dcount(CorrelationId) by Host=SessionHostName, User=UserName, Resource=ResourceAlias, Client\r\n",
+                    "query": "let SelectedActivities = dynamic([{ExpandActivities}]);\r\nWVDConnections\r\n| where SelectedActivities contains CorrelationId\r\n| extend SessionHostName=trim_end(@\"\\..*\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| summarize Activities=dcount(CorrelationId) by Host=SessionHostName, User=UserName, Resource=ResourceAlias, Client\r\n",
                     "size": 1,
                     "aggregation": 5,
                     "timeContext": {
                       "durationMs": 604800000
                     },
                     "timeContextFromParameter": "TimeRange",
+                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -809,6 +810,7 @@
                       "durationMs": 604800000
                     },
                     "timeContextFromParameter": "TimeRange",
+                    "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
                     "crossComponentResources": [
@@ -927,6 +929,7 @@
                   "parameterType": 1
                 }
               ],
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -952,6 +955,7 @@
                     "columnMatch": "Attempts",
                     "formatter": 4,
                     "formatOptions": {
+                      "min": 0,
                       "palette": "blue",
                       "aggregation": "Sum"
                     }
@@ -960,6 +964,7 @@
                     "columnMatch": "Errors",
                     "formatter": 4,
                     "formatOptions": {
+                      "min": 0,
                       "palette": "redBright",
                       "aggregation": "Sum"
                     }
@@ -1048,6 +1053,7 @@
                 "durationMs": 604800000
               },
               "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
@@ -1211,7 +1217,7 @@
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
-            "name": "parameters - 12"
+            "name": "parameters_activity"
           },
           {
             "type": 3,
@@ -1224,6 +1230,7 @@
               "noDataMessage": "No errors reported in the selected time period",
               "exportFieldName": "label",
               "exportParameterName": "wvderror",
+              "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
               "crossComponentResources": [
