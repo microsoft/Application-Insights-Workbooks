@@ -179,24 +179,24 @@ Now, whenenever a time range is brushed in this chart, it will also update the `
 
    ![Before brushing](../Images/Global-before-brush.png)
 
-    * the time range is shown as "last hour"
-    * the chart shows the last hour of data
+    * The time range is shown as "last hour".
+    * The chart shows the last hour of data.
 
 2) During brushing:
 
    ![During brushing](../Images/Global-during-brush.png)
 
-    * the time range is still last hour, and the brushing outlines are drawn
-    * no parameters/etc have changed. once you let go of the brush, the time range will be updated
+    * The time range is still last hour, and the brushing outlines are drawn.
+    * No parameters/etc have changed. once you let go of the brush, the time range will be updated.
 
 
 3) After brushing:
 
     ![After brushing](../Images/Global-after-brush.png)
 
-    * the time range specified by the time brush will be set by this step, overriding the global value (the timerange dropdown now displays that custom time range)
-    * because the global value at the top has changed, and because this chart depends on `timerange` *as an input*, the time range of the query used in the chart will also update, causing the query to and the chart to update
-    * any other steps in the workbook that depend on `timerange` will also update.
+    * The time range specified by the time brush will be set by this step, overriding the global value (the timerange dropdown now displays that custom time range).
+    * Because the global value at the top has changed, and because this chart depends on `timerange` *as an input*, the time range of the query used in the chart will also update, causing the query to and the chart to update.
+    * Any other steps in the workbook that depend on `timerange` will also update.
 
     (If you do *not* use a global parameter, the `timerange` parameter value will only change *below* this query step, things above or this item itself would not update)
 

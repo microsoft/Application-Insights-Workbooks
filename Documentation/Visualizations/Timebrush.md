@@ -7,7 +7,7 @@ When query or metrics steps are displaying time based data, additional options b
 Enabling time range brushing allows a user to "brush" or "scrub" a range on a chart, and have that range be output as a parameter value.
 
 There's an additional setting to only export a parameter when a range is explicitly brushed. 
-* if this setting is unchecked (default), the parameter will always have a value, when not brushed, the parameter value will be the full time range displayed in the chart.
+* If this setting is unchecked (default), the parameter will always have a value, when not brushed, the parameter value will be the full time range displayed in the chart.
 * If this setting is checked, the parameter value will only be set after a user brushes, and the parameter will have no value before that.
 
 ## Brushing in a metrics chart
