@@ -157,6 +157,13 @@
       }
     },
     {
+      "type": 1,
+      "content": {
+        "json": "# {SqlInstance}"
+      },
+      "name": "Instance name"
+    },
+    {
       "type": 11,
       "content": {
         "version": "LinkItem/1.0",
@@ -171,11 +178,35 @@
             "style": "link"
           },
           {
+            "id": "ca22d182-2af8-425d-a7a7-506f0989c78a",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Activities",
+            "subTarget": "Activities",
+            "style": "link"
+          },
+          {
             "id": "1030b326-64bb-4c24-a516-487d79526db1",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
             "linkLabel": "Memory clerks",
             "subTarget": "Memory clerks",
+            "style": "link"
+          },
+          {
+            "id": "b1eac7ea-67b6-428a-b572-98bae7792eb4",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Database space",
+            "subTarget": "Database space",
+            "style": "link"
+          },
+          {
+            "id": "b7b233f1-911e-4445-ac7d-1a0616bad551",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Transactions",
+            "subTarget": "Transactions",
             "style": "link"
           },
           {
@@ -250,6 +281,92 @@
             },
             "showPin": true,
             "name": "CPU Utilization %"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let counterMetadata = datatable(id:string, name:string, rank:int)[\r\n'User Connections', 'User Connections', 1,\r\n'Active Temp Tables', 'Active Temp Tables', 2,\r\n'Memory Grants Pending', 'Memory Grants Pending', 4,\r\n'Processes blocked', 'Processes blocked', 5,\r\n'Number of Deadlocks/sec', 'Deadlocks/sec', 6,\r\n];\r\nlet data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where  (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}');\r\ndata\r\n| where Counter in~ ('User connections', 'Active Temp Tables')\r\n| summarize EndValue = avg(Val) by Counter\r\n| union (data\r\n    | where Counter in~ ('Memory Grants Pending', 'Number of deadlocks/sec', 'Processes blocked')\r\n    | summarize (T, EndValue) = arg_max(TimeGenerated, Val), Max = max(Val) by Counter)\r\n| extend EndValue = toint(EndValue)\r\n| join kind = inner (counterMetadata) on $left.Counter == $right.id\r\n| extend Subtitle = '⎯⎯⎯⎯⎯', Status = case(Counter !in~ ('Memory Grants Pending', 'Processes blocked', 'Number of Deadlocks/sec'), 'Not applicable', EndValue > 0, 'Error', Max > 0, 'Warning', 'Success')\r\n| order by rank asc\r\n",
+              "size": 4,
+              "title": "Key stats",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "name",
+                  "formatter": 1
+                },
+                "subtitleContent": {
+                  "columnMatch": "Subtitle",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "EndValue",
+                  "formatter": 12,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Status",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Not applicable",
+                        "representation": "Blank",
+                        "text": ""
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Error",
+                        "representation": "3",
+                        "text": ""
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Warning",
+                        "representation": "2",
+                        "text": ""
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": ""
+                      }
+                    ]
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Warning icon indicates that this metric is good now, but had a problem in the time window."
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue"
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "name": "Key stats"
           },
           {
             "type": 3,
@@ -366,13 +483,1019 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.instance), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database != 'Total'\r\n| where Name =~ 'Transactions/sec'\r\n| extend SeriesName = strcat(Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Transactions./sec",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "createOtherGroup": 0,
+                "showLegend": true,
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 31,
+                    "options": {
+                      "style": "decimal"
+                    }
+                  }
+                }
+              }
+            },
+            "showPin": true,
+            "name": "Transactions/sec"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| where Name =~ 'User connections'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "User connections",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "ySettings": {
+                  "unit": 17,
+                  "min": null,
+                  "max": null
+                }
+              }
+            },
+            "customWidth": "33",
+            "showPin": true,
+            "name": "User connections"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| where Name =~ 'Batch requests/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Batch requests/sec",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "ySettings": {
+                  "unit": 31,
+                  "min": null,
+                  "max": null
+                }
+              }
+            },
+            "customWidth": "33",
+            "showPin": true,
+            "name": "Batch requests per second"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| where Name =~ 'SQL compilations/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "SQL compilations/sec",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "ySettings": {
+                  "unit": 31,
+                  "min": null,
+                  "max": null
+                }
+              }
+            },
+            "customWidth": "33",
+            "showPin": true,
+            "name": "SQL compilations/sec"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| where Name =~ 'SQL re-compilations/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "SQL re-compilations/sec",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "ySettings": {
+                  "unit": 31,
+                  "min": null,
+                  "max": null
+                }
+              }
+            },
+            "customWidth": "33",
+            "showPin": true,
+            "name": "SQL re-compilations/sec"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| where Name =~ 'Processes blocked'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Processes blocked",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "ySettings": {
+                  "unit": 17,
+                  "min": null,
+                  "max": null
+                }
+              }
+            },
+            "customWidth": "33",
+            "showPin": true,
+            "name": "Processes blocked"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| where Computer == '{Computer}'\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance == '{SqlInstance}' and Database == '{SqlDatabase}'\r\n| where Name =~ 'Number of deadlocks/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "size": 0,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Number of deadlocks/sec",
+              "timeContext": {
+                "durationMs": 14400000
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Online",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "minimumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Online trend",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "green",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Offline|Recovering|Recovery pending|Restoring|Suspect",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "red",
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumSignificantDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Server memory",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 4,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total storage",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "showIcon": true
+                    },
+                    "numberFormat": {
+                      "unit": 38,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              },
+              "chartSettings": {
+                "ySettings": {
+                  "unit": 31,
+                  "min": null,
+                  "max": null
+                }
+              }
+            },
+            "customWidth": "33",
+            "showPin": true,
+            "name": "Number of deadlocks/sec"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "Activities"
+      },
+      "name": "Activities"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
               "query": "let data = InsightsMetrics\r\n| where Namespace == 'sqlserver_memory_clerks'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), ClerkType = tostring(Tags.clerk_type)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and Instance == '{SqlInstance}' and (Database == '{SqlDatabase}' or '*' == '{SqlDatabase}');\r\ndata\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName, ClerkType\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ClerkType, SeriesName\r\n\r\n",
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
               "title": "Memory clerks",
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -417,15 +1540,15 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_database_io'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), FileType = tostring(Tags.file_type)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}'\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Name, Database, SqlInstance, FileType\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| summarize\r\n        DataReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'DATA'),\r\n        DataWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'DATA'),\r\n        DataReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'DATA'),\r\n        DataWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'DATA'),\r\n        LogReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'LOG'),\r\n        LogWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'LOG'),\r\n        LogReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'LOG'),\r\n        LogWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'LOG')\r\n    by SqlInstance, Database\r\n| project-reorder LogReadBytes, LogWriteBytes, LogReadLatency, LogWriteLatency, DataReadBytes, DataWriteBytes, DataReadLatency, DataWriteLatency, Database",
+              "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}'\r\n| extend SqlInstance = strcat(SqlInstance, '/')\r\n| summarize \r\n        DataFilesSize = avgif(Val, Counter == 'Data File(s) Size (KB)'),\r\n        LogFilesSize = avgif(Val, Counter == 'Log File(s) Size (KB)'),\r\n        LogFilesUsedSize = avgif(Val, Counter == 'Log File(s) Used Size (KB)'),\r\n        PercentLogUsed = avgif(Val, Counter == 'Percent Log Used')\r\n    by SqlInstance, DbInstance\r\n",
               "size": 0,
               "showAnalytics": true,
               "timeContext": {
                 "durationMs": 0
               },
               "timeContextFromParameter": "TimeRange",
-              "exportFieldName": "Database",
-              "exportParameterName": "SqlDatabase",
+              "exportFieldName": "DbInstance",
+              "exportParameterName": "DbInstance",
               "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
@@ -446,21 +1569,25 @@
                         "resourceIdsSource": "parameter",
                         "resourceIds": "DatabaseId",
                         "templateIdSource": "static",
-                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Database IO",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Database space",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default",
                         "passSpecificParams": true,
                         "templateParameters": [
                           {
-                            "name": "TimeRange",
-                            "source": "parameter",
-                            "value": "TimeRange"
-                          },
-                          {
                             "name": "Computer",
                             "source": "parameter",
                             "value": "Computer"
+                          },
+                          {
+                            "name": "DatabaseId",
+                            "source": "parameter",
+                            "value": "DatabaseId"
+                          },
+                          {
+                            "name": "SqlDatabase",
+                            "source": "cell"
                           },
                           {
                             "name": "SqlInstance",
@@ -468,9 +1595,246 @@
                             "value": "SqlInstance"
                           },
                           {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "Workspace",
+                            "source": "parameter",
+                            "value": "Workspace"
+                          },
+                          {
+                            "name": "WorkspaceId",
+                            "source": "parameter",
+                            "value": "WorkspaceId"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "SqlInstance",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "DbInstance",
+                    "formatter": 5,
+                    "formatOptions": {
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Database space",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "DataFilesSize|LogFilesSize|LogFilesUsedSize",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "blue",
+                      "aggregation": "Sum"
+                    },
+                    "numberFormat": {
+                      "unit": 37,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "PercentLogUsed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "orange"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Database",
+                    "formatter": 5
+                  }
+                ],
+                "rowLimit": 1000,
+                "filter": true,
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "SqlInstance"
+                  ],
+                  "expandTopLevel": true,
+                  "finalBy": "DbInstance"
+                },
+                "sortBy": [
+                  {
+                    "itemKey": "$gen_heatmap_DataFilesSize|LogFilesSize|LogFilesUsedSize_3",
+                    "sortOrder": 2
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "SqlInstance",
+                    "label": "Name"
+                  },
+                  {
+                    "columnId": "DbInstance",
+                    "label": "More..."
+                  },
+                  {
+                    "columnId": "DataFilesSize",
+                    "label": "Data file(s) size"
+                  },
+                  {
+                    "columnId": "LogFilesSize",
+                    "label": "Log file(s) size"
+                  },
+                  {
+                    "columnId": "LogFilesUsedSize",
+                    "label": "Log file(s) used size"
+                  },
+                  {
+                    "columnId": "PercentLogUsed",
+                    "label": "Percent log used"
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "$gen_heatmap_DataFilesSize|LogFilesSize|LogFilesUsedSize_3",
+                  "sortOrder": 2
+                }
+              ],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "showPin": true,
+            "name": "Database space"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "Database space"
+      },
+      "name": "Database space"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}'\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Counter, Database, SqlInstance, DbInstance, bin(TimeGenerated, {TimeRange:grain})\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| extend Database = strcat(SqlInstance, '/')\r\n| summarize \r\n        WriteTransactionsPerSec = avgif(Val, Counter == 'Write Transactions/sec'),\r\n        LogFlushesPerSec = avgif(Val, Counter == 'Log Flushes/sec'),\r\n        LogBytesFlushedPerSec = avgif(Val, Counter == 'Log Bytes Flushed/sec'),\r\n        LogFlushWaitTime = avgif(Val, Counter == 'Log Flush Wait Time')\r\n    by Database, DbInstance\r\n| project-reorder WriteTransactionsPerSec, LogFlushesPerSec, LogBytesFlushedPerSec, LogFlushWaitTime, DbInstance\r\n",
+              "size": 0,
+              "showAnalytics": true,
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "$gen_group",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Transactions",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Computer",
+                            "source": "parameter",
+                            "value": "Computer"
+                          },
+                          {
+                            "name": "DatabaseId",
+                            "source": "parameter",
+                            "value": "DatabaseId"
+                          },
+                          {
                             "name": "SqlDatabase",
+                            "source": "cell"
+                          },
+                          {
+                            "name": "SqlInstance",
                             "source": "parameter",
                             "value": "SqlInstance"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
                           },
                           {
                             "name": "Workspace",
@@ -483,41 +1847,469 @@
                             "value": "WorkspaceId"
                           },
                           {
+                            "name": "ShowTransactions",
+                            "source": "static",
+                            "value": "true"
+                          },
+                          {
+                            "name": "ShowLogFlushes",
+                            "source": "static",
+                            "value": "true"
+                          },
+                          {
+                            "name": "ShowLogBytesFlushed",
+                            "source": "static",
+                            "value": "true"
+                          },
+                          {
+                            "name": "ShowLogFlushWaitTimes",
+                            "source": "static",
+                            "value": "true"
+                          }
+                        ]
+                      }
+                    },
+                    "numberFormat": {
+                      "unit": 31,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "TransactionsPerSec|WriteTransactionsPerSec",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "blue",
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "aggregation": "Sum",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Transactions",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Computer",
+                            "source": "parameter",
+                            "value": "Computer"
+                          },
+                          {
                             "name": "DatabaseId",
                             "source": "parameter",
                             "value": "DatabaseId"
                           },
                           {
-                            "name": "ShowLogOps",
-                            "source": "static",
-                            "value": "true"
+                            "name": "SqlDatabase",
+                            "source": "column",
+                            "value": "DbInstance"
                           },
                           {
-                            "name": "ShowLogBytes",
-                            "source": "static",
-                            "value": "true"
+                            "name": "SqlInstance",
+                            "source": "parameter",
+                            "value": "SqlInstance"
                           },
                           {
-                            "name": "ShowLogLatencies",
-                            "source": "static",
-                            "value": "true"
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
                           },
                           {
-                            "name": "ShowDataOps",
-                            "source": "static",
-                            "value": "true"
+                            "name": "Workspace",
+                            "source": "parameter",
+                            "value": "Workspace"
                           },
                           {
-                            "name": "ShowDataBytes",
-                            "source": "static",
-                            "value": "true"
+                            "name": "WorkspaceId",
+                            "source": "parameter",
+                            "value": "WorkspaceId"
                           },
                           {
-                            "name": "ShowDataLatencies",
+                            "name": "ShowTransactions",
                             "source": "static",
                             "value": "true"
                           }
                         ]
+                      }
+                    },
+                    "numberFormat": {
+                      "unit": 31,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "LogFlushesPerSec",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "blue",
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "aggregation": "Sum",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Transactions",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Computer",
+                            "source": "parameter",
+                            "value": "Computer"
+                          },
+                          {
+                            "name": "DatabaseId",
+                            "source": "parameter",
+                            "value": "DatabaseId"
+                          },
+                          {
+                            "name": "SqlDatabase",
+                            "source": "column",
+                            "value": "DbInstance"
+                          },
+                          {
+                            "name": "SqlInstance",
+                            "source": "parameter",
+                            "value": "SqlInstance"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "Workspace",
+                            "source": "parameter",
+                            "value": "Workspace"
+                          },
+                          {
+                            "name": "WorkspaceId",
+                            "source": "parameter",
+                            "value": "WorkspaceId"
+                          },
+                          {
+                            "name": "ShowLogFlushes",
+                            "source": "static",
+                            "value": "true"
+                          }
+                        ]
+                      }
+                    },
+                    "numberFormat": {
+                      "unit": 31,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false,
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "LogBytesFlushedPerSec",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "blue",
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "aggregation": "Sum",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Transactions",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Computer",
+                            "source": "parameter",
+                            "value": "Computer"
+                          },
+                          {
+                            "name": "DatabaseId",
+                            "source": "parameter",
+                            "value": "DatabaseId"
+                          },
+                          {
+                            "name": "SqlDatabase",
+                            "source": "column",
+                            "value": "DbInstance"
+                          },
+                          {
+                            "name": "SqlInstance",
+                            "source": "parameter",
+                            "value": "SqlInstance"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "Workspace",
+                            "source": "parameter",
+                            "value": "Workspace"
+                          },
+                          {
+                            "name": "WorkspaceId",
+                            "source": "parameter",
+                            "value": "WorkspaceId"
+                          },
+                          {
+                            "name": "ShowLogBytesFlushed",
+                            "source": "static",
+                            "value": "true"
+                          }
+                        ]
+                      }
+                    },
+                    "numberFormat": {
+                      "unit": 31,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "LogFlushWaitTime",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "blue",
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "aggregation": "Sum",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Transactions",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Computer",
+                            "source": "parameter",
+                            "value": "Computer"
+                          },
+                          {
+                            "name": "DatabaseId",
+                            "source": "parameter",
+                            "value": "DatabaseId"
+                          },
+                          {
+                            "name": "SqlDatabase",
+                            "source": "column",
+                            "value": "DbInstance"
+                          },
+                          {
+                            "name": "SqlInstance",
+                            "source": "parameter",
+                            "value": "SqlInstance"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "Workspace",
+                            "source": "parameter",
+                            "value": "Workspace"
+                          },
+                          {
+                            "name": "WorkspaceId",
+                            "source": "parameter",
+                            "value": "WorkspaceId"
+                          },
+                          {
+                            "name": "ShowLogFlushWaitTimes",
+                            "source": "static",
+                            "value": "true"
+                          }
+                        ]
+                      }
+                    },
+                    "numberFormat": {
+                      "unit": 23,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "DbInstance",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Database",
+                    "formatter": 5
+                  }
+                ],
+                "rowLimit": 1000,
+                "filter": true,
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Database"
+                  ],
+                  "expandTopLevel": true,
+                  "finalBy": "DbInstance"
+                },
+                "sortBy": [
+                  {
+                    "itemKey": "$gen_heatmap_TransactionsPerSec|WriteTransactionsPerSec_1",
+                    "sortOrder": 2
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "WriteTransactionsPerSec",
+                    "label": "Write transactions/sec"
+                  },
+                  {
+                    "columnId": "LogFlushesPerSec",
+                    "label": "Log flushes/sec"
+                  },
+                  {
+                    "columnId": "LogBytesFlushedPerSec",
+                    "label": "Log bytes flushed/sec"
+                  },
+                  {
+                    "columnId": "LogFlushWaitTime",
+                    "label": "Log flush wait time"
+                  },
+                  {
+                    "columnId": "DbInstance",
+                    "label": ""
+                  },
+                  {
+                    "columnId": "Database",
+                    "label": "Name"
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "$gen_heatmap_TransactionsPerSec|WriteTransactionsPerSec_1",
+                  "sortOrder": 2
+                }
+              ],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "showIcon": true
+                  }
+                },
+                "leftContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Trend",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "min": 0,
+                    "palette": "blue",
+                    "showIcon": true
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "showPin": true,
+            "name": "Transactions"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "Transactions"
+      },
+      "name": "Transactions"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_database_io'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), FileType = tostring(Tags.file_type), FileName = tostring(Tags.logical_filename)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}'\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Name, Database, SqlInstance, FileType, FileName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| summarize\r\n        DataReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'ROWS'),\r\n        DataWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'ROWS'),\r\n        DataReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'ROWS'),\r\n        DataWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'ROWS'),\r\n        LogReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'LOG'),\r\n        LogWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'LOG'),\r\n        LogReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'LOG'),\r\n        LogWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'LOG')\r\n    by SqlInstance, Database\r\n| project-reorder SqlInstance, LogReadBytes, LogWriteBytes, LogReadLatency, LogWriteLatency, DataReadBytes, DataWriteBytes, DataReadLatency, DataWriteLatency, Database",
+              "size": 0,
+              "showAnalytics": true,
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "exportFieldName": "Database",
+              "exportParameterName": "SqlDatabase",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "SqlInstance",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "parameter",
+                        "resourceIds": "DatabaseId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads-AMA/Database Drilldown/Database IO",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default"
                       }
                     }
                   },
@@ -528,8 +2320,6 @@
                       "min": 0,
                       "palette": "blue",
                       "aggregation": "Sum",
-                      "linkTarget": "WorkbookTemplate",
-                      "linkIsContextBlade": true,
                       "workbookContext": {
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "parameter",
@@ -588,6 +2378,7 @@
                       "unit": 2,
                       "options": {
                         "style": "decimal",
+                        "useGrouping": false,
                         "maximumFractionDigits": 1
                       }
                     }
@@ -599,8 +2390,6 @@
                       "min": 0,
                       "palette": "orange",
                       "aggregation": "Max",
-                      "linkTarget": "WorkbookTemplate",
-                      "linkIsContextBlade": true,
                       "workbookContext": {
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "parameter",
@@ -670,8 +2459,6 @@
                       "min": 0,
                       "palette": "blue",
                       "aggregation": "Sum",
-                      "linkTarget": "WorkbookTemplate",
-                      "linkIsContextBlade": true,
                       "workbookContext": {
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "parameter",
@@ -741,8 +2528,6 @@
                       "min": 0,
                       "palette": "orange",
                       "aggregation": "Max",
-                      "linkTarget": "WorkbookTemplate",
-                      "linkIsContextBlade": true,
                       "workbookContext": {
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "parameter",
@@ -808,23 +2593,15 @@
                   {
                     "columnMatch": "Database",
                     "formatter": 5
-                  },
-                  {
-                    "columnMatch": "SqlInstance",
-                    "formatter": 5
                   }
                 ],
                 "rowLimit": 1000,
                 "filter": true,
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "SqlInstance"
-                  ],
-                  "expandTopLevel": true,
-                  "finalBy": "Database"
-                },
                 "labelSettings": [
+                  {
+                    "columnId": "SqlInstance",
+                    "label": "Name"
+                  },
                   {
                     "columnId": "LogReadBytes",
                     "label": "Log read bytes"
@@ -856,14 +2633,6 @@
                   {
                     "columnId": "DataWriteLatency",
                     "label": "Data write latency"
-                  },
-                  {
-                    "columnId": "Database",
-                    "label": "More..."
-                  },
-                  {
-                    "columnId": "SqlInstance",
-                    "label": ""
                   }
                 ]
               },
