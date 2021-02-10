@@ -14,7 +14,7 @@
 ### Metrics
 * Metrics grids are limited to querying 200 resources at a time.
 
-### Azure Resource Grpah
+### Azure Resource Graph
 * Resource Graph queries [are limited](https://docs.microsoft.com/en-us/azure/governance/resource-graph/troubleshoot/general#toomanysubscription) to 1000 subscriptions at a time.
 
 ## Visualizations
