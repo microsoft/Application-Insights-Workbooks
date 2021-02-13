@@ -461,7 +461,7 @@ function getCategoryResourcesInfo(object, categoryResourcesMap, templatePath) {
 
 /** Return output path like root/{Lang}/{TemplateType}/templatePath*/
 function getLocOutputPath(templatePath, extensionType, root) {
-  const newTemplatePath = templatePath.replace(root, root.concat("\\", LangOutputSpecifier))
+  const newTemplatePath = templatePath.replace(root, root.concat(root.endsWith("\\") ? "" : "\\", LangOutputSpecifier, root.endsWith("\\") ? "\\" : ""));
   const templateSplit = newTemplatePath.split("\\");
   templateSplit[templateSplit.length - 1] = templateSplit[templateSplit.length - 1].concat(extensionType);
   return templateSplit.join("\\");

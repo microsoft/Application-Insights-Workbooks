@@ -10,8 +10,8 @@ git clone --single-branch --branch main --no-tags https://github.com/microsoft/W
 
 REM move contents of localization folder into root, lcl files are needed in specified output location
 cd /d %localizationrepo%
-for /d %%i in (*) do move "%%i" "%~dp0"
-    Move %localizationrepo% "%~dp0"
+for /d %%i in (*) do move "%%i" /
+    Move %localizationrepo% /
 
 cd /D "%~dp0"
 dir
