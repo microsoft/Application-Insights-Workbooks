@@ -134,7 +134,8 @@
             "version": "KqlParameterItem/1.0",
             "name": "selectedTab",
             "type": 1,
-            "isHiddenWhenLocked": true
+            "isHiddenWhenLocked": true,
+            "value": "Overview"
           }
         ],
         "style": "above",
@@ -192,7 +193,7 @@
               "version": "KqlItem/1.0",
               "query": "let agData = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n| extend SyncHealth = tostring(Tags.ag_synchronization_health_desc)\r\n| where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\" and Val == 1\r\n| where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}';\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| extend isHealthy = iff(SyncHealth == \"HEALTHY\", 1, 0)\r\n| summarize CurrentOnline = min(isHealthy), CurrentTotal = max(isHealthy) by GroupId, GroupName\r\n| join (agData\r\n    | extend isHealthy = iff(SyncHealth == \"HEALTHY\", 1, 0)\r\n    | summarize OverallOnline = min(isHealthy), OverallTotal = max(isHealthy) by GroupId, GroupName) on GroupId, GroupName\r\n| join (agData\r\n    | extend isHealthy = iff(SyncHealth == \"HEALTHY\", 1, 0)\r\n    | summarize Online = min(isHealthy) by GroupId, GroupName, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by GroupId, GroupName) on GroupId, GroupName\r\n| project GroupName, Status = case(CurrentOnline >= 1, 'Online', OverallOnline >= 1, 'Previously Online', 'Offline'), Trend",
               "size": 4,
-              "title": "SQL Availability Group State",
+              "title": "Availability group state",
               "timeContext": {
                 "durationMs": 86400000
               },
@@ -282,7 +283,7 @@
               "query": "let agData = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend SyncHealth = tostring(Tags.ag_synchronization_health_desc)\r\n    | extend Operational = tostring(Tags.operational_state_desc)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | extend ReplicaName = tostring(Tags.replica_server_name)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\" and Instance == ReplicaName\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}';\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags, Operational, Instance\r\n| evaluate bag_unpack(Tags)\r\n| extend IsOperational = iff(Operational == \"ONLINE\", 1, 0)\r\n| extend IsHealthy = iff(replica_synchronization_health_desc == \"HEALTHY\", 1, 0)\r\n| summarize \r\n  CurrentOperational = min(IsOperational),\r\n  CurrentHealth = min(IsHealthy) by Instance, seeding_mode_desc, availability_mode_desc, role_desc, failover_mode_desc\r\n| join kind = inner (\r\n    agData\r\n    | project Tags, Operational, Instance\r\n    | evaluate bag_unpack(Tags)\r\n    | extend IsOperational = iff(Operational == \"ONLINE\", 1, 0)\r\n    | extend IsHealthy = iff(replica_synchronization_health_desc == \"HEALTHY\", 1, 0)\r\n    | summarize \r\n        OverallOperational = min(IsOperational),\r\n        OverallHealth = min(IsHealthy) by Instance, seeding_mode_desc, AvailabilityDescription = replace(@'([A-Z]+)_([A-Z]+)$', @'\\1 \\2', availability_mode_desc), role_desc, failover_mode_desc) on Instance\r\n| join (agData\r\n    | extend isOperational = iff(Operational == \"ONLINE\", 1, 0)\r\n    | summarize Online = min(isOperational) by Computer, Instance, bin(TimeGenerated, {TimeRange:grain})\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by Instance) on Instance\r\n| project Instance, Status = case(CurrentOperational == 1, 'Online', OverallOperational == 1, 'Previously Online', 'Offline'), Trend, role_desc, AvailabilityDescription, failover_mode_desc, seeding_mode_desc, SynchronizationState = case(CurrentHealth == 1, 'Synchronized', OverallHealth == 1, 'Previously Synchronized', 'Not Synchronized'), DbId = strcat('/workspace/', '{WorkspaceId}', '/computer/', '{Computer}', '/sqlinstance/', Instance, '/database/'), Title = strcat('SQL Server > ', Instance)\r\n| order by role_desc asc, Instance asc",
               "size": 1,
               "showAnalytics": true,
-              "title": "Availability Replicas",
+              "title": "Availability replicas",
               "timeContext": {
                 "durationMs": 0
               },
@@ -337,7 +338,8 @@
                 "filter": true,
                 "labelSettings": [
                   {
-                    "columnId": "Instance"
+                    "columnId": "Instance",
+                    "label": "Name"
                   },
                   {
                     "columnId": "Status"
@@ -442,7 +444,7 @@
               }
             },
             "showPin": true,
-            "name": "Availability Replicas"
+            "name": "Availability replicas"
           }
         ]
       },
@@ -466,9 +468,10 @@
               "query": "let InstancesInGroupId = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend GroupId = tostring(Tags.group_id), GroupName = tostring(Tags.group_name)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_replica_states\" and Name == \"role\"\r\n    | where Computer == '{Computer}' and GroupId == '{AvailabilityGroupId}'\r\n    | summarize by Instance;\r\nlet data = InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | extend Instance = tostring(Tags.sql_instance)\r\n    | where Namespace == \"sqlserver_hadr_dbreplica_states\";\r\nlet agData = data\r\n| join kind = leftsemi (InstancesInGroupId) on Instance\r\n| where Name == \"database_state\";\r\nagData\r\n| where TimeGenerated between(ago(10m) .. now())\r\n| project Tags, TenantId, Instance\r\n| evaluate bag_unpack(Tags)\r\n| where Instance == replica_server_name\r\n| extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n| extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n| summarize CurrentSynced = min(isSync), CurrentOnline = min(isOnline) by database_name, Instance, TenantId\r\n| join kind = inner (\r\n    agData\r\n    | project Tags, TenantId, Instance\r\n    | evaluate bag_unpack(Tags)\r\n    | where Instance == replica_server_name\r\n    | extend isSync = iff(synchronization_state_desc == \"SYNCHRONIZED\", 1, 0)\r\n    | extend isOnline = iff(database_state_desc == \"ONLINE\", 1, 0)\r\n    | summarize OverallSynced = min(isSync), OverallOnline = min(isOnline) by database_name, Instance, TenantId) on Instance, database_name\r\n| project Instance, database_name, Status= case(CurrentOnline == 1, 'Online', OverallOnline == 1, 'Previously Online', 'Offline'), SynchronizationState = case(CurrentSynced == 1, 'Synchronized', OverallSynced == 1, 'Previously Synchronized', 'Not Synchronized'), DbId = strcat('/workspace/', '{WorkspaceId}', '/computer/', '{Computer}', '/sqlinstance/', Instance, '/database/', database_name), Title = strcat('SQL Server > ', Instance)\r\n| order by Instance asc",
               "size": 0,
               "showAnalytics": true,
+              "title": "Database replicas",
               "noDataMessage": "The query returned no results. Ensure the query name 'SQLServerDatabaseReplicaStates' is enabled in your telegraf settings.",
               "timeContext": {
-                "durationMs": 14400000
+                "durationMs": 0
               },
               "timeContextFromParameter": "TimeRange",
               "showRefreshButton": true,
@@ -561,6 +564,10 @@
                 },
                 "labelSettings": [
                   {
+                    "columnId": "Instance",
+                    "label": "Name"
+                  },
+                  {
                     "columnId": "database_name"
                   },
                   {
@@ -568,6 +575,12 @@
                   },
                   {
                     "columnId": "SynchronizationState"
+                  },
+                  {
+                    "columnId": "DbId"
+                  },
+                  {
+                    "columnId": "Title"
                   }
                 ]
               }
