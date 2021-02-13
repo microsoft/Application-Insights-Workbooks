@@ -21,5 +21,10 @@ dotnet "%XLocPath%\tools\netcore\Microsoft.Localization.XLoc.dll" /f "%LocProjec
 
 echo Localization build finished with exit code '%errorlevel%'.
 
+cd %OutDir%
+dir
+cd loc
+dir /s /b /o:gn
+
 popd
 exit /b %errorlevel%
