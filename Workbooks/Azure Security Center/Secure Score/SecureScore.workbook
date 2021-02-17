@@ -135,6 +135,7 @@
               "query": "let present = startofday(now());\r\nlet offsetWeek = 6d;\r\nlet offsetMonth = 29d;\r\nlet lookbackDurationWeek = 14d;\r\nlet lookbackDurationMonth = 45d;\r\nlet endTimeWeek = present - offsetWeek;\r\nlet startTimeWeek = endTimeWeek - lookbackDurationWeek;\r\nlet endTimeMonth = present - offsetMonth;\r\nlet startTimeMonth = endTimeMonth - lookbackDurationMonth;\r\nSecureScores\r\n| extend Day = startofday(TimeGenerated)\r\n| summarize arg_max(TimeGenerated, *) by Day, SecureScoresSubscriptionId\r\n| summarize arg_max(Day, *) by SecureScoresSubscriptionId\r\n| join kind = fullouter(\r\n    SecureScores\r\n    | extend Day = startofday(TimeGenerated)\r\n    | where TimeGenerated > startTimeWeek and TimeGenerated <= endTimeWeek\r\n    | summarize arg_max(TimeGenerated, *) by SecureScoresSubscriptionId\r\n    | project OldScoreSevenDays = PercentageScore, SecureScoresSubscriptionId\r\n    )\r\n    on SecureScoresSubscriptionId\r\n| join kind = fullouter(\r\n    SecureScores\r\n    | extend Day = startofday(TimeGenerated)\r\n    | where TimeGenerated > startTimeMonth and TimeGenerated <= endTimeMonth\r\n    | summarize arg_max(TimeGenerated, *) by SecureScoresSubscriptionId\r\n    | project OldMonthScore = PercentageScore, SecureScoresSubscriptionId\r\n    )\r\n    on SecureScoresSubscriptionId\r\n| extend diffSevenDays = tostring(((PercentageScore - OldScoreSevenDays) / OldScoreSevenDays) * 100)\r\n| extend diffSevenDays = iff(isempty(diffSevenDays), \"\", diffSevenDays)\r\n| extend diffMonth = tostring(((PercentageScore - OldMonthScore) / OldMonthScore) * 100)\r\n| extend diffMonth = iff(isempty(diffMonth), \"\", diffMonth)\r\n| project SecureScoresSubscriptionId, CurrentScore = round(PercentageScore * 100), todouble(diffSevenDays), todouble(diffMonth)",
               "size": 0,
               "showAnalytics": true,
+              "noDataMessage": "No data available. Check your continuous export configuration for the selected workspaces.",
               "exportFieldName": "SecureScoresSubscriptionId",
               "exportParameterName": "selectedSubscription",
               "exportDefaultValue": "All",
@@ -288,6 +289,7 @@
               "size": 0,
               "aggregation": 3,
               "showAnnotations": true,
+              "noDataMessage": "No data available. Check your continuous export configuration for the selected workspaces.",
               "timeContext": {
                 "durationMs": 2592000000
               },
@@ -381,6 +383,7 @@
               "version": "KqlItem/1.0",
               "query": "SecurityRecommendation\r\n| extend Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2])\r\n| where '{selectedSubscription}' == 'All' or Subscription == '{selectedSubscription}'\r\n| where RecommendationState  =~ \"Unhealthy\"\r\n| summarize UnhealthyCount = dcount(AssessedResourceId) by RecommendationName, RecommendationId\r\n| sort by UnhealthyCount desc\r\n| take 10",
               "size": 0,
+              "noDataMessage": "No data available. Check your continuous export configuration for the selected workspaces.",
               "timeContext": {
                 "durationMs": 2592000000
               },
@@ -493,6 +496,7 @@
               "size": 0,
               "aggregation": 3,
               "showAnnotations": true,
+              "noDataMessage": "No data available. Check your continuous export configuration for the selected workspaces.",
               "timeContext": {
                 "durationMs": 2592000000
               },
@@ -579,6 +583,7 @@
               "version": "KqlItem/1.0",
               "query": "let unhealthy = SecurityRecommendation\r\n| where RecommendationState == 'Unhealthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet notApplicable = SecurityRecommendation\r\n| where RecommendationState == 'NotApplicable'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet healthy = SecurityRecommendation \r\n| where RecommendationState == 'Healthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotHealthy = SecurityRecommendation \r\n| where RecommendationState !~ 'Healthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotUnhealthy = SecurityRecommendation \r\n| where RecommendationState !~ 'Unhealthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotNotApplicable = SecurityRecommendation \r\n| where RecommendationState !~ 'NotApplicable'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet 1_to_Healthy = \r\n    NotHealthy\r\n    | join healthy on RecommendationId, AssessedResourceId\r\n    | where TimeGenerated < TimeGenerated1\r\n    | summarize ToHealthyCount = count() by RecommendationId, RecommendationName;\r\n//1_to_Healthy\r\nlet 2_to_Unhealthy = \r\n    NotUnhealthy\r\n    | join unhealthy on RecommendationId, AssessedResourceId\r\n    | where TimeGenerated < TimeGenerated1\r\n    | summarize ToUnhealthyCount = count() by RecommendationId, RecommendationName;\r\n//2_to_Unhealthy\r\nlet 3_to_NotApplicable = \r\n    NotNotApplicable\r\n    | join notApplicable on RecommendationId, AssessedResourceId\r\n    | where TimeGenerated < TimeGenerated1\r\n    | summarize ToNotApplicableCount = count() by RecommendationId, RecommendationName;\r\n// JOIN\r\nunion 1_to_Healthy, 2_to_Unhealthy,  3_to_NotApplicable\r\n| summarize ToUnhealthyCount = sum(ToUnhealthyCount), ToHealthyCount = sum(ToHealthyCount), ToNotApplicableCount = sum(ToNotApplicableCount) by RecommendationId, RecommendationName\r\n| order by ToUnhealthyCount desc",
               "size": 0,
+              "noDataMessage": "No data available. Check your continuous export configuration for the selected workspaces.",
               "timeContext": {
                 "durationMs": 2592000000
               },
@@ -697,10 +702,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let unhealthy = SecurityRecommendation\r\n| where RecommendationState == 'Unhealthy'   \r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId\r\n| project UnhealthyRecommendationId = RecommendationId, UnhealthyResourceId = AssessedResourceId, UnhealhyTime =  TimeGenerated, Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2]);\r\nlet notApplicable = SecurityRecommendation\r\n| where RecommendationState == 'NotApplicable'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId\r\n| project NARecommendationId = RecommendationId, NAResourceId = AssessedResourceId, NATime =  TimeGenerated, Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2]);\r\nlet healthy = SecurityRecommendation \r\n| where RecommendationState == 'Healthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId\r\n| project HealthyRecommendationId = RecommendationId, HealthyResourceId = AssessedResourceId, HealhyTime =  TimeGenerated, Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2]);\r\nlet NotHealthy = SecurityRecommendation \r\n| where RecommendationState !~ 'Healthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotUnhealthy = SecurityRecommendation \r\n| where RecommendationState !~ 'Unhealthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotNotApplicable = SecurityRecommendation \r\n| where RecommendationState !~ 'NotApplicable'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet 1_to_Healthy = \r\n    NotHealthy\r\n    | extend orignalState = RecommendationState\r\n    | join healthy on $left.RecommendationId == $right.HealthyRecommendationId, $left.AssessedResourceId == $right.HealthyResourceId\r\n    | where TimeGenerated < HealhyTime\r\n    | extend update = \"To healthy\"\r\n    | project RecommendationId, RecommendationName, Description, OriginalState = RecommendationState, TimeGenerated, RecommendationSeverity, AssessedResourceId, update, Subscription, RecommendationLink;\r\n//1_to_Healthy\r\nlet 2_to_Unhealthy = \r\n    NotUnhealthy\r\n    | extend orignalState = RecommendationState\r\n    | join unhealthy on $left.RecommendationId == $right.UnhealthyRecommendationId, $left.AssessedResourceId == $right.UnhealthyResourceId\r\n    | where TimeGenerated < UnhealhyTime\r\n    | extend update = \"To unhealthy\"\r\n    | project RecommendationId, RecommendationName, Description, OriginalState = RecommendationState, TimeGenerated, RecommendationSeverity, AssessedResourceId, update, Subscription, RecommendationLink;\r\n//2_to_Unhealthy\r\nlet 3_to_NotApplicable = \r\n    NotNotApplicable\r\n    | extend orignalState = RecommendationState\r\n    | join notApplicable on $left.RecommendationId == $right.NARecommendationId, $left.AssessedResourceId == $right.NAResourceId\r\n    | where TimeGenerated < NATime\r\n    | extend update = \"To not applicable\"\r\n    | extend NotApplicableReason = iff(isempty(NotApplicableReason), \"NA\", NotApplicableReason)\r\n    | project RecommendationId, RecommendationName, Description, OriginalState = RecommendationState, TimeGenerated, RecommendationSeverity, AssessedResourceId, update, Subscription, RecommendationLink, NotApplicableReason;\r\n// JOIN\r\nunion 1_to_Healthy, 2_to_Unhealthy, 3_to_NotApplicable\r\n| extend FullRecommendationLink = strcat(\"http://\",RecommendationLink)\r\n| extend AssessedResourceId = iff(AssessedResourceId==\"N/A\", extract(\".*onPremiseMachines/(.+)\",1, url_decode(RecommendationLink)), AssessedResourceId)\r\n| project-away RecommendationLink\r\n| where RecommendationId == '{RecommendationId}'",
+              "query": "let unhealthy = SecurityRecommendation\r\n| where RecommendationState == 'Unhealthy'   \r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId\r\n| project UnhealthyRecommendationId = RecommendationId, UnhealthyResourceId = AssessedResourceId, UnhealhyTime =  TimeGenerated, Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2]);\r\nlet notApplicable = SecurityRecommendation\r\n| where RecommendationState == 'NotApplicable'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId\r\n| project NARecommendationId = RecommendationId, NAResourceId = AssessedResourceId, NATime =  TimeGenerated, Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2]);\r\nlet healthy = SecurityRecommendation \r\n| where RecommendationState == 'Healthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId\r\n| project HealthyRecommendationId = RecommendationId, HealthyResourceId = AssessedResourceId, HealhyTime =  TimeGenerated, Subscription = iff(AssessedResourceId==\"N/A\", split(url_decode(RecommendationLink),'/')[9], split(AssessedResourceId, '/')[2]);\r\nlet NotHealthy = SecurityRecommendation \r\n| where RecommendationState !~ 'Healthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotUnhealthy = SecurityRecommendation \r\n| where RecommendationState !~ 'Unhealthy'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet NotNotApplicable = SecurityRecommendation \r\n| where RecommendationState !~ 'NotApplicable'\r\n| where isnotempty(RecommendationId) and isnotempty(RecommendationName)\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AssessedResourceId;\r\nlet 1_to_Healthy = \r\n    NotHealthy\r\n    | extend orignalState = RecommendationState\r\n    | join healthy on $left.RecommendationId == $right.HealthyRecommendationId, $left.AssessedResourceId == $right.HealthyResourceId\r\n    | where TimeGenerated < HealhyTime\r\n    | extend update = \"To healthy\"\r\n    | project RecommendationId, RecommendationName, Description, OriginalState = RecommendationState, TimeGenerated, RecommendationSeverity, AssessedResourceId, update, Subscription, RecommendationLink;\r\n//1_to_Healthy\r\nlet 2_to_Unhealthy = \r\n    NotUnhealthy\r\n    | extend orignalState = RecommendationState\r\n    | join unhealthy on $left.RecommendationId == $right.UnhealthyRecommendationId, $left.AssessedResourceId == $right.UnhealthyResourceId\r\n    | where TimeGenerated < UnhealhyTime\r\n    | extend update = \"To unhealthy\"\r\n    | project RecommendationId, RecommendationName, Description, OriginalState = RecommendationState, TimeGenerated, RecommendationSeverity, AssessedResourceId, update, Subscription, RecommendationLink;\r\n//2_to_Unhealthy\r\nlet 3_to_NotApplicable = \r\n    NotNotApplicable\r\n    | extend orignalState = RecommendationState\r\n    | join notApplicable on $left.RecommendationId == $right.NARecommendationId, $left.AssessedResourceId == $right.NAResourceId\r\n    | where TimeGenerated < NATime\r\n    | extend update = \"To not applicable\"\r\n    | extend NotApplicableReason = iff(isempty(NotApplicableReason), \"NA\", NotApplicableReason)\r\n    | project RecommendationId, RecommendationName, Description, Subscription, AssessedResourceId, OriginalState = RecommendationState, TimeGenerated, RecommendationSeverity, update, RecommendationLink, NotApplicableReason;\r\n// JOIN\r\nunion 1_to_Healthy, 2_to_Unhealthy, 3_to_NotApplicable\r\n| extend FullRecommendationLink = strcat(\"http://\",RecommendationLink)\r\n| extend AssessedResourceId = iff(AssessedResourceId==\"N/A\", extract(\".*onPremiseMachines/(.+)\",1, url_decode(RecommendationLink)), AssessedResourceId)\r\n| project-away RecommendationLink\r\n| where RecommendationId == '{RecommendationId}'",
               "size": 0,
               "title": "Changes for \"{RecommendationName}\"",
-              "noDataMessage": "To view changes on a specific recommendation, please select any from the list above",
+              "noDataMessage": "No data available. Check your continuous export configuration for the selected workspaces.",
               "timeContext": {
                 "durationMs": 2592000000
               },
@@ -770,18 +775,18 @@
                   },
                   {
                     "columnId": "RecommendationName",
-                    "label": "Recommendation Name"
+                    "label": "Recommendation name"
                   },
                   {
                     "columnId": "Description"
                   },
                   {
                     "columnId": "OriginalState",
-                    "label": "Original State"
+                    "label": "Original state"
                   },
                   {
                     "columnId": "TimeGenerated",
-                    "label": "Time Generated"
+                    "label": "Time of change"
                   },
                   {
                     "columnId": "RecommendationSeverity",
@@ -793,7 +798,10 @@
                   },
                   {
                     "columnId": "update",
-                    "label": "Updated State"
+                    "label": "Updated state"
+                  },
+                  {
+                    "columnId": "Subscription"
                   },
                   {
                     "columnId": "NotApplicableReason",
@@ -801,7 +809,7 @@
                   },
                   {
                     "columnId": "FullRecommendationLink",
-                    "label": "View Recommendation"
+                    "label": "View recommendation"
                   }
                 ]
               },
