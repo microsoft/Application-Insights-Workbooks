@@ -5,9 +5,6 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
-        "crossComponentResources": [
-          "value::selected"
-        ],
         "parameters": [
           {
             "id": "8624d164-8ace-4819-9e1a-fe23d6a1d8de",
@@ -100,15 +97,16 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
-            "id": "5397899d-6a5e-4810-9d3b-33ef86d035ba",
+            "id": "311212a8-c46e-43ab-9ec3-d1f1307be47b",
             "version": "KqlParameterItem/1.0",
-            "name": "Replica",
+            "name": "showReplica",
             "type": 1,
-            "value": "secondary"
+            "isRequired": true,
+            "isHiddenWhenLocked": true
           }
         ],
         "style": "above",
-        "queryType": 1,
+        "queryType": 0,
         "resourceType": "microsoft.resourcegraph/resources"
       },
       "name": "Parameter block",
@@ -160,7 +158,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# {DisplayName} {Replica}"
+        "json": "# {DisplayName}"
       },
       "name": "text - 3"
     },
@@ -168,6 +166,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
         "parameters": [
           {
             "id": "25c1083b-43cc-4e0b-8659-2129011871e2",
@@ -214,13 +215,106 @@
               ],
               "allowCustom": true
             }
+          },
+          {
+            "id": "7dc78d46-6191-4af3-8eff-1ab90be60ac4",
+            "version": "KqlParameterItem/1.0",
+            "name": "Replica",
+            "type": 2,
+            "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance == '{SqlInstance}'\r\n| where Namespace =~ 'sqlserver_azure_db_resource_stats' and (Computer == '{Computer}' or '*' == '{Computer}');\r\ndata\r\n| summarize by value = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| project value, label = value, selected = true\r\n| order by label asc",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
           }
         ],
         "style": "above",
+        "doNotRunWhenHidden": true,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "Parameter block 2",
+      "conditionalVisibility": {
+        "parameterName": "showReplica",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "name": "Parameter block - DB/MI",
+      "styleSettings": {
+        "margin": "0 0 15px 0"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "5a2f1d0c-fc23-4ed0-b182-648adf0c269b",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 14400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          }
+        ],
+        "style": "above",
+        "doNotRunWhenHidden": true,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "showReplica",
+        "comparison": "isEqualTo",
+        "value": "false"
+      },
+      "name": "Parameter block - On-prem",
       "styleSettings": {
         "margin": "0 0 15px 0"
       }
@@ -235,7 +329,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter == 'Write Transactions/sec' and Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE');\r\ndata\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter == 'Write Transactions/sec' and ('{Replica}' == '' or Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE'));\r\ndata\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
@@ -395,7 +489,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter =~ 'Log Flushes/sec' and Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE');\r\ndata\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter =~ 'Log Flushes/sec' and ('{Replica}' == '' or Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE'));\r\ndata\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
@@ -555,7 +649,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter =~ 'Log Bytes Flushed/sec' and Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE');\r\ndata\r\n| extend SeriesName = strcat(SqlInstance, '/', DbInstance)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter =~ 'Log Bytes Flushed/sec' and ('{Replica}' == '' or Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE'));\r\ndata\r\n| extend SeriesName = strcat(SqlInstance, '/', DbInstance)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
@@ -715,7 +809,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter =~ 'Log Flush Wait Time' and Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE');\r\ndata\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
+              "query": "let data = InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where (Computer == '{Computer}' or '*' == '{Computer}') and SqlInstance == '{SqlInstance}' and (isempty('{SqlDatabase}') or DbInstance == '{SqlDatabase}') and Counter =~ 'Log Flush Wait Time' and ('{Replica}' == '' or Tags.replica_updateability == iff('{Replica}' == 'secondary', 'READ_ONLY', 'READ_WRITE'));\r\ndata\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), DbInstance\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by DbInstance\r\n\r\n",
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
