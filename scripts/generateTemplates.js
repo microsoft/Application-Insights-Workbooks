@@ -635,24 +635,22 @@ for (var d in directories) {
         } else if (fileType === LocalizeableFileType.Template) {
             // Generate localized templates
             for (var lang in LanguagesMap) {
-                if (lang !== "en") {
-                    // Location of translated resjson
-                    const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
-                    // Location of package for translated workbook
-                    const translatedResultPath = packageOutputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
+                // Location of translated resjson
+                const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
+                // Location of package for translated workbook
+                const translatedResultPath = packageOutputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
 
-                    if (LanguagesMap[lang] === DefaultLang) {
-                        writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
+                if (LanguagesMap[lang] === DefaultLang) {
+                    writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
+                } else {
+                    if (fs.existsSync(localizedFilePath)) {
+                        // Do workbook string replacement here
+                        const jsonData = fs.readFileSync(localizedFilePath, Encoding);
+                        parseTemplateResult(jsonData, lang, templateParsedData, settingsParsedData, templatePath, translatedResultPath, rootDirectory, categoryResourcesData, galleryMap);
                     } else {
-                        if (fs.existsSync(localizedFilePath)) {
-                            // Do workbook string replacement here
-                            const jsonData = fs.readFileSync(localizedFilePath, Encoding);
-                            parseTemplateResult(jsonData, lang, templateParsedData, settingsParsedData, templatePath, translatedResultPath, rootDirectory, categoryResourcesData, galleryMap);
-                        } else {
-                            // No loc file found, just push the workbook file as is in English
-                            logMessage("Did not find localized file in: " + localizedFilePath);
-                            writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
-                        }
+                        // No loc file found, just push the workbook file as is in English
+                        logMessage("Did not find localized file in: " + localizedFilePath);
+                        writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
                     }
                 }
             }
