@@ -50,6 +50,7 @@
             "label": "Time range",
             "type": 4,
             "isRequired": true,
+"isGlobal": true,
             "value": {
               "durationMs": 14400000
             },
@@ -97,7 +98,10 @@
         "value": "yes"
       },
       "customWidth": "25",
-      "name": "parameters - 1 - Copy"
+      "name": "parameters - 1 - Copy",
+      "styleSettings": {
+        "margin": "-15px 0px 0px"
+      }
     },
     {
       "type": 11,
@@ -148,7 +152,7 @@
             "id": "63aa6750-da91-4e11-af98-50e156843464",
             "version": "KqlParameterItem/1.0",
             "name": "SelectedDeviceOverride",
-            "label": "Choose device",
+            "label": "💻 Choose device",
             "type": 2,
             "query": "\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet devices = () { \nInsightsMetrics\n| where Name == \"edgehub_gettwin_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| distinct device\n| limit iff('{mainAction}' != 'devicedetails', 0,100000)\n};\ndevices()\n//print iff('{mainAction}' != 'devicedetails', \"0\", todynamic(devices()))",
             "value": null,
@@ -237,10 +241,10 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet cpu_percent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = toint(Val)\n| project device, value, TimeGenerated\n| order by device, TimeGenerated\n| serialize\n| make-series cpu_used_percent = max(value) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet totalMemByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| order by device, TimeGenerated\n| serialize\n| make-series mem_used_percent = max(mem_used_percent) on TimeGenerated from startTime to endTime step timeBin by device\n| project-away TimeGenerated;\nlet cpu_and_mem = memUsedPercent\n| join cpu_percent on $left.device == $right.device\n| project-away device1;\nlet totalBytesByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname\n| summarize totalBytes=sum(Bytes) by device;\nlet used_disk_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname, TimeGenerated\n| summarize availBytes=sum(Bytes) by device, TimeGenerated\n| join kind=leftouter\n    totalBytesByDevice\non $left.device == $right.device\n| extend percentUsed = round((todouble(totalBytes) - todouble(availBytes))/todouble(totalBytes) * 100, 0)\n| project TimeGenerated, device, percentUsed\n| order by device, TimeGenerated\n| make-series disk_used_trend = max(percentUsed) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet cpu_mem_disk = cpu_and_mem\n| join\n    used_disk_trend\non $left.device == $right.device;\nlet messages_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend id = trim_start(@\"[^/]+/\", tostring(dimensions.id))\n| extend value = toint(Val)\n| extend id_device = strcat(id,\"+\",device)\n| project id, device, id_device, value, TimeGenerated\n| order by id_device, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextId = next(id_device, 1)\n| extend diff = iff((value - nextValue) >= 0, value - nextValue, value)\n| where id_device == nextId and diff >= 0\n| make-series device_messages_trend = sum(diff) on TimeGenerated from startTime to endTime step timeBin by device;\nlet messages_total = messages_trend\n| mv-expand with_itemindex=x device_messages_trend to typeof(long)\n| summarize device_messages_total=sum(device_messages_trend) by device\n| join\n    messages_trend\non $left.device == $right.device;\nlet allDevices = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| project TimeGenerated, device, qlen=0\n| summarize sum_qlen=max(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_1 = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_2 = totalQlenByDevice_1\n| join kind=rightanti allDevices on $left.device == $right.device;\nlet totalQlenByDevice = union withsource=\"TempTableName\" totalQlenByDevice_1, totalQlenByDevice_2\n| project TimeGenerated, device, qlen=sum_qlen\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| join kind=leftouter messages_total on device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText;                  \np95QLenAndLastUpdate\n| join kind=leftouter\n    cpu_mem_disk\non $left.device == $right.device\n| project device, device_messages_total, device_messages_trend, p95Qlen, agoText, cpu_used_percent, mem_used_percent, disk_used_trend; \n",
+              "query": "let minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet cpu_percent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = toint(Val)\n| project device, value, TimeGenerated\n| order by device, TimeGenerated\n| serialize\n| make-series cpu_used_percent = max(value) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet totalMemByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| order by device, TimeGenerated\n| serialize\n| make-series mem_used_percent = max(mem_used_percent) on TimeGenerated from startTime to endTime step timeBin by device\n| project-away TimeGenerated;\nlet cpu_and_mem = memUsedPercent\n| join cpu_percent on $left.device == $right.device\n| project-away device1;\nlet totalBytesByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname\n| summarize totalBytes=sum(Bytes) by device;\nlet used_disk_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| project device, diskname, value, TimeGenerated\n| summarize Bytes=max(value) by device, diskname, TimeGenerated\n| summarize availBytes=sum(Bytes) by device, TimeGenerated\n| join kind=leftouter\n    totalBytesByDevice\non $left.device == $right.device\n| extend percentUsed = round((todouble(totalBytes) - todouble(availBytes))/todouble(totalBytes) * 100, 0)\n| project TimeGenerated, device, percentUsed\n| order by device, TimeGenerated\n| make-series disk_used_trend = max(percentUsed) on TimeGenerated from (startTime - 5m) to endTime step timeBin by  device\n| project-away TimeGenerated;\nlet cpu_mem_disk = cpu_and_mem\n| join\n    used_disk_trend\non $left.device == $right.device;\nlet messages_trend = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend id = trim_start(@\"[^/]+/\", tostring(dimensions.id))\n| extend value = toint(Val)\n| extend id_device = strcat(id,\"+\",device)\n| project id, device, id_device, value, TimeGenerated\n| order by id_device, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextId = next(id_device, 1)\n| extend diff = iff((value - nextValue) >= 0, value - nextValue, value)\n| where id_device == nextId and diff >= 0\n| make-series device_messages_trend = sum(diff) on TimeGenerated from startTime to endTime step timeBin by device;\nlet messages_total = messages_trend\n| mv-expand with_itemindex=x device_messages_trend to typeof(long)\n| summarize device_messages_total=sum(device_messages_trend) by device\n| join\n    messages_trend\non $left.device == $right.device;\nlet allDevices = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_gettwin_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| project TimeGenerated, device, qlen=0\n| summarize sum_qlen=max(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_1 = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet totalQlenByDevice_2 = totalQlenByDevice_1\n| join kind=rightanti allDevices on $left.device == $right.device;\nlet totalQlenByDevice = union withsource=\"TempTableName\" totalQlenByDevice_1, totalQlenByDevice_2\n| project TimeGenerated, device, qlen=sum_qlen\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet trendQLenAndLastUpdate = totalQlenByDevice \n| make-series qlenTrend = percentile(sum_qlen, 95) on TimeGenerated from startTime to endTime step timeBin by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| join kind=leftouter messages_total on device\n| project device, device_messages_total, device_messages_trend, qlenTrend, agoText, lastUpdatedSeconds;                  \ntrendQLenAndLastUpdate\n| join kind=leftouter\n    cpu_mem_disk\non $left.device == $right.device\n| project device, device_messages_total, device_messages_trend, qlenTrend, agoText, cpu_used_percent, mem_used_percent, disk_used_trend, lastUpdatedSeconds; \n",
               "size": 3,
               "timeContext": {
-                "durationMs": 14400000
+                "durationMs": 43200000
               },
               "timeContextFromParameter": "timeRange",
               "exportFieldName": "device",
@@ -255,7 +259,7 @@
                     "columnMatch": "device_messages_total",
                     "formatter": 0,
                     "formatOptions": {
-                      "customColumnWidthSetting": "12.7143ch"
+                      "customColumnWidthSetting": "11.4286ch"
                     },
                     "numberFormat": {
                       "unit": 17,
@@ -278,58 +282,32 @@
                     }
                   },
                   {
-                    "columnMatch": "p95Qlen",
-                    "formatter": 18,
+                    "columnMatch": "qlenTrend",
+                    "formatter": 10,
                     "formatOptions": {
-                      "thresholdsOptions": "colors",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "<=",
-                          "thresholdValue": "20",
-                          "representation": "green",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "<=",
-                          "thresholdValue": "100",
-                          "representation": "orange"
-                        },
-                        {
-                          "operator": ">",
-                          "thresholdValue": "100",
-                          "representation": "redBright"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "blue",
-                          "text": "{0}{1}"
-                        }
-                      ],
-                      "customColumnWidthSetting": "15.5714ch"
-                    },
-                    "numberFormat": {
-                      "unit": 0,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": true
+                      "min": 0,
+                      "max": 100,
+                      "palette": "greenRed",
+                      "compositeBarSettings": {
+                        "labelText": "",
+                        "columnSettings": []
                       }
                     }
                   },
                   {
                     "columnMatch": "agoText",
-                    "formatter": 0,
+                    "formatter": 2,
                     "formatOptions": {
                       "customColumnWidthSetting": "13.1429ch"
                     }
                   },
                   {
                     "columnMatch": "cpu_used_percent",
-                    "formatter": 9,
+                    "formatter": 21,
                     "formatOptions": {
                       "min": 0,
                       "max": 100,
-                      "palette": "greenRed"
+                      "palette": "turquoise"
                     },
                     "numberFormat": {
                       "unit": 0,
@@ -341,36 +319,41 @@
                   },
                   {
                     "columnMatch": "mem_used_percent",
-                    "formatter": 9,
+                    "formatter": 21,
                     "formatOptions": {
                       "min": 0,
                       "max": 100,
-                      "palette": "greenRed"
+                      "palette": "turquoise"
                     },
                     "numberFormat": {
                       "unit": 0,
                       "options": {
                         "style": "decimal",
+                        "useGrouping": false,
                         "maximumFractionDigits": 1
                       }
                     }
                   },
                   {
                     "columnMatch": "disk_used_trend",
-                    "formatter": 9,
+                    "formatter": 21,
                     "formatOptions": {
                       "min": 0,
                       "max": 100,
-                      "palette": "greenRed"
+                      "palette": "turquoise"
                     }
+                  },
+                  {
+                    "columnMatch": "lastUpdatedSeconds",
+                    "formatter": 5
                   }
                 ],
                 "rowLimit": 10000,
                 "filter": true,
                 "sortBy": [
                   {
-                    "itemKey": "device",
-                    "sortOrder": 1
+                    "itemKey": "agoText",
+                    "sortOrder": 2
                   }
                 ],
                 "labelSettings": [
@@ -387,8 +370,8 @@
                     "label": "Processed messages"
                   },
                   {
-                    "columnId": "p95Qlen",
-                    "label": "QLen (p95)"
+                    "columnId": "qlenTrend",
+                    "label": "QLen"
                   },
                   {
                     "columnId": "agoText",
@@ -410,8 +393,8 @@
               },
               "sortBy": [
                 {
-                  "itemKey": "device",
-                  "sortOrder": 1
+                  "itemKey": "agoText",
+                  "sortOrder": 2
                 }
               ]
             },
@@ -463,7 +446,7 @@
               "query": "let totalMemByDevice = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_total_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend value = tolong(Val)\n| project device, value, TimeGenerated\n| summarize total_bytes=max(value) by device;\nlet memUsedPercent = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend used_bytes = tolong(Val)\n| project device, used_bytes, TimeGenerated\n| join kind=leftouter totalMemByDevice on $left.device == $right.device\n| extend mem_used_percent = (todouble(used_bytes)/todouble(total_bytes))*100\n| extend mem_used_percent = round(mem_used_percent, 0)\n| summarize p95MemPercent = percentile(mem_used_percent, 95) by device;\nmemUsedPercent\n",
               "size": 0,
               "timeContext": {
-                "durationMs": 14400000
+                "durationMs": 43200000
               },
               "timeContextFromParameter": "timeRange",
               "exportFieldName": "device",
@@ -545,99 +528,138 @@
             "name": "query - 4"
           },
           {
-            "type": 3,
+            "type": 12,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "let totalQlenByDevice = InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where TimeGenerated < {timeRange:end}\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice \n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(\"Updated \", lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(\"Updated \", lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(\"Updated \", lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(\"Updated \", lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| extend colorHelper = case(lastUpdatedSeconds > 86400, -2,\n                            lastUpdatedSeconds > 3600, -1,\n                            p95Qlen);                     \np95QLenAndLastUpdate",
-              "size": 0,
-              "timeContext": {
-                "durationMs": 14400000
-              },
-              "timeContextFromParameter": "timeRange",
-              "exportFieldName": "device",
-              "exportParameterName": "SelectedDeviceDetails",
-              "exportDefaultValue": "default",
-              "queryType": 0,
-              "resourceType": "microsoft.devices/iothubs",
-              "visualization": "graph",
-              "gridSettings": {
-                "sortBy": [
-                  {
-                    "itemKey": "lastUpdatedHours",
-                    "sortOrder": 2
-                  }
-                ]
-              },
-              "sortBy": [
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
                 {
-                  "itemKey": "lastUpdatedHours",
-                  "sortOrder": 2
-                }
-              ],
-              "graphSettings": {
-                "type": 2,
-                "topContent": {
-                  "columnMatch": "device",
-                  "formatter": 1,
-                  "formatOptions": {}
+                  "type": 1,
+                  "content": {
+                    "json": "*Legend: Center - Device name, Left - P95 Qlen for selected timerange, Top - Qlen trend, Bottom - Time since last update.*"
+                  },
+                  "name": "text - 1"
                 },
-                "centerContent": {
-                  "columnMatch": "p95Qlen",
-                  "formatOptions": {},
-                  "numberFormat": {
-                    "unit": 17,
-                    "options": {
-                      "style": "decimal",
-                      "useGrouping": false,
-                      "maximumFractionDigits": 1
-                    }
-                  }
-                },
-                "bottomContent": {
-                  "columnMatch": "agoText",
-                  "formatOptions": {}
-                },
-                "nodeIdField": "device",
-                "nodeSize": null,
-                "staticNodeSize": 100,
-                "colorSettings": {
-                  "nodeColorField": "colorHelper",
+                {
                   "type": 3,
-                  "thresholdsGrid": [
-                    {
-                      "operator": "==",
-                      "thresholdValue": "-2",
-                      "representation": "blueDark"
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "\n\nlet minPeriod = 5m;\nlet numPeriods = 15;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet totalQlenByDevice = InsightsMetrics\n| where TimeGenerated > startTime\n| where TimeGenerated < endTime\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend ep = tostring(dimensions.endpoint)\n| extend qlen = toint(Val)\n| project device, qlen, ep, TimeGenerated\n| summarize sum(qlen) by TimeGenerated, device;\nlet lastUpdateTimeByDevice = totalQlenByDevice\n| summarize lastUpdateTime=max(TimeGenerated) by device;\nlet qlenTrend = totalQlenByDevice\n| make-series qTrend = percentile(sum_qlen, 95) on TimeGenerated from startTime to endTime step timeBin by device;\nlet p95QLenAndLastUpdate = totalQlenByDevice\n| summarize p95Qlen=percentile(sum_qlen, 95) by device\n| join kind=leftouter qlenTrend on device\n| project-away device1\n| join kind=leftouter lastUpdateTimeByDevice on device\n| project-away device1\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(\"seen \", lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(\"seen \", lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(\"seen \", lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(\"Updated \", lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| extend colorHelper = case(lastUpdatedSeconds > 86400, -2,\n                            lastUpdatedSeconds > 3600, -1,\n                            p95Qlen);                     \np95QLenAndLastUpdate",
+                    "size": 0,
+                    "timeContext": {
+                      "durationMs": 0
                     },
-                    {
-                      "operator": "==",
-                      "thresholdValue": "-1",
-                      "representation": "blue"
+                    "timeContextFromParameter": "timeRange",
+                    "exportFieldName": "device",
+                    "exportParameterName": "SelectedDeviceDetails",
+                    "exportDefaultValue": "default",
+                    "queryType": 0,
+                    "resourceType": "microsoft.devices/iothubs",
+                    "visualization": "graph",
+                    "gridSettings": {
+                      "sortBy": [
+                        {
+                          "itemKey": "lastUpdatedHours",
+                          "sortOrder": 2
+                        }
+                      ]
                     },
-                    {
-                      "operator": "<=",
-                      "thresholdValue": "20",
-                      "representation": "green"
-                    },
-                    {
-                      "operator": "<=",
-                      "thresholdValue": "100",
-                      "representation": "orange"
-                    },
-                    {
-                      "operator": ">",
-                      "thresholdValue": "100",
-                      "representation": "redBright"
-                    },
-                    {
-                      "operator": "Default",
-                      "thresholdValue": null,
-                      "representation": "blue"
+                    "sortBy": [
+                      {
+                        "itemKey": "lastUpdatedHours",
+                        "sortOrder": 2
+                      }
+                    ],
+                    "graphSettings": {
+                      "type": 2,
+                      "topContent": {
+                        "columnMatch": "qTrend",
+                        "formatter": 9,
+                        "formatOptions": {
+                          "min": 0,
+                          "max": 75,
+                          "palette": "blackWhite"
+                        }
+                      },
+                      "leftContent": {
+                        "columnMatch": "p95Qlen",
+                        "formatter": 1,
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumFractionDigits": 1
+                          }
+                        }
+                      },
+                      "centerContent": {
+                        "columnMatch": "device",
+                        "formatter": 1
+                      },
+                      "bottomContent": {
+                        "columnMatch": "agoText",
+                        "formatter": 1
+                      },
+                      "nodeIdField": "device",
+                      "graphOrientation": 3,
+                      "showOrientationToggles": false,
+                      "nodeSize": null,
+                      "staticNodeSize": 140,
+                      "colorSettings": {
+                        "nodeColorField": "colorHelper",
+                        "type": 3,
+                        "thresholdsGrid": [
+                          {
+                            "operator": "==",
+                            "thresholdValue": "-2",
+                            "representation": "blueDark"
+                          },
+                          {
+                            "operator": "==",
+                            "thresholdValue": "-1",
+                            "representation": "blue"
+                          },
+                          {
+                            "operator": "<=",
+                            "thresholdValue": "20",
+                            "representation": "green"
+                          },
+                          {
+                            "operator": "<=",
+                            "thresholdValue": "100",
+                            "representation": "orange"
+                          },
+                          {
+                            "operator": ">",
+                            "thresholdValue": "100",
+                            "representation": "redBright"
+                          },
+                          {
+                            "operator": "Default",
+                            "thresholdValue": null,
+                            "representation": "blue"
+                          }
+                        ]
+                      },
+                      "hivesMargin": 2
                     }
-                  ]
-                },
-                "hivesMargin": 2
-              }
+                  },
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "mainAction",
+                      "comparison": "isEqualTo",
+                      "value": "birdseye"
+                    },
+                    {
+                      "parameterName": "birdseye-view",
+                      "comparison": "isEqualTo",
+                      "value": "qlen"
+                    }
+                  ],
+                  "name": "query - 4 - Copy"
+                }
+              ]
             },
             "conditionalVisibilities": [
               {
@@ -651,7 +673,7 @@
                 "value": "qlen"
               }
             ],
-            "name": "query - 4 - Copy"
+            "name": "qlenbev-group"
           },
           {
             "type": 9,
@@ -663,7 +685,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "SelectedDevice",
                   "type": 1,
-                  "value": "default",
+                  "value": "vm100",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -703,7 +725,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "SelectedDevice",
                   "type": 1,
-                  "value": "default",
+                  "value": "vm100",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -822,6 +844,14 @@
                         "style": "link"
                       },
                       {
+                        "id": "468d0eaa-6752-4cb7-b9ee-2e363654601f",
+                        "cellValue": "ShowPane",
+                        "linkTarget": "parameter",
+                        "linkLabel": "Health",
+                        "subTarget": "health",
+                        "style": "link"
+                      },
+                      {
                         "id": "715cf5f8-11f0-49de-82cf-0a2b7c5b9841",
                         "cellValue": "ShowPane",
                         "linkTarget": "parameter",
@@ -845,9 +875,9 @@
                     "comparison": "isNotEqualTo",
                     "value": "default"
                   },
-                  "name": "links - 2",
+                  "name": "top-level-tabs",
                   "styleSettings": {
-                    "margin": "0px 0px -8px 0px"
+                    "margin": "0px 0px -10px 0px"
                   }
                 },
                 {
@@ -858,7 +888,7 @@
                   "customWidth": "0",
                   "name": "text - 21",
                   "styleSettings": {
-                    "margin": "8px 0px",
+                    "margin": "6px 0px 0px 0px",
                     "maxWidth": "25"
                   }
                 },
@@ -874,14 +904,6 @@
                         "linkTarget": "parameter",
                         "linkLabel": "Routing",
                         "subTarget": "routing",
-                        "style": "link"
-                      },
-                      {
-                        "id": "134dc0b0-8357-467e-8cdb-bd600a2cdd29",
-                        "cellValue": "messaging-view",
-                        "linkTarget": "parameter",
-                        "linkLabel": "Health",
-                        "subTarget": "health",
                         "style": "link"
                       },
                       {
@@ -1000,7 +1022,10 @@
                           }
                         },
                         "customWidth": "20",
-                        "name": "offline-count-tile"
+                        "name": "offline-count-tile",
+                        "styleSettings": {
+                          "margin": "-10px 0px"
+                        }
                       },
                       {
                         "type": 3,
@@ -1036,7 +1061,10 @@
                           }
                         },
                         "customWidth": "20",
-                        "name": "retries-tile"
+                        "name": "retries-tile",
+                        "styleSettings": {
+                          "margin": "-10px 0px"
+                        }
                       },
                       {
                         "type": 3,
@@ -1073,7 +1101,10 @@
                           }
                         },
                         "customWidth": "20",
-                        "name": "messages-dropped-tile"
+                        "name": "messages-dropped-tile",
+                        "styleSettings": {
+                          "margin": "-10px 0px"
+                        }
                       },
                       {
                         "type": 3,
@@ -1110,15 +1141,154 @@
                           }
                         },
                         "customWidth": "20",
-                        "name": "failed-connects-tile"
+                        "name": "failed-connects-tile",
+                        "styleSettings": {
+                          "margin": "-10px 0px"
+                        }
+                      },
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "parameters": [
+                            {
+                              "id": "055c2dc1-3f53-445c-91a2-d8b584480cdd",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "showDropdown",
+                              "type": 1,
+                              "query": "datatable (Label:string, Count:string)\n    [\"Offline durations\", '{OfflineCount}',\n     \"Retry operations\", '{RetryOps}',\n     \"Dropped messages\", '{DroppedMessages}',\n     \"Failed connections\", '{FailedConnects}']\n| where Count != '-1'\n| count",
+                              "isHiddenWhenLocked": true,
+                              "timeContext": {
+                                "durationMs": 86400000
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.devices/iothubs"
+                            }
+                          ],
+                          "style": "pills",
+                          "queryType": 0,
+                          "resourceType": "microsoft.devices/iothubs"
+                        },
+                        "name": "parameters - 11"
+                      },
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "parameters": [
+                            {
+                              "id": "c55a2c11-f329-453d-8a27-9fc8814c6ecf",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "detailsDropdown",
+                              "label": "📜 View details for...",
+                              "type": 2,
+                              "isGlobal": true,
+                              "multiSelect": true,
+                              "quote": "'",
+                              "delimiter": ",",
+                              "query": "datatable (Label:string, Count:string)\n    [\"Offline durations\", '{OfflineCount}',\n     \"Retry operations\", '{RetryOps}',\n     \"Dropped messages\", '{DroppedMessages}',\n     \"Failed connections\", '{FailedConnects}']\n| where Count != '-1'\n| project Label",
+                              "value": [],
+                              "typeSettings": {
+                                "additionalResourceOptions": [
+                                  "value::all"
+                                ],
+                                "showDefault": false
+                              },
+                              "timeContext": {
+                                "durationMs": 86400000
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.devices/iothubs"
+                            }
+                          ],
+                          "style": "formHorizontal",
+                          "queryType": 0,
+                          "resourceType": "microsoft.devices/iothubs"
+                        },
+                        "customWidth": "25",
+                        "conditionalVisibility": {
+                          "parameterName": "showDropdown",
+                          "comparison": "isNotEqualTo"
+                        },
+                        "name": "parameters - 9",
+                        "styleSettings": {
+                          "margin": "-10px 0px"
+                        }
+                      },
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "parameters": [
+                            {
+                              "id": "7490ec27-88dc-4bfa-98e0-2cecea421fa0",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "ShowOfflineDetails",
+                              "type": 1,
+                              "query": "print iff((strcat({detailsDropdown}) contains 'Offline durations'), 'yes', 'no')\n",
+                              "isHiddenWhenLocked": true,
+                              "timeContext": {
+                                "durationMs": 86400000
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.devices/iothubs"
+                            },
+                            {
+                              "id": "5bd99611-d8d2-455a-b17a-8c05f838d97e",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "ShowRetryOpsDetails",
+                              "type": 1,
+                              "query": "print iff((strcat({detailsDropdown}) contains 'Retry Operations'), 'yes', 'no')\n",
+                              "isHiddenWhenLocked": true,
+                              "timeContext": {
+                                "durationMs": 86400000
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.devices/iothubs"
+                            },
+                            {
+                              "id": "46718901-9fb7-4112-800b-2f7b5b983046",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "ShowDroppedMessagesDetails",
+                              "type": 1,
+                              "query": "print iff((strcat({detailsDropdown}) contains 'Dropped messages'), 'yes', 'no')\n",
+                              "isHiddenWhenLocked": true,
+                              "timeContext": {
+                                "durationMs": 86400000
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.devices/iothubs"
+                            },
+                            {
+                              "id": "d8478925-eae7-4a12-b477-1926d4bef831",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "ShowFailedConnectionDetails",
+                              "type": 1,
+                              "query": "print iff((strcat({detailsDropdown}) contains 'Failed connections'), 'yes', 'no')\n",
+                              "isHiddenWhenLocked": true,
+                              "timeContext": {
+                                "durationMs": 86400000
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.devices/iothubs"
+                            }
+                          ],
+                          "style": "pills",
+                          "doNotRunWhenHidden": true,
+                          "queryType": 0,
+                          "resourceType": "microsoft.devices/iothubs"
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "detailsDropdown",
+                          "comparison": "isNotEqualTo"
+                        },
+                        "name": "parameters - 11"
                       },
                       {
                         "type": 12,
                         "content": {
                           "version": "NotebookGroup/1.0",
                           "groupType": "editable",
-                          "title": "Offline details",
-                          "expandable": true,
                           "items": [
                             {
                               "type": 9,
@@ -1202,23 +1372,35 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_offline_count_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalOfflineCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_offline_count_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance), value - nextValue, 0)\n| project TimeGenerated, Count=diff\n//| summarize sum(diff)\n};\ntotalOfflineCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_offline_count_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalOfflineCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_offline_count_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance), value - nextValue, 0)\n| project TimeGenerated, diff\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m\n//| summarize sum(diff)\n};\ntotalOfflineCount()",
                                 "size": 1,
+                                "showAnnotations": true,
                                 "title": "Offline transitions",
+                                "timeBrushParameterName": "cvv",
+                                "timeBrushExportOnlyWhenBrushed": true,
                                 "queryType": 0,
                                 "resourceType": "microsoft.devices/iothubs",
                                 "visualization": "unstackedbar"
                               },
                               "customWidth": "60",
-                              "name": "offline-transition-chart"
+                              "name": "offline-transition-chart",
+                              "styleSettings": {
+                                "margin": "0px 0px -20px 0px"
+                              }
                             }
                           ]
                         },
-                        "conditionalVisibility": {
-                          "parameterName": "OfflineCount",
-                          "comparison": "isNotEqualTo",
-                          "value": "-1"
-                        },
+                        "conditionalVisibilities": [
+                          {
+                            "parameterName": "detailsDropdown",
+                            "comparison": "isNotEqualTo"
+                          },
+                          {
+                            "parameterName": "ShowOfflineDetails",
+                            "comparison": "isEqualTo",
+                            "value": "yes"
+                          }
+                        ],
                         "name": "offline-details"
                       },
                       {
@@ -1226,16 +1408,14 @@
                         "content": {
                           "version": "NotebookGroup/1.0",
                           "groupType": "editable",
-                          "title": "Retry operation details",
-                          "expandable": true,
-                          "expanded": true,
                           "items": [
                             {
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
                                 "query": "\nlet deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_operation_retry_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)                                     \n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n| project TimeGenerated, device, instance, target, op, value, diff\n| where diff > 0\n| summarize sum(diff) by target, op\n};\ntotalRetryOperationsCount()",
-                                "size": 1,
+                                "size": 4,
+                                "title": "Retry operation details",
                                 "exportedParameters": [
                                   {
                                     "fieldName": "op",
@@ -1285,6 +1465,12 @@
                                     }
                                   ],
                                   "filter": true,
+                                  "sortBy": [
+                                    {
+                                      "itemKey": "$gen_number_sum_diff_2",
+                                      "sortOrder": 2
+                                    }
+                                  ],
                                   "labelSettings": [
                                     {
                                       "columnId": "target",
@@ -1299,7 +1485,13 @@
                                       "label": "Count"
                                     }
                                   ]
-                                }
+                                },
+                                "sortBy": [
+                                  {
+                                    "itemKey": "$gen_number_sum_diff_2",
+                                    "sortOrder": 2
+                                  }
+                                ]
                               },
                               "customWidth": "40",
                               "name": "retry-by-target-op"
@@ -1308,7 +1500,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_operation_retry_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)                                     \n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n//| where diff > 0\n| project TimeGenerated, op, Count=diff\n};\ntotalRetryOperationsCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_operation_retry_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)                                     \n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n//| where diff > 0\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 10m) to endTime step 10m by op\n//| project TimeGenerated, op, Count=diff\n};\ntotalRetryOperationsCount()",
                                 "size": 1,
                                 "title": "Retry operations (all targets and operations)",
                                 "queryType": 0,
@@ -1327,7 +1519,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_operation_retry_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| where target == '{RetryTarget}' and op == '{RetryOp}'\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)                                  \n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n//| where diff > 0\n| project TimeGenerated, Count=diff\n};\ntotalRetryOperationsCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_operation_retry_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| where target == '{RetryTarget}' and op == '{RetryOp}'\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)                                  \n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n//| where diff > 0\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m\n//| project TimeGenerated, Count=diff\n};\ntotalRetryOperationsCount()",
                                 "size": 1,
                                 "title": "{RetryOp} targeting {RetryTarget}",
                                 "queryType": 0,
@@ -1344,11 +1536,17 @@
                             }
                           ]
                         },
-                        "conditionalVisibility": {
-                          "parameterName": "RetryOps",
-                          "comparison": "isNotEqualTo",
-                          "value": "-1"
-                        },
+                        "conditionalVisibilities": [
+                          {
+                            "parameterName": "ShowRetryOpsDetails",
+                            "comparison": "isEqualTo",
+                            "value": "yes"
+                          },
+                          {
+                            "parameterName": "detailsDropdown",
+                            "comparison": "isNotEqualTo"
+                          }
+                        ],
                         "name": "retry-op-details"
                       },
                       {
@@ -1356,16 +1554,14 @@
                         "content": {
                           "version": "NotebookGroup/1.0",
                           "groupType": "editable",
-                          "title": "Dropped messages details",
-                          "expandable": true,
-                          "expanded": true,
                           "items": [
                             {
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
                                 "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_messages_dropped_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output)) \n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| summarize sum(diff) by origin\n| project origin, count=sum_diff\n};\ntotalDroppedMessagesCount()",
-                                "size": 1,
+                                "size": 4,
+                                "title": "Dropped Messages details",
                                 "exportFieldName": "origin",
                                 "exportParameterName": "MessageOrigin",
                                 "exportDefaultValue": "notselected",
@@ -1418,9 +1614,10 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_messages_dropped_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output)) \n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| summarize sum(diff) by TimeGenerated, origin\n};\ntotalDroppedMessagesCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_messages_dropped_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output)) \n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| make-series sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m by origin\n//| summarize sum(diff) by TimeGenerated, origin\n};\ntotalDroppedMessagesCount()",
                                 "size": 1,
                                 "title": "Dropped messages (all origins)",
+                                "timeBrushParameterName": "ffgf",
                                 "queryType": 0,
                                 "resourceType": "microsoft.devices/iothubs",
                                 "visualization": "scatterchart"
@@ -1437,7 +1634,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_messages_dropped_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output))\n| where moduleOutput == '{MessageOrigin}'\n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| summarize Count=sum(diff) by TimeGenerated\n};\ntotalDroppedMessagesCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_messages_dropped_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output))\n| where moduleOutput == '{MessageOrigin}'\n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m\n//| summarize Count=sum(diff) by TimeGenerated\n};\ntotalDroppedMessagesCount()",
                                 "size": 1,
                                 "title": "Dropped messages from {MessageOrigin}",
                                 "queryType": 0,
@@ -1454,11 +1651,17 @@
                             }
                           ]
                         },
-                        "conditionalVisibility": {
-                          "parameterName": "DroppedMessages",
-                          "comparison": "isNotEqualTo",
-                          "value": "-1"
-                        },
+                        "conditionalVisibilities": [
+                          {
+                            "parameterName": "ShowDroppedMessagesDetails",
+                            "comparison": "isEqualTo",
+                            "value": "yes"
+                          },
+                          {
+                            "parameterName": "detailsDropdown",
+                            "comparison": "isNotEqualTo"
+                          }
+                        ],
                         "name": "dropped-message-details"
                       },
                       {
@@ -1466,9 +1669,6 @@
                         "content": {
                           "version": "NotebookGroup/1.0",
                           "groupType": "editable",
-                          "title": "Failed client connection details",
-                          "expandable": true,
-                          "expanded": true,
                           "items": [
                             {
                               "type": 3,
@@ -1476,6 +1676,7 @@
                                 "version": "KqlItem/1.0",
                                 "query": "\nlet deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_client_connect_failed_total\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet failedConnectsbyClientReason = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_client_connect_failed_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend reason = tostring(dimensions.reason)\n| extend client = tostring(dimensions.id)\n| extend clientReason = strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), '::',  tostring(dimensions.reason)) \n| extend value = toint(Val)\n| order by instance, clientReason, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextclientReason = next(clientReason, 1)                                     \n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and clientReason == nextclientReason), value - nextValue, 0)\n| summarize sum(diff) by client, reason\n| where sum_diff > 0 \n| order by sum_diff\n};\nfailedConnectsbyClientReason()\n",
                                 "size": 1,
+                                "title": "Failed Connection details",
                                 "exportFieldName": "client",
                                 "exportParameterName": "FailedConnectClient",
                                 "exportDefaultValue": "notselected",
@@ -1578,20 +1779,15 @@
                           ]
                         },
                         "conditionalVisibility": {
-                          "parameterName": "FailedConnects",
-                          "comparison": "isNotEqualTo",
-                          "value": "-1"
+                          "parameterName": "ShowFailedConnectionDetails",
+                          "comparison": "isEqualTo",
+                          "value": "yes"
                         },
                         "name": "failed-connect-details"
                       }
                     ]
                   },
                   "conditionalVisibilities": [
-                    {
-                      "parameterName": "messaging-view",
-                      "comparison": "isEqualTo",
-                      "value": "health"
-                    },
                     {
                       "parameterName": "SelectedDevice",
                       "comparison": "isNotEqualTo",
@@ -1600,10 +1796,13 @@
                     {
                       "parameterName": "ShowPane",
                       "comparison": "isEqualTo",
-                      "value": "messages"
+                      "value": "health"
                     }
                   ],
-                  "name": "health-group"
+                  "name": "health-group",
+                  "styleSettings": {
+                    "margin": "0px 0px -20px 0px"
+                  }
                 },
                 {
                   "type": 11,
@@ -1636,7 +1835,7 @@
                   },
                   "name": "module-view-links",
                   "styleSettings": {
-                    "margin": "-14px 0px"
+                    "margin": "-15px 0px"
                   }
                 },
                 {
@@ -1742,7 +1941,7 @@
                   },
                   "name": "text - 16",
                   "styleSettings": {
-                    "margin": "-14px 0px 0px 0px",
+                    "margin": "-20px 0px 0px 0px",
                     "padding": "0px 0px 0px 12px"
                   }
                 },
@@ -1755,7 +1954,7 @@
                     "aggregation": 2,
                     "title": "Uptime",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -1814,7 +2013,7 @@
                   },
                   "name": "host-uptime",
                   "styleSettings": {
-                    "margin": "-18px 0px 0px 0px"
+                    "margin": "-30px 0px -40px"
                   }
                 },
                 {
@@ -1826,9 +2025,11 @@
                     "aggregation": 3,
                     "title": "CPU utilization",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
+                    "timeBrushParameterName": "jkj",
+                    "timeBrushExportOnlyWhenBrushed": true,
                     "queryType": 0,
                     "resourceType": "microsoft.devices/iothubs",
                     "visualization": "areachart",
@@ -1868,7 +2069,7 @@
                   },
                   "name": "host-cpu-query",
                   "styleSettings": {
-                    "margin": "-18px 0px 0px 0px"
+                    "margin": "-30px 0px -20px"
                   }
                 },
                 {
@@ -1880,9 +2081,11 @@
                     "aggregation": 5,
                     "title": "Available disk space",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
+                    "timeBrushParameterName": "kjvhv",
+                    "timeBrushExportOnlyWhenBrushed": true,
                     "queryType": 0,
                     "resourceType": "microsoft.devices/iothubs",
                     "visualization": "areachart",
@@ -1915,7 +2118,7 @@
                   },
                   "name": "host-disk-query",
                   "styleSettings": {
-                    "margin": "-18px 0px 0px 0px"
+                    "margin": "-18px 0px -18px 0px"
                   }
                 },
                 {
@@ -1927,9 +2130,11 @@
                     "aggregation": 2,
                     "title": "Memory usage",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
+                    "timeBrushParameterName": "jkjk",
+                    "timeBrushExportOnlyWhenBrushed": true,
                     "queryType": 0,
                     "resourceType": "microsoft.devices/iothubs",
                     "visualization": "areachart",
@@ -1962,7 +2167,7 @@
                   },
                   "name": "host-mem-query",
                   "styleSettings": {
-                    "margin": "-18px 0px 0px 0px"
+                    "margin": "-18px 0px"
                   }
                 },
                 {
@@ -1973,7 +2178,7 @@
                     "size": 0,
                     "noDataMessage": "No messages were routed",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportedParameters": [
@@ -2151,17 +2356,17 @@
                   ],
                   "name": "message-details",
                   "styleSettings": {
-                    "margin": "-32px 0px"
+                    "margin": "-40px  0px -20px 0px"
                   }
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let startTime = {timeRange:start};\nlet deviceid = '{SelectedDevice}';\nlet actual = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize actualUptime=max(Val) by module;\nlet expected = InsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_total_time_expected_running_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize expectedUptime=max(Val) by module;\nexpected\n| join actual on module\n| extend uptime=(actualUptime / expectedUptime) * 100\n| project module, uptime, expectedUptime, actualUptime\n\n\n\n",
+                    "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet deviceid = '{SelectedDevice}';\nlet actual = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize actualUptime=max(Val) by module;\nlet expected = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_total_time_expected_running_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize expectedUptime=max(Val) by module;\nlet availability = expected\n| join actual on module\n| extend uptime=(actualUptime / expectedUptime) * 100\n| project module, uptime, expectedUptime, actualUptime;\nlet modulerestarts = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_module_start_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n| extend mversion = tostring(dimensions.module_version)\n| where mversion == \"1.0\" or module == \"edgeHub\"\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by module, instance, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextmodule = next(module, 1)\n| project TimeGenerated, device, instance, nextInstance, module, nextmodule, value, nextValue\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and module == nextmodule), value - nextValue, 0)\n| summarize sum(diff) by module\n| join kind=rightouter availability on module\n| project module=module1, uptime, expectedUptime, actualUptime, restarts=sum_diff\n| extend restartText = case(isnull(restarts), \"No restarts\",\n                            restarts == 0, \"No restarts\",\n                            restarts == 1, \"1 restart\",  \n                            strcat(restarts, \" restarts\"));\nmodulerestarts\n\n\n\n",
                     "size": 0,
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportFieldName": "module",
@@ -2169,26 +2374,39 @@
                     "queryType": 0,
                     "resourceType": "microsoft.devices/iothubs",
                     "visualization": "graph",
+                    "sortBy": [],
                     "graphSettings": {
                       "type": 2,
                       "topContent": {
-                        "formatter": 1,
-                        "formatOptions": {},
-                        "numberFormat": {
-                          "unit": 1,
-                          "options": {
-                            "style": "decimal"
-                          }
+                        "columnMatch": "restartText",
+                        "formatter": 18,
+                        "formatOptions": {
+                          "thresholdsOptions": "icons",
+                          "thresholdsGrid": [
+                            {
+                              "operator": "regex",
+                              "thresholdValue": "(^\\d)",
+                              "representation": "2",
+                              "text": "{0}{1}"
+                            },
+                            {
+                              "operator": "Default",
+                              "thresholdValue": null,
+                              "representation": "success",
+                              "text": ""
+                            }
+                          ]
+                        },
+                        "tooltipFormat": {
+                          "tooltip": "# of module restarts. Green check = No restarts (in selected timerange)."
                         }
                       },
                       "centerContent": {
                         "columnMatch": "module",
-                        "formatter": 1,
-                        "formatOptions": {}
+                        "formatter": 1
                       },
                       "bottomContent": {
                         "columnMatch": "uptime",
-                        "formatOptions": {},
                         "numberFormat": {
                           "unit": 1,
                           "options": {
@@ -2199,6 +2417,8 @@
                         }
                       },
                       "nodeIdField": "module",
+                      "graphOrientation": 3,
+                      "showOrientationToggles": false,
                       "nodeSize": null,
                       "staticNodeSize": 100,
                       "colorSettings": {
@@ -2229,7 +2449,169 @@
                       "value": "modules"
                     }
                   ],
-                  "name": "module-hive-query"
+                  "name": "module-hive-query",
+                  "styleSettings": {
+                    "margin": "-30px 0px 0px 0px"
+                  }
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_module_start_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n| extend mversion = tostring(dimensions.module_version)\n| where mversion == \"1.0\" or module == \"edgeHub\"\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by module, instance, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextmodule = next(module, 1)\n| project TimeGenerated, device, instance, nextInstance, module, nextmodule, value, nextValue\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and module == nextmodule), value - nextValue, 0)\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 10m) to endTime step 10m by module\n\n",
+                          "size": 1,
+                          "title": "Module restart timeline",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "fgsfgf",
+                          "exportFieldName": "module",
+                          "exportParameterName": "moduleName",
+                          "queryType": 0,
+                          "resourceType": "microsoft.devices/iothubs",
+                          "visualization": "scatterchart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 2,
+                            "topContent": {
+                              "columnMatch": "restartText",
+                              "formatter": 18,
+                              "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                  {
+                                    "operator": "regex",
+                                    "thresholdValue": "(^\\d)",
+                                    "representation": "2",
+                                    "text": "{0}{1}"
+                                  },
+                                  {
+                                    "operator": "Default",
+                                    "thresholdValue": null,
+                                    "representation": "success",
+                                    "text": ""
+                                  }
+                                ]
+                              },
+                              "tooltipFormat": {
+                                "tooltip": "# of module restarts. Green check = No restarts (in selected timerange)."
+                              }
+                            },
+                            "centerContent": {
+                              "columnMatch": "module",
+                              "formatter": 1
+                            },
+                            "bottomContent": {
+                              "columnMatch": "uptime",
+                              "numberFormat": {
+                                "unit": 1,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            },
+                            "nodeIdField": "module",
+                            "graphOrientation": 3,
+                            "showOrientationToggles": false,
+                            "nodeSize": null,
+                            "staticNodeSize": 100,
+                            "colorSettings": {
+                              "nodeColorField": "uptime",
+                              "type": 4,
+                              "heatmapPalette": "redGreen",
+                              "heatmapMin": 0,
+                              "heatmapMax": 100
+                            },
+                            "hivesMargin": 2
+                          }
+                        },
+                        "conditionalVisibilities": [
+                          {
+                            "parameterName": "SelectedDevice",
+                            "comparison": "isNotEqualTo",
+                            "value": "default"
+                          },
+                          {
+                            "parameterName": "module-tab",
+                            "comparison": "isEqualTo",
+                            "value": "availability"
+                          },
+                          {
+                            "parameterName": "ShowPane",
+                            "comparison": "isEqualTo",
+                            "value": "modules"
+                          },
+                          {
+                            "parameterName": "moduleName",
+                            "comparison": "isEqualTo"
+                          }
+                        ],
+                        "name": "module-restart-timeline",
+                        "styleSettings": {
+                          "margin": "0px 0px"
+                        }
+                      },
+                      {
+                        "type": 12,
+                        "content": {
+                          "version": "NotebookGroup/1.0",
+                          "groupType": "editable",
+                          "items": [
+                            {
+                              "type": 1,
+                              "content": {
+                                "json": ""
+                              },
+                              "customWidth": "20",
+                              "name": "spacer"
+                            },
+                            {
+                              "type": 1,
+                              "content": {
+                                "json": "<br>\n💡 **Select a cell on the left to view module CPU/Memory use**"
+                              },
+                              "customWidth": "80",
+                              "name": "text - 1"
+                            }
+                          ]
+                        },
+                        "name": "info-tip-group"
+                      }
+                    ]
+                  },
+                  "customWidth": "50",
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "SelectedDevice",
+                      "comparison": "isNotEqualTo",
+                      "value": "default"
+                    },
+                    {
+                      "parameterName": "module-tab",
+                      "comparison": "isEqualTo",
+                      "value": "availability"
+                    },
+                    {
+                      "parameterName": "ShowPane",
+                      "comparison": "isEqualTo",
+                      "value": "modules"
+                    },
+                    {
+                      "parameterName": "moduleName",
+                      "comparison": "isEqualTo",
+                      "value": ""
+                    }
+                  ],
+                  "name": "module-restart-group"
                 },
                 {
                   "type": 3,
@@ -2240,7 +2622,7 @@
                     "aggregation": 5,
                     "title": "Average CPU usage across all cores",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportFieldName": "module",
@@ -2332,7 +2714,7 @@
                     "aggregation": 5,
                     "title": "Memory usage",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
                     "exportFieldName": "module",
@@ -2429,11 +2811,14 @@
                           "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module == '{moduleName}'\n| extend value = todouble(Val)\n| project value, TimeGenerated",
                           "size": 1,
                           "aggregation": 5,
+                          "showAnnotations": true,
                           "title": "CPU usage by {moduleName}",
                           "timeContext": {
-                            "durationMs": 14400000
+                            "durationMs": 0
                           },
                           "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "dfdfdfd",
+                          "timeBrushExportOnlyWhenBrushed": true,
                           "queryType": 0,
                           "resourceType": "microsoft.devices/iothubs",
                           "visualization": "areachart",
@@ -2458,7 +2843,10 @@
                             }
                           }
                         },
-                        "name": "module-cpu-query"
+                        "name": "module-cpu-query",
+                        "styleSettings": {
+                          "margin": "-10px 0px 0px 0px"
+                        }
                       },
                       {
                         "type": 3,
@@ -2467,11 +2855,13 @@
                           "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains '{moduleName}' and Tags contains '{SelectedDevice}'\n| extend value = tolong(Val)\n| project value, TimeGenerated",
                           "size": 1,
                           "aggregation": 5,
+                          "showAnnotations": true,
                           "title": "Memory consumed by {moduleName}",
                           "timeContext": {
-                            "durationMs": 14400000
+                            "durationMs": 0
                           },
                           "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "dfdfd",
                           "queryType": 0,
                           "resourceType": "microsoft.devices/iothubs",
                           "visualization": "areachart",
@@ -2495,7 +2885,10 @@
                             }
                           }
                         },
-                        "name": "module-memory-query"
+                        "name": "module-memory-query",
+                        "styleSettings": {
+                          "margin": "-20px 0px 0px -10px"
+                        }
                       }
                     ]
                   },
@@ -2506,7 +2899,7 @@
                   },
                   "name": "module-docker-metrics-group",
                   "styleSettings": {
-                    "margin": "-60px 0px"
+                    "margin": "-20px 0px"
                   }
                 },
                 {
@@ -2527,9 +2920,11 @@
                             "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "brushedTimeRange",
+                          "timeBrushExportOnlyWhenBrushed": true,
                           "queryType": 0,
                           "resourceType": "microsoft.devices/iothubs",
-                          "visualization": "linechart",
+                          "visualization": "scatterchart",
                           "chartSettings": {
                             "xAxis": "TimeGenerated",
                             "yAxis": [
@@ -2550,7 +2945,10 @@
                           "parameterName": "qlen",
                           "comparison": "isNotEqualTo"
                         },
-                        "name": "query - 0 - Copy"
+                        "name": "query - 0 - Copy",
+                        "styleSettings": {
+                          "margin": "-10px -10px"
+                        }
                       },
                       {
                         "type": 3,
@@ -2566,7 +2964,7 @@
                           "timeContextFromParameter": "timeRange",
                           "queryType": 0,
                           "resourceType": "microsoft.devices/iothubs",
-                          "visualization": "timechart",
+                          "visualization": "scatterchart",
                           "chartSettings": {
                             "xAxis": "TimeGenerated",
                             "yAxis": [
@@ -2582,7 +2980,6 @@
                                 "label": "Send latency"
                               }
                             ],
-                            "xSettings": {},
                             "ySettings": {
                               "numberFormatSettings": {
                                 "unit": 24,
@@ -2605,7 +3002,10 @@
                             "comparison": "isNotEqualTo"
                           }
                         ],
-                        "name": "query - 0 - Copyb"
+                        "name": "query - 0 - Copyb",
+                        "styleSettings": {
+                          "margin": "-10px -10px"
+                        }
                       },
                       {
                         "type": 3,
@@ -2643,7 +3043,10 @@
                           "parameterName": "latency",
                           "comparison": "isNotEqualTo"
                         },
-                        "name": "query - 1"
+                        "name": "query - 1",
+                        "styleSettings": {
+                          "margin": "-10px -10px"
+                        }
                       },
                       {
                         "type": 3,
@@ -2656,6 +3059,8 @@
                             "durationMs": 14400000
                           },
                           "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "brushedTimeRange",
+                          "timeBrushExportOnlyWhenBrushed": true,
                           "queryType": 0,
                           "resourceType": "microsoft.devices/iothubs",
                           "visualization": "barchart",
@@ -2686,7 +3091,7 @@
                         ],
                         "name": "query - 1 - Copy",
                         "styleSettings": {
-                          "margin": "-18px 0px 0px 0px"
+                          "margin": "-10px -10px"
                         }
                       },
                       {
@@ -2701,7 +3106,8 @@
                         },
                         "name": "text - 2"
                       }
-                    ]
+                    ],
+                    "exportParameters": true
                   },
                   "customWidth": "50",
                   "conditionalVisibilities": [
@@ -2735,7 +3141,7 @@
                     "size": 0,
                     "noDataMessage": "No messages were routed",
                     "timeContext": {
-                      "durationMs": 14400000
+                      "durationMs": 43200000
                     },
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
@@ -2795,11 +3201,80 @@
                   "name": "message-graph"
                 },
                 {
-                  "type": 1,
+                  "type": 12,
                   "content": {
-                    "json": ""
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet numEntries = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where Name == \"edgehub_connected_clients\"\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| count\n};\nlet connectedClients = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_connected_clients\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| make-series Count=min(value) on TimeGenerated from (startTime - 5m) to endTime step 5m\n\n};\nconnectedClients()",
+                          "size": 1,
+                          "aggregation": 5,
+                          "title": "Connected clients count",
+                          "timeContext": {
+                            "durationMs": 86400000
+                          },
+                          "timeBrushParameterName": "brushedTimeRange",
+                          "timeBrushExportOnlyWhenBrushed": true,
+                          "queryType": 0,
+                          "resourceType": "microsoft.devices/iothubs",
+                          "visualization": "barchart"
+                        },
+                        "name": "query - 1"
+                      },
+                      {
+                        "type": 12,
+                        "content": {
+                          "version": "NotebookGroup/1.0",
+                          "groupType": "editable",
+                          "items": [
+                            {
+                              "type": 1,
+                              "content": {
+                                "json": ""
+                              },
+                              "customWidth": "25",
+                              "name": "spacer"
+                            },
+                            {
+                              "type": 1,
+                              "content": {
+                                "json": "<br>\n\n💡 **Select a row on the left to further drill-in**"
+                              },
+                              "customWidth": "75",
+                              "conditionalVisibilities": [
+                                {
+                                  "parameterName": "ShowPane",
+                                  "comparison": "isEqualTo",
+                                  "value": "messages"
+                                },
+                                {
+                                  "parameterName": "messaging-view",
+                                  "comparison": "isEqualTo",
+                                  "value": "routing"
+                                },
+                                {
+                                  "parameterName": "id",
+                                  "comparison": "isEqualTo",
+                                  "value": "<default>"
+                                }
+                              ],
+                              "name": "text - 5b"
+                            }
+                          ]
+                        },
+                        "name": "info-tip-group",
+                        "styleSettings": {
+                          "margin": "-20px 0px"
+                        }
+                      }
+                    ],
+                    "exportParameters": true
                   },
-                  "customWidth": "10",
+                  "customWidth": "50",
                   "conditionalVisibilities": [
                     {
                       "parameterName": "ShowPane",
@@ -2817,34 +3292,13 @@
                       "value": "<default>"
                     }
                   ],
-                  "name": "spacer"
-                },
-                {
-                  "type": 1,
-                  "content": {
-                    "json": "<br><br><br><br><br>\n\n💡 **Select a row on the left to further drill-in**"
-                  },
-                  "customWidth": "40",
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "ShowPane",
-                      "comparison": "isEqualTo",
-                      "value": "messages"
-                    },
-                    {
-                      "parameterName": "messaging-view",
-                      "comparison": "isEqualTo",
-                      "value": "routing"
-                    },
-                    {
-                      "parameterName": "id",
-                      "comparison": "isEqualTo",
-                      "value": "<default>"
-                    }
-                  ],
-                  "name": "text - 5b"
+                  "name": "connected-clients-group",
+                  "styleSettings": {
+                    "margin": "-60px 0px 0px 0px"
+                  }
                 }
-              ]
+              ],
+              "exportParameters": true
             },
             "conditionalVisibilities": [
               {
@@ -2860,11 +3314,13 @@
             ],
             "name": "devicedetails-group",
             "styleSettings": {
-              "margin": "-8px 0px",
+              "margin": "-10px 0px -15px 0px",
+              "padding": "8px 0px -15px 0px",
               "showBorder": true
             }
           }
-        ]
+        ],
+        "exportParameters": true
       },
       "conditionalVisibility": {
         "parameterName": "InsightsMetricsExists",
@@ -2873,7 +3329,7 @@
       },
       "name": "device-group",
       "styleSettings": {
-        "margin": "-12px 0px"
+        "margin": "-20px 0px"
       }
     }
   ],
