@@ -6,7 +6,7 @@ set "localizationrepo=%root%%subfolder%"
 dir
 
 REM clone the new localization string-only repository
-git clone --single-branch --branch main --no-tags https://github.com/microsoft/Workbooks-Localization localization
+git clone --single-branch --branch main --no-tags https://github.com/microsoft/Workbooks-Localization %subfolder%
 
 REM move contents of localization folder into root, lcl files are needed in specified output location
 cd /d %localizationrepo%
@@ -16,4 +16,4 @@ for /d %%i in (*) do move "%%i" /
 cd /D "%~dp0"
 dir
 
-exit /B 0
+exit /B %errorlevel%
