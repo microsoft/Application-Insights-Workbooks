@@ -354,7 +354,7 @@ function replaceText(workbookTemplate, settingsJSON, stringMap, templatePath, ro
     const keys = Object.keys(stringMap);
     addGalleryEntry(settingsJSON, stringMap["settings.name"], galleryMap, categoryResourcesMap, templatePath, rootDirectory, lang);
     keys.forEach(key => {
-        if (!key === "settings.name") {
+        if (key !== "settings.name") {
             const keyArray = convertStringKeyToPath(key);
             // value in the template
             const result = getValueFromPath(keyArray, workbookJSON);
@@ -660,15 +660,17 @@ for (var d in directories) {
     }
 }
 
-generateGalleryFiles(galleryMap, rootDirectory.concat(PackageOutputFolder));
-generateIndexFiles(cohortIndexEntries, rootDirectory.concat(PackageOutputFolder, LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
+const outputFolder = rootDirectory.concat(rootDirectory.startsWith("\\") ? PackageOutputFolder.substring(1) : PackageOutputFolder);
+
+generateGalleryFiles(galleryMap, outputFolder);
+generateIndexFiles(cohortIndexEntries, outputFolder.concat(LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
 
 // copy package.json into the output/package directory
-fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), rootDirectory.concat(PackageOutputFolder, "package.json"), (err) => {
+fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), outputFolder.concat("package.json"), (err) => {
     if (err) throw err;
 });
 // copy .npmrc into output/package directory
-fs.copyFile(rootDirectory.concat("\\scripts\\.npmrc"), rootDirectory.concat(PackageOutputFolder, ".npmrc"), (err) => {
+fs.copyFile(rootDirectory.concat("\\scripts\\.npmrc"), outputFolder.concat(".npmrc"), (err) => {
     if (err) throw err;
 });
 
