@@ -662,6 +662,7 @@ const outputFolder = rootDirectory.concat(rootDirectory.startsWith("\\") ? Packa
 
 generateGalleryFiles(galleryMap, outputFolder);
 generateIndexFiles(cohortIndexEntries, outputFolder.concat(LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
+generateIndexFiles(workbookIndexEntries, outputFolder.concat(LangOutputSpecifier, WorkbookTemplateFolder, IndexFile));
 
 // copy package.json into the output/package directory
 fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), outputFolder.concat("package.json"), (err) => {
