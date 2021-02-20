@@ -158,6 +158,38 @@
             "name": "parameters - 2"
           },
           {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "crossComponentResources": [
+                "{Workspaces}"
+              ],
+              "parameters": [
+                {
+                  "id": "6dcbfceb-0520-46c5-b010-91bdc7075283",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IsWLIVersionOutdated",
+                  "type": 1,
+                  "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace == 'Computer'\r\n| summarize (Time, WLI) = argmax(TimeGenerated, tostring(Tags.wli)) by _ResourceId\r\n| extend WLI_Minor = extract('[0-9]+.([0-9]+.[0-9]+)', 1, WLI), WLI_Major = extract('([0-9]+).[0-9]+.[0-9]+', 1, WLI)\r\n| summarize by IsWLIOutdated = iff(isempty(WLI) or (todouble(WLI_Major) >= 0 and todouble(WLI_Minor) >= 2.120), 'false', 'true')\r\n| order by IsWLIOutdated desc\r\n| take 1",
+                  "crossComponentResources": [
+                    "{Workspaces}"
+                  ],
+                  "isHiddenWhenLocked": true,
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "TimeRange",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "parameters - 5"
+          },
+          {
             "type": 11,
             "content": {
               "version": "LinkItem/1.0",
@@ -248,10 +280,23 @@
             }
           },
           {
+            "type": 1,
+            "content": {
+              "json": "One or more machines have an older version of the WLI Extension. Please click on the 'Needs update' link besides the virtual machine to update the WLI Extension.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsWLIVersionOutdated",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "OutdatedVersionWarning"
+          },
+          {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Operation\r\n| where Detail !contains \"mssql: Incorrect syntax near ','.\"\r\n| summarize Errors = countif(OperationStatus == 'Error'), All = count() by _ResourceId\r\n| join kind=fullouter(\r\n    InsightsMetrics\r\n    | where TimeGenerated > ago(10m) and Origin contains 'CustomTelegraf'\r\n    | summarize by _ResourceId, HasMetrics = true)\r\n    on _ResourceId\r\n| project Vm = iff(isempty(_ResourceId), _ResourceId1, _ResourceId), Errors, All, HasMetrics, Status = iff(HasMetrics or isnotempty(HasMetrics), iff(Errors < 1 or isempty(Errors), 'Collecting', 'Collecting with errors'), 'Not Collecting'), LogsFilter = iff(Errors < 1 or isempty(Errors), \"All Logs\", \"Errors\")",
+              "query": "Operation\r\n| where Detail !contains \"mssql: Incorrect syntax near ','.\"\r\n| summarize Errors = countif(OperationStatus == 'Error'), All = count() by _ResourceId\r\n| join kind=fullouter(\r\n    InsightsMetrics\r\n    | where TimeGenerated > ago(10m) and Origin contains 'CustomTelegraf'\r\n    | summarize by _ResourceId, HasMetrics = true)\r\n    on _ResourceId\r\n| join kind = leftouter(\r\n    InsightsMetrics\r\n    | extend Tags = todynamic(Tags)\r\n    | where Namespace == 'Computer'\r\n    | summarize (Time, WLI) = argmax(TimeGenerated, tostring(Tags.wli)) by _ResourceId\r\n    | extend WLI_Minor = extract('[0-9]+.([0-9]+.[0-9]+)', 1, WLI), WLI_Major = extract('([0-9]+).[0-9]+.[0-9]+', 1, WLI))\r\n    on _ResourceId\r\n| project Vm = iff(isempty(_ResourceId), _ResourceId1, _ResourceId), Errors, All, HasMetrics, Status = iff(HasMetrics or isnotempty(HasMetrics), iff(Errors < 1 or isempty(Errors), 'Collecting', 'Collecting with errors'), 'Not Collecting'), LogsFilter = iff(Errors < 1 or isempty(Errors), \"All Logs\", \"Errors\"), WLI, Action = iff(todouble(WLI_Major) >= 0 and todouble(WLI_Minor) >= 2.130, 'Configure', 'Needs update')",
               "size": 0,
               "title": "VMs receiving metrics in the last 10 minutes",
               "noDataMessage": "No custom telegraf metrics are being sent to this workspace",
@@ -280,7 +325,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Resources\n| take 1\n| project associations = dynamic([{Associations}])\n| mvexpand associations limit 400\n| project id = tolower(extract(@'(?i)(.+)/providers/microsoft.insights/datacollectionruleassociations/.+', 1, tostring(associations)))\n| join kind = inner (Resources\n  | where type =~ 'microsoft.compute/virtualmachines'\n  | extend id = tolower(id)\n  ) on id\n| project Vm = id, Subscription = strcat('/subscriptions/', subscriptionId), ResourceGroup = strcat('/subscriptions/', subscriptionId, '/resourceGroups/', resourceGroup), location = location, Action = 'Configure'",
+              "query": "Resources\n| take 1\n| project associations = dynamic([{Associations}])\n| mvexpand associations limit 400\n| project id = tolower(extract(@'(?i)(.+)/providers/microsoft.insights/datacollectionruleassociations/.+', 1, tostring(associations)))\n| join kind = inner (Resources\n  | where type =~ 'microsoft.compute/virtualmachines'\n  | extend id = tolower(id)\n  ) on id\n| project Vm = id, Subscription = strcat('/subscriptions/', subscriptionId), ResourceGroup = strcat('/subscriptions/', subscriptionId, '/resourceGroups/', resourceGroup), location = location",
               "size": 0,
               "title": "Monitoring state",
               "noDataMessage": "This profile does not have any associated monitoring virtual machines. Associate one using the Add monitoring machine button.",
@@ -357,7 +402,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\",\"mergeType\":\"rightouter\",\"leftTable\":\"Health query\",\"rightTable\":\"Vm query\",\"leftColumn\":\"Vm\",\"rightColumn\":\"Vm\"}],\"projectRename\":[{\"originalName\":\"[Health query].Healthy\",\"mergedName\":\"Healthy\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].Errors\",\"mergedName\":\"Errors\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].Vm\",\"mergedName\":\"Vm\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Added column]\",\"mergedName\":\"Status\",\"fromId\":null,\"isNewItem\":true,\"newItemData\":[{\"criteriaContext\":{\"leftOperand\":\"HealthStatus\",\"operator\":\"isNotNull\",\"rightValType\":\"column\",\"resultValType\":\"column\",\"resultVal\":\"HealthStatus\"}},{\"criteriaContext\":{\"operator\":\"Default\",\"rightValType\":\"column\",\"resultValType\":\"static\",\"resultVal\":\"Not Collecting\"}}]},{\"originalName\":\"[Vm query].Vm\",\"mergedName\":\"Virtual machine\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Health query].Status\",\"mergedName\":\"HealthStatus\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].Subscription\",\"mergedName\":\"Subscription\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].ResourceGroup\",\"mergedName\":\"Resource group\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].location\",\"mergedName\":\"Location\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].Action\",\"mergedName\":\"Action\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Health query].All\",\"mergedName\":\"All\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].HasMetrics\",\"mergedName\":\"HasMetrics\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].Action\",\"mergedName\":\"Action\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].LogsFilter\",\"mergedName\":\"LogsFilter\",\"fromId\":\"unknown\"}]}",
+              "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\",\"mergeType\":\"rightouter\",\"leftTable\":\"Health query\",\"rightTable\":\"Vm query\",\"leftColumn\":\"Vm\",\"rightColumn\":\"Vm\"}],\"projectRename\":[{\"originalName\":\"[Health query].Healthy\",\"mergedName\":\"Healthy\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].Errors\",\"mergedName\":\"Errors\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].Vm\",\"mergedName\":\"Vm\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Added column]\",\"mergedName\":\"Status\",\"fromId\":null,\"isNewItem\":true,\"newItemData\":[{\"criteriaContext\":{\"leftOperand\":\"HealthStatus\",\"operator\":\"isNotNull\",\"rightValType\":\"column\",\"resultValType\":\"column\",\"resultVal\":\"HealthStatus\"}},{\"criteriaContext\":{\"operator\":\"Default\",\"rightValType\":\"column\",\"resultValType\":\"static\",\"resultVal\":\"Not Collecting\"}}]},{\"originalName\":\"[Vm query].Vm\",\"mergedName\":\"Virtual machine\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Health query].Status\",\"mergedName\":\"HealthStatus\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].Subscription\",\"mergedName\":\"Subscription\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].ResourceGroup\",\"mergedName\":\"Resource group\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Vm query].location\",\"mergedName\":\"Location\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Health query].WLI\",\"mergedName\":\"WLI\",\"fromId\":\"unknown\"},{\"originalName\":\"[Vm query].Action\",\"mergedName\":\"Action\",\"fromId\":\"3005d536-cf5e-4719-8aca-2e5d4cabd0ad\"},{\"originalName\":\"[Health query].All\",\"mergedName\":\"All\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].HasMetrics\",\"mergedName\":\"HasMetrics\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].Action\",\"mergedName\":\"Action\",\"fromId\":\"unknown\"},{\"originalName\":\"[Health query].LogsFilter\",\"mergedName\":\"LogsFilter\",\"fromId\":\"unknown\"}]}",
               "size": 0,
               "title": "Monitoring state",
               "noDataMessage": "This profile does not have any associated monitoring virtual machines. Associate one using the Add monitoring machine button.",
@@ -535,7 +580,49 @@
                     "formatter": 5
                   }
                 ],
-                "filter": true
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Errors"
+                  },
+                  {
+                    "columnId": "Vm"
+                  },
+                  {
+                    "columnId": "Virtual machine"
+                  },
+                  {
+                    "columnId": "Status"
+                  },
+                  {
+                    "columnId": "HealthStatus"
+                  },
+                  {
+                    "columnId": "Subscription"
+                  },
+                  {
+                    "columnId": "Resource group"
+                  },
+                  {
+                    "columnId": "Location"
+                  },
+                  {
+                    "columnId": "WLI",
+                    "label": "WLI Version"
+                  },
+                  {
+                    "columnId": "All"
+                  },
+                  {
+                    "columnId": "HasMetrics"
+                  },
+                  {
+                    "columnId": "Action"
+                  },
+                  {
+                    "columnId": "LogsFilter"
+                  }
+                ]
               }
             },
             "showPin": false,
