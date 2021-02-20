@@ -29,7 +29,7 @@ const CohortsGalleryFileName = "_gallery.Cohorts-microsoft.insights-components";
 
 const Encoding = 'utf8';
 const RESJSONFileExtension = ".resjson";
-const DefaultLang = "en-us";
+const DefaultLang = "en";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
@@ -238,10 +238,10 @@ function addGalleryEntry(settingsData, settingsName, gallery, categoryResourcesM
 function getCategoryResourcesInfo(object, categoryResourcesMap, templatePath) {
     const templateSplit = templatePath.split("\\");
     const key = templateSplit[templateSplit.length - 1];
-    if (key && object && object[DefaultLang]) {
-        const entry = object[DefaultLang];
+    if (key && object && object[LanguagesMap[DefaultLang]]) {
+        const entry = object[LanguagesMap[DefaultLang]];
         categoryResourcesMap[key] = {
-            "en-us": {
+            "en": {
                 name: entry.name,
                 description: entry.description,
                 order: entry.order
@@ -557,7 +557,7 @@ var directories = getLocalizeableFileDirectories(directoryPath);
 var cohortIndexEntries = {}; // Map for generating cohort index files
 var workbookIndexEntries = {}; // Map for generating workbook index files
 var galleryMap = { // Map for generating gallery files
-    "en-us": {}
+    "en": {}
 };
 var categoryResourcesData = {};
 var rootDirectory;
@@ -621,7 +621,7 @@ for (var d in directories) {
         if (fileType === LocalizeableFileType.CategoryResources) {
             // Add category resources strings to map
             for (var lang in LanguagesMap) {
-                if (lang !== "en") {
+                if (lang !== DefaultLang) {
                     // Location of translated resjson
                     const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
                     if (fs.existsSync(localizedFilePath)) {
@@ -640,7 +640,7 @@ for (var d in directories) {
                 // Location of package for translated workbook
                 const translatedResultPath = packageOutputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
 
-                if (LanguagesMap[lang] === DefaultLang) {
+                if (lang === DefaultLang) {
                     writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
                 } else {
                     if (fs.existsSync(localizedFilePath)) {
