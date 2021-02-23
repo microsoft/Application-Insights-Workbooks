@@ -15,10 +15,11 @@ const LocalizeableFileExt = [
     "cohort"
 ];
 
-const LocalizeableFileType = {
+const WorkbookFileType = {
     CategoryResources: 1,
     Settings: 2,
-    Template: 3
+    Template: 3,
+    ARMTemplate: 4
 };
 
 const CategoryResourcesFile = "categoryResources.json";
@@ -56,10 +57,6 @@ const LanguagesMap = {
     "zh-Hans": "zh-cn",
     "zh-Hant": "zh-tw"
 };
-
-
-// Flag to turn on or off console logs
-const LogInfo = true;
 
 /**
  * FUNCTIONS 
@@ -106,12 +103,12 @@ function getDirectoriesRecursive(srcpath) {
     return [srcpath, ...flatten(getDirectories(srcpath).map(getDirectoriesRecursive))];
 }
 
-/** Validates file type as localizeable. Expected to be either workbook/cohort file or settings/categoryjson file. Returns null if file is not localizeable */
-function getLocalizeableFileType(fileName) {
+/** Validates file type. Expected to be either workbook/cohort file, settings/categoryjson file, or amtemplate. Returns null if file type is not supported */
+function getWorkbookFileType(fileName) {
     if (fileName.localeCompare(CategoryResourcesFile) === 0) {
-        return LocalizeableFileType.CategoryResources;
+        return WorkbookFileType.CategoryResources;
     } else if (fileName.localeCompare(SettingsFile) === 0) {
-        return LocalizeableFileType.Settings;
+        return WorkbookFileType.Settings;
     }
     var a = fileName.split(".");
     if (a.length === 1 || (a[0] === "" && a.length === 2)) {
@@ -119,15 +116,16 @@ function getLocalizeableFileType(fileName) {
     }
     const extension = a.pop();
     if (extension && LocalizeableFileExt.includes(extension.toLowerCase())) {
-        return LocalizeableFileType.Template;
+        return WorkbookFileType.Template;
+    }
+    if (extension && extension.toLowerCase() === "armtemplate") {
+        return WorkbookFileType.ARMTemplate;
     }
     return null;
 }
 
 function logMessage(message) {
-    if (LogInfo) {
-        console.log("INFO: ", message);
-    }
+    console.log("INFO: ", message);
 }
 
 function logError(message, shouldExit) {
@@ -260,16 +258,6 @@ function getRootFolder(dir) {
     return root;
 }
 
-
-function getFileType(fileName) {
-    if (fileName.localeCompare(CategoryResourcesFile) === 0) {
-        return LocalizeableFileType.CategoryResources;
-    } else if (fileName.localeCompare(SettingsFile) === 0) {
-        return LocalizeableFileType.Settings;
-    }
-    return LocalizeableFileType.Template;
-}
-
 /** Processes category resource file */
 function processCategoryResourceFile(fileData, templatePath, rootDirectory) {
     try {
@@ -297,7 +285,21 @@ function processTemplateFile(cohortIndexEntries, workbookIndexEntries, templateP
     }
 }
 
-function parseCategoryResourcesStrings(fileData, categoryResourcesData, galleryMap, templatePath, lang) {
+function processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData) {
+    try {
+        var path = getPackageOutputPath(templatePath, rootDirectory);
+        path = path.replace(".json", "");
+        path = path.concat("-", fileName, ".json");
+        for (var lang in LanguagesMap) {
+            const translatedResultPath = path.replace(LangOutputSpecifier, LanguagesMap[lang]);
+            writeTranslatedWorkbookToFile(armTemplateData, translatedResultPath);
+        }
+    } catch (e) {
+        logError("Failed to process ARM template file: " + templatePath + "Error: " + e, true);
+    }
+}
+
+function parseCategoryResourcesStrings(fileData, categoryResourcesData, templatePath, lang) {
     const jsonData = JSON.parse(fileData);
     const templateSplit = templatePath.split("\\");
     const key = templateSplit[templateSplit.length - 1];
@@ -324,7 +326,6 @@ function parseCategoryResourcesStrings(fileData, categoryResourcesData, galleryM
         }
         categoryResourcesLoc["order"] = categoryResourcesMap[DefaultLang].order;
     });
-
 }
 
 function parseTemplateResult(jsonData, lang, workbookJSON, settingsJSON, templatePath, fullpath, rootdirectory, categoryResourcesMap, galleryMap) {
@@ -585,13 +586,13 @@ for (var d in directories) {
 
     for (var i in files) {
         const fileName = files[i];
-        const fileType = getLocalizeableFileType(fileName);
+        const fileType = getWorkbookFileType(fileName);
         // If file type is not valid, skip
         if (!fileType) {
             continue;
         }
 
-        if (fileType !== LocalizeableFileType.Settings) {
+        if (fileType !== WorkbookFileType.Settings) {
             file = fileName;
             packageOutputPath = getPackageOutputPath(templatePath, rootDirectory);
         }
@@ -600,13 +601,17 @@ for (var d in directories) {
 
         // Parse the template for localizeable strings
         const fileData = openFile(filePath);
-        if (fileType === LocalizeableFileType.CategoryResources) {
+        if (fileType === WorkbookFileType.CategoryResources) {
             // Category Resources file
             packageOutputPath = processCategoryResourceFile(fileData, templatePath, rootDirectory);
-        } else if (fileType === LocalizeableFileType.Settings) {
+        } else if (fileType === WorkbookFileType.Settings) {
             // Settings file
             settingsParsedData = JSON.parse(fileData);
             processSettingsFile(settingsParsedData, galleryMap, categoryResourcesData, templatePath, rootDirectory);
+        } else if (fileType === WorkbookFileType.ARMTemplate) {
+            // ARM Template file
+            const armTemplateData = JSON.parse(fileData);
+            processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData);
         } else {
             // Workbook template file
             templateParsedData = JSON.parse(fileData);
@@ -616,9 +621,9 @@ for (var d in directories) {
 
     // Template Generation 
     if (!templatePath.endsWith("\\")) {
-        const fileType = getFileType(file);
+        const fileType = getWorkbookFileType(file);
 
-        if (fileType === LocalizeableFileType.CategoryResources) {
+        if (fileType === WorkbookFileType.CategoryResources) {
             // Add category resources strings to map
             for (var lang in LanguagesMap) {
                 if (lang !== DefaultLang) {
@@ -626,13 +631,13 @@ for (var d in directories) {
                     const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
                     if (fs.existsSync(localizedFilePath)) {
                         const jsonFileData = fs.readFileSync(localizedFilePath, Encoding);
-                        parseCategoryResourcesStrings(jsonFileData, categoryResourcesData, galleryMap, templatePath, lang);
+                        parseCategoryResourcesStrings(jsonFileData, categoryResourcesData, templatePath, lang);
                     } else {
                         logMessage("Did not find localized file in: " + localizedFilePath);
                     }
                 }
             }
-        } else if (fileType === LocalizeableFileType.Template) {
+        } else if (fileType === WorkbookFileType.Template || fileType === WorkbookFileType.ARMTemplate) {
             // Generate localized templates
             for (var lang in LanguagesMap) {
                 // Location of translated resjson
@@ -672,4 +677,3 @@ fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), outputFolder.concat
 fs.copyFile(rootDirectory.concat("\\scripts\\.npmrc"), outputFolder.concat(".npmrc"), (err) => {
     if (err) throw err;
 });
-
