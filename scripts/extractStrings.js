@@ -231,7 +231,7 @@ function endsWithLocIdentifier(key) {
       return ids[i];
     }
   }
-  return null
+  return null;
 }
 
 /** Get localizeable strings from category resources file */

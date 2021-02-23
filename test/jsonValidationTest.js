@@ -90,7 +90,7 @@ describe('Validating Workbooks...', () => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateNoResourceIds(settings, file);
                     validateNoFromTemplateId(settings, file);
-                    validateNoDuplicateId(settings, '', {});
+                    validateNoDuplicateId(settings, '', {}, file);
                     validateSingleWorkbookFile(settings, file);
                     validateWorkbookFilePathLength(file);
                 });
@@ -292,7 +292,7 @@ function validateNoFromTemplateId(settings, file) {
 }
 
 // validate that the template does not contain any duplicate ids
-function validateNoDuplicateId(obj, key, outputMap) {
+function validateNoDuplicateId(obj, key, outputMap, file) {
     for (var field in obj) {
         var objectEntry = obj[field];
         var jsonKey;
@@ -304,7 +304,7 @@ function validateNoDuplicateId(obj, key, outputMap) {
             } else {
                 jsonKey = key.concat(".", field);
             }
-            validateNoDuplicateId(objectEntry, jsonKey, outputMap);
+            validateNoDuplicateId(objectEntry, jsonKey, outputMap, file);
 
         } else if (LocKeys.includes(field)) {
             jsonKey = key.concat(".", field).substring(1);
@@ -332,13 +332,13 @@ function getKeyForArrayObject(key, objectEntry, field) {
 
 function endsWithLocIdentifier(key) {
     const ids = Object.keys(ArrayLocIdentifier);
-    ids.forEach(i => {
-        if (key.endsWith(ids[i])) {
-            return ids[i];
-        }
-    });
+    for (var i in ids) {
+      if (key.endsWith(ids[i])) {
+        return ids[i];
+      }
+    }
     return null;
-}
+  }
 
 function removeNonAplhaNumeric(str) {
     return str.replace(/[\W_]/g, "");
