@@ -285,15 +285,15 @@ function processTemplateFile(cohortIndexEntries, workbookIndexEntries, templateP
     }
 }
 
-function processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData) {
+function processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData, languages) {
     try {
         var path = getPackageOutputPath(templatePath, rootDirectory);
         path = path.replace(".json", "");
         path = path.concat("-", fileName, ".json");
-        for (var lang in LanguagesMap) {
+        languages.forEach(lang => {
             const translatedResultPath = path.replace(LangOutputSpecifier, LanguagesMap[lang]);
             writeTranslatedWorkbookToFile(armTemplateData, translatedResultPath);
-        }
+        });
     } catch (e) {
         logError("Failed to process ARM template file: " + templatePath + "Error: " + e, true);
     }
@@ -512,17 +512,17 @@ function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, work
     return result;
 }
 
-function generateIndexFiles(indexData, outputPath) {
+function generateIndexFiles(indexData, outputPath, languages) {
     const content = JSON.stringify(indexData);
-    for (var lang in LanguagesMap) {
+    languages.forEach(lang => {
         const fullPath = outputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
         writeJSONToFile(content, fullPath, true);
         logMessage("Generated Gallery Index File: " + fullPath);
-    }
+    });
 }
 
-function generateGalleryFiles(galleryMap, outputPath) {
-    for (var lang in LanguagesMap) {
+function generateGalleryFiles(galleryMap, outputPath, languages) {
+    languages.forEach(lang => {
         const localizedGallery = galleryMap[lang];
         for (var g in localizedGallery) {
             const subdir = g === CohortsGalleryFileName ? CohortsTemplateFolder : WorkbookTemplateFolder;
@@ -531,7 +531,7 @@ function generateGalleryFiles(galleryMap, outputPath) {
             writeJSONToFile(galleryJSON, galleryFilePath, true);
             logMessage("Generated Gallery File: " + galleryFilePath);
         }
-    }
+    });
 }
 
 /**
@@ -545,6 +545,8 @@ if (!process.argv[2]) { // Root path of template repository
 }
 
 const directoryPath = process.argv[2];
+const generateEnUsOnly = process.argv[3] === "dev";
+
 const exists = testPath(directoryPath); // Verify directory path
 if (!exists) {
     logError("Given script argument directory does not exist", true);
@@ -554,6 +556,8 @@ if (!exists) {
 logMessage("Template generation script starting...");
 
 var directories = getLocalizeableFileDirectories(directoryPath);
+    // Languages to generate
+const languages = generateEnUsOnly ? [DefaultLang] : Object.keys(LanguagesMap);
 
 var cohortIndexEntries = {}; // Map for generating cohort index files
 var workbookIndexEntries = {}; // Map for generating workbook index files
@@ -611,7 +615,7 @@ for (var d in directories) {
         } else if (fileType === WorkbookFileType.ARMTemplate) {
             // ARM Template file
             const armTemplateData = JSON.parse(fileData);
-            processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData);
+            processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData, languages);
         } else {
             // Workbook template file
             templateParsedData = JSON.parse(fileData);
@@ -624,9 +628,9 @@ for (var d in directories) {
         const fileType = getWorkbookFileType(file);
 
         if (fileType === WorkbookFileType.CategoryResources) {
+            languages.forEach(lang => {
             // Add category resources strings to map
-            for (var lang in LanguagesMap) {
-                if (lang !== DefaultLang) {
+                if (lang !== DefaultLang && !generateEnUsOnly) {
                     // Location of translated resjson
                     const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
                     if (fs.existsSync(localizedFilePath)) {
@@ -636,10 +640,10 @@ for (var d in directories) {
                         logMessage("Did not find localized file in: " + localizedFilePath);
                     }
                 }
-            }
+            });
         } else if (fileType === WorkbookFileType.Template || fileType === WorkbookFileType.ARMTemplate) {
             // Generate localized templates
-            for (var lang in LanguagesMap) {
+            languages.forEach(lang => {
                 // Location of translated resjson
                 const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
                 // Location of package for translated workbook
@@ -647,7 +651,7 @@ for (var d in directories) {
 
                 if (lang === DefaultLang) {
                     writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
-                } else {
+                } else if (!generateEnUsOnly) {
                     if (fs.existsSync(localizedFilePath)) {
                         // Do workbook string replacement here
                         const jsonData = fs.readFileSync(localizedFilePath, Encoding);
@@ -658,16 +662,16 @@ for (var d in directories) {
                         writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
                     }
                 }
-            }
+            });
         }
     }
 }
 
 const outputFolder = rootDirectory.concat(rootDirectory.startsWith("\\") ? PackageOutputFolder.substring(1) : PackageOutputFolder);
 
-generateGalleryFiles(galleryMap, outputFolder);
-generateIndexFiles(cohortIndexEntries, outputFolder.concat(LangOutputSpecifier, CohortsTemplateFolder, IndexFile));
-generateIndexFiles(workbookIndexEntries, outputFolder.concat(LangOutputSpecifier, WorkbookTemplateFolder, IndexFile));
+generateGalleryFiles(galleryMap, outputFolder, languages);
+generateIndexFiles(cohortIndexEntries, outputFolder.concat(LangOutputSpecifier, CohortsTemplateFolder, IndexFile), languages);
+generateIndexFiles(workbookIndexEntries, outputFolder.concat(LangOutputSpecifier, WorkbookTemplateFolder, IndexFile), languages);
 
 // copy package.json into the output/package directory
 fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), outputFolder.concat("package.json"), (err) => {
