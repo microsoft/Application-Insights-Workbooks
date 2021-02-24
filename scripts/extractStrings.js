@@ -211,7 +211,7 @@ function isNumeric(n) {
 
 /** Returns true if string has localizeable text  */
 function canLocalize(text) {
-  return text !== null && text !== "" && text.match(NotAllSpecialCharsRegex);
+  return text !== null && text !== undefined && text !== "" && text.match(NotAllSpecialCharsRegex);
 }
 
 /** Gets unique key identifier for array object */
