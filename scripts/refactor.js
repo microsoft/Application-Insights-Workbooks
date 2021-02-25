@@ -8,7 +8,7 @@ for (var d in directories) {
     const files = fs.readdirSync(dirPath);
     for (var i in files) {
         const fileName = files[i];
-        if (fileName.startsWith("_gallery.") && fileName.indexOf("Azure Security Center") !== -1) {
+        if (fileName.startsWith("_gallery.")) {
             const fullPath = dirPath.concat("\\", fileName);
             const data = fs.readFileSync(fullPath, 'utf8');
             var jsonParsedData = JSON.parse(data);
@@ -18,10 +18,8 @@ for (var d in directories) {
                 newData[key] = jsonParsedData[key];
                 var templates = newData[key]["templates"];
                 templates.sort((a, b) => (a.order > b.order) ? 1 : -1);
-
-
                 templates.forEach(template => {
-                     template["filename"] = undefined;
+                     template["fileName"] = undefined;
                      template["order"] = undefined;
                 });
             });
