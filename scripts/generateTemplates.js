@@ -166,7 +166,7 @@ function getDirectoryFromPath(path) {
     return path.substr(0, path.lastIndexOf("\\"));
 }
 
-function addGalleryEntry(settingsData, settingsName, gallery, categoryResourcesMap, templatePath, rootDirectory, language) {
+function addGalleryEntry(settingsData, settingsName, settingsDescription, gallery, categoryResourcesMap, templatePath, rootDirectory, language) {
     if (!gallery[language]) {
         gallery[language] = {};
     }
@@ -225,6 +225,7 @@ function addGalleryEntry(settingsData, settingsName, gallery, categoryResourcesM
             fileName: indexEntry,
             order: isCohorts ? 0 : galleries[g].order,
             author: settingsData.author,
+            description: settingsDescription || settingsData.description,
             name: settingsName || settingsData.name,
             isPreview: settingsData.isPreview ? true : undefined,
             tags: isCohorts ? [] : settingsData.tags || undefined
@@ -271,7 +272,7 @@ function processCategoryResourceFile(fileData, templatePath, rootDirectory) {
 
 function processSettingsFile(settingsParsedData, galleryMap, categoryResourcesData, templatePath, rootDirectory) {
     try {
-        addGalleryEntry(settingsParsedData, null, galleryMap, categoryResourcesData, templatePath, rootDirectory, DefaultLang);
+        addGalleryEntry(settingsParsedData, null, null, galleryMap, categoryResourcesData, templatePath, rootDirectory, DefaultLang);
     } catch (e) {
         logError("Failed to process settings file: " + templatePath + "Error: " + e, true);
     }
@@ -353,9 +354,9 @@ function writeTranslatedWorkbookToFile(data, fullPath) {
 function replaceText(workbookTemplate, settingsJSON, stringMap, templatePath, rootDirectory, categoryResourcesMap, lang, galleryMap) {
     var workbookJSON = JSON.parse(JSON.stringify(workbookTemplate));
     const keys = Object.keys(stringMap);
-    addGalleryEntry(settingsJSON, stringMap["settings.name"], galleryMap, categoryResourcesMap, templatePath, rootDirectory, lang);
+    addGalleryEntry(settingsJSON, stringMap["settings.name"], stringMap["settings.description"], galleryMap, categoryResourcesMap, templatePath, rootDirectory, lang);
     keys.forEach(key => {
-        if (key !== "settings.name") {
+        if (key !== "settings.name" && key !== "settings.description") {
             const keyArray = convertStringKeyToPath(key);
             // value in the template
             const result = getValueFromPath(keyArray, workbookJSON);

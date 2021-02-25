@@ -251,6 +251,9 @@ function getSettingStrings(object, outputMap) {
   if (object && object.hasOwnProperty("name")) {
     outputMap["settings.name"] = object.name;
   }
+  if (object && object.hasOwnProperty("description")) {
+    outputMap["settings.description"] = object.description;
+  }
 }
 
 function removeNonAplhaNumeric(str) {
