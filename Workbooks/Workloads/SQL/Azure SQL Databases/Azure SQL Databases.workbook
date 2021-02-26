@@ -16,7 +16,6 @@
             "label": "Monitoring profile",
             "type": 5,
             "isRequired": true,
-            "value": null,
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [],
@@ -140,14 +139,13 @@
             "name": "SqlType",
             "type": 1,
             "isRequired": true,
-            "value": "SQL Server Instances",
             "isHiddenWhenLocked": true
           },
           {
             "id": "65e627f5-fc41-41cf-aaf3-c1b31ba2e01d",
             "version": "KqlParameterItem/1.0",
             "name": "SqlServers",
-            "label": "Servers",
+            "label": "Database",
             "type": 2,
             "isRequired": true,
             "multiSelect": true,
@@ -168,7 +166,10 @@
             },
             "timeContextFromParameter": "TimeRange",
             "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces"
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "value": [
+              "value::all"
+            ]
           }
         ],
         "style": "above",
@@ -196,7 +197,15 @@
             "style": "link"
           },
           {
-            "id": "552fee76-401d-4342-84d0-b5fb1354a5e4",
+            "id": "194a47d4-1f19-4a1a-b752-04a4a5ab1146",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Resource info",
+            "subTarget": "Resource info",
+            "style": "link"
+          },
+          {
+            "id": "194a47d4-1f19-4a1a-b752-04a4a5ab1147",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
             "linkLabel": "Activities",
@@ -204,15 +213,7 @@
             "style": "link"
           },
           {
-            "id": "4869d2b3-eec8-4c5f-9b40-c861ba79c853",
-            "cellValue": "selectedTab",
-            "linkTarget": "parameter",
-            "linkLabel": "Replicas",
-            "subTarget": "Replicas",
-            "style": "link"
-          },
-          {
-            "id": "5546a076-3427-4bf3-8c44-a3be9a1c39d0",
+            "id": "e9d78e84-c1d4-4d66-9f4a-37e73730afe7",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
             "linkLabel": "Database space",
@@ -220,7 +221,7 @@
             "style": "link"
           },
           {
-            "id": "5473b66e-5f55-48a3-9b1f-86a1eb2d625e",
+            "id": "7ce38e91-5639-4988-bd8c-239f5ebd5cde",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
             "linkLabel": "Transactions",
@@ -324,84 +325,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in~ ({SqlServers});\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer\r\n| extend Val = iff(LastTimestamp < now() - 10m and Name != 'engine_edition', 0.0, Val)\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5 and OverallOnline > 0, 1.0, OverallOnline)\r\n| project-away Key, Key1, EngineEdition1\r\n| extend Type = case(\r\n            EngineEdition == 1, 'SQL Server Personal',\r\n            EngineEdition == 2, 'SQL Server Standard',\r\n            EngineEdition == 3, 'SQL Server Enterprise',\r\n            EngineEdition == 4, 'SQL Server Express',\r\n            EngineEdition == 5, 'Azure SQL Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            EngineEdition == 20, 'Azure Logical SQL Server',\r\n            '-')\r\n| project Database = strcat(Instance, '/', Database), Green = CurrentOnline, Yellow = OverallUnhealthy - CurrentUnhealthy, Red = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Gray =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy), Type, Computer\r\n| summarize ['Online dbs'] = sum(Green), ['Previously unhealthy dbs'] = sum(Yellow), ['Currently unhealthy dbs'] = sum(Red), [\"No telemetry dbs\"] = sum(Gray), Total = sum(Total) by Type\r\n| extend Subtitle = '━━━'\r\n| order by ['Currently unhealthy dbs'] desc, [\"No telemetry dbs\"] desc, ['Previously unhealthy dbs'] desc, ['Online dbs'] desc\r\n",
-                    "size": 4,
-                    "timeContext": {
-                      "durationMs": 14400000
-                    },
-                    "timeContextFromParameter": "TimeRange",
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
-                    "crossComponentResources": [
-                      "{Workspaces}"
-                    ],
-                    "visualization": "tiles",
-                    "sortBy": [],
-                    "tileSettings": {
-                      "titleContent": {
-                        "columnMatch": "Type",
-                        "formatter": 1
-                      },
-                      "subtitleContent": {
-                        "columnMatch": "Subtitle",
-                        "formatter": 1
-                      },
-                      "leftContent": {
-                        "columnMatch": "Green",
-                        "formatter": 22,
-                        "formatOptions": {
-                          "compositeBarSettings": {
-                            "labelText": "[\"Online dbs\"] / [\"Total\"] dbs are online",
-                            "columnSettings": [
-                              {
-                                "columnName": "Online dbs",
-                                "color": "green"
-                              },
-                              {
-                                "columnName": "No telemetry dbs",
-                                "color": "orange"
-                              },
-                              {
-                                "columnName": "Previously unhealthy dbs",
-                                "color": "yellow"
-                              },
-                              {
-                                "columnName": "Currently unhealthy dbs",
-                                "color": "redBright"
-                              }
-                            ]
-                          }
-                        },
-                        "numberFormat": {
-                          "unit": 17,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": false,
-                            "maximumFractionDigits": 1
-                          }
-                        }
-                      },
-                      "secondaryContent": {
-                        "columnMatch": "Trend",
-                        "formatter": 21,
-                        "formatOptions": {
-                          "min": 0,
-                          "palette": "blue"
-                        }
-                      },
-                      "showBorder": false
-                    }
-                  },
-                  "name": "query - 0"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in~ ({SqlServers});\r\nlet results = data\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer, TenantId\r\n| extend Val = iff(LastTimestamp < now() - 10m and Name != 'engine_edition', 0.0, Val)\r\n| summarize CurrentOnline = sumif(Val, Name == 'db_online'),\r\n    CurrentUnhealthy = sumif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n    EngineEdition = sumif(Val, Name == 'engine_edition')\r\n  by Database, Instance, Computer, TenantId\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline)\r\n| extend Key = strcat(Computer, '/', Instance, '/', Database)\r\n| join kind = inner (data\r\n    | summarize OverallOnline = minif(Val, Name == 'db_online'),\r\n                OverallUnhealthy = maxif(Val, Name in~ ('db_offline', 'db_recovering', 'db_recoveryPending', 'db_restoring', 'db_suspect')),\r\n                EngineEdition = sumif(Val, Name == 'engine_edition')\r\n    by Key = strcat(Computer, '/', Instance, '/', Database)\r\n) on Key\r\n| extend CurrentOnline = iff(EngineEdition == 5 and CurrentOnline > 0, 1.0, CurrentOnline), OverallOnline = iff(EngineEdition == 5 and OverallOnline > 0, 1.0, OverallOnline)\r\n;\r\nresults\r\n| where EngineEdition == 5\r\n| summarize \r\n        CurrentOnline = sum(CurrentOnline),\r\n        CurrentUnhealthy = sum(CurrentUnhealthy),\r\n        OverallUnhealthy = sum(OverallUnhealthy),\r\n        OverallOnline = sum(OverallOnline)\r\n    by Id = Instance, Parent = '', Name = Instance, key = Instance, Instance, TenantId, Database = '*'\r\n| extend EngineEdition = 20.0\r\n| union (results\r\n    | where EngineEdition == 5\r\n    | project Id = strcat(Computer, '/', Instance, '/', Database), Parent = Instance, Name = Database, CurrentOnline, CurrentUnhealthy, OverallOnline, OverallUnhealthy, EngineEdition, Computer, Instance, Database, TenantId\r\n    | extend key = Id)\r\n| union (results\r\n    | where EngineEdition != 5\r\n    | project Id = strcat(Computer, '/', Instance), Parent = '', Name = Instance, CurrentOnline, CurrentUnhealthy, OverallOnline, OverallUnhealthy, EngineEdition, Computer, key = strcat(Computer, '/', Instance, '/', Database), Instance, Database, TenantId)\r\n| join kind = inner (\r\ndata\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by key = strcat(Computer, '/', Instance, '/', Database)\r\n| union (\r\ndata\r\n    | where Name in~ ('db_online', 'engine_edition')\r\n    | summarize Online = minif(Val, Name == 'db_online'),\r\n                EngineEdition = maxif(Val, Name == 'engine_edition')\r\n            by Database, Instance, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n    | where EngineEdition == 5\r\n    | extend Online = iff(EngineEdition == 5, 1.0, Online)\r\n    | make-series Trend = sum(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by key = Instance\r\n)\r\n) on key\r\n| extend Type = case(\r\n            EngineEdition == 1, 'SQL Server Personal',\r\n            EngineEdition == 2, 'SQL Server Standard',\r\n            EngineEdition == 3, 'SQL Server Enterprise',\r\n            EngineEdition == 4, 'SQL Server Express',\r\n            EngineEdition == 5, 'Azure SQL Database ',\r\n            EngineEdition == 6, 'Microsoft Azure Synapse Analytics',\r\n            EngineEdition == 8, 'Azure Managed Instance',\r\n            EngineEdition == 9, 'Azure SQL Edge',\r\n            EngineEdition == 20, 'Azure Logical SQL Server',            '-')\r\n| project Id, Parent, Name, Status = case(CurrentUnhealthy > 0, 'Offline', CurrentOnline + CurrentUnhealthy < OverallOnline + OverallUnhealthy, 'No telemetry', OverallUnhealthy - CurrentUnhealthy > 0, 'Previously offline', OverallUnhealthy == 0, 'Online', ''), ['Online dbs'] = CurrentOnline, ['Previously unhealthy dbs'] = OverallUnhealthy - CurrentUnhealthy, ['Currently unhealthy dbs'] = CurrentUnhealthy, Total = CurrentOnline + CurrentUnhealthy, Trend, Type, Computer, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', Instance, '/database/', Database), Title = strcat(Type, ' > ', iff(EngineEdition == 5, strcat(Instance, '/', Database), Instance)), [\"No telemetry dbs\"] =  (OverallOnline + OverallUnhealthy) - (CurrentOnline + CurrentUnhealthy)\r\n| order by ['Currently unhealthy dbs'] desc, [\"No telemetry dbs\"] desc, ['Previously unhealthy dbs'] desc, ['Online dbs'] desc, Name asc, Computer asc",
+                    "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace contains 'sqlserver_server_properties' and Name == 'uptime'\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in~ ({SqlServers});\r\ndata\r\n| summarize (LastTimestamp, Val) = arg_max(TimeGenerated, Val) by Name, Database, Instance, Computer, TenantId, Replica\r\n| extend Status = iff(LastTimestamp < now() - 10m, 'No telemetry', 'Online'), Key = strcat(Database, Instance, Computer, TenantId)\r\n| join kind = inner (data\r\n| extend Online = iff(Val > 0, 1, 0)\r\n| make-series Trend = min(Online) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by Key = strcat(Database, Instance, Computer, TenantId)) on Key\r\n| project Id = strcat(Computer, '/', Instance, '/', Database), Instance, Database, Replica, Status, Trend, Computer, ComponentId = strcat('/workspace/', TenantId, '/computer/', Computer, '/sqlinstance/', Instance, '/database/', Database)\r\n| order by Database asc, Replica asc\r\n",
                     "size": 2,
                     "showAnalytics": true,
-                    "title": "Server details",
+                    "title": "Database details",
                     "timeContext": {
                       "durationMs": 0
                     },
@@ -416,32 +343,54 @@
                     "gridSettings": {
                       "formatters": [
                         {
-                          "columnMatch": "Id",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Parent",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Name",
-                          "formatter": 7,
+                          "columnMatch": "$gen_group",
+                          "formatter": 1,
                           "formatOptions": {
+                            "linkColumn": "ComponentId",
                             "linkTarget": "WorkbookTemplate",
                             "workbookContext": {
-                              "componentIdSource": "column",
-                              "componentId": "Title",
+                              "componentIdSource": "workbook",
                               "resourceIdsSource": "column",
-                              "resourceIds": "DbId",
+                              "resourceIds": "ComponentId",
                               "templateIdSource": "static",
-                              "templateId": "Community-Workbooks/Workloads/SQL Server",
+                              "templateId": "Community-Workbooks/Workloads/SQL/Azure SQL Database",
                               "typeSource": "static",
                               "type": "workbook",
                               "gallerySource": "static",
                               "gallery": "Azure Monitor",
-                              "locationSource": "default"
+                              "locationSource": "default",
+                              "passSpecificParams": true,
+                              "templateParameters": [
+                                {
+                                  "name": "Replica",
+                                  "source": "column",
+                                  "value": "Replica"
+                                },
+                                {
+                                  "name": "TimeRange",
+                                  "source": "parameter",
+                                  "value": "TimeRange"
+                                },
+                                {
+                                  "name": "selectedTab",
+                                  "source": "parameter",
+                                  "value": "selectedTab"
+                                }
+                              ]
                             }
                           }
+                        },
+                        {
+                          "columnMatch": "Id",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Instance",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Database",
+                          "formatter": 5
                         },
                         {
                           "columnMatch": "Status",
@@ -451,20 +400,14 @@
                             "thresholdsGrid": [
                               {
                                 "operator": "==",
-                                "thresholdValue": "Offline",
-                                "representation": "critical",
-                                "text": "{0}{1}"
-                              },
-                              {
-                                "operator": "==",
-                                "thresholdValue": "Previously offline",
+                                "thresholdValue": "Previously unhealthy",
                                 "representation": "2",
                                 "text": "{0}{1}"
                               },
                               {
                                 "operator": "==",
                                 "thresholdValue": "Online",
-                                "representation": "Blank",
+                                "representation": "Available",
                                 "text": "{0}{1}"
                               },
                               {
@@ -483,133 +426,51 @@
                           }
                         },
                         {
-                          "columnMatch": "Online dbs",
-                          "formatter": 22,
-                          "formatOptions": {
-                            "compositeBarSettings": {
-                              "labelText": "[\"Online dbs\"] / [\"Total\"]",
-                              "columnSettings": [
-                                {
-                                  "columnName": "Online dbs",
-                                  "color": "green"
-                                },
-                                {
-                                  "columnName": "No telemetry dbs",
-                                  "color": "orange"
-                                },
-                                {
-                                  "columnName": "Previously unhealthy dbs",
-                                  "color": "yellow"
-                                },
-                                {
-                                  "columnName": "Currently unhealthy dbs",
-                                  "color": "redBright"
-                                }
-                              ]
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Previously unhealthy dbs",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Currently unhealthy dbs",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Total",
-                          "formatter": 5
-                        },
-                        {
                           "columnMatch": "Trend",
                           "formatter": 21,
                           "formatOptions": {
                             "min": 0,
                             "palette": "grayBlue"
                           }
-                        },
-                        {
-                          "columnMatch": "DbId",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Title",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "No telemetry dbs",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "Server memory",
-                          "formatter": 0,
-                          "numberFormat": {
-                            "unit": 3,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "HealthLabel",
-                          "formatter": 5
                         }
                       ],
                       "rowLimit": 1000,
                       "filter": true,
                       "hierarchySettings": {
-                        "idColumn": "Id",
-                        "parentColumn": "Parent",
-                        "treeType": 0,
-                        "expanderColumn": "Name",
-                        "expandTopLevel": true
+                        "treeType": 1,
+                        "groupBy": [
+                          "Instance"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "Database"
                       },
                       "labelSettings": [
                         {
                           "columnId": "Id"
                         },
                         {
-                          "columnId": "Parent"
+                          "columnId": "Instance",
+                          "label": "Name"
+                        },
+                        {
+                          "columnId": "Database"
+                        },
+                        {
+                          "columnId": "Replica"
                         },
                         {
                           "columnId": "Status"
-                        },
-                        {
-                          "columnId": "Online dbs",
-                          "label": "Online databases"
-                        },
-                        {
-                          "columnId": "Previously unhealthy dbs",
-                          "label": ""
-                        },
-                        {
-                          "columnId": "Currently unhealthy dbs"
-                        },
-                        {
-                          "columnId": "Total"
                         },
                         {
                           "columnId": "Trend",
                           "label": "Online database trend"
                         },
                         {
-                          "columnId": "Type",
-                          "label": "Database type"
-                        },
-                        {
                           "columnId": "Computer",
                           "label": "Monitored by"
                         },
                         {
-                          "columnId": "DbId"
-                        },
-                        {
-                          "columnId": "Title"
-                        },
-                        {
-                          "columnId": "No telemetry dbs"
+                          "columnId": "ComponentId"
                         }
                       ]
                     },
@@ -651,7 +512,7 @@
                     }
                   },
                   "showPin": true,
-                  "name": "Server details"
+                  "name": "Database details"
                 }
               ]
             },
@@ -702,7 +563,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.instance), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers}) and Database == 'Total'\r\n| where Name =~ 'Transactions/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Transactions/sec'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -847,7 +708,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'User connections'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'User connections'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -988,7 +849,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Batch requests/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Batch requests/sec'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -1129,7 +990,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'SQL compilations/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'SQL compilations/sec'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -1270,7 +1131,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'SQL re-compilations/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'SQL re-compilations/sec'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -1411,7 +1272,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Processes blocked'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Processes blocked'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -1552,7 +1413,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance)\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Number of deadlocks/sec'\r\n| extend SeriesName = strcat(Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Tags = todynamic(Tags)\r\n| extend Name = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where Instance in~ ({SqlServers})\r\n| where Name =~ 'Number of deadlocks/sec'\r\n| extend SeriesName = strcat(Replica, '/', Instance, '/', Database)\r\n| summarize (StartTime, StartValue) = arg_min(TimeGenerated, Val), (EndTime, EndValue) = arg_max(TimeGenerated, Val) by bin(TimeGenerated, {TimeRange:grain}), SeriesName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| make-series Trend = sum(Val) default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} by SeriesName",
               "size": 0,
               "aggregation": 5,
               "showAnalytics": true,
@@ -1708,11 +1569,11 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let data = InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' \r\n| extend Object = tostring(Tags.object)\r\n| where Object endswith 'availability replica'\r\n| extend Counter = tostring(Tags.counter), Database = tostring(Tags.database_name), Instance = tostring(Tags.instance), SqlInstance = tostring(Tags.sql_instance)\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| where Instance !~ 'Total';\r\ndata\r\n| summarize (t1, StartValue) = arg_min(TimeGenerated, Val), (t2, EndValue) = arg_max(TimeGenerated, Val) by Database, SqlInstance, Counter, Instance\r\n| project Value = iff(EndValue >= StartValue, EndValue - StartValue, real(null)), Database, SqlInstance, Counter, Instance\r\n| summarize \r\n        SendsToTransportsPerSec = avgif(Value, Counter =~ 'Sends to Transport/sec'),\r\n        SendsToReplicasPerSec = avgif(Value, Counter =~ 'Sends to Replica/sec'),\r\n        ReceivesFromReplicasPerSec = avgif(Value, Counter =~ 'Receives from Replica/sec'),\r\n        ResentMessagesPerSec = avgif(Value, Counter =~ 'Resent Messages/sec'),\r\n        FlowControlPerSec = avgif(Value, Counter =~ 'Flow Control/sec'),\r\n        FlowControlTimeMsPerSec = avgif(Value, Counter =~ 'Flow Control Time (ms/sec)')\r\n    by SqlInstance, Database, Instance",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| extend Database = tostring(Tags.database_name), Instance = tostring(Tags.sql_instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| extend DatabaseKey = iff(Database == Instance, Database, strcat(Database, ' on ', Instance))\r\n| where Instance in ({SqlServers}) or '*' in ({SqlServers})\r\n| where Namespace =~ 'sqlserver_azure_db_resource_stats'\r\n| summarize \r\n        avg_cpu_percent = avgif(Val, Name == 'avg_cpu_percent'),\r\n        avg_instance_cpu_percent = avgif(Val, Name == 'avg_instance_cpu_percent'),\r\n        avg_memory_usage_percent = avgif(Val, Name == 'avg_memory_usage_percent'),\r\n        avg_instance_memory_percent = avgif(Val, Name == 'avg_instance_memory_percent'),\r\n        avg_data_io_percent = avgif(Val, Name == 'avg_data_io_percent'),\r\n        avg_log_write_percent = avgif(Val, Name == 'avg_log_write_percent')\r\n    by Instance, Database, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', Instance, '/database/', Database), Replica\r\n|order by Instance asc, Database asc, Replica asc",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -1725,7 +1586,43 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "SqlInstance",
+                    "columnMatch": "$gen_group",
+                    "formatter": 1,
+                    "formatOptions": {
+                      "linkColumn": "DbId",
+                      "linkTarget": "WorkbookTemplate",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "column",
+                        "resourceIds": "DbId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads/SQL/Azure SQL Database",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Replica",
+                            "source": "column",
+                            "value": "Replica"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "selectedTab",
+                            "source": "parameter",
+                            "value": "selectedTab"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Instance",
                     "formatter": 5
                   },
                   {
@@ -1733,64 +1630,22 @@
                     "formatter": 5
                   },
                   {
-                    "columnMatch": "Instance",
+                    "columnMatch": "DbId",
                     "formatter": 5
                   },
                   {
-                    "columnMatch": "SendsTo.*|Receives.*",
+                    "columnMatch": "percent",
                     "formatter": 8,
                     "formatOptions": {
                       "min": 0,
-                      "palette": "blue",
-                      "aggregation": "Sum"
+                      "max": 80,
+                      "palette": "blue"
                     },
                     "numberFormat": {
-                      "unit": 11,
+                      "unit": 1,
                       "options": {
                         "style": "decimal",
-                        "useGrouping": false,
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "ResentMessagesPerSec",
-                    "formatter": 0,
-                    "formatOptions": {
-                      "aggregation": "Sum"
-                    },
-                    "numberFormat": {
-                      "unit": 31,
-                      "options": {
-                        "style": "decimal"
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "FlowControlPerSec",
-                    "formatter": 0,
-                    "formatOptions": {
-                      "aggregation": "Sum"
-                    },
-                    "numberFormat": {
-                      "unit": 31,
-                      "options": {
-                        "style": "decimal",
-                        "maximumFractionDigits": 1
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "FlowControlTimeMsPerSec",
-                    "formatter": 0,
-                    "formatOptions": {
-                      "aggregation": "Sum"
-                    },
-                    "numberFormat": {
-                      "unit": 0,
-                      "options": {
-                        "style": "decimal",
-                        "maximumFractionDigits": 1
+                        "maximumFractionDigits": 2
                       }
                     }
                   }
@@ -1800,60 +1655,46 @@
                 "hierarchySettings": {
                   "treeType": 1,
                   "groupBy": [
-                    "SqlInstance"
+                    "Instance"
                   ],
                   "expandTopLevel": true,
-                  "finalBy": "Instance"
+                  "finalBy": "Database"
                 },
-                "sortBy": [
-                  {
-                    "itemKey": "$gen_heatmap_SendsTo.*|Receives.*_4",
-                    "sortOrder": 2
-                  }
-                ],
                 "labelSettings": [
                   {
-                    "columnId": "SqlInstance",
+                    "columnId": "Instance",
                     "label": "Name"
                   },
                   {
                     "columnId": "Database"
                   },
                   {
-                    "columnId": "Instance"
+                    "columnId": "avg_cpu_percent",
+                    "label": "Cpu %"
                   },
                   {
-                    "columnId": "SendsToTransportsPerSec",
-                    "label": "Sends to transports"
+                    "columnId": "avg_instance_cpu_percent",
+                    "label": "Instance Cpu %"
                   },
                   {
-                    "columnId": "SendsToReplicasPerSec",
-                    "label": "Sends to replicas"
+                    "columnId": "avg_memory_usage_percent",
+                    "label": "Memory usage %"
                   },
                   {
-                    "columnId": "ReceivesFromReplicasPerSec",
-                    "label": "Receives from replicas"
+                    "columnId": "avg_instance_memory_percent",
+                    "label": "Instance memory usage %"
                   },
                   {
-                    "columnId": "ResentMessagesPerSec",
-                    "label": "Resent messages"
+                    "columnId": "avg_data_io_percent",
+                    "label": "Data IO %"
                   },
                   {
-                    "columnId": "FlowControlPerSec",
-                    "label": "Flow control"
-                  },
-                  {
-                    "columnId": "FlowControlTimeMsPerSec",
-                    "label": "Flow control time (ms/sec)"
+                    "columnId": "avg_log_write_percent",
+                    "label": "Log write %"
                   }
                 ]
               },
-              "sortBy": [
-                {
-                  "itemKey": "$gen_heatmap_SendsTo.*|Receives.*_4",
-                  "sortOrder": 2
-                }
-              ],
+              "sortBy": [],
               "tileSettings": {
                 "titleContent": {
                   "columnMatch": "Name",
@@ -1891,16 +1732,16 @@
               }
             },
             "showPin": true,
-            "name": "Replicas"
+            "name": "Resource info"
           }
         ]
       },
       "conditionalVisibility": {
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
-        "value": "Replicas"
+        "value": "Resource info"
       },
-      "name": "Replicas"
+      "name": "Resource info"
     },
     {
       "type": 12,
@@ -1912,7 +1753,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| summarize \r\n        DataFilesSize = avgif(Val, Counter == 'Data File(s) Size (KB)'),\r\n        LogFilesSize = avgif(Val, Counter == 'Log File(s) Size (KB)'),\r\n        LogFilesUsedSize = avgif(Val, Counter == 'Log File(s) Used Size (KB)'),\r\n        PercentLogUsed = avgif(Val, Counter == 'Percent Log Used')\r\n    by SqlInstance, DbInstance, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', SqlInstance, '/database/')\r\n\r\n",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| where Database == DbInstance\r\n| summarize \r\n        DataFilesSize = avgif(Val, Counter == 'Data File(s) Size (KB)'),\r\n        LogFilesSize = avgif(Val, Counter == 'Log File(s) Size (KB)'),\r\n        LogFilesUsedSize = avgif(Val, Counter == 'Log File(s) Used Size (KB)'),\r\n        PercentLogUsed = avgif(Val, Counter == 'Percent Log Used')\r\n    by SqlInstance, Database, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', SqlInstance, '/database/', Database), Replica\r\n| order by SqlInstance asc, Database asc, Replica asc\r\n\r\n\r\n",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
@@ -1939,12 +1780,30 @@
                         "resourceIdsSource": "column",
                         "resourceIds": "DbId",
                         "templateIdSource": "static",
-                        "templateId": "Community-Workbooks/Workloads/SQL Server",
+                        "templateId": "Community-Workbooks/Workloads/SQL/Azure SQL Database",
                         "typeSource": "static",
                         "type": "workbook",
                         "gallerySource": "static",
                         "gallery": "Azure Monitor",
-                        "locationSource": "default"
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Replica",
+                            "source": "column",
+                            "value": "Replica"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "selectedTab",
+                            "source": "parameter",
+                            "value": "selectedTab"
+                          }
+                        ]
                       }
                     }
                   },
@@ -1953,8 +1812,23 @@
                     "formatter": 5
                   },
                   {
-                    "columnMatch": "DbInstance",
-                    "formatter": 5
+                    "columnMatch": "Database",
+                    "formatter": 5,
+                    "formatOptions": {
+                      "linkTarget": "WorkbookTemplate",
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "column",
+                        "resourceIds": "DbId",
+                        "templateIdSource": "static",
+                        "templateId": "Community-Workbooks/Workloads/SQL/Azure SQL Database",
+                        "typeSource": "static",
+                        "type": "workbook",
+                        "gallerySource": "static",
+                        "gallery": "Azure Monitor",
+                        "locationSource": "default"
+                      }
+                    }
                   },
                   {
                     "columnMatch": "DbId",
@@ -1994,7 +1868,7 @@
                     }
                   },
                   {
-                    "columnMatch": "Database",
+                    "columnMatch": "DbInstance",
                     "formatter": 5
                   }
                 ],
@@ -2006,7 +1880,7 @@
                     "SqlInstance"
                   ],
                   "expandTopLevel": true,
-                  "finalBy": "DbInstance"
+                  "finalBy": "Database"
                 },
                 "sortBy": [
                   {
@@ -2020,8 +1894,7 @@
                     "label": "Name"
                   },
                   {
-                    "columnId": "DbInstance",
-                    "label": "Name"
+                    "columnId": "Database"
                   },
                   {
                     "columnId": "DbId"
@@ -2108,7 +1981,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance)\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Counter, Database, SqlInstance, DbInstance, TenantId, Computer, bin(TimeGenerated, {TimeRange:grain})\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| summarize \r\n        WriteTransactionsPerSec = avgif(Val, Counter == 'Write Transactions/sec'),\r\n        LogFlushesPerSec = avgif(Val, Counter == 'Log Flushes/sec'),\r\n        LogBytesFlushedPerSec = avgif(Val, Counter == 'Log Bytes Flushed/sec'),\r\n        LogFlushWaitTime = avgif(Val, Counter == 'Log Flush Wait Time')\r\n    by SqlInstance, DbInstance, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', SqlInstance, '/database/')\r\n\r\n",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_performance' and tostring(Tags.object) endswith ':Databases' and tostring(Tags.instance) !~ 'total'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), Counter = tostring(Tags.counter), DbInstance = tostring(Tags.instance), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| where Database == DbInstance\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Counter, Database, SqlInstance, DbInstance, TenantId, Computer, bin(TimeGenerated, {TimeRange:grain}), Replica\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| summarize \r\n        WriteTransactionsPerSec = avgif(Val, Counter == 'Write Transactions/sec'),\r\n        LogFlushesPerSec = avgif(Val, Counter == 'Log Flushes/sec'),\r\n        LogBytesFlushedPerSec = avgif(Val, Counter == 'Log Bytes Flushed/sec'),\r\n        LogFlushWaitTime = avgif(Val, Counter == 'Log Flush Wait Time')\r\n    by SqlInstance, Database, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', SqlInstance, '/database/', Database), Replica\r\n| order by SqlInstance asc, Database asc, Replica asc\r\n\r\n",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
@@ -2135,20 +2008,30 @@
                         "resourceIdsSource": "column",
                         "resourceIds": "DbId",
                         "templateIdSource": "static",
-                        "templateId": "Community-Workbooks/Workloads/SQL Server",
+                        "templateId": "Community-Workbooks/Workloads/SQL/Azure SQL Database",
                         "typeSource": "static",
                         "type": "workbook",
                         "gallerySource": "static",
                         "gallery": "Azure Monitor",
-                        "locationSource": "default"
-                      }
-                    },
-                    "numberFormat": {
-                      "unit": 31,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "maximumFractionDigits": 1
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Replica",
+                            "source": "column",
+                            "value": "Replica"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "selectedTab",
+                            "source": "parameter",
+                            "value": "selectedTab"
+                          }
+                        ]
                       }
                     }
                   },
@@ -2157,7 +2040,7 @@
                     "formatter": 5
                   },
                   {
-                    "columnMatch": "DbInstance",
+                    "columnMatch": "Database",
                     "formatter": 5
                   },
                   {
@@ -2212,16 +2095,20 @@
                   {
                     "columnMatch": "LogFlushWaitTime",
                     "formatter": 0,
+                    "formatOptions": {
+                      "aggregation": "Average"
+                    },
                     "numberFormat": {
                       "unit": 23,
                       "options": {
                         "style": "decimal",
+                        "useGrouping": false,
                         "maximumFractionDigits": 1
                       }
                     }
                   },
                   {
-                    "columnMatch": "Database",
+                    "columnMatch": "DbInstance",
                     "formatter": 5
                   }
                 ],
@@ -2233,21 +2120,15 @@
                     "SqlInstance"
                   ],
                   "expandTopLevel": true,
-                  "finalBy": "DbInstance"
+                  "finalBy": "Database"
                 },
-                "sortBy": [
-                  {
-                    "itemKey": "$gen_heatmap_TransactionsPerSec|WriteTransactionsPerSec_4",
-                    "sortOrder": 2
-                  }
-                ],
                 "labelSettings": [
                   {
                     "columnId": "SqlInstance",
                     "label": "Name"
                   },
                   {
-                    "columnId": "DbInstance"
+                    "columnId": "Database"
                   },
                   {
                     "columnId": "DbId"
@@ -2270,12 +2151,7 @@
                   }
                 ]
               },
-              "sortBy": [
-                {
-                  "itemKey": "$gen_heatmap_TransactionsPerSec|WriteTransactionsPerSec_4",
-                  "sortOrder": 2
-                }
-              ],
+              "sortBy": [],
               "tileSettings": {
                 "titleContent": {
                   "columnMatch": "Name",
@@ -2334,11 +2210,11 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_database_io'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), FileType = tostring(Tags.file_type), FileName = tostring(Tags.logical_filename)\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Name, Database, SqlInstance, FileType, TenantId, Computer, FileName\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null))\r\n| summarize\r\n        DataReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'ROWS'),\r\n        DataWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'ROWS'),\r\n        DataReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'ROWS'),\r\n        DataWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'ROWS'),\r\n        LogReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'LOG'),\r\n        LogWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'LOG'),\r\n        LogReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'LOG'),\r\n        LogWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'LOG')\r\n    by SqlInstance, Database, DbId = strcat('/workspace/', TenantId, '/computer/', iff(Computer == '', '*', Computer), '/sqlinstance/', SqlInstance, '/database/')\r\n",
+              "query": "InsightsMetrics\r\n| where Computer in~ ({OnboardedComputers})\r\n| extend Tags = todynamic(Tags)\r\n| where Namespace =~ 'sqlserver_database_io'\r\n| extend Database = tostring(Tags.database_name), SqlInstance = tostring(Tags.sql_instance), FileType = tostring(Tags.file_type), FileName = tostring(Tags.logical_filename), Replica = tostring(iff(Tags.replica_updateability == 'READ_WRITE', 'primary', 'secondary'))\r\n| where SqlInstance in ({SqlServers}) or '*' in ({SqlServers})\r\n| summarize (Start, StartValue) = arg_min(TimeGenerated, Val), (End, EndValue) = arg_max(TimeGenerated, Val) by Name, Database, SqlInstance, FileType, Computer, TenantId, FileName, Replica\r\n| extend Val = iff(EndValue >= StartValue, EndValue - StartValue, real(null)), ComponentId = strcat('/workspace/', TenantId, '/computer/', Computer, '/sqlinstance/', SqlInstance, '/database/', Database)\r\n| summarize\r\n        DataReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'DATA'),\r\n        DataWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'DATA'),\r\n        DataReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'DATA'),\r\n        DataWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'DATA'),\r\n        LogReadBytes = sumif(Val, Name == 'read_bytes' and FileType == 'LOG'),\r\n        LogWriteBytes = sumif(Val, Name == 'write_bytes' and FileType == 'LOG'),\r\n        LogReadLatency = avgif(Val, Name == 'read_latency_ms' and FileType == 'LOG'),\r\n        LogWriteLatency = avgif(Val, Name == 'write_latency_ms' and FileType == 'LOG')\r\n    by SqlInstance, Database, ComponentId, Replica\r\n |order by SqlInstance asc, Database asc, Replica asc",
               "size": 2,
               "showAnalytics": true,
               "timeContext": {
-                "durationMs": 0
+                "durationMs": 14400000
               },
               "timeContextFromParameter": "TimeRange",
               "showExportToExcel": true,
@@ -2354,19 +2230,37 @@
                     "columnMatch": "$gen_group",
                     "formatter": 1,
                     "formatOptions": {
-                      "linkColumn": "DbId",
+                      "linkColumn": "ComponentId",
                       "linkTarget": "WorkbookTemplate",
                       "workbookContext": {
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "column",
-                        "resourceIds": "DbId",
+                        "resourceIds": "ComponentId",
                         "templateIdSource": "static",
-                        "templateId": "Community-Workbooks/Workloads/SQL Server",
+                        "templateId": "Community-Workbooks/Workloads/SQL/Azure SQL Database",
                         "typeSource": "static",
                         "type": "workbook",
                         "gallerySource": "static",
                         "gallery": "Azure Monitor",
-                        "locationSource": "default"
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "Replica",
+                            "source": "column",
+                            "value": "Replica"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "selectedTab",
+                            "source": "parameter",
+                            "value": "selectedTab"
+                          }
+                        ]
                       }
                     }
                   },
@@ -2379,7 +2273,7 @@
                     "formatter": 5
                   },
                   {
-                    "columnMatch": "DbId",
+                    "columnMatch": "ComponentId",
                     "formatter": 5
                   },
                   {
@@ -2466,7 +2360,7 @@
                     "columnId": "Database"
                   },
                   {
-                    "columnId": "DbId"
+                    "columnId": "ComponentId"
                   },
                   {
                     "columnId": "DataReadBytes",
@@ -2571,7 +2465,7 @@
                   "name": "Metric",
                   "type": 2,
                   "isRequired": true,
-                  "query": "InsightsMetrics\n| extend Tags = todynamic(Tags)\n| extend SqlServer = tostring(Tags.sql_instance)\n| where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers}))  \n| where Namespace !in ('sqlserver_performance')\n| where SqlServer in ({SqlServers})\n| summarize by Namespace, Name\n| project value = strcat('| where Namespace == \"', Namespace, '\" and Name == \"', Name, '\"'), label = Name, group = Namespace\n| union (InsightsMetrics\n    | extend Tags = todynamic(Tags)\n    | extend SqlServer = tostring(Tags.sql_instance)\n    | where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers}))  \n    | where Namespace =~ 'sqlserver_performance'\n    | where SqlServer in ({SqlServers})\n    | summarize by Namespace, Name, Counter = tostring(todynamic(Tags).counter)\n    | project value = strcat('| where Namespace == \"', Namespace, '\" and Tags.counter == \"', Counter, '\"'), label = Counter, group = \"Sql performance counters\")\n| order by group asc, label asc\n| extend Row = row_number()\n| project value, label, selected = Row == 1, group",
+                  "query": "InsightsMetrics\n| extend Tags = todynamic(Tags)\n| extend SqlInstance = tostring(Tags.sql_instance)\n| where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers}))  \n| where SqlInstance in ({SqlServers})\n| where Namespace != 'sqlserver_performance'\n| summarize by Namespace, Name\n| project value = strcat('| where Namespace == \"', Namespace, '\" and Name == \"', Name, '\"'), label = Name, group = Namespace\n| order by group asc, label asc\n| extend Row = row_number()\n| project value, label, selected = Row == 1, group\n| union (\n    InsightsMetrics\n    | extend Tags = todynamic(Tags)\n    | extend SqlInstance = tostring(Tags.sql_instance)\n    | where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers}))  \n    | where SqlInstance in ({SqlServers})\n    | where Namespace  == 'sqlserver_performance'\n    | summarize by Namespace, Name, Counter = tostring(Tags.counter)\n    | project value = strcat('| where Namespace == \"sqlserver_performance\" and Name == \"value\" and Tags.counter ==\"', Counter, '\"'), label = Counter, group = Namespace\n    | order by group asc, label asc\n    | extend Row = row_number()\n    | project value, label, selected = Row == 1, group\n)",
                   "crossComponentResources": [
                     "{Workspaces}"
                   ],
@@ -2580,7 +2474,7 @@
                     "showDefault": false
                   },
                   "timeContext": {
-                    "durationMs": 86400000
+                    "durationMs": 0
                   },
                   "timeContextFromParameter": "TimeRange",
                   "queryType": 0,
@@ -2608,7 +2502,7 @@
                   "name": "SplitBy",
                   "label": "Split by",
                   "type": 2,
-                  "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\n{Metric}\r\n| take 10\r\n| project Keys = bag_keys(Tags)\r\n| mvexpand Keys\r\n| summarize by label = tostring(Keys)\r\n| extend value = case(label in ('counter', 'database_name', 'instance', 'object'), strcat('by Split = strcat(Tags[\"sql_instance\"], \"/\", Tags[\"', label, '\"])'), strcat('by Split = tostring(Tags[\"', label, '\"])'))\r\n| project value, label = replace('vm.azm.ms/', '', label), selected = true",
+                  "query": "InsightsMetrics\r\n| extend Tags = todynamic(Tags)\r\n| where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers}))\r\n{Metric}\r\n| take 10\r\n| project Keys = bag_keys(Tags)\r\n| mvexpand Keys\r\n| summarize by label = tostring(Keys)\r\n| extend value = case(label in ('counter', 'database_name', 'instance', 'object'), strcat('by Split = strcat(iff(Tags.replica_updateability == \"READ_WRITE\", \"primary\", \"secondary\"), \"/\", Tags[\"sql_instance\"], \"/\", Tags[\"database_name\"])'), strcat('by Split = tostring(Tags[\"', label, '\"])'))\r\n| project value, label = replace('vm.azm.ms/', '', label), selected = true",
                   "crossComponentResources": [
                     "{Workspaces}"
                   ],
@@ -2617,14 +2511,14 @@
                     "showDefault": false
                   },
                   "timeContext": {
-                    "durationMs": 86400000
+                    "durationMs": 0
                   },
                   "timeContextFromParameter": "TimeRange",
                   "queryType": 0,
                   "resourceType": "microsoft.operationalinsights/workspaces"
                 },
                 {
-                  "id": "f6dbed75-a152-4906-a04c-2b9989624538",
+                  "id": "2e618e97-18c4-4885-b551-4b2ecdc140a5",
                   "version": "KqlParameterItem/1.0",
                   "name": "SplitByValue",
                   "type": 1,
@@ -2649,6 +2543,9 @@
                       }
                     }
                   ],
+                  "timeContext": {
+                    "durationMs": 14400000
+                  },
                   "timeContextFromParameter": "TimeRange"
                 }
               ],
@@ -2665,7 +2562,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\n| extend Tags = todynamic(Tags)\n| where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \n| where Tags.sql_instance in ({SqlServers}) or '*' in ({SqlServers})\n{Metric}\n| make-series Trend = {Aggregation} default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end}-{TimeRange:grain} step {TimeRange:grain} {SplitByValue}\n",
+              "query": "InsightsMetrics\n| extend Tags = todynamic(Tags)\n| where (Computer in~ ({OnboardedComputers}) or '*' in ({OnboardedComputers})) \n| where Tags.sql_instance in ({SqlServers}) or '*' in ({SqlServers})\n{Metric}\n| make-series Trend = {Aggregation} default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} {SplitByValue}\n",
               "size": 0,
               "aggregation": 3,
               "showAnalytics": true,
