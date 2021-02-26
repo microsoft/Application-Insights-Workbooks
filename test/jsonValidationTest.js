@@ -144,7 +144,6 @@ describe('Validating Gallery files...', () => {
 
             results.filter(file => file.endsWith('.json'))
                 .forEach(file => {
-                    validateGalleryFileName(file);
                     let settings = validateJsonStringAndGetObject(file);
                     validateGallerySchema(file, settings, validator, schema);
                     validateNoDuplicateCategories(file, settings);
@@ -321,12 +320,6 @@ function checkProperty(obj, name, file) {
     if (!obj.hasOwnProperty(name)) {
         assert.fail("The " + name + " field is missing with '" + file + "'");
     }
-}
-
-// Validates that the gallery file name is of the format ({type}-{resourcetype}-{name}.json)
-function validateGalleryFileName(file) {
-    // TODO
-    assert.equal(1, 1);
 }
 
 function validateGallerySchema(file, settings, validator, schema) {
