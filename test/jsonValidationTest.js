@@ -2,6 +2,7 @@ const assert = require('chai').assert;
 const Mocha = require('mocha');
 const fs = require('fs');
 const path = require('path');
+const Validator = require('jsonschema').Validator;
 
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
@@ -134,11 +135,18 @@ describe('Validating Gallery files...', () => {
 
     it('Verifying valid gallery files', function (done) {
         browseDirectory(galleryPath, (error, results) => {
+            if (error) throw error;
+
+            var validator = new Validator();
+            const schemaFile = "./schema/gallery.json";
+            const schemaJSON = fs.readFileSync(schemaFile, 'utf8');
+            const schema = TryParseJson(schemaJSON);
+
             results.filter(file => file.endsWith('.json'))
                 .forEach(file => {
                     validateGalleryFileName(file);
                     let settings = validateJsonStringAndGetObject(file);
-                    validateGallerySchema(file, settings);
+                    validateGallerySchema(file, settings, validator, schema);
                     validateNoDuplicateCategories(file, settings);
                     validateNoDuplicateTemplates(file, settings);
                     validateTemplateIds(file, settings);
@@ -321,15 +329,17 @@ function validateGalleryFileName(file) {
     assert.equal(1, 1);
 }
 
-function validateGallerySchema(file, settings) {
-    // TODO
-    assert.equal(1, 1);
+function validateGallerySchema(file, settings, validator, schema) {
+    const validationResult  = validator.validate(settings, schema);
+    if (validationResult && validationResult.errors.length !== 0) {
+        assert.fail(file + " : Gallery file does not conform to the gallery schema. Errors: " + validationResult.errors.join(", "));
+    }
 }
 
 function validateNoDuplicateCategories(file, settings) {
     const areUnique = areArrayItemsUnique(settings["categories"], "id");
     if (!areUnique) {
-        assert.fail("Gallery file contains categories with non-unique ids " + file);
+        assert.fail(file + " : Gallery file contains categories with non-unique ids");
     }
 }
 
