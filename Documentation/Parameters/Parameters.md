@@ -75,7 +75,7 @@ This is how the workbook will look like in read-mode, in the "Pills" style.
 
 ### In Logs/other queries
 1. Add a query control to the workbook and select the logs data source and an Application Insights resource or Log Analytics workspace.
-2. In the tet, enter a time scope filter using the parameter: `| where timestamp {TimeRange}`  (using the appropriate column name for your table)
+2. In the text, enter a time scope filter using the parameter: `| where timestamp {TimeRange}`  (using the appropriate column name for your table)
 3. This expands on query evaluation time to `| where timestamp > ago(1d)` which is the time range value of the parameter.
 *Note:* When using a time range this way in the query text instead of binding it with the time range drop down, make sure the time range drop down is set to "Set in query", or you'll get an intersection of the 2 time ranges.
 4. Run query to see the results
