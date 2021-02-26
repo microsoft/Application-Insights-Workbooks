@@ -129,6 +129,27 @@ describe('Validating Workbooks...', () => {
     });
 });
 
+describe('Validating Gallery files...', () => {
+    const galleryPath = './gallery';
+
+    it('Verifying valid gallery files', function (done) {
+        browseDirectory(galleryPath, (error, results) => {
+            results.filter(file => file.endsWith('.json'))
+                .forEach(file => {
+                    validateGalleryFileName(file);
+                    let settings = validateJsonStringAndGetObject(file);
+                    validateGallerySchema(file, settings);
+                    validateNoDuplicateCategories(file, settings);
+                    validateNoDuplicateTemplates(file, settings);
+                    validateTemplateIds(file, settings);
+                });
+            done();
+        });
+    });
+
+
+});
+
 function validateJsonExistForWorkbook(rootPath, results, file) {
     let paths = getProgressivePaths(rootPath, file);
     paths.forEach(folder => {
@@ -271,7 +292,7 @@ function validateNoFromTemplateId(settings, file) {
 function validateSingleWorkbookFile(settings, file) {
     let dir = path.dirname(file);
     fs.readdir(dir, (err, list) => {
-        let workbooks = list.filter(s => s.endsWith(".workbook"));
+        let workbooks = list.filter(s => s.endsWith(".workbook") );
         if (workbooks.length > 1) {
             assert.fail(file + ": Found " + workbooks.length + " .workbook files in folder. Only one is allowed.");
         }    
@@ -292,6 +313,56 @@ function checkProperty(obj, name, file) {
     if (!obj.hasOwnProperty(name)) {
         assert.fail("The " + name + " field is missing with '" + file + "'");
     }
+}
+
+// Validates that the gallery file name is of the format ({type}-{resourcetype}-{name}.json)
+function validateGalleryFileName(file) {
+    // TODO
+    assert.equal(1, 1);
+}
+
+function validateGallerySchema(file, settings) {
+    // TODO
+    assert.equal(1, 1);
+}
+
+function validateNoDuplicateCategories(file, settings) {
+    const areUnique = areArrayItemsUnique(settings["categories"], "id");
+    if (!areUnique) {
+        assert.fail("Gallery file contains categories with non-unique ids " + file);
+    }
+}
+
+function validateNoDuplicateTemplates(file, settings) {
+    settings["categories"].forEach(category => {
+        const areUnique = areArrayItemsUnique(category["templates"], "id");
+        if (!areUnique) {
+            assert.fail(file + " : Gallery file contains templates with non-unique ids");
+        }
+    });
+}
+
+function validateTemplateIds(file, settings) {
+    settings["categories"].forEach(category => {
+        category["templates"].forEach(template => {
+            const templatePath = "./".concat(template.id);
+            fs.readdir(templatePath, (err, list) => {
+                if (err) {
+                    assert.fail(file + " : Template with ID: " + template.id + " is an invalid ID. The ID should be the folder where the template resides relative to the root repository (eg. Workbooks/Performance/Apdex)");
+                }
+                let templates = list.filter(s => s.endsWith(".workbook") || s.endsWith(".cohort"));
+                if (templates.length === 0) {
+                    assert.fail(file + " : Template with ID: " + template.id + " does not exist in specified path. The ID should be the folder where the template resides relative to the root repository (eg. Workbooks/Performance/Apdex)");
+                }
+            });
+        });
+    });
+}
+
+
+function areArrayItemsUnique(arr, key) {   
+    const uniques = new Set(arr.map(item => item[key]));   
+    return [...uniques].length === arr.length; 
 }
 
 function TryParseJson(str, file) {
