@@ -14,6 +14,7 @@ Upon opening your existing private workbook, you can move it to a shared workboo
 - Save (shows UI and save as shared workbook)
 - Save As (defaults to shared workbook)
 - Move Workbook
+- Copy Link > "Move to Shared Reports"
 
 # Why are private workbooks being deprecated?
 Removing private workbooks simplifies a lot of confusing experiences and support issues that customers are having with private workbooks compared to full Azure Resource based Workbooks.
