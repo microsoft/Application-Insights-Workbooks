@@ -1,6 +1,4 @@
 const fs = require('fs');
-const path = require('path');
-
 
 const directories = ["C:\\src\\Application-Insights-Workbooks\\output\\package\\en-us\\Cohorts", "C:\\src\\Application-Insights-Workbooks\\output\\package\\en-us\\Workbooks"];
 for (var d in directories) {
@@ -13,7 +11,9 @@ for (var d in directories) {
             const data = fs.readFileSync(fullPath, 'utf8');
             var jsonParsedData = JSON.parse(data);
             var newData = {};
-            newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
+            // TODO, use the below schema instead
+            //newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
+            newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/users/erlin/newGalleryDefinition/schema/gallery.json";
             newData["version"] = "TemplateGallery/1.0";
             const keys = Object.keys(jsonParsedData);
             var categories = [];
