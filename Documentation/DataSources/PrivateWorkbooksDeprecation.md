@@ -8,3 +8,21 @@ If you choose to migrate your private workbook to a shared one, you can go to yo
 ![Private vs Shared Workbook](../Images/PrivateVsSharedWB.png)
 
 One of the easiest ways is to identify a private workbook and shared workbook by their icon on the gallery view. The private workbook will have a blue icon with a person figure in the corner. The shared workbook will have a green icon with a stack figure in the corner.
+
+# How to move from Private Workbook to Shared Workbook
+Upon opening your existing private workbook, you can move it to a shared workbook using one of the following methods:
+- Save (shows UI and save as shared workbook)
+- Save As (defaults to shared workbook)
+- Move Workbook
+
+# Why are private workbooks being deprecated?
+Removing private workbooks simplifies a lot of confusing experiences and support issues that customers are having with private workbooks compared to full Azure Resource based Workbooks.
+
+# But my Test Workbooks Clutter the Shared Space!
+The simplest way to keep things separate is to save test workbooks to other subscriptions or resource groups. An upcoming change to the workbook gallery will make it easier to filter to specific resource groups to filter to specific resource groups.
+
+There are existing documents about workbook Access control here:
+https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-access-control
+
+There are no changes to the behaviors of roles, or access control with these changes.
+git st
