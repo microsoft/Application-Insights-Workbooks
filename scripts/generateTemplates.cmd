@@ -8,4 +8,4 @@ pushd %REL_PATH%
 set ABS_PATH=%CD%
 popd
 
-node generateTemplates.js %ABS_PATH% dev
+node generateTemplates.js %ABS_PATH%
