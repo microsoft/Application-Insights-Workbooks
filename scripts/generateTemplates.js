@@ -19,7 +19,8 @@ const WorkbookFileType = {
     CategoryResources: 1,
     Settings: 2,
     Template: 3,
-    ARMTemplate: 4
+    ARMTemplate: 4,
+    Gallery: 5
 };
 
 const CategoryResourcesFile = "categoryResources.json";
@@ -34,6 +35,7 @@ const DefaultLang = "en";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
+const GalleryFolder = "\\gallery\\";
 const PackageOutputFolder = "\\output\\package\\";
 const LangOutputSpecifier = "{Lang}";
 
@@ -83,6 +85,10 @@ function getCohortDirectories(rootDirectory) {
     return getDirectoriesRecursive(cohortsSubDir);
 }
 
+function getGalleryDirectory(rootDirectory) {
+    return rootDirectory.concat(GalleryFolder);
+}
+
 function flatten(lists) {
     return lists.reduce((a, b) => a.concat(b), []);
 }
@@ -90,7 +96,8 @@ function flatten(lists) {
 function getLocalizeableFileDirectories(directoryPath) {
     const workbooksDirectories = getWorkbookDirectories(directoryPath);
     const cohortsDirectories = getCohortDirectories(directoryPath);
-    return (workbooksDirectories || []).concat(cohortsDirectories);
+    const galleryDirectory = getGalleryDirectory(directoryPath);
+    return (workbooksDirectories || []).concat(...cohortsDirectories, galleryDirectory);
 }
 
 function getDirectories(srcpath) {
@@ -103,12 +110,17 @@ function getDirectoriesRecursive(srcpath) {
     return [srcpath, ...flatten(getDirectories(srcpath).map(getDirectoriesRecursive))];
 }
 
-/** Validates file type. Expected to be either workbook/cohort file, settings/categoryjson file, or amtemplate. Returns null if file type is not supported */
-function getWorkbookFileType(fileName) {
+/** Validates file type. Expected to be either workbook/cohort file, settings/categoryjson file, armtemplate, or gallery file. Returns null if file type is not supported */
+function getWorkbookFileType(path, fileName) {
+    if (!fileName) {
+        console.log("hello");
+    }
     if (fileName.localeCompare(CategoryResourcesFile) === 0) {
         return WorkbookFileType.CategoryResources;
     } else if (fileName.localeCompare(SettingsFile) === 0) {
         return WorkbookFileType.Settings;
+    } else if (path.indexOf("gallery") !== -1) {
+        return WorkbookFileType.Gallery;
     }
     var a = fileName.split(".");
     if (a.length === 1 || (a[0] === "" && a.length === 2)) {
@@ -300,6 +312,33 @@ function processARMTemplateFile(templatePath, rootDirectory, fileName, armTempla
     }
 }
 
+function processGalleryFile(galleryPath, rootDirectory, fileName, galleryData) {
+    try {
+        if (galleryData && galleryData.categories) {
+            galleryData.categories.forEach(category => {
+                category.templates.forEach(template => {
+                    const templateId = template.id;
+                    const templatePath = rootDirectory.endsWith("\\") ? rootDirectory.concat("\\", templateId) : rootDirectory.concat(templateId);
+                    assignFileName(templatePath, rootDirectory, template);
+                });
+            });
+        }
+
+        var path = getPackageOutputPath(galleryPath, rootDirectory);
+        if (fileName === "Cohorts-microsoft.insights-components.json") {
+            path = path.replace("gallery\\.json", "Cohorts\\").concat(fileName);
+        } else {
+            path = path.replace("gallery\\.json", "Workbooks\\").concat(fileName);
+        }
+        languages.forEach(lang => {
+            const translatedResultPath = path.replace(LangOutputSpecifier, LanguagesMap[lang]);
+            writeTranslatedGalleryToFile(galleryData, translatedResultPath);
+        });
+    } catch (e) {
+        logError("Failed to process gallery file: " + galleryPath + "Error: " + e, true);
+    }
+}
+
 function parseCategoryResourcesStrings(fileData, categoryResourcesData, templatePath, lang) {
     const jsonData = JSON.parse(fileData);
     const templateSplit = templatePath.split("\\");
@@ -348,6 +387,19 @@ function writeTranslatedWorkbookToFile(data, fullPath) {
     const content = JSON.stringify(data, null, "\t");
     writeJSONToFile(content, fullPath, true);
     logMessage("Generated translated file: " + fullPath);
+}
+
+/** Write file as new gallery file  */
+function writeTranslatedGalleryToFile(data, fullPath) {
+    const fileName = fullPath.split('\\').pop().split('/').pop();
+    if (fileName.length > 99) {
+        // not currently blocking - local builds don't actually have an issue here but something on the build machine is truncating files?
+        logMessage("ERROR: File name exceeds 99ch limit " + fileName);
+    }
+
+    const content = JSON.stringify(data);
+    writeJSONToFile(content, fullPath, true);
+    logMessage("Generated gallery file: " + fullPath);
 }
 
 /** Replace the strings in the workbook json */
@@ -474,6 +526,23 @@ function getClonedLocFilePath(templatePath, rootDirectory) {
     return result.concat(removedIndex, RESJSONFileExtension);
 }
 
+function assignFileName(templatePath, rootDirectory, templateData) {
+    var removedIndex = templatePath.replace(rootDirectory, "");
+    if (removedIndex.startsWith("\\")) {
+        removedIndex = removedIndex.substring(1);
+    }
+    const split = removedIndex.split("/");
+    var workbookName = "";
+    for (s = 1; s < split.length; s++) {
+        if (workbookName === "") {
+            workbookName = workbookName.concat(split[s]);
+        } else {
+            workbookName = workbookName.concat("-", split[s]);
+        }
+    }
+    templateData.fileName = workbookName.concat(".json");
+}
+
 /** Returns the path of where the translated template should be dropped */
 function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, workbooksIndexMap) {
     var result = rootDirectory;
@@ -557,7 +626,7 @@ if (!exists) {
 logMessage("Template generation script starting...");
 
 var directories = getLocalizeableFileDirectories(directoryPath);
-    // Languages to generate
+// Languages to generate
 const languages = generateEnUsOnly ? [DefaultLang] : Object.keys(LanguagesMap);
 
 var cohortIndexEntries = {}; // Map for generating cohort index files
@@ -591,7 +660,7 @@ for (var d in directories) {
 
     for (var i in files) {
         const fileName = files[i];
-        const fileType = getWorkbookFileType(fileName);
+        const fileType = getWorkbookFileType(templatePath, fileName);
         // If file type is not valid, skip
         if (!fileType) {
             continue;
@@ -617,6 +686,9 @@ for (var d in directories) {
             // ARM Template file
             const armTemplateData = JSON.parse(fileData);
             processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData, languages);
+        } else if (fileType === WorkbookFileType.Gallery) {
+            const galleryData = JSON.parse(fileData);
+            processGalleryFile(templatePath, rootDirectory, fileName, galleryData);
         } else {
             // Workbook template file
             templateParsedData = JSON.parse(fileData);
@@ -626,11 +698,11 @@ for (var d in directories) {
 
     // Template Generation 
     if (!templatePath.endsWith("\\")) {
-        const fileType = getWorkbookFileType(file);
+        const fileType = getWorkbookFileType(templatePath, file);
 
         if (fileType === WorkbookFileType.CategoryResources) {
             languages.forEach(lang => {
-            // Add category resources strings to map
+                // Add category resources strings to map
                 if (lang !== DefaultLang && !generateEnUsOnly) {
                     // Location of translated resjson
                     const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);

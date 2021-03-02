@@ -94,29 +94,30 @@ There are three ways of creating a template.
    Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 
 ## Gallery file
- A gallery file associates your template(s) with a gallery under a category. The following is an example of what a gallery file should look like. In the case where the gallery you would like to add a new template already exists, you should modify the existing gallery file.
+ A gallery file associates your templates with a gallery and category. The following is an example of what a gallery file should look like. In the case where you would like to add a template to a gallery that exists, you should modify the existing gallery file.
  ```json
-    {
-        "$schema": "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json",
-	    "version": "TemplateGallery/1.0",
-	    "categories": [
-		    {
-			    "id": "MyCategory",
-			    "description": "Description of the category",
-			    "name": "My category",
-			    "templates": [
-				    {
-					    "id": "Workbooks/CategoryA/TemplateA",
-					    "name": "My template (preview)",
-                        "description": "Description of the template",
-					    "author": "Microsoft",
-                        "isPreview": true
-				    }
-			    ]
-		    }
-	    ]
-    }
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json",
+    "version": "TemplateGallery/1.0",
+    "categories": [
+        {
+            "id": "MyCategory",
+            "description": "Description of the category",
+            "name": "My category",
+            "templates": [
+                {
+                    "id": "Workbooks/CategoryA/TemplateA",
+                    "name": "My template (preview)",
+                    "description": "Description of the template",
+                    "author": "Microsoft",
+                    "isPreview": true
+                }
+            ]
+        }
+    ]
+}
 ```
+
 * `$schema`: The link to the gallery schema. This should be `"https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json"`
 
 * `version`: Gallery version (eg. `TemplateGallery/1.0`)
@@ -141,23 +142,20 @@ There are three ways of creating a template.
 
         * `icon`: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder.
 
-        * `tags`: Optional.
+        * `tags`: Optional. You can specify a list of tags that describes the template.
 
         * `isPreview`: Optional. Flag to mark the template as preview. See [Testing Preview Workbook Templates](#testing-preview-workbook-templates) for more details
 
+For more details on the schema of the gallery file, view the [Gallery JSON schema](./schema/gallery.json).
+
 ## How to create a gallery file
-Create a gallery file with the above schema under the `gallery\` folder.
-### Gallery naming convention
-//TODO
+Create a gallery file with the above schema under the `\gallery` folder.
+ // TODO about naming convention
 
 ### Gallery Restrictions
 - A template can be associated with one or more galleries
 - A template should only appear once in a category
 - A category should only appear once in a gallery
-
-For more details on the schema of the gallery file, view the [Gallery JSON schema](./schema/gallery.json).
-
-
 
 # How to make changes (add, modify templates)
 
@@ -166,7 +164,7 @@ For more details on the schema of the gallery file, view the [Gallery JSON schem
 3. Create a folder in the `Workbooks` folder, or find an existing category folder if you are making a new category
 4. Within that folder, create a new folder for your new workbook.  Put your .workbook file there.
     * the "id" for your workbook will be the folder path itself, like `Workbooks\My New Category\My New Workbook\my workbook.workbook` would have an id of `My New Category\My New Workbook`
-5. Add your template to a gallery by adding an entry for your category and template in the gallery file under the `gallery\` folder
+5. Add your template to a gallery by adding an entry for your category and template in the gallery file under the `\gallery` folder
 6. Add your new files to the branch with the appropriate `git add` command
 7. Commit your changes to your branch with git commit, with a useful message, like `git commit -m "Adding my new workbook to my new category"`
 8. Push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
