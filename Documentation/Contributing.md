@@ -9,89 +9,48 @@ Root
  |
  |- Workbooks
        |- Category A
-             |- categoryResources.json
              |- Template A
                     |- TemplateA.workbook
-                    |- settings.json
                     |- icon.svg
              |- Template B
                     |- TemplateB.workbook
-                    |- settings.json
                     |- icon.svg
        |- Category B
-             |- categoryResources.json
              |- Template C
                     |- TemplateC.workbook
-                    |- settings.json
                     |- icon.svg
              |- Template D
                     |- TemplateD.workbook
-                    |- settings.json
                     |- icon.svg
 ```
-## Category folder
+
+## Gallery folder
 ```
 Root
  |
- |- Workbooks
-       |- Category folder 1
-       |- Category folder 2       
+ |- gallery folder
+       |- galleryA.json
+       |- galleryB.json     
 ...       
 ```
-The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
+Each template can live in one or more galleries. The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
 ![Image of category view](./Images/CategoryView.png)
 
-To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file may contain localized versions of the category name, and a description if you are performing localization yourself. Here's an example categoryResources.json file.
-```json
-{
-    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
-    "en-us": {"name":"Business Hypotheses", "description": "Long description goes here", "order": 100}
-}
-```
-
-
 ## Template folder
-Each category folder contains a list of templates.
+Each category folder contains a list of templates folders that contain templates.
 ```
 |- Category A
-        |- categoryResources.json
         |- Template A
             |- TemplateA.workbook
-            |- settings.json
             |- icon.svg
         |- Template B
             |- TemplateB.workbook
-            |- settings.json
             |- icon.svg
 ```
 
 Avoid using special characters (like `/\&?`) in your folder names. An optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
 
-Each template folder contains the following files:
-* **.workbook file** - You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
-* **settings.json file** - This file describes a template with metadata.
-    ```json
-        {
-            "name":"Improving User Retention",
-            "description": "Long description goes here",
-            "icon": "",
-            "tags": ["Foo", "Bar"],
-            "author": "Microsoft",
-            "galleries": [{ "type": "workbook", "resourceType": "microsoft.insights/components", "order": 300 }],
-            "order": 100,
-            "$schema": "..//schema/settings.json"
-        }
-    ```
-    * name: A localized name.
-    * description: A localized description.
-    * icon: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder. 
-    * tags: Optional. You can specify a list of tags that describes the template.
-    * author: The name of author or company who contributes.
-    * galleries: Optional. Settings for gallery view. Please note that this is not available for Cohorts templates.
-        * type: Workbook type like 'tsg', 'performance', and etc. The default value is 'workbook'
-        * resourceType: ARM resource type. The default value is 'microsoft.insights/components'
-        * order: When specified it will be display in the ascending order.
-    * order: If you have more than one template within a category and would like to order them in certain way, you can specify sort order. This will be overriden by the order within galleries if available.
+Each template folder should contain a **.workbook file**. You can create a template file from Workbooks in the Azure portal. See the ["How to create a .workbook file"](#How-to-create-a-.workbook-file) section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
 
 ## How to create a .workbook file
 There are three ways of creating a template. 
@@ -101,11 +60,11 @@ There are three ways of creating a template.
 
 ## Create from the default template
 1. Go to http://portal.azure.com 
-2. Select an Application Insights resource
+2. Select an Application Insights resource or go to Azure Monitor from the navigation bar
 3. Select "Workbooks"
-4. Select Default Template under Quick Start section.
+4. Select the Empty template under Quick Start section.
 
-    ![Image of default template](./Images//DefaultTemplate.png)
+    ![Image of empty template](./Images/EmptyTemplate.png)
 
 5. Modify report as you wish and click "Advanced Editor" button from the menu. 
 
@@ -134,66 +93,83 @@ There are three ways of creating a template.
 7. Use the download button, or copy contents and create a file like `your custom template name.workbook`. 
    Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 
-## How to associate any existing template to an additional category in Workbooks
-You may also associate a templates to an virtual categories, not just the folder based categorie above. Previously, a category was always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintenance overhead of updating duplicated templates.
+## Gallery file
+ A gallery file associates your template(s) with a gallery under a category. The following is an example of what a gallery file should look like. In the case where the gallery you would like to add a new template already exists, you should modify the existing gallery file.
+ ```json
+    {
+        "$schema": "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json",
+	    "version": "TemplateGallery/1.0",
+	    "categories": [
+		    {
+			    "id": "MyCategory",
+			    "description": "Description of the category",
+			    "name": "My category",
+			    "templates": [
+				    {
+					    "id": "Workbooks/CategoryA/TemplateA",
+					    "name": "My template (preview)",
+                        "description": "Description of the template",
+					    "author": "Microsoft",
+                        "isPreview": true
+				    }
+			    ]
+		    }
+	    ]
+    }
+```
+* `$schema`: The link to the gallery schema. This should be `"https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json"`
 
-First, to associate the existing template, we need to create a virtual category first.
-1. Go to Workbooks folder and locate "resourceCategory.json" file.
-2. Add new category entry under categories array as below:
-    ```json
-    {
-    "categories": [{
-            "key": "YourSampleUniqueCategoryKey",
-            "settings": {
-            "en-us": {
-                "name": "Sample Category",
-                "description": "Category description",
-                "order": 100
-                }
-            }      
-        }]
-    }
-    ```
-    * key: This should be unique key value. This will be used in a template to link together.
-    * settings:
-        * name: This is a name of category. This will be localized.
-        * description: A description of this category.
-        * order: The sort order of category.
-3. Now we need to modify template settings to associate it together.
-4. Go to your template and open settings.json file
-    ```jsonc
-    {
-        "$schema": "..//schema/settings.json",
-        "name": "Bracket Retention",
-        "author": "Microsoft",
-        "galleries": [
-            {
-                "type": "workbook",
-                "resourceType": "microsoft.insights/components",
-                "order": 400
-            },
-            // This is the new section to add:
-            {
-                "type": "workbook",
-                "resourceType": "Azure Monitor",
-                "categoryKey": "YourSampleUniqueCategoryKey",
-                "order": 400
-            }
-        ]
-    }
-    ```
-    **Note that the second item in the galleries array, it has a "categoryKey". It should be match with a "key" in a virtual category.**
+* `version`: Gallery version (eg. `TemplateGallery/1.0`)
+
+* `categories`: A list of categories for this gallery. *Note*: The order of categories in this list determines the order of the categories that will appear in this gallery
+
+    * `id`: The ID for the category. This field will not be localized
+
+    * `name`: The name of the category. This field will be localized
+
+    * `description`: Description for the category. This field will be localized
+    
+    * `templates`: A list of templates for the category. *Note*: The order of the templates in this list determines the order of the templates that will appear in this category
+
+        * `id`: The ID for the template. This ID should be the path to your template folder (eg. `Workbooks/Performance/Apdex`)
+
+        * `name`: The name of the template. This field will be localized
+
+        * `description`: The description for the template. This field will be localized
+
+        * `author`: Author for this template (eg. `Microsoft`)
+
+        * `icon`: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder.
+
+        * `tags`: Optional.
+
+        * `isPreview`: Optional. Flag to mark the template as preview. See [Testing Preview Workbook Templates](#testing-preview-workbook-templates) for more details
+
+## How to create a gallery file
+Create a gallery file with the above schema under the `gallery\` folder.
+### Gallery naming convention
+//TODO
+
+### Gallery Restrictions
+- A template can be associated with one or more galleries
+- A template should only appear once in a category
+- A category should only appear once in a gallery
+
+For more details on the schema of the gallery file, view the [Gallery JSON schema](./schema/gallery.json).
+
+
 
 # How to make changes (add, modify templates)
 
 1. Clone the repo, if you haven't already. If you have already, `git checkout master` and `git pull` to make sure you are up to date
 2. Create a new branch `git checkout -b nameOfNewBranch`
 3. Create a folder in the `Workbooks` folder, or find an existing category folder if you are making a new category
-4. Within that folder, create a new folder for your new workbook.  Put your .workbook and settings.json file there.
+4. Within that folder, create a new folder for your new workbook.  Put your .workbook file there.
     * the "id" for your workbook will be the folder path itself, like `Workbooks\My New Category\My New Workbook\my workbook.workbook` would have an id of `My New Category\My New Workbook`
-5. Add your new files to the branch with the appropriate `git add` command
-6. Commit your changes to your branch with git commit, with a useful message, like `git commit -m "Adding my new workbook to my new category"`
-7. Push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
+5. Add your template to a gallery by adding an entry for your category and template in the gallery file under the `gallery\` folder
+6. Add your new files to the branch with the appropriate `git add` command
+7. Commit your changes to your branch with git commit, with a useful message, like `git commit -m "Adding my new workbook to my new category"`
+8. Push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
 
 
 # How to test your changes
@@ -280,18 +256,29 @@ If you are already running something like Apache or IIS locally, you don't need 
 
 # Testing Preview Workbook Templates
 
-You can test templates that are still work in progress or simply not ready to be exposed to all users. To do this you need to add the property `"isPreview: true"` in settings.json.
+You can test templates that are still work in progress or simply not ready to be exposed to all users. To do this you need to add the property `"isPreview: true"` in the gallery file.
 Here is an example:
 
 ```jsonc
 {
-    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
-    "name":"My template (preview)",
-    "author": "Microsoft",
-    "isPreview": true, // add this line to make this a preview template
-    "galleries": [
-        { "type": "workbook", "resourceType": "microsoft.operationalinsights/workspaces", "order": 300 }
-    ]
+	"$schema": "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json",
+	"version": "TemplateGallery/1.0",
+	"categories": [
+		{
+			"id": "MyCategory",
+			"description": "Description of the category",
+			"name": "My category",
+			"templates": [
+				{
+					"id": "Workbooks/CategoryA/TemplateA",
+					"name": "My template (preview)",
+                    "description": "Description of the template",
+					"author": "Microsoft",
+                    "isPreview": true // add this line to make this a preview template
+				}
+			]
+		}
+	]
 }
 ```
 
