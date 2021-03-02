@@ -1,5 +1,5 @@
 # Private Workbooks Deprecation
-Private workbooks will be deprecated June 30 2021. Use Save or Save As to make them Shared Workbooks.
+Private workbooks will be deprecated by June 30 2021. Do 'Save' or 'Save As' to make them Shared Workbooks and continue to use after June 30 2021.
 
 # How should you proceed?
 If you choose to migrate your private workbook to a shared one, you can go to your private workbook and click "Save As" and select the "Shared Report" option from the drop down. If you don't want others to have access to your workbook, you can always manually change the RBAC to deny access to others.
@@ -26,3 +26,6 @@ There are existing documents about workbook Access control here:
 https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-access-control
 
 There are no changes to the behaviors of roles, or access control with these changes.
+
+# What happens if I don't Convert
+From June 30, 2021, you will not see your private workbooks in Azure Portal. You will be able to retrieve the content of the private workbooks for another 30 days (until June 30). 
