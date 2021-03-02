@@ -1,5 +1,5 @@
 # Private Workbooks Deprecation
-The ability to save changes to existing private workbooks is going away by June 30th, 2021. You will still be able to access your private workbooks but any edit or save can only be saved as a Shared Workbook. 
+Private workbooks will be deprecated June 30 2021. Use Save or Save As to make them Shared Workbooks.
 
 # How should you proceed?
 If you choose to migrate your private workbook to a shared one, you can go to your private workbook and click "Save As" and select the "Shared Report" option from the drop down. If you don't want others to have access to your workbook, you can always manually change the RBAC to deny access to others.
