@@ -191,15 +191,19 @@ function addGalleryEntry(settingsData, settingsName, settingsDescription, galler
     const indexKey = removedIndex.split("\\").join("/");
 
     const templateSplit = templatePath.split("\\");
-    const key = templateSplit[templateSplit.length - 2];
     const isCohorts = templatePath.includes(CohortsTemplateFolder);
     var galleryKey = CohortsGalleryFileName;
     const galleries = isCohorts ? [settingsData] : settingsData.galleries || [];
 
     for (var g in galleries) {
+        var key = templateSplit[templateSplit.length - 2];
+
         if (!isCohorts) {
             const galleryEntry = settingsData.galleries[g];
             galleryKey = GalleryFilePrefix.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
+            if (galleryEntry.categoryKey) {
+                key = galleryEntry.categoryKey;
+            }
         }
 
         if (!galleryMap[galleryKey]) {
@@ -235,16 +239,30 @@ function addGalleryEntry(settingsData, settingsName, settingsDescription, galler
 
 /** Extract category resource info to build gallery files */
 function getCategoryResourcesInfo(object, categoryResourcesMap, templatePath) {
-    const templateSplit = templatePath.split("\\");
-    const key = templateSplit[templateSplit.length - 1];
-    if (key && object && object[LanguagesMap[DefaultLang]]) {
-        const entry = object[LanguagesMap[DefaultLang]];
-        categoryResourcesMap[key] = {
-            "en": {
-                name: entry.name,
-                description: entry.description,
-                order: entry.order
-            }
+    if (object) {
+        if (object[LanguagesMap[DefaultLang]]) {
+            const templateSplit = templatePath.split("\\");
+            const key = templateSplit[templateSplit.length - 1];
+            const entry = object[LanguagesMap[DefaultLang]];
+            extractCategoryResourcesInfo(entry, key, categoryResourcesMap);
+        } else if (object.categories) {
+            object.categories.forEach(category => {
+                if (category.settings && category.settings[LanguagesMap[DefaultLang]]) {
+                    const key = category.key;
+                    const entry = category.settings[LanguagesMap[DefaultLang]];
+                    extractCategoryResourcesInfo(entry, key, categoryResourcesMap);
+                }
+            });
+        }
+    }
+}
+
+function extractCategoryResourcesInfo(entry, key, categoryResourcesMap) {
+    categoryResourcesMap[key] = {
+        "en": {
+            name: entry.name,
+            description: entry.description,
+            order: entry.order
         }
     }
 }
