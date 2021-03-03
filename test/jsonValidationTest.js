@@ -291,7 +291,7 @@ function validateNoSubscriptionIdInTemplate(settings, file) {
     // where it is more common to have a thing like this for certain endpoints.
     // not parsing individual steps/etc at this time
     let str = JSON.stringify(settings);
-    let regexp = /(\"subscription[s]*\"\s*:\s*\"(\/subscriptions\/)*[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})\"/gi;
+    let regexp = /(\"subscription[s]*\"\s*:\s*[\[]*\s*"[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi;
     while ((matches = regexp.exec(str)) !== null) {
         assert.fail(file + ": Found probably hardcoded subscription Id '" + matches[0] + "'");
     }
