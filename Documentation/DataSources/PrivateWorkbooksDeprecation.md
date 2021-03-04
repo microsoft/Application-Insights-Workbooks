@@ -2,13 +2,13 @@
 Private workbooks will be deprecated by June 30 2021. Do 'Save' or 'Save As' to make them Shared Workbooks and continue to use after June 30 2021. Removing private workbooks simplifies a lot of confusing experiences and support issues that customers are having with private workbooks compared to full Azure Resource based Workbooks.
 
 # How should you proceed?
-## Identify Private Workbooks
+### Identify Private Workbooks
 
 One of the easiest ways is to identify a private workbook and shared workbook by their icon on the gallery view. The private workbook will have a blue icon with a person figure in the corner. The shared workbook is a similar blue icon without a person figure.
 
 ![Private vs Shared Workbook](../Images/PrivateVsSharedWB.png)
 
-## Convert Private Workbooks to Shared workbooks
+### Convert Private Workbooks to Shared workbooks
 If you choose to migrate your private workbook to a shared one, you can move it to a shared workbook using one of the following methods:
 - Save (shows UI and save as shared workbook)
 - Save As (defaults to shared workbook)
