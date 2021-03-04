@@ -17,7 +17,7 @@ If you choose to migrate your private workbook to a shared one, you can move it 
 
 If you don't want others to have access to your workbook, you can manually change the RBAC to deny access to others.
 
-# But my Test Workbooks Clutter the Shared Space!
+### Managing Test Workbook Clutter
 The simplest way to keep things separate is to save test workbooks to other subscriptions or resource groups. An upcoming change to the workbook gallery will make it easier to filter to specific resource groups to filter to specific resource groups.
 
 There are existing documents about workbook Access control here:
