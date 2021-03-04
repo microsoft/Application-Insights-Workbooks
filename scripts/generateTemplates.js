@@ -35,24 +35,24 @@ const PackageOutputFolder = "\\output\\package\\";
 const LangOutputSpecifier = "{Lang}";
 
 const LanguagesMap = {
-    // "cs": "cs-cz",
+    "cs": "cs-cz",
     "de": "de-de",
-   // "es": "es-es",
+    "es": "es-es",
     "en": "en-us",
-    // "fr": "fr-fr",
-    // "hu": "hu-hu",
-    // "it": "it-it",
-    // "ja": "ja-jp",
-    // "ko": "ko-kr",
-    // "nl": "nl-nl",
-    // "pl": "pl-pl",
-    // "pt-BR": "pt-br",
-    // "pt-PT": "pt-pt",
-    // "ru": "ru-ru",
-    // "sv": "sv-se",
-    // "tr": "tr-tr",
-    // "zh-Hans": "zh-cn",
-    // "zh-Hant": "zh-tw"
+    "fr": "fr-fr",
+    "hu": "hu-hu",
+    "it": "it-it",
+    "ja": "ja-jp",
+    "ko": "ko-kr",
+    "nl": "nl-nl",
+    "pl": "pl-pl",
+    "pt-BR": "pt-br",
+    "pt-PT": "pt-pt",
+    "ru": "ru-ru",
+    "sv": "sv-se",
+    "tr": "tr-tr",
+    "zh-Hans": "zh-cn",
+    "zh-Hant": "zh-tw"
 };
 
 /**
