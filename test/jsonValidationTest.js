@@ -436,7 +436,7 @@ function validateTemplateIds(file, settings) {
             const templatePath = "./".concat(template.id);
             fs.readdir(templatePath, (err, list) => {
                 if (err) {
-                    assert.fail(file + " : Template with ID: " + template.id + " is an invalid ID. The ID should be the folder where the template resides relative to the root repository (eg. Workbooks/Performance/Apdex)");
+                    assert.fail(file + " : Template with ID: " + template.id + " could not be found in the specified path. The ID should be the folder where the template resides relative to the root repository (eg. Workbooks/Performance/Apdex)");
                 }
                 let templates = list.filter(s => s.endsWith(".workbook") || s.endsWith(".cohort"));
                 if (templates.length === 0) {
