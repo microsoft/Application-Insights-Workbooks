@@ -166,8 +166,9 @@ describe('Validating Gallery files...', () => {
             const schemaJSON = fs.readFileSync(schemaFile, 'utf8');
             const schema = TryParseJson(schemaJSON);
 
-            results.filter(file => file.endsWith('.json'))
-                .forEach(file => {
+            validateGalleryFilesAllJSON(results);
+
+            results.forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateGallerySchema(file, settings, validator, schema);
                     validateNoDuplicateCategories(file, settings);
@@ -396,6 +397,13 @@ function checkProperty(obj, name, file) {
 
     if (!obj.hasOwnProperty(name)) {
         assert.fail("The " + name + " field is missing with '" + file + "'");
+    }
+}
+
+function validateGalleryFilesAllJSON(files) {
+    const jsonFiltered = files.filter(file => file.endsWith('.json'));
+    if (files.length !== jsonFiltered.length) {
+        assert.fail("Gallery files contain at least one non JSON file. Gallery files in gallery folder must be JSON");
     }
 }
 

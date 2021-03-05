@@ -31,23 +31,20 @@ const LocalizeableFileExt = [
   "cohort"
 ];
 
-const LocalizeableFileType = {
-  CategoryResources: 1,
-  Settings: 2,
-  Template: 3
+const LocalizableFileType = {
+  Template: 1,
+  Gallery: 2
 };
 
-const CategoryResourcesFile = "categoryResources.json";
-const SettingsFile = "settings.json";
 const LocProjectFileName = "LocProject.json";
 
 const Encoding = 'utf8';
 const ResJsonStringFileExtension = '.resjson';
 const LCLStringFileExtension = ".resjson.lcl";
-const DefaultLang = "en-us";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
+const GalleryFolder = "\\gallery";
 const RESJSONOutputFolder = "\\output\\loc\\";
 const LangOutputSpecifier = "{Lang}";
 
@@ -84,6 +81,10 @@ function getCohortDirectories(rootDirectory) {
   return getDirectoriesRecursive(cohortsSubDir);
 }
 
+function getGalleryDirectory(rootDirectory) {
+  return rootDirectory.concat(GalleryFolder);
+}
+
 function flatten(lists) {
   return lists.reduce((a, b) => a.concat(b), []);
 }
@@ -91,7 +92,8 @@ function flatten(lists) {
 function getLocalizeableFileDirectories(directoryPath) {
   const workbooksDirectories = getWorkbookDirectories(directoryPath);
   const cohortsDirectories = getCohortDirectories(directoryPath);
-  return (workbooksDirectories || []).concat(cohortsDirectories);
+  const galleryDirectory = getGalleryDirectory(directoryPath);
+  return (workbooksDirectories || []).concat(...cohortsDirectories, galleryDirectory);
 }
 
 function getDirectories(srcpath) {
@@ -105,12 +107,14 @@ function getDirectoriesRecursive(srcpath) {
 }
 
 /** Generates a output path for the template path by replacing template directory with output directory */
-function generateOutputPath(dir, folder) {
+function generateOutputPath(dir) {
   var outputPath;
   if (dir.includes(CohortsTemplateFolder)) {
-    outputPath = dir.replace(CohortsTemplateFolder, folder);
+    outputPath = dir.replace(CohortsTemplateFolder, RESJSONOutputFolder);
+  } else if (dir.includes(GalleryFolder)) {
+    outputPath = dir.replace(GalleryFolder, RESJSONOutputFolder.concat("gallery\\"));
   } else {
-    outputPath = dir.replace(WorkbookTemplateFolder, folder);
+    outputPath = dir.replace(WorkbookTemplateFolder, RESJSONOutputFolder);
   }
   if (!fs.existsSync(outputPath)) {
     const directoryPath = getDirectoryFromPath(outputPath);
@@ -119,20 +123,19 @@ function generateOutputPath(dir, folder) {
   return outputPath;
 }
 
-/** Validates file type as localizeable. Expected to be either workbook/cohort file or settings/categoryjson file. Returns null if file is not localizeable */
-function getLocalizeableFileType(fileName) {
-  if (fileName.localeCompare(CategoryResourcesFile) === 0) {
-    return LocalizeableFileType.CategoryResources;
-  } else if (fileName.localeCompare(SettingsFile) === 0) {
-    return LocalizeableFileType.Settings;
+/** Validates file type as localizeable. Expected to be either workbook/cohort file or gallery type. Returns null if file is not localizeable */
+function getLocalizeableFileType(path, fileName) {
+  if (path.indexOf("\\gallery") !== -1) {
+    return LocalizableFileType.Gallery;
   }
+
   var a = fileName.split(".");
   if (a.length === 1 || (a[0] === "" && a.length === 2)) {
     return null;
   }
   const extension = a.pop();
   if (extension && LocalizeableFileExt.includes(extension.toLowerCase())) {
-    return LocalizeableFileType.Template;
+    return LocalizableFileType.Template;
   }
   return null;
 }
@@ -234,25 +237,29 @@ function endsWithLocIdentifier(key) {
   return null;
 }
 
-/** Get localizeable strings from category resources file */
-function getCategoryResourceStrings(object, outputMap) {
-  if (object && object[DefaultLang]) {
-    const name = object[DefaultLang].name;
-    const description = object[DefaultLang].description;
-    outputMap["en-us.name"] = name;
-    if (description != "") {
-      outputMap["en-us.description"] = description;
-    }
-  }
-}
+/** Get localizeable strings from gallery file */
+function getGalleryStrings(object, outputMap) {
+  if (object && object.categories) {
+    object.categories.forEach(c => {
+      var key = "categories";
+      key = key.concat(".", removeNonAplhaNumeric(c.id));
 
-/** Get localizeable strings from settings file */
-function getSettingStrings(object, outputMap) {
-  if (object && object.hasOwnProperty("name")) {
-    outputMap["settings.name"] = object.name;
-  }
-  if (object && object.hasOwnProperty("description")) {
-    outputMap["settings.description"] = object.description;
+      outputMap[key.concat(".name")] = c.name; // category name
+
+      if (c.description && c.description !== "") {
+        outputMap[key.concat(".description")] = c.description; // category description
+      }
+
+      c.templates.forEach(t => {
+        var templateKey = key.concat(".templates.", removeNonAplhaNumeric(t.id));
+
+        outputMap[templateKey.concat(".name")] = t.name; // template name
+
+        if (t.description && t.description !== "") {
+          outputMap[templateKey.concat(".description")] = t.description; // template description
+        }
+      });
+    });
   }
 }
 
@@ -300,27 +307,34 @@ function getDirectoryFromPath(path) {
 }
 
 /** Generate LocProject entry for localization tool */
-function generateLocProjectEntry(templatePath, resjsonOutputPath, rootDirectory) {
+function generateLocProjectEntry(templatePath, fileName, fileType, resjsonOutputPath, rootDirectory) {
   // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
   return {
-    "SourceFile": resjsonOutputPath.concat(ResJsonStringFileExtension),
-    "LclFile": getLocOutputPath(templatePath, LCLStringFileExtension, rootDirectory),
+    "SourceFile": resjsonOutputPath.concat((fileType === LocalizableFileType.Gallery ? fileName.replace(".json", "") : ""), ResJsonStringFileExtension),
+    "LclFile": getLocOutputPath(templatePath, fileName, fileType, LCLStringFileExtension, rootDirectory),
     "CopyOption": "LangIDOnPath",
-    "OutputPath": getLocOutputPath(templatePath, ResJsonStringFileExtension, rootDirectory)
+    "OutputPath": getLocOutputPath(templatePath, fileName, fileType, ResJsonStringFileExtension, rootDirectory)
   };
 }
 
-/** Return output path like root/{Lang}/{TemplateType}/templatePath*/
-function getLocOutputPath(templatePath, extensionType, root) {
+/** Return output path like root/{Lang}/{TemplateType}/templatePath for templates, root/{Lang}/gallery/galleryName for gallery*/ 
+function getLocOutputPath(templatePath, fileName, fileType, extensionType, root) {
   const newTemplatePath = templatePath.replace(root, root.concat(root.endsWith("\\") ? "" : "\\", LangOutputSpecifier, root.endsWith("\\") ? "\\" : ""));
   const templateSplit = newTemplatePath.split("\\");
-  templateSplit[templateSplit.length - 1] = templateSplit[templateSplit.length - 1].concat(extensionType);
-  return templateSplit.join("\\");
+  if (fileType === LocalizableFileType.Gallery) {
+    templateSplit.push(fileName.replace(".json", ""));
+  }
+  return templateSplit.join("\\").concat(extensionType);
 }
 
 /** Write string file as RESJSON */
-function writeToFileRESJSON(data, outputPath) {
-  const fullpath = outputPath.concat(ResJsonStringFileExtension);
+function writeToFileRESJSON(data, fileName, fileType, outputPath) {
+  var fullPath = outputPath;
+  if (fileType === LocalizableFileType.Gallery) {
+    fullPath = fullPath.concat(fileName.replace(".json", ""));
+  }
+
+  fullpath = fullPath.concat(ResJsonStringFileExtension);
 
   const content = JSON.stringify(data, null, "\t");
   if (content.localeCompare("{}") === 0) {
@@ -362,11 +376,8 @@ function extractStringsFromFile(fileData, fileType, localizeableStrings, templat
   try {
     const data = JSON.parse(fileData);
     switch (fileType) {
-      case LocalizeableFileType.Settings:
-        getSettingStrings(data, localizeableStrings);
-        break;
-      case LocalizeableFileType.CategoryResources:
-        getCategoryResourceStrings(data, localizeableStrings);
+      case LocalizableFileType.Gallery:
+        getGalleryStrings(data, localizeableStrings);
         break;
       default:
         getLocalizeableStrings(data, "", localizeableStrings, templatePath);
@@ -404,45 +415,43 @@ var directories = process.argv[3] === "test" ? [directoryPath] : getLocalizeable
 const locProjectOutput = []; // List of localization file entries for LocProject.json output
 var rootDirectory;
 
-for (var d in directories) {
-  const templatePath = directories[d];
+directories.forEach(filePath => {
   if (!rootDirectory) {
-    rootDirectory = getRootFolder(templatePath);
+    rootDirectory = getRootFolder(filePath);
   }
 
-  const files = fs.readdirSync(templatePath);
+  const files = fs.readdirSync(filePath);
   if (!files || files.length === 0) {
-    continue;
+    return;
   }
 
   var localizeableStrings = {};
 
   // This is where we will output the resjson artifact
-  const resjonOutputPath = generateOutputPath(templatePath, RESJSONOutputFolder);
+  const resjonOutputPath = generateOutputPath(filePath);
 
-  for (var i in files) {
-    const fileName = files[i];
-    const fileType = getLocalizeableFileType(fileName);
+  files.forEach(fileName => {
+    const fileType = getLocalizeableFileType(filePath, fileName);
     // If extension type is not valid localizeable file type, skip
     if (!fileType) {
-      continue;
+      return;
     }
 
-    const filePath = templatePath.concat("\\", fileName);
+    const fullPath = filePath.concat("\\", fileName);
 
     // Parse the template for localizeable strings
-    const fileData = openFile(filePath);
-    extractStringsFromFile(fileData, fileType, localizeableStrings, templatePath);
+    const fileData = openFile(fullPath);
+    extractStringsFromFile(fileData, fileType, localizeableStrings, filePath);
 
-    if (Object.keys(localizeableStrings).length > 0 && !templatePath.endsWith("\\")) {
+    if (Object.keys(localizeableStrings).length > 0 && !filePath.endsWith("\\")) {
       // Add LocProject entry
-      const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
+      const locProjectEntry = generateLocProjectEntry(filePath, fileName, fileType, resjonOutputPath, rootDirectory);
       locProjectOutput.push(locProjectEntry);
 
       // Write localizeable strings to file
-      writeToFileRESJSON(localizeableStrings, resjonOutputPath);
+      writeToFileRESJSON(localizeableStrings, fileName, fileType, resjonOutputPath);
     }
-  }
-}
+  });
+});
 
 generateLocProjectFile(locProjectOutput, directoryPath.concat("\\"));

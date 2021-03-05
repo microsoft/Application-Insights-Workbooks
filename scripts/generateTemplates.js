@@ -107,7 +107,7 @@ function getDirectoriesRecursive(srcpath) {
 
 /** Validates file type. Expected to be either workbook/cohort file, armtemplate, or gallery file. Returns null if file type is not supported */
 function getWorkbookFileType(path, fileName) {
-    if (path.indexOf("gallery") !== -1) {
+    if (path.indexOf("\\gallery") !== -1) {
         return WorkbookFileType.Gallery;
     }
     var a = fileName.split(".");
@@ -491,36 +491,36 @@ var cohortIndexEntries = {}; // Map for generating cohort index files
 var workbookIndexEntries = {}; // Map for generating workbook index files
 var rootDirectory;
 
-directories.forEach(templatePath => {
+directories.forEach(filePath => {
     if (!rootDirectory) {
-        rootDirectory = getRootFolder(templatePath);
+        rootDirectory = getRootFolder(filePath);
     }
 
-    const files = fs.readdirSync(templatePath);
+    const files = fs.readdirSync(filePath);
     if (!files || files.length === 0) {
         return;
     }
 
     files.forEach(fileName => {
-        const fileType = getWorkbookFileType(templatePath, fileName);
+        const fileType = getWorkbookFileType(filePath, fileName);
         // If file type is not valid, skip
         if (!fileType) {
             return;
         }
-        const filePath = templatePath.concat("\\", fileName);
+        const fullPath = filePath.concat("\\", fileName);
 
         // Parse the JSON file
-        const fileData = openAndParseJSONFile(filePath);
+        const fileData = openAndParseJSONFile(fullPath);
 
         switch (fileType) {
             case WorkbookFileType.ARMTemplate:
-                processARMTemplateFile(templatePath, rootDirectory, fileName, fileData, languages);
+                processARMTemplateFile(filePath, rootDirectory, fileName, fileData, languages);
                 break;
             case WorkbookFileType.Gallery:
-                processGalleryFile(templatePath, rootDirectory, fileName, fileData);
+                processGalleryFile(filePath, rootDirectory, fileName, fileData);
                 break;
             default:
-                processTemplateFile(fileData, cohortIndexEntries, workbookIndexEntries, templatePath, rootDirectory, languages);
+                processTemplateFile(fileData, cohortIndexEntries, workbookIndexEntries, filePath, rootDirectory, languages);
         }
 
     });
