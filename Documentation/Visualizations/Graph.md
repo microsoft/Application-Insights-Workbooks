@@ -63,10 +63,20 @@ This is how the graph will look like in read mode:
 | `Node Id` | Selects a column that provides the unique id of nodes on the graph. Value of the column can be string or a number |
 | `Source Id` | Selects a column that provides the ids of source nodes for edges on the graph. Values must map to a value in the _Node Id_ column |
 | `Target Id` | Selects a column that provides the ids of target nodes for edges on the graph. Values must map to a value in the _Node Id_ column |
+| `Initial Layout` | This field allows you to specify whether your initial layout should be Force Directed, Flow Horizontal or Flow Vertical |
+| `View graph orientation toggle` | This checkbox allows you to specify whether you want the toggle for graph orientation visible to switch between Force Directed, Flow Horizontal and Flow Vertical |
 | `Edge Label` | Selects a column that provides edge labels on the graph |
 | `Edge Size` | Selects a column that provides the metric on which the edge widths will be based on |
 | `Node Size` | Selects a column that provides the metric on which the node areas will be based on |
 | `Coloring Type` | Used to choose the node coloring scheme |
+
+## Graph Orientation Settings
+Graph authors can specify the layout setting for the graph. The purpose of this setting is to allow graph authors to specify how their graph data is visualized. There are currently three layout settings: `Force Directed`, `Flow Horizontal`, `Flow Vertical`. `Force Directed` is the most generic layout where nodes are positioned in a way that allows for few crossing edges. `Flow Horizontal` and `Flow Vertical` feature allows authors to better visualize a hierarchical, directed relationship between each node.
+
+Here is a sample graph in Flow Horizontal layout
+
+![Image showing a flow horizontal graph](../Images/Graph-Visualization-Flow-Horizontal.png)
+
 
 ## Node Coloring Types
 
@@ -74,6 +84,7 @@ This is how the graph will look like in read mode:
 |:------------- |:-------------|
 | `None` | All nodes have the same color |
 | `Categorical` | Nodes are assigned colors based on the value or category from a column in the result set. In the example above, the coloring is based on the column _Kind_ of the result set. Supported palettes are `Default`, `Pastel` and `Cool tone`  |
+| `Heatmap` | In this type, color is based on the value of the node and selected color palette, with scale determined from the column values |
 | `Thresholds` | In this type, node colors are set by threshold rules (e.g. _CPU > 90%  => Red, 60% > CPU > 90% => Yellow, CPU < 60% => Green_). The value property in Thresholds can refer to columns and parameters. Refer to columns with `["columnName"]`. Refer to parameters with `{paramName}`. Both column name and parameter name are case sensitive.|
 | `Field Based` | In this type, a column provides specific RGB values to use for the node. Provides the most flexibility but usually requires more work to enable.  |
 
