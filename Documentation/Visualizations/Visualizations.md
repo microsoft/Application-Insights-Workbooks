@@ -16,6 +16,8 @@ Workbooks support these kinds of visual components:
 
 Use the links to learn more about each type of visualization.
 
+Note: Each visualization and data source may have its own [limits](../DataSources/Limits.md).
+
 ## Examples
 ### Text Step
 [![Image showing a text visualization in workbooks](../Images/TextExample.png)](Text.md)
