@@ -21,6 +21,8 @@ Deprecated (Previously available):
 
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
 
+Note: Each visualization and data source may have its own [limits](Limits.md).
+
 ## Logs
 Workbooks support querying logs data using the [Kusto Query Language (KQL)](https://docs.microsoft.com/en-us/azure/kusto/query/). Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
 
