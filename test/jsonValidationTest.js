@@ -123,6 +123,8 @@ describe('Validating Workbooks...', () => {
                     // "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
                     validateSettingsForArmTemplate(settings, file);
                     validateWorkbookFilePathLength(file);
+                    validateNoResourceIds(settings, file);
+                    validateNoSubscriptionIdInTemplate(settings, file);
                 });
             done();
         });
@@ -304,12 +306,23 @@ function validateSettingsForArmTemplate(settings, file) {
 }
 
 function validateNoResourceIds(settings, file) {
-    // there's probably a better way but this is simplest. make sure there are no strings like '/subscriptions/[guid]` in the whole content
+    // make sure there are no strings like '/subscriptions/[guid]` in the whole content
     // not parsing individual steps/etc at this time
     let str = JSON.stringify(settings);
     let regexp = /(\/subscriptions\/[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi;
     while ((matches = regexp.exec(str)) !== null) {
         assert.fail(file + ": Found probably hardcoded resource Id '" + matches[0] + "'");
+    }
+}
+
+function validateNoSubscriptionIdInTemplate(settings, file) {
+    // make sure there are no strings like "subscriptions": "[guid]" in the whole content. this is used on arm template files
+    // where it is more common to have a thing like this for certain endpoints.
+    // not parsing individual steps/etc at this time
+    let str = JSON.stringify(settings);
+    let regexp = /(\"subscription[s]*\"\s*:\s*[\[]*\s*"[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi;
+    while ((matches = regexp.exec(str)) !== null) {
+        assert.fail(file + ": Found probably hardcoded subscription Id '" + matches[0] + "'");
     }
 }
 
