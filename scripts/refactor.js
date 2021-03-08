@@ -12,8 +12,8 @@ for (var d in directories) {
             var jsonParsedData = JSON.parse(data);
             var newData = {};
             // TODO, use the below schema instead
-            //newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
-            newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/users/erlin/newGalleryDefinition/schema/gallery.json";
+            newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
+           // newData["$schema"] = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/users/erlin/newGalleryDefinition/schema/gallery.json";
             newData["version"] = "TemplateGallery/1.0";
             const keys = Object.keys(jsonParsedData);
             var categories = [];
