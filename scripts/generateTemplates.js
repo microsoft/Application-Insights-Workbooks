@@ -7,7 +7,9 @@ const ArrayLocIdentifier = {
     "items": "name",
     "parameters": "id",
     "labelSettings": "columnId",
-    "links": "id"
+    "links": "id",
+    "categories": "id", // for gallery
+    "templates": "id" // for gallery
 };
 
 const LocalizeableFileExt = [
@@ -179,7 +181,7 @@ function getRootFolder(dir) {
 function processTemplateFile(fileData, cohortIndexEntries, workbookIndexEntries, templatePath, rootDirectory, languages) {
     try {
         // Location of translated RESJSON outputted by the localization build
-        const translatedRESJSONPath = getClonedLocFilePath(templatePath, rootDirectory);
+        const translatedRESJSONPath = getClonedLocFilePath(templatePath, rootDirectory, WorkbookFileType.Template);
 
         const packageOutputPath = getPackageOutputPath(templatePath, rootDirectory, cohortIndexEntries, workbookIndexEntries);
         if (!templatePath.endsWith("\\")) {
@@ -226,6 +228,7 @@ function processARMTemplateFile(templatePath, rootDirectory, fileName, armTempla
 
 function processGalleryFile(galleryPath, rootDirectory, fileName, galleryData) {
     try {
+        // Assign file names
         if (galleryData && galleryData.categories) {
             galleryData.categories.forEach(category => {
                 category.templates.forEach(template => {
@@ -242,9 +245,28 @@ function processGalleryFile(galleryPath, rootDirectory, fileName, galleryData) {
         } else {
             path = path.replace("gallery\\.json", "Workbooks\\").concat(GalleryFilePrefix, fileName);
         }
+
+        // Location of translated RESJSON outputted by the localization build
+        const translatedRESJSONPath = getClonedLocFilePath(galleryPath, rootDirectory, WorkbookFileType.Gallery, fileName);
+        // Generate localized templates
         languages.forEach(lang => {
+            // Location of translated resjson
+            const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
+            // Location of package for translated gallery file
             const translatedResultPath = path.replace(LangOutputSpecifier, LanguagesMap[lang]);
-            writeTranslatedFile(galleryData, translatedResultPath);
+            if (lang === DefaultLang) {
+                writeTranslatedFile(galleryData, translatedResultPath);
+            } else {
+                if (fs.existsSync(localizedFilePath)) {
+                    // Do workbook string replacement here
+                    const jsonData = fs.readFileSync(localizedFilePath, Encoding);
+                    parseTemplateResult(jsonData, galleryData, translatedResultPath);
+                } else {
+                    // No loc file found, just push the workbook file as is in English
+                    logMessage("Did not find localized file in: " + localizedFilePath);
+                    writeTranslatedFile(galleryData, translatedResultPath);
+                }
+            }
         });
     } catch (e) {
         logError("Failed to process gallery file: " + galleryPath + "Error: " + e, true);
@@ -379,25 +401,37 @@ function assignValueToObject(obj, keys, value) {
 };
 
 /** Returns matching localized file location */
-function getClonedLocFilePath(templatePath, rootDirectory) {
+function getClonedLocFilePath(templatePath, rootDirectory, fileType, fileName) {
     var result = rootDirectory;
     if (rootDirectory.endsWith("\\")) {
         result = result.substring(0, result.length - 1);
     }
     result = result.concat("\\out\\loc\\", LangOutputSpecifier, "\\output\\loc")
     var removedIndex = templatePath.replace(rootDirectory, "");
+    if (!result.endsWith("\\")) {
+        result = result.concat("\\");
+    }
     if (removedIndex.startsWith("\\")) {
         removedIndex = removedIndex.substring(1);
     }
 
-    if (removedIndex.startsWith("Workbooks")) {
-        removedIndex = removedIndex.replace("Workbooks", "");
-    } else if (removedIndex.startsWith("Cohorts")) {
-        removedIndex = removedIndex.replace("Cohorts", "");
+    if (fileType === WorkbookFileType.Gallery) {
+        if (removedIndex.endsWith("\\")) {
+            removedIndex = removedIndex.concat(fileName.substring(0, fileName.lastIndexOf('.')));
+        } else {
+            removedIndex = removedIndex.concat("\\", fileName.substring(0, fileName.lastIndexOf('.')));
+        }
+    } else {
+        if (removedIndex.startsWith("Workbooks\\")) {
+            removedIndex = removedIndex.replace("Workbooks\\", "");
+        } else if (removedIndex.startsWith("Cohorts\\")) {
+            removedIndex = removedIndex.replace("Cohorts\\", "");
+        }
     }
     return result.concat(removedIndex, RESJSONFileExtension);
 }
 
+/** Assign file name field to all templates, since it is not required for authors to specify this */
 function assignFileName(templatePath, rootDirectory, templateData) {
     var removedIndex = templatePath.replace(rootDirectory, "");
     if (removedIndex.startsWith("\\")) {
