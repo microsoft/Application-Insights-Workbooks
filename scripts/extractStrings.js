@@ -433,15 +433,14 @@ for (var d in directories) {
     // Parse the template for localizeable strings
     const fileData = openFile(filePath);
     extractStringsFromFile(fileData, fileType, localizeableStrings, templatePath);
+  }
+  if (Object.keys(localizeableStrings).length > 0 && !templatePath.endsWith("\\")) {
+    // Add LocProject entry
+    const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
+    locProjectOutput.push(locProjectEntry);
 
-    if (Object.keys(localizeableStrings).length > 0 && !templatePath.endsWith("\\")) {
-      // Add LocProject entry
-      const locProjectEntry = generateLocProjectEntry(templatePath, resjonOutputPath, rootDirectory);
-      locProjectOutput.push(locProjectEntry);
-
-      // Write localizeable strings to file
-      writeToFileRESJSON(localizeableStrings, resjonOutputPath);
-    }
+    // Write localizeable strings to file
+    writeToFileRESJSON(localizeableStrings, resjonOutputPath);
   }
 }
 
