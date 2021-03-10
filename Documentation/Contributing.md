@@ -102,7 +102,6 @@ There are three ways of creating a template.
     "categories": [
         {
             "id": "MyCategory",
-            "description": "Description of the category",
             "name": "My category",
             "templates": [
                 {
@@ -127,8 +126,6 @@ There are three ways of creating a template.
     * `id`: The ID for the category. This field will not be localized
 
     * `name`: The name of the category. This field will be localized
-
-    * `description`: Description for the category. This field will be localized
     
     * `templates`: A list of templates for the category. *Note*: The order of the templates in this list determines the order of the templates that will appear in this category
 
@@ -264,7 +261,6 @@ Here is an example:
 	"categories": [
 		{
 			"id": "MyCategory",
-			"description": "Description of the category",
 			"name": "My category",
 			"templates": [
 				{

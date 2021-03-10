@@ -40,6 +40,7 @@ for (var d in directories) {
             categories.sort((a, b) => (a.order > b.order) ? 1 : -1);
             categories.forEach(c => {
                 c["order"] = undefined;
+                c["description"] = undefined;
             });
             newData["categories"] = categories;
 

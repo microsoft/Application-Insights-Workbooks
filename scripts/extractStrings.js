@@ -241,14 +241,9 @@ function endsWithLocIdentifier(key) {
 function getGalleryStrings(object, outputMap) {
   if (object && object.categories) {
     object.categories.forEach(c => {
-      var key = "categories";
-      key = key.concat(".", removeNonAplhaNumeric(c.id));
+      var key = "categories.".concat(removeNonAplhaNumeric(c.id));
 
       outputMap[key.concat(".name")] = c.name; // category name
-
-      if (c.description && c.description !== "") {
-        outputMap[key.concat(".description")] = c.description; // category description
-      }
 
       c.templates.forEach(t => {
         var templateKey = key.concat(".templates.", removeNonAplhaNumeric(t.id));
