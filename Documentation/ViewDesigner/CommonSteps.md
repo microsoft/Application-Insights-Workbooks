@@ -4,7 +4,7 @@
 * [Quick Start](#QuickStart)
 * [Enabling Time Range Filter](#Filter)
 * [Updating Queries with the TimeRange Parameter](#Update)
-* [Enabling Auto-Refresh for workbooks](#AutoRefresh)
+* [Enabling Auto-Refresh for Workbooks](#AutoRefresh)
 * [Including a List](#List)
 * [Enabling Sparklines](#Sparkline)
 * [Advanced Cell Settings](#Advanced)
@@ -64,11 +64,11 @@ Within your query add this line: _| where TimeGenerated {TimeRange}_
 **Updated:** _search * **| where TimeGenerated {TimeRange}** | summarize count() by Type_
 
 ## Auto-Refresh Workbooks <a id="AutoRefresh"></a>
-Clicking on Auto-Refresh button opens a list of intervals to let the user pick up the interval. The workbook will keep refreshing after the selected time interval. 
-* Auto-Refresh only refreshes when the workbook is in read mode. If a user sets an interval of say 5 minutes and after 4 minutes switches to edit mode then there is no refreshing when the user is still in edit mode. But if the user comes back to read mode, the interval of 5 minutes resets and the workbook will be refreshed after 5 minutes. 
-* Clicking on the Refresh button on Read mode also reset the interval. Say a user sets the interval to 5 minutes and after 3 minutes, the user clicks on the refresh button to manually refresh the workbook, then the Auto-refresh interval resets and the workbook will be auto refreshed after 5 minutes. 
-* This setting is not saved with Workbook. Every time a user opens a workbook, the Auto-refresh is Off initially and needs to be set again.
-* Switching workbooks, going out of gallery will clear the Auto refresh interval.
+Clicking on Auto-Refresh button opens a list of intervals to let the user pick up the interval. The Workbook will keep refreshing after the selected time interval. 
+* Auto-Refresh only refreshes when the Workbook is in read mode. If a user sets an interval of say 5 minutes and after 4 minutes switches to edit mode then there is no refreshing when the user is still in edit mode. But if the user comes back to read mode, the interval of 5 minutes resets and the Workbook will be refreshed after 5 minutes. 
+* Clicking on the Refresh button on Read mode also reset the interval. Say a user sets the interval to 5 minutes and after 3 minutes, the user clicks on the refresh button to manually refresh the Workbook, then the Auto-refresh interval resets and the Workbook will be auto refreshed after 5 minutes. 
+* This setting is not saved with Workbook. Every time a user opens a Workbook, the Auto-refresh is Off initially and needs to be set again.
+* Switching Workbooks, going out of gallery will clear the Auto refresh interval.
 
 
 
