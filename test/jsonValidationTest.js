@@ -27,6 +27,9 @@ const LocKeys = [
 ];
 
 
+const GallerySchema = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
+const GalleryVersion = "TemplateGallery/1.0";
+
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
 
@@ -159,7 +162,7 @@ describe('Validating Workbooks...', () => {
 describe('Validating Gallery files...', () => {
     const galleryPath = './gallery';
 
-    it('Verifying valid gallery files', function (done) {
+    it('Verifying gallery files', function (done) {
         browseDirectory(galleryPath, (error, results) => {
             if (error) throw error;
 
@@ -168,11 +171,12 @@ describe('Validating Gallery files...', () => {
             const schemaJSON = fs.readFileSync(schemaFile, 'utf8');
             const schema = TryParseJson(schemaJSON);
 
-            validateGalleryFilesAllJSON(results);
+            validateGalleryFileNames(results);
 
             results.forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateGallerySchema(file, settings, validator, schema);
+                    validateGalleryVersionAndSchemaFields(file, settings);
                     validateNoDuplicateCategories(file, settings);
                     validateNoDuplicateTemplates(file, settings);
                     validateTemplateIds(file, settings);
@@ -413,11 +417,16 @@ function checkProperty(obj, name, file) {
     }
 }
 
-function validateGalleryFilesAllJSON(files) {
-    const jsonFiltered = files.filter(file => file.endsWith('.json'));
-    if (files.length !== jsonFiltered.length) {
-        assert.fail("Gallery files contain at least one non JSON file. Gallery files in gallery folder must be JSON");
-    }
+function validateGalleryFileNames(files) {
+    files.forEach(file => {
+        if (!file.endsWith('.json')) {
+            assert.fail(file + ": Gallery file should be a JSON file");
+        }
+
+        if (file.indexOf("-") === -1) {
+            assert.fail(file + ": Gallery file should follow the naming convension {workbookType}-{resourceType}");
+        }
+    });
 }
 
 function validateGallerySchema(file, settings, validator, schema) {
@@ -431,6 +440,17 @@ function validateNoDuplicateCategories(file, settings) {
     const areUnique = areArrayItemsUnique(settings["categories"], "id");
     if (!areUnique) {
         assert.fail(file + " : Gallery file contains categories with non-unique ids");
+    }
+}
+
+function validateGalleryVersionAndSchemaFields(file, settings) {
+    const isCorrectVersion = settings["version"] === GalleryVersion;
+    if (!isCorrectVersion) {
+        assert.fail(file + " : Gallery file does not contain correct version. Version should be set to: " + GalleryVersion);
+    }
+    const isCorrectSchema = settings["$schema"] === GallerySchema;
+    if (!isCorrectSchema) {
+        assert.fail(file + " : Gallery file does not contain correct $schema. Schema should be set to: " + GallerySchema);
     }
 }
 
