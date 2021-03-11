@@ -145,9 +145,18 @@ There are three ways of creating a template.
 
 For more details on the schema of the gallery file, view the [Gallery JSON schema](./schema/gallery.json).
 
-## How to create a gallery file
+## How to create and name a gallery file
 Create a gallery file with the above schema under the `\gallery` folder.
- // TODO about naming convention
+ 
+ The gallery file name must follow the following convention:
+
+ `{type}`-`{resourceType}`.json
+
+ `{type}` is the Workbook type like 'tsg', 'performance', 'insights', 'workbook', etc.
+
+`{resourceType}` is the ARM resource type where slashes in the resourceType are replaced with `'-'`.
+
+For example, if your workbook type is 'workbook' and your ARM resource type is 'microsoft-insights/components', then your gallery file should be named `workbook-microsoft.insights-components.json`.
 
 ### Gallery Restrictions
 - A template can be associated with one or more galleries
