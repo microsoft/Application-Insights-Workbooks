@@ -7,6 +7,6 @@ Clicking on Auto-Refresh button opens a list of intervals to let the user pick u
 
 
 
-![Auto refresh](./ViewDesigner/Examples/AutoRefresh.PNG)
+![Auto refresh](./Images/AutoRefresh.PNG)
 
-![Auto refresh with interval set](./ViewDesigner/Examples/AutoRefreshWithIntervalSet.PNG)
+![Auto refresh with interval set](./Images/AutoRefreshWithIntervalSet.PNG)
