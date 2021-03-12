@@ -327,7 +327,7 @@ function getLocOutputPath(templatePath, fileName, fileType, extensionType, root)
 function writeToFileRESJSON(data, fileName, fileType, outputPath) {
   var fullPath = outputPath;
   if (fileType === LocalizableFileType.Gallery) {
-    fullPath = fullPath.concat(fileName.replace(".json", ""));
+    fullPath = fullPath.concat("\\", fileName.replace(".json", ""));
   }
 
   fullpath = fullPath.concat(ResJsonStringFileExtension);
