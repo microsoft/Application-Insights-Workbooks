@@ -1,6 +1,4 @@
 # Private Workbooks Deprecation
-Private workbooks will be deprecated by June 30 2021. Do 'Save' or 'Save As' to make them Shared Workbooks and continue to use after June 30 2021. Removing private workbooks simplifies a lot of confusing experiences and support issues that customers are having with private workbooks compared to full Azure Resource based Workbooks.
-
 Private Workbooks are stored as a different Azure resource type than Shared Workbooks. We are merging these different Azure resource types and making one single standard type. This will allow it to take advantage of all the existing and new functionality available in Azure Workbooks. For example,  
 
 * Converted Private Workbooks can be queried via Azure Resource Graph (ARG) 
@@ -11,6 +9,13 @@ Private Workbooks are stored as a different Azure resource type than Shared Work
 * Converted Private Workbooks can support ARM templates  
 * Converted Private Workbooks can support "Bring your own storage" (BYOS) feature 
 * Converted Private Workbooks can be saved in region of your choice 
+
+# How does this impact me?
+Private workbooks will be availbable in the Azure Portal until **June 30, 2021.**
+
+To continue using your Private Workbooks after June 30, 2021 **you will need to create a copy** before June 30, 2021 by using 'Save' or 'Save As' to make them Shared Workbooks. This will require you to select a subscription, resource group, and region where you have write access. 
+
+This will not change where you find your workbook or the content of your workbook. Any new workbook you create hereafter will be Standard, Shared Workbooks.   
 
 # How should you proceed?
 ### Identify Private Workbooks
