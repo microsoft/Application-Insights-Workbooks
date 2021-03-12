@@ -301,16 +301,19 @@ function checkProperty(obj, name, file) {
 }
 
 function validateGalleryFileNames(files) {
+    const galleryFileNameRegex = new RegExp("[a-z\\-\\s]+.json");
     files.forEach(file => {
-        if (!file.endsWith('.json')) {
-            assert.fail(file + ": Gallery file should be a JSON file");
+        const fileName = file.split("/").pop();
+        const matchesRegex = galleryFileNameRegex.test(fileName);
+        if (!matchesRegex) {
+            assert.fail(file + ": Gallery file should be a JSON file, and should be named the ARM resource type where '\\' are replaced with '-'");
         }
 
         const fileSubDir = file.replace("./gallery/", "");
         const subDirCount = fileSubDir.split("/").length - 1;
         // Ensures that there is only one sub-directory for workbookType 
         if (subDirCount !== 1) {
-            assert.fail(file + ": Gallery file should follow the naming convension /gallery/{workbookType}/{resourceType}");
+            assert.fail(file + ": Gallery file should follow the naming convension /gallery/{workbookType}/{resourceType}.json");
         }
     });
 }
