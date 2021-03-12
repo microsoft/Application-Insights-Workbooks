@@ -29,8 +29,13 @@ Root
 Root
  |
  |- gallery folder
-       |- galleryA.json
-       |- galleryB.json     
+    | Workbook type A
+        |- galleryA.json
+        |- galleryB.json 
+    | Workbook type B
+        |- galleryA.json
+        |- galleryB.json
+        
 ...       
 ```
 Each template can live in one or more galleries. The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
