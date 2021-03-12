@@ -146,17 +146,11 @@ There are three ways of creating a template.
 For more details on the schema of the gallery file, view the [Gallery JSON schema](./schema/gallery.json).
 
 ## How to create and name a gallery file
-Create a gallery file with the above schema under the `\gallery` folder.
- 
- The gallery file name must follow the following convention:
+Gallery files are created under the `\gallery` folder. A gallery subfolder should be created for each Workbook type. The gallery file should live under the corresponding Workbook type subfolder. The gallery file name is the ARM resource type where slashes in the resource type are replaced with `'-'`.
 
- `{type}`-`{resourceType}`.json
+For example, if your workbook type is 'workbook' and your ARM resource type is 'microsoft-insights/components', then your gallery file should be under the `workbook` subfolder with gallery file named `microsoft.insights-components.json`.
 
- `{type}` is the Workbook type like 'tsg', 'performance', 'insights', 'workbook', etc.
-
-`{resourceType}` is the ARM resource type where slashes in the resourceType are replaced with `'-'`.
-
-For example, if your workbook type is 'workbook' and your ARM resource type is 'microsoft-insights/components', then your gallery file should be named `workbook-microsoft.insights-components.json`.
+Note: Workbook types are known types, are not arbitrary, and controlled by the Workbooks team. 
 
 ### Gallery Restrictions
 - A template can be associated with one or more galleries
@@ -253,10 +247,12 @@ If you are already running something like Apache or IIS locally, you don't need 
 # How to publish your changes
 
 1. After you are done, push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
-2. In github, create a pull request for your new branch to master. Again, use useful text for the name of your PR and in the PR, describe what you are changing, what your workbook does, add a screenshot if possible.
-3. A validation build will take place to make sure your workbook is valid json, doesn't have hardcoded resource ids, etc.
-4. If your build passes, and someone else with write access to the repo approves your PR, complete your PR
-5. Upon the next [deployment](Deployment.md), your template will appear in the portal
+2. Ensure that if you are adding a new template, it has a corresponding entry in the gallery files.
+3. If you are adding a new template and/or gallery file, and you would like to take ownership of the files, add an entry for your team in `CODEOWNERS`. CODEOWNERS entries should be teams, not individuals.
+4. In Github, create a pull request for your new branch to master. Again, use useful text for the name of your PR and in the PR, describe what you are changing, what your workbook does, add a screenshot if possible.
+5. A validation build will take place to make sure your workbook is valid json, doesn't have hardcoded resource ids, etc.
+6. If your build passes, and someone else with write access to the repo approves your PR, complete your PR
+7. Upon the next [deployment](Deployment.md), your template will appear in the portal
 
 # Testing Preview Workbook Templates
 
