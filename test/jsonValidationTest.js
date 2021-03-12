@@ -193,8 +193,7 @@ function validateSettingsForArmTemplate(settings, file) {
 function validateNoImplicitGalleryFiles(files) {
     files.forEach(file => {
         if (file.endsWith("categoryResources.json") || file.endsWith("settings.json")) {
-            // TODO: Remove this once I remove all old gallery files
-          //  assert.fail(file + ": Galleries are no longer being generated implicitly through categoryResources.json and settings.json files. Please review Contributing.md for latest guidance.");
+          assert.fail(file + ": Galleries are no longer being generated implicitly through categoryResources.json and settings.json files. Please review Contributing.md for latest guidance.");
         }
     });
 }
