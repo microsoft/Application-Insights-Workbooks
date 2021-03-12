@@ -26,7 +26,7 @@ This will not change where you find your workbook or the content of your workboo
 # How should you proceed?
 ### Identify Private Workbooks
 
-One of the easiest ways is to identify a private workbook and shared workbook by their icon on the gallery view. The private workbook will have a blue icon with a person figure in the corner. The shared workbook is a similar blue icon without a person figure.
+You can identify private workbooks and shared workbooks by their icon in the gallery view.
 
 ![Private vs Shared Workbook](../Images/PrivateVsSharedWB.png)
 
