@@ -82,7 +82,8 @@ function getCohortDirectories(rootDirectory) {
 }
 
 function getGalleryDirectory(rootDirectory) {
-  return rootDirectory.concat(GalleryFolder);
+  const gallerySubDir =  rootDirectory.concat(GalleryFolder);
+  return getDirectoriesRecursive(gallerySubDir);
 }
 
 function flatten(lists) {
@@ -125,7 +126,7 @@ function generateOutputPath(dir) {
 
 /** Validates file type as localizeable. Expected to be either workbook/cohort file or gallery type. Returns null if file is not localizeable */
 function getLocalizeableFileType(path, fileName) {
-  if (path.indexOf("\\gallery") !== -1) {
+  if (path.indexOf("\\gallery") !== -1 && fileName.endsWith(".json")) {
     return LocalizableFileType.Gallery;
   }
 

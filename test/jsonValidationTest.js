@@ -36,47 +36,10 @@ describe('Validating Cohorts...', () => {
     it('Verifying .cohort files', function (done) {
         let failedList = [];
         browseDirectory(cohortPath, (error, results) => {
+            validateNoImplicitGalleryFiles(results);
             results.filter(file => file.endsWith('.cohort'))
                 .forEach(file => {
                     validateJsonStringAndGetObject(file)
-                });
-
-            done();
-        });
-    });
-
-    it('Verifying cohort settings files', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('settings.json'))
-                .forEach(file => {
-                    let settings = validateJsonStringAndGetObject(file);
-                    validateSettingsForCohort(settings, file);
-                });
-
-            done();
-        });
-    });
-
-    it('Verifying cohort category files', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('categoryResources.json'))
-                .forEach(file => {
-                    let category = validateJsonStringAndGetObject(file);
-                    validateCategory(category, file);
-                });
-
-            done();
-        });
-    });
-
-    it('Verifying cohort category or settings json exists', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('.cohort'))
-                .forEach(folder => {
-                    validateJsonExistForWorkbook(cohortPath, results, folder.substr(cohortPath.length+1))
                 });
 
             done();
@@ -89,6 +52,8 @@ describe('Validating Workbooks...', () => {
 
     it('Verifying .workbook files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
+
+            validateNoImplicitGalleryFiles(results);
             results.filter(file => file.endsWith('.workbook'))
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
@@ -99,20 +64,6 @@ describe('Validating Workbooks...', () => {
                     validateWorkbookFilePathLength(file);
                 });
 
-            done();
-        });
-    });
-
-    it('Verifying workbook settings.json files', function (done) {
-        browseDirectory(workbookPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('settings.json'))
-                .forEach(file => {
-                    let settings = validateJsonStringAndGetObject(file)
-                    validateSettingsForWorkbook(settings, file);
-                    // verify there is a workbook file in this directory too
-                    validateWorkbookExistForSettings(file);
-                });
             done();
         });
     });
@@ -131,31 +82,6 @@ describe('Validating Workbooks...', () => {
                 });
             done();
         });
-    });
-
-    it('Verifying workbook category json files', function (done) {
-        browseDirectory(workbookPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('categoryResources.json'))
-                .forEach(file => {
-                    let category = validateJsonStringAndGetObject(file);
-                    validateCategory(category, file);
-                });
-
-            done();
-        }, true, workbookPath);
-    });
-
-    it('Verifying workbook category or settings json exists', function (done) {
-        browseDirectory(workbookPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('.workbook'))
-                .forEach(folder => {
-                    validateJsonExistForWorkbook(workbookPath, results, folder.substr(workbookPath.length+1))
-                });
-
-            done();
-        }, true, workbookPath);
     });
 });
 
@@ -187,42 +113,6 @@ describe('Validating Gallery files...', () => {
 
 
 });
-
-function validateJsonExistForWorkbook(rootPath, results, file) {
-    let paths = getProgressivePaths(rootPath, file);
-    paths.forEach(folder => {
-        let result = results.filter(s => {
-            return s.indexOf(folder + "/categoryResources.json") > -1 || s.indexOf(folder + "/settings.json") > -1;
-        });
-        if (result.length === 0) {
-            assert.fail("categoryResources.json or settings.json doesn't exist in folder '" + folder + "'")
-        }
-    });
-}
-
-function validateWorkbookExistForSettings(file) {
-    let folder = path.dirname(file);
-    fs.readdir(folder, (err, list) => {
-        let workbooks = list.filter(s => s.endsWith(".workbook"));
-        if (workbooks.length == 0 ) {
-            assert.fail("settings.json file exists with no corresponding .workbook in folder '" + folder + "'")
-        }
-    });
-}
-
-function getProgressivePaths(rootPath, file) {
-    let paths = file.split("/").filter(folder => folder !== "." && folder !== ".." && folder.indexOf(".workbook") === -1 && folder.indexOf(".cohort") === -1);
-    let files = [];
-    if (paths && paths.length > 0) {
-        var runningPath = rootPath + "/" + paths[0];
-        files[0] = runningPath;
-        for (let i = 1; i < paths.length; i++) {
-            runningPath += "/" + paths[i];
-            files[i] = runningPath;
-        }
-    }
-    return files;
-}
 
 function validateWorkbookFilePathLength(file) {
     // validate the length of the category+file name. this is hard to do directly because of galleries and the specifics
@@ -294,19 +184,19 @@ function validateJsonStringAndGetObject(file) {
     return obj;
 }
 
-function validateSettingsForCohort(settings, file) {
-    ["$schema", "name", "author"].forEach( field => checkProperty(settings, field, file) );
-}
-
-function validateSettingsForWorkbook(settings, file) {
-    ["$schema", "name", "author", "galleries"].forEach( field => checkProperty(settings, field, file) );
-    if (!Array.isArray(settings.galleries)) {
-        assert.fail("The galleries should be an array with '" + file + "'");
-    }
-}
-
 function validateSettingsForArmTemplate(settings, file) {
     ["$schema"].forEach( field => checkProperty(settings, field, file) );
+}
+
+// Implicit gallery files (categoryResources.json and settings.json) are switched to using explicit gallery files.
+// Check to make sure no one is trying to make galleries this way anymore
+function validateNoImplicitGalleryFiles(files) {
+    files.forEach(file => {
+        if (file.endsWith("categoryResources.json") || file.endsWith("settings.json")) {
+            // TODO: Remove this once I remove all old gallery files
+          //  assert.fail(file + ": Galleries are no longer being generated implicitly through categoryResources.json and settings.json files. Please review Contributing.md for latest guidance.");
+        }
+    });
 }
 
 function validateNoResourceIds(settings, file) {
@@ -401,12 +291,6 @@ function validateSingleWorkbookFile(settings, file) {
     });
 }
 
-function validateCategory(category, file) {
-    checkProperty(category, "$schema", file);
-    checkProperty(category, 'en-us', file);
-    ["name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
-}
-
 function checkProperty(obj, name, file) {
     if (!obj) {
         assert.fail("Can't check a property. The object is undefined.");
@@ -423,8 +307,11 @@ function validateGalleryFileNames(files) {
             assert.fail(file + ": Gallery file should be a JSON file");
         }
 
-        if (file.indexOf("-") === -1) {
-            assert.fail(file + ": Gallery file should follow the naming convension {workbookType}-{resourceType}");
+        const fileSubDir = file.replace("./gallery/", "");
+        const subDirCount = fileSubDir.split("/").length - 1;
+        // Ensures that there is only one sub-directory for workbookType 
+        if (subDirCount !== 1) {
+            assert.fail(file + ": Gallery file should follow the naming convension /gallery/{workbookType}/{resourceType}");
         }
     });
 }
