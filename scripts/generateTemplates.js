@@ -83,7 +83,8 @@ function getCohortDirectories(rootDirectory) {
 }
 
 function getGalleryDirectory(rootDirectory) {
-    return rootDirectory.concat(GalleryFolder);
+    const gallerySubDir =  rootDirectory.concat(GalleryFolder);
+    return getDirectoriesRecursive(gallerySubDir);
 }
 
 function flatten(lists) {
@@ -109,7 +110,7 @@ function getDirectoriesRecursive(srcpath) {
 
 /** Validates file type. Expected to be either workbook/cohort file, armtemplate, or gallery file. Returns null if file type is not supported */
 function getWorkbookFileType(path, fileName) {
-    if (path.indexOf("\\gallery") !== -1) {
+    if (path.indexOf("\\gallery") !== -1 && fileName.endsWith(".json")) {
         return WorkbookFileType.Gallery;
     }
     var a = fileName.split(".");
@@ -240,11 +241,16 @@ function processGalleryFile(galleryPath, rootDirectory, fileName, galleryData) {
         }
 
         var path = getPackageOutputPath(galleryPath, rootDirectory);
-        if (fileName === "Cohorts-microsoft.insights-components.json") {
-            path = path.replace("gallery\\.json", "Cohorts\\").concat(GalleryFilePrefix, fileName);
+        if (galleryPath.endsWith("Cohorts")) {
+            path = path.replace("gallery\\", "Cohorts\\");
         } else {
-            path = path.replace("gallery\\.json", "Workbooks\\").concat(GalleryFilePrefix, fileName);
+            path = path.replace("gallery\\", "Workbooks\\");
         }
+
+        const p = path.substr(0, path.lastIndexOf('\\'));
+        const subDir = path.split("\\").pop();
+        const workbookType = subDir.substr(0, subDir.lastIndexOf('.'));
+        path = p.concat("\\", GalleryFilePrefix, workbookType, "-", fileName);
 
         // Location of translated RESJSON outputted by the localization build
         const translatedRESJSONPath = getClonedLocFilePath(galleryPath, rootDirectory, WorkbookFileType.Gallery, fileName);

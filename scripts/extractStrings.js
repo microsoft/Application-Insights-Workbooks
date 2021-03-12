@@ -113,7 +113,7 @@ function generateOutputPath(dir) {
   if (dir.includes(CohortsTemplateFolder)) {
     outputPath = dir.replace(CohortsTemplateFolder, RESJSONOutputFolder);
   } else if (dir.includes(GalleryFolder)) {
-    outputPath = dir.replace(GalleryFolder, RESJSONOutputFolder.concat("gallery\\"));
+    outputPath = dir.replace(GalleryFolder, RESJSONOutputFolder.concat("gallery"));
   } else {
     outputPath = dir.replace(WorkbookTemplateFolder, RESJSONOutputFolder);
   }
@@ -306,14 +306,14 @@ function getDirectoryFromPath(path) {
 function generateLocProjectEntry(templatePath, fileName, fileType, resjsonOutputPath, rootDirectory) {
   // For explanations on what each field does, see doc here: https://aka.ms/cdpxloc
   return {
-    "SourceFile": resjsonOutputPath.concat((fileType === LocalizableFileType.Gallery ? fileName.replace(".json", "") : ""), ResJsonStringFileExtension),
+    "SourceFile": resjsonOutputPath.concat((fileType === LocalizableFileType.Gallery ? "\\".concat(fileName.replace(".json", "")) : ""), ResJsonStringFileExtension),
     "LclFile": getLocOutputPath(templatePath, fileName, fileType, LCLStringFileExtension, rootDirectory),
     "CopyOption": "LangIDOnPath",
     "OutputPath": getLocOutputPath(templatePath, fileName, fileType, ResJsonStringFileExtension, rootDirectory)
   };
 }
 
-/** Return output path like root/{Lang}/{TemplateType}/templatePath for templates, root/{Lang}/gallery/galleryName for gallery*/ 
+/** Return output path like root/{Lang}/{TemplateType}/templatePath for templates, root/{Lang}/gallery/{workbookType}/galleryName for gallery*/ 
 function getLocOutputPath(templatePath, fileName, fileType, extensionType, root) {
   const newTemplatePath = templatePath.replace(root, root.concat(root.endsWith("\\") ? "" : "\\", LangOutputSpecifier, root.endsWith("\\") ? "\\" : ""));
   const templateSplit = newTemplatePath.split("\\");
