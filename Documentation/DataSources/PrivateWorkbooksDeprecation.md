@@ -18,7 +18,6 @@ To continue using your Private Workbooks after June 30, 2021 **you will need to 
 This will not change where you find your workbook or the content of your workbook. Any new workbooks you create hereafter will be Shared Workbooks.   
 
 ### Things to remember  
-
 1. You'll be able to update (edit and save) existing Private Workbooks until June 30, 2021 as is After June 30, 2021, it will not be possible to save Private workbook and you will need to "save" or "save as"
 2. Any new workbook you create will be Shared workbook.   
 3. If you attempt to save a private workbook, you will instead be prompted to save it as a new shared workbook
