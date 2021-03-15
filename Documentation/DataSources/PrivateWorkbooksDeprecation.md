@@ -1,4 +1,10 @@
 # Private Workbooks Deprecation
+Workbooks were available in two modes – private and shared. Private workbooks were accessible only to the author and was the default save mode.  
+
+We removed saving to private and now any new workbook is default saved as shared. This was the first step in deprecating private workbooks. Private workbooks will be deprecated by June 30 2021. 
+
+Next step is to convert your private workbooks to shared is by ‘saving’ or ‘saving as’ these workbooks and continue to use them after June 30 2021. Removing private workbooks simplifies a lot of confusing experiences and support issues that customers are having with private workbooks compared to full Azure Resource based Workbooks. 
+
 Private Workbooks are stored as a different Azure resource type than Shared Workbooks. We are merging these different Azure resource types and making one single standard type. This will allow it to take advantage of all the existing and new functionality available in Azure Workbooks. For example,  
 
 * Shared Workbooks can be queried via Azure Resource Graph (ARG) 
@@ -28,13 +34,23 @@ This will not change where you find your workbook or the content of your workboo
 
 You can identify private workbooks and shared workbooks by their icon in the gallery view.
 
-![Private vs Shared Workbook](../Images/PrivateVsSharedWB.png)
+![Private vs Shared Workbook](../Images/PrivateWbDeprecation_sharedVsPrivateIcon.png)
+
+If you are using the new gallery view, then you can additionally identify the share type as shown in the Sharing column.
+
+![New Gallery UI Private vs Shared](../Images/PrivateWbDeprecation_NewGallery_Identify.png)
 
 ### Convert Private Workbooks to Shared workbooks
 If you choose to migrate your private workbook to a shared one, you can move it to a shared workbook using one of the following methods:
 - Save (shows UI and save as shared workbook)
+
+![save](../Images/PrivateWbDeprecation_save.png)
 - Save As (defaults to shared workbook)
+
+![save as](../Images/PrivateWbDeprecation_saveAs.png)
 - Move Workbook
+
+![move](../Images/PrivateWbDeprecation_Move.png)
 - Copy Link > "Move to Shared Reports"
 
 If you don't want others to have access to your workbook, you can manually change the RBAC to deny access to others.
