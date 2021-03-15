@@ -67,4 +67,4 @@ https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-access-
 There are no changes to the behaviors of roles, or access control with these changes.
 
 # What happens if I don't Convert
-From June 30, 2021, you will not see your private workbooks in Azure Portal. You will be able to retrieve the content of the private workbooks for a month until July 30. 
+If you do not convert your private workbooks to shared it will not be accessible in Azure Portal 30 days after June 30, 2021
