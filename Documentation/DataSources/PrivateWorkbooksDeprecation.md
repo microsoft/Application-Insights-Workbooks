@@ -45,12 +45,15 @@ If you choose to migrate your private workbook to a shared one, you can move it 
 - Save (shows UI and save as shared workbook)
 
 ![save](../Images/PrivateWbDeprecation_save.png)
+
 - Save As (defaults to shared workbook)
 
 ![save as](../Images/PrivateWbDeprecation_saveAs.png)
+
 - Move Workbook
 
 ![move](../Images/PrivateWbDeprecation_Move.png)
+
 - Copy Link > "Move to Shared Reports"
 
 If you don't want others to have access to your workbook, you can manually change the RBAC to deny access to others.
