@@ -44,11 +44,11 @@ If you are using the new gallery view, then you can additionally identify the sh
 If you choose to migrate your private workbook to a shared one, you can move it to a shared workbook using one of the following methods:
 - Save (shows UI and save as shared workbook)
 
-![save](../Images/PrivateWbDeprecation_save.png)
+![save](../Images/PrivateWbDeprecation_Save.png)
 
 - Save As (defaults to shared workbook)
 
-![save as](../Images/PrivateWbDeprecation_saveAs.png)
+![save as](../Images/PrivateWbDeprecation_SaveAs.png)
 
 - Move Workbook
 
