@@ -17,19 +17,26 @@ Please note that this project is released with a [Contributor Code of Conduct][c
 This is the repository for Azure Monitor Workbook Templates used in the Azure Portal. Please ensure that you are opening issues in the right repository.
 
 Other repos you might be looking for:
+* [Azure Monitor Community](https://github.com/microsoft/AzureMonitorCommunity#azure-monitor-community) repo, with query, alerts, workbook samples.
 * [Log Analytics Query Examples](https://github.com/MicrosoftDocs/LogAnalyticsExamples) repo - contains example log analytics queries
 * [Azure Sentinel](https://github.com/azure/azure-sentinel) repo - contains queries, dashboards, templates used by Azure Sentinel
 
 ## Recommended setup for contributing
-- Get contributor access
-
-  In order to contribute, you'll need contributor access to the repo in order to push your branch and create a PR. If you are a Microsoft employee, mail `azmonworkbooks`  to be added as a contributor. If you are not a Microsoft employee, the quickest way is to [create a new issue][new-issue] and ask for contributor access.
+- In order to contribute, you'll need contributor access to the repo in order to push your branch and create a PR. 
+    - If you are a Microsoft employee:
+      1) Ensure your github user is already a member of the [Microsoft organization](https://repos.opensource.microsoft.com/orgs)
+      2) Look at the `CODEOWNERS` file to find if there is already a team set up for the area you are looking to contribute.
+      3) If there is an existing team, ask the owners of that team to add you there if appropriate.
+      4) if there is *not* an existing team, and you're looking to add workbook templates to new areas, in most cases you'll need to create a new team in the Microsoft organization in GitHub.
+      5) If you created a new team, or you don't fall under one of the existing teams, send mail to `azmonworkbooks` with all the relavant information, including GitHub team name and details about the area you want to contribute to, so we can direct your request to the appropriate teams.
+  
+    - If you are *not* a Microsoft employee, the quickest way is to [create a new issue][new-issue] and ask for contributor access.  Please include all the relevant information about what you are trying to do and why, so we can direct your request to the appropriate teams.
 
 - To contribute your own examples, clone the repo, [create a new branch](#topic-branch), make your changes or additions, and then [submit a pull request](https://help.github.com/articles/about-pull-requests/). 
 
 - If you submit a pull request with new or significant changes, and you are not an employee of Microsoft, we'll add a comment to the pull request asking you to submit an online [CLA](https://cla.microsoft.com) (Contribution License Agreement). We'll need you to complete the online form before we can accept your pull request.
 
-- If you are adding new folders to the top level Workbooks folder, you should also update the CODEOWNERS file to assign people from your team as owners of content in that folder. This will allow github to automatically require review from people in your team in order to update your templates.
+- If you are adding new folders to the top level Workbooks folder, you must also update the `CODEOWNERS` file to assign your team as owners of content in that folder. This will allow github to automatically require review from people in your team in order to update your templates.  Owners in `CODEOWNERS` should be teams, not individuals.
 
 For details of how to contribute templates, see the [template contribution](Documentation/Contributing.md) documentation
 

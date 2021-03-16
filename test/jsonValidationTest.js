@@ -3,6 +3,29 @@ const Mocha = require('mocha');
 const fs = require('fs');
 const path = require('path');
 
+const ArrayLocIdentifier = {
+    "items": "name",
+    "parameters": "id",
+    "labelSettings": "columnId",
+    "links": "id"
+};
+
+const LocKeys = [
+    "json",
+    "description",
+    "label",
+    "linkLabel",
+    "preText",
+    "postText",
+    "title",
+    "chartTitle",
+    "defaultItemsText",
+    "loadButtonText",
+    "noDataMessage",
+    "markDown" // specific to cohorts
+];
+
+
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
 
@@ -43,7 +66,7 @@ describe('Validating Cohorts...', () => {
             done();
         });
     });
-    
+
     it('Verifying cohort category or settings json exists', function (done) {
         browseDirectory(cohortPath, (error, results) => {
             if (error) throw error;
@@ -67,6 +90,7 @@ describe('Validating Workbooks...', () => {
                     let settings = validateJsonStringAndGetObject(file);
                     validateNoResourceIds(settings, file);
                     validateNoFromTemplateId(settings, file);
+                    validateNoDuplicateId(settings, '', {}, file);
                     validateSingleWorkbookFile(settings, file);
                     validateWorkbookFilePathLength(file);
                 });
@@ -84,6 +108,22 @@ describe('Validating Workbooks...', () => {
                     validateSettingsForWorkbook(settings, file);
                     // verify there is a workbook file in this directory too
                     validateWorkbookExistForSettings(file);
+                });
+            done();
+        });
+    });
+
+    it('Verifying armtemplate.json files', function (done) {
+        browseDirectory(workbookPath, (error, results) => {
+            if (error) throw error;
+            results.filter(file => file.endsWith('.armtemplate'))
+                .forEach(file => {
+                    let settings = validateJsonStringAndGetObject(file);
+                    // "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    validateSettingsForArmTemplate(settings, file);
+                    validateWorkbookFilePathLength(file);
+                    validateNoResourceIds(settings, file);
+                    validateNoSubscriptionIdInTemplate(settings, file);
                 });
             done();
         });
@@ -166,7 +206,7 @@ function validateWorkbookFilePathLength(file) {
     workbookkey += ".json";
 
     if (fullPath > 200) {
-        assert.fail("workbook path " + fullPath + " longer than 200ch limit: '" + file + "' this file may fail to copy in build steps")
+        assert.fail("file path " + fullPath + " longer than 200ch limit: '" + file + "' this file may fail to copy in build steps")
     } if (workbookkey.length > 100) {
         assert.fail("packaged workbook key '" + workbookkey + "' = length " + workbookkey.length + ", longer than 100ch limit: '" + file + "'.  Reduce file/folder path depth or rename folders to reduce duplicate information")
     }
@@ -232,13 +272,28 @@ function validateSettingsForWorkbook(settings, file) {
     }
 }
 
+function validateSettingsForArmTemplate(settings, file) {
+    ["$schema"].forEach( field => checkProperty(settings, field, file) );
+}
+
 function validateNoResourceIds(settings, file) {
-    // there's probably a better way but this is simplest. make sure there are no strings like '/subscriptions/[guid]` in the whole content
+    // make sure there are no strings like '/subscriptions/[guid]` in the whole content
     // not parsing individual steps/etc at this time
     let str = JSON.stringify(settings);
-    let regexp = /(\/subscriptions\/[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi; 
+    let regexp = /(\/subscriptions\/[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi;
     while ((matches = regexp.exec(str)) !== null) {
         assert.fail(file + ": Found probably hardcoded resource Id '" + matches[0] + "'");
+    }
+}
+
+function validateNoSubscriptionIdInTemplate(settings, file) {
+    // make sure there are no strings like "subscriptions": "[guid]" in the whole content. this is used on arm template files
+    // where it is more common to have a thing like this for certain endpoints.
+    // not parsing individual steps/etc at this time
+    let str = JSON.stringify(settings);
+    let regexp = /(\"subscription[s]*\"\s*:\s*[\[]*\s*"[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12})/gi;
+    while ((matches = regexp.exec(str)) !== null) {
+        assert.fail(file + ": Found probably hardcoded subscription Id '" + matches[0] + "'");
     }
 }
 
@@ -249,6 +304,59 @@ function validateNoFromTemplateId(settings, file) {
     }
 }
 
+// validate that the template does not contain any duplicate ids
+function validateNoDuplicateId(obj, key, outputMap, file) {
+    for (var field in obj) {
+        var objectEntry = obj[field];
+        var jsonKey;
+        if (typeof objectEntry === 'object') {
+            // If the last field is a number, it is part of an array.
+            // See if there's another identifier such that if a template order is edited, the string does not need to be re-localized
+            if (!isNaN(parseInt(field))) {
+                jsonKey = getKeyForArrayObject(key, objectEntry, field);
+            } else {
+                jsonKey = key.concat(".", field);
+            }
+            validateNoDuplicateId(objectEntry, jsonKey, outputMap, file);
+
+        } else if (LocKeys.includes(field)) {
+            jsonKey = key.concat(".", field).substring(1);
+            const jsonVal = obj[field];
+            if (jsonVal) {
+                if (outputMap[jsonKey] != null) {
+                    assert.fail("Found duplicate key: " + jsonKey + " in template: " + file + ". To fix this error, change the step name or id", /**true**/);
+                } else {
+                    outputMap[jsonKey] = jsonVal;
+                }
+            }
+        }
+    }
+}
+
+/** Gets unique key identifier for array object */
+function getKeyForArrayObject(key, objectEntry, field) {
+    const identifier = endsWithLocIdentifier(key);
+    if (identifier !== "" && objectEntry[ArrayLocIdentifier[identifier]] != null) {
+        // remove special characters from the identifier
+        return key.concat(".", removeNonAplhaNumeric(objectEntry[ArrayLocIdentifier[identifier]]));
+    }
+    return key.concat(".", field);
+}
+
+function endsWithLocIdentifier(key) {
+    const ids = Object.keys(ArrayLocIdentifier);
+    for (var i in ids) {
+      if (key.endsWith(ids[i])) {
+        return ids[i];
+      }
+    }
+    return null;
+  }
+
+function removeNonAplhaNumeric(str) {
+    return str.replace(/[\W_]/g, "");
+}
+
 // validate that there's only one .workbook file in a folder, as only one is going to get picked up by the processing
 function validateSingleWorkbookFile(settings, file) {
     let dir = path.dirname(file);
@@ -256,7 +364,7 @@ function validateSingleWorkbookFile(settings, file) {
         let workbooks = list.filter(s => s.endsWith(".workbook"));
         if (workbooks.length > 1) {
             assert.fail(file + ": Found " + workbooks.length + " .workbook files in folder. Only one is allowed.");
-        }    
+        }
     });
 }
 
