@@ -34,7 +34,7 @@ You can identify private workbooks and shared workbooks by
 1. the icon in gallery  
 2. the share type as shown in the Sharing column in gallery 
 
-![Private vs Shared Workbook](../Images/PrivateWbDeprecation_NewGallery_Identify.png)
+    ![Private vs Shared Workbook](../Images/PrivateWbDeprecation_NewGallery_Identify.png)
 
 ### Convert Private Workbooks to Shared workbooks 
 If you choose to convert your private workbook to a shared one, you can do so by opening the workbook and using one of the following methods.  
@@ -51,11 +51,11 @@ _**Note** – This conversion will not change the content of your workbook or wh
 
     ![copyLinks1](../Images/PrivateWorkbooksDeprecation_copyLink1.png)
 
-    ![copyLinks2](../Images/PrivateWorkbooksDeprecation_copyLink2.png)
+        ![copyLinks2](../Images/PrivateWorkbooksDeprecation_copyLink2.png)
 
 - **Move Workbook** – This will work only if you have write access to subscription, resource group, and region. It changes this workbook and all references are maintained      
 
-![move](../Images/PrivateWbDeprecation_Move.png)
+    ![move](../Images/PrivateWbDeprecation_Move.png)
 ### Things to remember 
 
 1. Any **new** workbook you create will be Shared workbook. 
