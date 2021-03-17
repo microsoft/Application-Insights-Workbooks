@@ -371,7 +371,7 @@ function validateTemplateIds(file, settings) {
 
 
 function areArrayItemsUnique(arr, key) {   
-    const uniques = new Set(arr.map(item => item[key]));   
+    const uniques = new Set(arr.map(item => item[key.toLowerCase()]));   
     return [...uniques].length === arr.length; 
 }
 
