@@ -21,8 +21,8 @@ Private workbooks will be deprecated by **June 30, 2021** to simplify the consum
  
 2. Second stage - Convert existing private workbooks to shared workbooks  
     - <ins>**You**</ins> will need to convert your existing private workbooks to shared workbooks by
-        - Either using ‘save’ / ‘save as’ (make a copy)  
-        - Or using ‘copy link’ / ‘move workbook’ (in place) 
+        - Either using 'save' / 'save as' (make a copy)  
+        - Or using 'copy link' / 'move workbook' (in place) 
     - After **June 30, 2021** your private workbooks will not be available, so it is important to convert them to continue to use them. 
 
 # How should you proceed? 
