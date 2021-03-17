@@ -31,7 +31,7 @@ Private workbooks will be deprecated by **June 30, 2021** to simplify the consum
 
 You can identify private workbooks and shared workbooks by  
 
-1. the icon in gallery  
+1. the icon in gallery
 2. the share type as shown in the Sharing column in gallery 
 
     ![Private vs Shared Workbook](../Images/PrivateWbDeprecation_NewGallery_Identify.png)
