@@ -50,7 +50,6 @@ _**Note** – This conversion will not change the content of your workbook or wh
 - **Copy Link > "Move to Shared Reports"** – This will work only if you have write access to subscription, resource group, and region. It changes this workbook and all references are maintained  
 
     ![copyLinks1](../Images/PrivateWorkbooksDeprecation_copyLink1.png)
-
     ![copyLinks2](../Images/PrivateWorkbooksDeprecation_copyLink2.png)
 
 - **Move Workbook** – This will work only if you have write access to subscription, resource group, and region. It changes this workbook and all references are maintained      
