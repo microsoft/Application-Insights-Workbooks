@@ -54,7 +54,6 @@ _**Note** – This conversion will not change the content of your workbook or wh
     ![copyLinks2](../Images/PrivateWorkbooksDeprecation_copyLink2.png)
 
 - **Move Workbook** – This will work only if you have write access to subscription, resource group, and region. It changes this workbook and all references are maintained      
-move 
 
 ![move](../Images/PrivateWbDeprecation_Move.png)
 ### Things to remember 
@@ -74,5 +73,3 @@ Learn more about Workbook Access control here: https://docs.microsoft.com/en-us/
 # What happens if I don't Convert? 
 
 If you do not convert your private workbook to shared it will not be accessible in Azure Portal after **June 30, 2021**. 
-
-From July 1, 2021, you will not see your private workbooks in Azure Portal. You will be able to retrieve the content of the private workbooks for a month until July 30, 2021. 
