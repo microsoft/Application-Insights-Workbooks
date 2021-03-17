@@ -40,6 +40,7 @@ Use these links to learn more about workbooks:
 * [Contributing](Documentation/Contributing.md) 
 * [Testing](Documentation/Contributing.md#how-to-test-your-changes)
 * [Previews](Documentation/Contributing.md#testing-preview-workbook-templates)
+* [Auto-Refresh](Documentation/AutoRefresh.md)
 
 ### Sample Workbook 
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)
