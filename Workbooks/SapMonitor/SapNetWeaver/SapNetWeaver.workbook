@@ -9,6 +9,120 @@
       "name": "Workbook Title"
     },
     {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "aa8ab18f-5d36-4f34-8a54-f0f2e25ecbb8",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_error",
+            "type": 1,
+            "query": "// 0 = no error\n// 1 = table does not exist (need to add provider)\n// 2 = table exists, but column v1 does not (need to wait)\nlet t = \"SapNetweaver_GetSystemInstanceList_CL\";\nlet c1 = \"hostname_s\";\nlet dummy = \"unmÃ¶glicher-wert!\";\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\nlet checkRecords =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | summarize records = count()\n    )\n  | project records\n  | top 1 by records desc\n;\nlet checkTableExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | count\n      | extend miss = 0\n    )\n  | project miss\n  | limit 2\n  | top 1 by miss asc\n;\nlet checkColumnExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | extend miss = 0\n      | extend columnV1 = column_ifexists(c1, dummy)\n    )\n  | project miss, columnV1\n  | limit 2\n | top 1 by miss asc\n;\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != \"1\");\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\nlet tableRecords = toscalar(checkRecords | summarize max(records));\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\nprint toscalar(x)",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "225baab0-e4ce-4a45-92de-ddda00795a2d",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_ams_resource",
+            "type": 5,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.hanaonazure/sapmonitors": true
+              },
+              "additionalResourceOptions": [
+                "value::1"
+              ]
+            },
+            "defaultValue": "value::1"
+          },
+          {
+            "id": "92bd4772-a480-4a10-a48d-fecfd54bb22f",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_providers_list",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{param_ams_resource}/providerInstances/\",\"urlParams\":[{\"key\":\"api-version\",\"value\":\"2020-02-07-preview\"},{\"key\":\"pageLimit\",\"value\":\"1000\"}],\"batchDisabled\":false,\"transformers\":null}",
+            "queryType": 12
+          },
+          {
+            "id": "791b0ca8-eac5-4073-8a9a-330fbce1efb2",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_provider_error",
+            "type": 1,
+            "query": "print allProviders=parse_json(tostring(\"{param_providers_list:escapejson}\")).value\r\n| mv-expand allProviders\r\n| extend type=parse_json(allProviders.properties).type\r\n| extend state=parse_json(allProviders.properties).provisioningState\r\n| where type==\"SapNetweaver\"\r\n| where state!=\"Failed\"\r\n| summarize iff(count() > 0,count(), -1)",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "dummy_neverset",
+        "comparison": "isNotEqualTo"
+      },
+      "name": "overview_section_params"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Please add the SAP NetWeaver provider to view this workbook.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "NoProviderError"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "There was an error while adding the SAP NetWeaver provider. Please reach out to support for further assistance.",
+              "style": "warning"
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "param_check_provider_error",
+                "comparison": "isEqualTo",
+                "value": "-1"
+              },
+              {
+                "parameterName": "param_check_error",
+                "comparison": "isEqualTo",
+                "value": "0"
+              }
+            ],
+            "name": "ProviderFailure"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "It may take up to 15 minutes for the initial telemetry information to be available for review. Please check again later.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error",
+              "comparison": "isEqualTo",
+              "value": "2"
+            },
+            "name": "IngestionError"
+          }
+        ]
+      },
+      "name": "overview_group_error"
+    },
+    {
       "type": 11,
       "content": {
         "version": "LinkItem/1.0",
@@ -56,6 +170,18 @@
           }
         ]
       },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "param_check_error",
+          "comparison": "isEqualTo",
+          "value": "0"
+        },
+        {
+          "parameterName": "param_check_provider_error",
+          "comparison": "isNotEqualTo",
+          "value": "-1"
+        }
+      ],
       "name": "Main Navigation Links"
     },
     {
@@ -282,7 +408,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| where serverTimestamp_t > ago(15m)\r\n| where SID_s == '{selectedSID}' or '*' == '{selectedSID}'\r\n| project-away hostname_s, instanceNr_d\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, iff(dispstatus_s == 'SAPControl-YELLOW', 1, iff(dispstatus_s == 'SAPControl-RED', 2, 3)))\r\n| summarize availability=countif(Status == 0), total=count() by SID_s, timestamp_t\r\n| extend availabilityPct = (availability / total) * 100\r\n| summarize availability=sum(availability), total=sum(total), availabilityTrend=make_list(availabilityPct) by SID_s\r\n| extend availability = round(toreal(availability) / toreal(total) * 100, 3)\r\n| project-away total",
+                    "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| where serverTimestamp_t > ago(15m)\r\n| where SID_s == '{selectedSID}' or '*' == '{selectedSID}'\r\n| project-away hostname_s, instanceNr_d\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, iff(dispstatus_s == 'SAPControl-YELLOW', 1, iff(dispstatus_s == 'SAPControl-RED', 2, 3)))\r\n| summarize availability=countif(Status == 0), total=count() by SID_s, timestamp_t\r\n| extend availabilityPct = round(toreal(availability) / toreal(total) * 100, 3)\r\n| summarize availability=sum(availability), total=sum(total), availabilityTrend=make_list(availabilityPct) by SID_s\r\n| extend availability = round(toreal(availability) / toreal(total) * 100, 3)\r\n| project-away total",
                     "size": 0,
                     "title": "Availability Status",
                     "timeContext": {
@@ -602,237 +728,57 @@
           }
         ]
       },
-      "conditionalVisibility": {
-        "parameterName": "selectedMenu",
-        "comparison": "isEqualTo",
-        "value": "CurrentStatus"
-      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "CurrentStatus"
+        },
+        {
+          "parameterName": "param_check_error",
+          "comparison": "isEqualTo",
+          "value": "0"
+        },
+        {
+          "parameterName": "param_check_provider_error",
+          "comparison": "isNotEqualTo",
+          "value": "-1"
+        }
+      ],
       "name": "Overview"
     },
     {
-      "type": 12,
+      "type": 9,
       "content": {
-        "version": "NotebookGroup/1.0",
-        "groupType": "editable",
-        "items": [
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
           {
-            "type": 9,
-            "content": {
-              "version": "KqlParameterItem/1.0",
-              "parameters": [
-                {
-                  "id": "1dc67097-34d6-4ef1-b0c1-2b3b7b16a148",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AvailabilityTimeRange",
-                  "label": "Time Range",
-                  "type": 4,
-                  "value": {
-                    "durationMs": 1800000
-                  },
-                  "typeSettings": {
-                    "selectableValues": [
-                      {
-                        "durationMs": 300000
-                      },
-                      {
-                        "durationMs": 900000
-                      },
-                      {
-                        "durationMs": 1800000
-                      },
-                      {
-                        "durationMs": 3600000
-                      },
-                      {
-                        "durationMs": 14400000
-                      },
-                      {
-                        "durationMs": 43200000
-                      },
-                      {
-                        "durationMs": 86400000
-                      },
-                      {
-                        "durationMs": 172800000
-                      }
-                    ],
-                    "allowCustom": true
-                  },
-                  "timeContext": {
-                    "durationMs": 86400000
-                  }
-                },
-                {
-                  "id": "6f7246d7-6be3-463b-9a60-0e80f7e21644",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AvailabilitySID",
-                  "label": "SID",
-                  "type": 2,
-                  "multiSelect": true,
-                  "quote": "'",
-                  "delimiter": ",",
-                  "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| distinct SID_s",
-                  "value": [],
-                  "typeSettings": {
-                    "additionalResourceOptions": [],
-                    "showDefault": false
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                },
-                {
-                  "id": "fdf84634-1e7a-4d02-86a9-7c200b674179",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AvailabilityApplicationServer",
-                  "label": "Application Server",
-                  "type": 2,
-                  "multiSelect": true,
-                  "quote": "'",
-                  "delimiter": ",",
-                  "query": "let sidList = dynamic([{AvailabilitySID}]);\r\nSapNetweaver_GetSystemInstanceList_CL\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| where array_length(sidList) == 0 or SID_s in (sidList)\r\n| distinct SID_s, hostname_s, instanceNr_s\r\n| project AppServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| distinct AppServer",
-                  "value": [],
-                  "typeSettings": {
-                    "additionalResourceOptions": [],
-                    "showDefault": false
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                }
-              ],
-              "style": "pills",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces"
-            },
-            "name": "Availability Parameters"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let sidList = dynamic([{AvailabilitySID}]);\r\nlet appServerList = dynamic([{AvailabilityApplicationServer}]);\r\nlet baseQuery = SapNetweaver_GetSystemInstanceList_CL\r\n| where serverTimestamp_t between (todatetime({AvailabilityTimeRange:start}) .. todatetime({AvailabilityTimeRange:end}))\r\n| where array_length(sidList) == 0 or SID_s in (sidList)\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, iff(dispstatus_s == 'SAPControl-YELLOW', 1, iff(dispstatus_s == 'SAPControl-RED', 2, 3)));\r\nlet timespanCount = baseQuery \r\n| summarize RecordCount=count()\r\n| extend Interval = iff(RecordCount <= 10000, timespan(1m), timespan(1m))\r\n| extend Interval = iff(RecordCount > 10000 and RecordCount < 50000, timespan(5m), Interval)\r\n| extend Interval = iff(RecordCount >= 50000 and RecordCount < 100000, timespan(10m), Interval)\r\n| extend Interval = iff(RecordCount >= 100000 and RecordCount < 150000, timespan(15m), Interval)\r\n| extend Interval = iff(RecordCount >= 150000, timespan(30m), Interval)\r\n| project Interval;\r\nlet timespanInterval = toscalar(timespanCount);\r\nbaseQuery\r\n| summarize availability=countif(Status == 0), total=count() by bin(timestamp_t, timespanInterval), SID_s\r\n| extend availability = (availability / total) * 100\r\n| project-away total",
-              "size": 0,
-              "aggregation": 3,
-              "title": "Availability Status Trend",
-              "color": "green",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "visualization": "linechart",
-              "chartSettings": {
-                "xAxis": "timestamp_t",
-                "yAxis": [
-                  "availability"
-                ],
-                "group": "SID_s",
-                "createOtherGroup": 0,
-                "ySettings": {
-                  "numberFormatSettings": {
-                    "unit": 1,
-                    "options": {
-                      "style": "decimal",
-                      "useGrouping": true
-                    }
-                  },
-                  "min": 0,
-                  "max": 100
-                }
-              }
-            },
-            "name": "AvailabilityTrend"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let sidList = dynamic([{AvailabilitySID}]);\r\nlet appServerList = dynamic([{AvailabilityApplicationServer}]);\r\nSapNetweaver_GetProcessList_CL\r\n| project Instance_Process = description_s, SID_s, hostname_s, instanceNr_d, dispstatus_s, serverTimestamp_t\r\n| where serverTimestamp_t between (todatetime({AvailabilityTimeRange:start}) .. todatetime({AvailabilityTimeRange:end}))\r\n| where array_length(sidList) == 0 or SID_s in (sidList)\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, 1)\r\n| summarize total=count(), failureCount=countif(Status != 0) by Instance_Process, serverTimestamp_t, SID_s\r\n| extend Availability = round(((toreal(total) - toreal(failureCount)) / toreal(total)) * 100, 2)\r\n| summarize Availability = round(avg(Availability), 3), AvailabilityTrend = make_list(Availability) by Instance_Process, SID_s",
-              "size": 0,
-              "title": "Instance Process Availability",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "visualization": "table",
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "Instance_Process",
-                    "formatter": 0,
-                    "formatOptions": {
-                      "customColumnWidthSetting": "10%"
-                    }
-                  },
-                  {
-                    "columnMatch": "SID_s",
-                    "formatter": 5
-                  },
-                  {
-                    "columnMatch": "Availability",
-                    "formatter": 4,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "blue",
-                      "customColumnWidthSetting": "15%"
-                    },
-                    "numberFormat": {
-                      "unit": 1,
-                      "options": {
-                        "style": "decimal",
-                        "useGrouping": false,
-                        "maximumFractionDigits": 3
-                      }
-                    }
-                  },
-                  {
-                    "columnMatch": "AvailabilityTrend",
-                    "formatter": 21,
-                    "formatOptions": {
-                      "min": 0,
-                      "max": 100,
-                      "palette": "green",
-                      "customColumnWidthSetting": "75%"
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "[\"Availability\"]"
-                    }
-                  }
-                ],
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "SID_s"
-                  ],
-                  "expandTopLevel": true
-                },
-                "labelSettings": [
-                  {
-                    "columnId": "Instance_Process",
-                    "label": "Instance Process"
-                  },
-                  {
-                    "columnId": "SID_s",
-                    "label": "SID"
-                  },
-                  {
-                    "columnId": "Availability",
-                    "label": "Availability %"
-                  },
-                  {
-                    "columnId": "AvailabilityTrend",
-                    "label": "Availability Trend"
-                  }
-                ]
-              },
-              "sortBy": []
-            },
-            "customWidth": "100",
-            "name": "Instance Process Availability By SID"
+            "id": "1edcbbbd-b9a6-4ad5-9a56-3f34b3cbd58c",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_error_availability",
+            "type": 1,
+            "query": "// 0 = no error\n// 1 = table does not exist (need to add provider)\n// 2 = table exists, but column v1 does not (need to wait)\nlet t = \"SapNetweaver_GetProcessList_CL\";\nlet c1 = \"hostname_s\";\nlet dummy = \"unmÃ¶glicher-wert!\";\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\nlet checkRecords =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | summarize records = count()\n    )\n  | project records\n  | top 1 by records desc\n;\nlet checkTableExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | count\n      | extend miss = 0\n    )\n  | project miss\n  | limit 2\n  | top 1 by miss asc\n;\nlet checkColumnExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | extend miss = 0\n      | extend columnV1 = column_ifexists(c1, dummy)\n    )\n  | project miss, columnV1\n  | limit 2\n | top 1 by miss asc\n;\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != \"1\");\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\nlet tableRecords = toscalar(checkRecords | summarize max(records));\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\nprint toscalar(x)\n",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
           }
-        ]
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "conditionalVisibility": {
-        "parameterName": "selectedMenu",
-        "comparison": "isEqualTo",
-        "value": "Availability"
-      },
-      "name": "Availability Group"
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Availability"
+        },
+        {
+          "parameterName": "dummy_neverset",
+          "comparison": "isNotEqualTo"
+        }
+      ],
+      "name": "ErrorCheckAvailParam"
     },
     {
       "type": 12,
@@ -841,151 +787,630 @@
         "groupType": "editable",
         "items": [
           {
-            "type": 9,
+            "type": 1,
             "content": {
-              "version": "KqlParameterItem/1.0",
-              "parameters": [
-                {
-                  "id": "4771a9ab-a94e-4dc5-96dc-3a0103a38b98",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "PerformanceTimeRange",
-                  "label": "Time Range",
-                  "type": 4,
-                  "value": {
-                    "durationMs": 1800000
-                  },
-                  "typeSettings": {
-                    "selectableValues": [
-                      {
-                        "durationMs": 300000
-                      },
-                      {
-                        "durationMs": 900000
-                      },
-                      {
-                        "durationMs": 1800000
-                      },
-                      {
-                        "durationMs": 3600000
-                      },
-                      {
-                        "durationMs": 14400000
-                      },
-                      {
-                        "durationMs": 43200000
-                      },
-                      {
-                        "durationMs": 86400000
-                      },
-                      {
-                        "durationMs": 172800000
-                      }
-                    ],
-                    "allowCustom": true
-                  },
-                  "timeContext": {
-                    "durationMs": 86400000
-                  }
-                },
-                {
-                  "id": "23b5cb65-34f1-445b-8df5-1bb46a7fda80",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "PerformanceSID",
-                  "label": "SID",
-                  "type": 2,
-                  "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| distinct SID_s",
-                  "value": null,
-                  "typeSettings": {
-                    "additionalResourceOptions": [],
-                    "showDefault": false
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                },
-                {
-                  "id": "42bafe96-35aa-40de-98c5-e1eb1a5047e5",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "PerformanceApplicationServer",
-                  "label": "Application Server",
-                  "type": 2,
-                  "multiSelect": true,
-                  "quote": "'",
-                  "delimiter": ",",
-                  "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| where SID_s == '{PerformanceSID}' or '{PerformanceSID}' == ''\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| distinct SID_s, hostname_s, instanceNr_s\r\n| project AppServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| distinct AppServer",
-                  "typeSettings": {
-                    "additionalResourceOptions": [],
-                    "showDefault": false
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces",
-                  "value": []
-                },
-                {
-                  "id": "b55c977a-256e-491d-952b-5ab35c20b541",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "performanceWorkProcessType",
-                  "label": "Work Process Type",
-                  "type": 2,
-                  "query": "SapNetweaver_ABAPGetWPTable_CL\r\n| distinct Typ_s",
-                  "value": null,
-                  "typeSettings": {
-                    "additionalResourceOptions": []
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                }
-              ],
-              "style": "pills",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces"
+              "json": "Unable to create the required table (GetProcessList) to capture telemetry information. Please try after some time. If the issue persists, please contact support.",
+              "style": "warning"
             },
-            "name": "utilization parameters"
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_availability",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "TableCreationError"
           },
           {
-            "type": 3,
+            "type": 1,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "let appServerList = dynamic([{PerformanceApplicationServer}]);\r\nlet workProcessType = '{performanceWorkProcessType}';\r\nSapNetweaver_ABAPGetWPTable_CL\r\n| where serverTimestamp_t between (todatetime({PerformanceTimeRange:start}) .. todatetime({PerformanceTimeRange:end}))\r\n| where SID_s == '{PerformanceSID}'\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| where Typ_s == workProcessType\r\n| summarize totalWP = count(), freeWP = countif(Status_s == \"Wait\") by bin(timestamp_t, 1m), Typ_s\r\n| extend activeWP = totalWP - freeWP",
-              "size": 0,
-              "aggregation": 3,
-              "title": "Work Process Utilization",
-              "color": "green",
-              "noDataMessage": "No work processes found for the selected filter values.",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "visualization": "areachart",
-              "chartSettings": {
-                "xAxis": "timestamp_t",
-                "yAxis": [
-                  "activeWP",
-                  "freeWP"
-                ],
-                "group": null,
-                "createOtherGroup": 0,
-                "seriesLabelSettings": [
-                  {
-                    "seriesName": "activeWP",
-                    "label": "Active Work Processes",
-                    "color": "red"
-                  },
-                  {
-                    "seriesName": "freeWP",
-                    "label": "Free Work Processes",
-                    "color": "blue"
-                  }
-                ]
-              }
+              "json": "It may take up to 15 minutes for the initial telemetry information to be available for review. Please check again later.",
+              "style": "warning"
             },
-            "name": "Work Process Utilization Trend"
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_availability",
+              "comparison": "isEqualTo",
+              "value": "2"
+            },
+            "name": "InitialIngestionError"
           }
         ]
       },
-      "conditionalVisibility": {
-        "parameterName": "selectedMenu",
-        "comparison": "isEqualTo",
-        "value": "Utilization"
+      "conditionalVisibilities": [
+        {
+          "parameterName": "param_check_error_availability",
+          "comparison": "isEqualTo",
+          "value": "0"
+        },
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Availability"
+        }
+      ],
+      "name": "avail_group_error"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "1dc67097-34d6-4ef1-b0c1-2b3b7b16a148",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "AvailabilityTimeRange",
+                        "label": "Time Range",
+                        "type": 4,
+                        "value": {
+                          "durationMs": 1800000
+                        },
+                        "typeSettings": {
+                          "selectableValues": [
+                            {
+                              "durationMs": 300000
+                            },
+                            {
+                              "durationMs": 900000
+                            },
+                            {
+                              "durationMs": 1800000
+                            },
+                            {
+                              "durationMs": 3600000
+                            },
+                            {
+                              "durationMs": 14400000
+                            },
+                            {
+                              "durationMs": 43200000
+                            },
+                            {
+                              "durationMs": 86400000
+                            },
+                            {
+                              "durationMs": 172800000
+                            }
+                          ],
+                          "allowCustom": true
+                        },
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      },
+                      {
+                        "id": "6f7246d7-6be3-463b-9a60-0e80f7e21644",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "AvailabilitySID",
+                        "label": "SID",
+                        "type": 2,
+                        "multiSelect": true,
+                        "quote": "'",
+                        "delimiter": ",",
+                        "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| distinct SID_s",
+                        "value": [],
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      },
+                      {
+                        "id": "fdf84634-1e7a-4d02-86a9-7c200b674179",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "AvailabilityApplicationServer",
+                        "label": "Application Server",
+                        "type": 2,
+                        "multiSelect": true,
+                        "quote": "'",
+                        "delimiter": ",",
+                        "query": "let sidList = dynamic([{AvailabilitySID}]);\r\nSapNetweaver_GetSystemInstanceList_CL\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| where array_length(sidList) == 0 or SID_s in (sidList)\r\n| distinct SID_s, hostname_s, instanceNr_s\r\n| project AppServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| distinct AppServer",
+                        "value": [],
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "Availability Parameters"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let sidList = dynamic([{AvailabilitySID}]);\r\nlet appServerList = dynamic([{AvailabilityApplicationServer}]);\r\nlet baseQuery = SapNetweaver_GetSystemInstanceList_CL\r\n| where serverTimestamp_t between (todatetime({AvailabilityTimeRange:start}) .. todatetime({AvailabilityTimeRange:end}))\r\n| where array_length(sidList) == 0 or SID_s in (sidList)\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, iff(dispstatus_s == 'SAPControl-YELLOW', 1, iff(dispstatus_s == 'SAPControl-RED', 2, 3)));\r\nlet timespanCount = baseQuery \r\n| summarize RecordCount=count()\r\n| extend Interval = iff(RecordCount <= 10000, timespan(1m), timespan(1m))\r\n| extend Interval = iff(RecordCount > 10000 and RecordCount < 50000, timespan(5m), Interval)\r\n| extend Interval = iff(RecordCount >= 50000 and RecordCount < 100000, timespan(10m), Interval)\r\n| extend Interval = iff(RecordCount >= 100000 and RecordCount < 150000, timespan(15m), Interval)\r\n| extend Interval = iff(RecordCount >= 150000, timespan(30m), Interval)\r\n| project Interval;\r\nlet timespanInterval = toscalar(timespanCount);\r\nbaseQuery\r\n| summarize availability=countif(Status == 0), total=count() by bin(timestamp_t, timespanInterval), SID_s\r\n| extend availability = round(toreal(availability) / toreal(total) * 100, 3)\r\n| project-away total",
+                    "size": 0,
+                    "aggregation": 3,
+                    "title": "Availability Status Trend",
+                    "color": "green",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "linechart",
+                    "chartSettings": {
+                      "xAxis": "timestamp_t",
+                      "yAxis": [
+                        "availability"
+                      ],
+                      "group": "SID_s",
+                      "createOtherGroup": 0,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 1,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true
+                          }
+                        },
+                        "min": 0,
+                        "max": 100
+                      }
+                    }
+                  },
+                  "name": "AvailabilityTrend"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let sidList = dynamic([{AvailabilitySID}]);\r\nlet appServerList = dynamic([{AvailabilityApplicationServer}]);\r\nSapNetweaver_GetProcessList_CL\r\n| project Instance_Process = description_s, SID_s, hostname_s, instanceNr_d, dispstatus_s, serverTimestamp_t\r\n| where serverTimestamp_t between (todatetime({AvailabilityTimeRange:start}) .. todatetime({AvailabilityTimeRange:end}))\r\n| where array_length(sidList) == 0 or SID_s in (sidList)\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, 1)\r\n| summarize total=count(), failureCount=countif(Status != 0) by Instance_Process, serverTimestamp_t, SID_s\r\n| extend Availability = round(((toreal(total) - toreal(failureCount)) / toreal(total)) * 100, 2)\r\n| summarize Availability = round(avg(Availability), 3), AvailabilityTrend = make_list(Availability) by Instance_Process, SID_s",
+                    "size": 0,
+                    "title": "Instance Process Availability",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "table",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "Instance_Process",
+                          "formatter": 0,
+                          "formatOptions": {
+                            "customColumnWidthSetting": "10%"
+                          }
+                        },
+                        {
+                          "columnMatch": "SID_s",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Availability",
+                          "formatter": 4,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "blue",
+                            "customColumnWidthSetting": "15%"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal",
+                              "useGrouping": false,
+                              "maximumFractionDigits": 3
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "AvailabilityTrend",
+                          "formatter": 21,
+                          "formatOptions": {
+                            "min": 0,
+                            "max": 100,
+                            "palette": "green",
+                            "customColumnWidthSetting": "75%"
+                          },
+                          "tooltipFormat": {
+                            "tooltip": "[\"Availability\"]"
+                          }
+                        }
+                      ],
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "SID_s"
+                        ],
+                        "expandTopLevel": true
+                      },
+                      "labelSettings": [
+                        {
+                          "columnId": "Instance_Process",
+                          "label": "Instance Process"
+                        },
+                        {
+                          "columnId": "SID_s",
+                          "label": "SID"
+                        },
+                        {
+                          "columnId": "Availability",
+                          "label": "Availability %"
+                        },
+                        {
+                          "columnId": "AvailabilityTrend",
+                          "label": "Availability Trend"
+                        }
+                      ]
+                    },
+                    "sortBy": []
+                  },
+                  "customWidth": "100",
+                  "name": "Instance Process Availability By SID"
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedMenu",
+              "comparison": "isEqualTo",
+              "value": "Availability"
+            },
+            "name": "Availability Group"
+          }
+        ]
       },
-      "name": "utilization metrics group"
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Availability"
+        },
+        {
+          "parameterName": "param_check_error_availability",
+          "comparison": "isEqualTo",
+          "value": "0"
+        }
+      ],
+      "name": "Availability Group Items"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "e3f0541f-e03b-4f39-a2f1-8ea0e2a99426",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_error_utilization",
+            "type": 1,
+            "query": "// 0 = no error\n// 1 = table does not exist (need to add provider)\n// 2 = table exists, but column v1 does not (need to wait)\nlet t = \"SapNetweaver_ABAPGetWPTable_CL\";\nlet c1 = \"hostname_s\";\nlet dummy = \"unmÃ¶glicher-wert!\";\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\nlet checkRecords =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | summarize records = count()\n    )\n  | project records\n  | top 1 by records desc\n;\nlet checkTableExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | count\n      | extend miss = 0\n    )\n  | project miss\n  | limit 2\n  | top 1 by miss asc\n;\nlet checkColumnExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | extend miss = 0\n      | extend columnV1 = column_ifexists(c1, dummy)\n    )\n  | project miss, columnV1\n  | limit 2\n | top 1 by miss asc\n;\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != \"1\");\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\nlet tableRecords = toscalar(checkRecords | summarize max(records));\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\nprint toscalar(x)\n",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "dummy_neverset",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "sele",
+          "comparison": "isEqualTo",
+          "value": "Utilization"
+        }
+      ],
+      "name": "ErrorCheckUtilizationParam"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Unable to create the required table (ABAPGetWPTable) to capture telemetry information. Please try after some time. If the issue persists, please contact support.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_utilization",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "ABABTableCreationError"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "It may take up to 15 minutes for the initial telemetry information to be available for review. Please check again later.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_utilization",
+              "comparison": "isEqualTo",
+              "value": "2"
+            },
+            "name": "ABABIngestionError"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "param_check_error_utilization",
+          "comparison": "isNotEqualTo",
+          "value": "0"
+        },
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Utilization"
+        }
+      ],
+      "name": "utilization_group_error"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "4771a9ab-a94e-4dc5-96dc-3a0103a38b98",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "PerformanceTimeRange",
+                        "label": "Time Range",
+                        "type": 4,
+                        "value": {
+                          "durationMs": 1800000
+                        },
+                        "typeSettings": {
+                          "selectableValues": [
+                            {
+                              "durationMs": 300000
+                            },
+                            {
+                              "durationMs": 900000
+                            },
+                            {
+                              "durationMs": 1800000
+                            },
+                            {
+                              "durationMs": 3600000
+                            },
+                            {
+                              "durationMs": 14400000
+                            },
+                            {
+                              "durationMs": 43200000
+                            },
+                            {
+                              "durationMs": 86400000
+                            },
+                            {
+                              "durationMs": 172800000
+                            }
+                          ],
+                          "allowCustom": true
+                        },
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      },
+                      {
+                        "id": "23b5cb65-34f1-445b-8df5-1bb46a7fda80",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "PerformanceSID",
+                        "label": "SID",
+                        "type": 2,
+                        "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| distinct SID_s",
+                        "value": null,
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      },
+                      {
+                        "id": "42bafe96-35aa-40de-98c5-e1eb1a5047e5",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "PerformanceApplicationServer",
+                        "label": "Application Server",
+                        "type": 2,
+                        "multiSelect": true,
+                        "quote": "'",
+                        "delimiter": ",",
+                        "query": "SapNetweaver_GetSystemInstanceList_CL\r\n| where SID_s == '{PerformanceSID}' or '{PerformanceSID}' == ''\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| distinct SID_s, hostname_s, instanceNr_s\r\n| project AppServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| distinct AppServer",
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces",
+                        "value": []
+                      },
+                      {
+                        "id": "b55c977a-256e-491d-952b-5ab35c20b541",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "performanceWorkProcessType",
+                        "label": "Work Process Type",
+                        "type": 2,
+                        "query": "SapNetweaver_ABAPGetWPTable_CL\r\n| distinct Typ_s",
+                        "value": null,
+                        "typeSettings": {
+                          "additionalResourceOptions": []
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "utilization parameters"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let appServerList = dynamic([{PerformanceApplicationServer}]);\r\nlet workProcessType = '{performanceWorkProcessType}';\r\nSapNetweaver_ABAPGetWPTable_CL\r\n| where serverTimestamp_t between (todatetime({PerformanceTimeRange:start}) .. todatetime({PerformanceTimeRange:end}))\r\n| where SID_s == '{PerformanceSID}'\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| where Typ_s == workProcessType\r\n| summarize totalWP = count(), freeWP = countif(Status_s == \"Wait\") by bin(timestamp_t, 1m), Typ_s\r\n| extend activeWP = totalWP - freeWP",
+                    "size": 0,
+                    "aggregation": 3,
+                    "title": "Work Process Utilization",
+                    "color": "green",
+                    "noDataMessage": "No work processes found for the selected filter values.",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "areachart",
+                    "chartSettings": {
+                      "xAxis": "timestamp_t",
+                      "yAxis": [
+                        "activeWP",
+                        "freeWP"
+                      ],
+                      "group": null,
+                      "createOtherGroup": 0,
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "activeWP",
+                          "label": "Active Work Processes",
+                          "color": "red"
+                        },
+                        {
+                          "seriesName": "freeWP",
+                          "label": "Free Work Processes",
+                          "color": "blue"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "Work Process Utilization Trend"
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedMenu",
+              "comparison": "isEqualTo",
+              "value": "Utilization"
+            },
+            "name": "utilization metrics group"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Utilization"
+        },
+        {
+          "parameterName": "param_check_error_utilization",
+          "comparison": "isEqualTo",
+          "value": "0"
+        }
+      ],
+      "name": "Utilization Group Items"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "5cce3807-e36c-460d-bd2a-bc7d03e2e11b",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_error_performance",
+            "type": 1,
+            "query": "// 0 = no error\n// 1 = table does not exist (need to add provider)\n// 2 = table exists, but column v1 does not (need to wait)\nlet t = \"SapNetweaver_EnqGetStatistic_CL\";\nlet c1 = \"SID_s\";\nlet dummy = \"unmÃ¶glicher-wert!\";\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\nlet checkRecords =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | summarize records = count()\n    )\n  | project records\n  | top 1 by records desc\n;\nlet checkTableExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | count\n      | extend miss = 0\n    )\n  | project miss\n  | limit 2\n  | top 1 by miss asc\n;\nlet checkColumnExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | extend miss = 0\n      | extend columnV1 = column_ifexists(c1, dummy)\n    )\n  | project miss, columnV1\n  | limit 2\n | top 1 by miss asc\n;\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != \"1\");\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\nlet tableRecords = toscalar(checkRecords | summarize max(records));\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\nprint toscalar(x)\n",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "dummy_neverset",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Performance"
+        }
+      ],
+      "name": "ErrorCheckPerfParam"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Unable to create the required table (EnqGetStatistic) to capture telemetry information. Please try after some time. If the issue persists, please contact support.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_performance",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "EnqTableCreationError"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "It may take up to 15 minutes for the initial telemetry information to be available for review. Please check again later.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_performance",
+              "comparison": "isEqualTo",
+              "value": "2"
+            },
+            "name": "EnqIngestionError"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "param_check_error_performance",
+          "comparison": "isNotEqualTo",
+          "value": "0"
+        },
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Performance"
+        }
+      ],
+      "name": "perf_group_error"
     },
     {
       "type": 12,
@@ -1379,7 +1804,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let appServerList = dynamic([{PerformanceApplicationServer}]);\r\nlet baseQuery = SapNetweaver_EnqGetStatistic_CL\r\n| where SID_s == '{PerformanceSID}'\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList);\r\nlet thresholdQuery = baseQuery\r\n| where serverTimestamp_t > ago(24h)\r\n| project lock_wait_time_d\r\n| summarize threshold = percentile(lock_wait_time_d, 95);\r\nbaseQuery\r\n| where serverTimestamp_t between (todatetime({PerformanceTimeRange:start}) .. todatetime({PerformanceTimeRange:end}))\r\n| project lock_wait_time_d, serverTimestamp_t\r\n| summarize avg(lock_wait_time_d), arg_max(serverTimestamp_t, lock_wait_time_d)\r\n| where isnan(avg_lock_wait_time_d) != 1\r\n| extend dummy=1\r\n| join kind=inner ( thresholdQuery | extend dummy=1) on dummy\r\n| extend percentageChange = iff(threshold == 0, toreal(0), toreal(lock_wait_time_d - threshold) / toreal(threshold) * 100)\r\n| project avg_lock_wait_time_d, percentageChange, displayPercentChange = round(abs(percentageChange), 3)\r\n| extend Title = \"Average Time For Lock Operations\"",
+              "query": "let appServerList = dynamic([{PerformanceApplicationServer}]);\r\nlet baseQuery = SapNetweaver_EnqGetStatistic_CL\r\n| where SID_s == '{PerformanceSID}'\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList);\r\nlet thresholdQuery = baseQuery\r\n| where serverTimestamp_t > ago(24h)\r\n| project lock_wait_time_d\r\n| summarize threshold = percentile(lock_wait_time_d, 95);\r\nbaseQuery\r\n| where serverTimestamp_t between (todatetime({PerformanceTimeRange:start}) .. todatetime({PerformanceTimeRange:end}))\r\n| project lock_wait_time_d, serverTimestamp_t\r\n| summarize avg(lock_wait_time_d), arg_max(serverTimestamp_t, lock_wait_time_d)\r\n| where isnan(avg_lock_wait_time_d) != 1\r\n| extend dummy=1\r\n| join kind=inner ( thresholdQuery | extend dummy=1) on dummy\r\n| extend percentageChange = iff(threshold == 0, toreal(0), toreal(lock_wait_time_d - threshold) / toreal(threshold) * 100)\r\n| project avg_lock_wait_time_d, percentageChange, displayPercentChange = round(abs(percentageChange), 3)\r\n| extend Title = \"Average Waiting Time Taken For Lock Operations\"",
               "size": 4,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
@@ -1691,12 +2116,100 @@
           }
         ]
       },
-      "conditionalVisibility": {
-        "parameterName": "selectedMenu",
-        "comparison": "isEqualTo",
-        "value": "Performance"
-      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "Performance"
+        },
+        {
+          "parameterName": "param_check_error_performance",
+          "comparison": "isEqualTo",
+          "value": "0"
+        }
+      ],
       "name": "performance"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "4c3403c2-3978-4751-a4a7-5ff4d03ca84e",
+            "version": "KqlParameterItem/1.0",
+            "name": "param_check_error_queuestat",
+            "type": 1,
+            "query": "// 0 = no error\n// 1 = table does not exist (need to add provider)\n// 2 = table exists, but column v1 does not (need to wait)\nlet t = \"SapNetweaver_GetQueueStatistic_CL\";\nlet c1 = \"SID_s\";\nlet dummy = \"unmÃ¶glicher-wert!\";\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\nlet checkRecords =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | summarize records = count()\n    )\n  | project records\n  | top 1 by records desc\n;\nlet checkTableExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | count\n      | extend miss = 0\n    )\n  | project miss\n  | limit 2\n  | top 1 by miss asc\n;\nlet checkColumnExists =\n  union\n    isfuzzy=true MissingTable,\n    (table(t)\n      | extend miss = 0\n      | extend columnV1 = column_ifexists(c1, dummy)\n    )\n  | project miss, columnV1\n  | limit 2\n | top 1 by miss asc\n;\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != \"1\");\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\nlet tableRecords = toscalar(checkRecords | summarize max(records));\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\nprint toscalar(x)\n",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "dummy_neverset",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "QueueStatistics"
+        }
+      ],
+      "name": "ErrorCheckQueueStatParam"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Unable to create the required table (GetQueueStatistic) to capture telemetry information. Please try after some time. If the issue persists, please contact support.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_queuestat",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "QueueStatTableCreationError"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "It may take up to 15 minutes for the initial telemetry information to be available for review. Please check again later.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "param_check_error_queuestat",
+              "comparison": "isEqualTo",
+              "value": "2"
+            },
+            "name": "QueueStatIngestionError"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "param_check_error_queuestat",
+          "comparison": "isNotEqualTo",
+          "value": "0"
+        },
+        {
+          "parameterName": "selectedMenu",
+          "comparison": "isEqualTo",
+          "value": "QueueStatistics"
+        }
+      ],
+      "name": "queuestat_group_error"
     },
     {
       "type": 12,
@@ -2080,6 +2593,73 @@
             "styleSettings": {
               "maxWidth": "100%"
             }
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ebeb7d85-8c21-4534-8135-b05732fab7b5",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "QueueType",
+                  "label": "Queue Type",
+                  "type": 2,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "let appServerList = dynamic([{PerformanceApplicationServer}]);\r\nSapNetweaver_GetQueueStatistic_CL\r\n| where serverTimestamp_t between (todatetime({PerformanceTimeRange:start}) .. todatetime({PerformanceTimeRange:end}))\r\n| where SID_s == '{PerformanceSID}'\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| distinct Typ_s;",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "QueueType"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let queueList = dynamic([{QueueType}]);\r\nlet appServerList = dynamic([{PerformanceApplicationServer}]);\r\nlet baseQuery = SapNetweaver_GetQueueStatistic_CL\r\n| where serverTimestamp_t between (todatetime({PerformanceTimeRange:start}) .. todatetime({PerformanceTimeRange:end}))\r\n| where SID_s == '{PerformanceSID}'\r\n| where array_length(queueList) == 0 or Typ_s in (queueList)\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Now_d;\r\nlet timespanCount = baseQuery \r\n| summarize RecordCount=count()\r\n| extend Interval = iff(RecordCount <= 10000, timespan(1m), timespan(1m))\r\n| extend Interval = iff(RecordCount > 10000 and RecordCount < 50000, timespan(5m), Interval)\r\n| extend Interval = iff(RecordCount >= 50000 and RecordCount < 100000, timespan(10m), Interval)\r\n| extend Interval = iff(RecordCount >= 100000 and RecordCount < 150000, timespan(15m), Interval)\r\n| extend Interval = iff(RecordCount >= 150000, timespan(30m), Interval)\r\n| project Interval;\r\nlet timespanInterval = toscalar(timespanCount);\r\nbaseQuery\r\n| summarize Request=sum(Now_d) by bin(timestamp_t, timespanInterval), Typ_s",
+              "size": 0,
+              "aggregation": 3,
+              "title": "Queue Length Trend Graph",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "linechart",
+              "chartSettings": {
+                "xAxis": "timestamp_t",
+                "yAxis": [
+                  "Request"
+                ],
+                "xSettings": {
+                  "numberFormatSettings": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "name": "QueueLengthTrend"
           }
         ]
       },
@@ -2090,6 +2670,6 @@
       },
       "name": "Queue Statistics Group"
     }
-  ],
+  ], 
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
