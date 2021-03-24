@@ -1,4 +1,4 @@
-# Application Insights Workbooks Conversion
+h# Application Insights Workbooks Conversion
 For historical reasons, Application Insights Workbooks (hereby referred as "Legacy Workbooks") are stored as a different Azure resource type than all other Azure Workbooks. We are merging these different Azure resource types and making one single standard type. This will allow it to take advantage of all the existing and new functionality available in standard Azure Workbooks. For example:
 
 * Converted Legacy Workbooks can be queried via Azure Resource Graph (ARG), and show up in other standard Azure views of resources in a Resource Group or Subscription
@@ -48,6 +48,13 @@ This will not change where you *find* your workbooks in the Azure Portal (they w
     * If the Legacy Workbook uses links to other Legacy Workbooks, or loading workbook content in groups, those items will need to be updated to point to the newly saved workbook.
 
     * After using save as, you can delete the Legacy Workbook, or update its contents to be a link to the newly saved Workbook.
+
+3. Verify Permissions
+For Legacy Workbooks, the ability to see or create workbooks were based on the Application Insights specific roles, like Application Insights Contributor.
+
+For Workbooks, verify that users have the appropriate standard Monitoring Reader/Contributor or Workbook Reader/Contributor roles so that they can see and create Workbooks in the appropriate resource groups.
+
+See [Workbooks Access Control](https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-access-control) for more details.
 
 ## Why isn't there an automatic conversion?
 1. The write permissions for legacy workbooks are only based on Azure role based access control on the Application Insights resource itself. A user may not be allowed to create new workbooks in that resource group, so if they were auto migrated, they could fail to be moved, OR they could be created but then a user might not be able to delete them after the fact.
