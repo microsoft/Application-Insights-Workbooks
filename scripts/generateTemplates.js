@@ -241,7 +241,7 @@ function processGalleryFile(galleryPath, rootDirectory, fileName, galleryData) {
         }
 
         var path = getPackageOutputPath(galleryPath, rootDirectory);
-        if (galleryPath.endsWith("Cohorts")) {
+        if (galleryPath.endsWith("cohorts")) {
             path = path.replace("gallery\\", "Cohorts\\");
         } else {
             path = path.replace("gallery\\", "Workbooks\\");
