@@ -4,6 +4,8 @@
 
 ### If adding or updating templates:
 * [ ] post a screenshot of templates and/or gallery changes
+* [ ] ensure your template has a corresponding gallery entry in the gallery folder
+* [ ] If you are adding a new template, add your team and template/gallery file(s) to the CODEOWNERS file. CODEOWNERS entries should be teams, not individuals
 * [ ] ensure all steps have meaningful names
 * [ ] ensure all parameters and grid columns have display names set so they can be localized
 * [ ] ensure that parameters id values are unique __or they will fail PR validation__ (parameter ids are used for localization)
