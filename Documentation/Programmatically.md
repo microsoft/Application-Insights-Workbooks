@@ -187,9 +187,6 @@ Workbook types specify which workbook gallery type the new workbook instance wil
 | `tsg` | The Troubleshooting Guides gallery in Application Insights |
 | `usage` | The _More_ gallery under _Usage_ in Application Insights |
 
-### Limitations
-For an technical reason, this mechanism cannot be used to create workbook instances in the _Workbooks_ gallery of Application Insights. We are working on addressing this limitation. In the meanwhile, we recommend that you use the Troubleshooting Guide gallery (workbookType: _tsg_) to deploy Application Insights related workbooks.'
-
 ### Troubleshooting
 - Deployment template language expression evaluation failed
     - This happens when the string of one of the workbook content fields begin with `[` and ends with `]`. For example:
