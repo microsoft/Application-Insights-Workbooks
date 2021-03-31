@@ -184,16 +184,6 @@ $loginpasswordsecretnameprefix = 'telegraflogin-'
 $username = 'telegrafuser'
 
 
-<#
-if (Get-Module -ListAvailable -Name SqlServer) {
-    Write-Host "Module SqlServer exists already"
-} 
-else {
-    Write-Host "Module SqlServer does not exist, installing module"
-    Install-Module -Name SqlServer -Scope CurrentUser
-}
-#>
-
 $SuccessList = New-Object System.Collections.Generic.List[System.Object]
 $FailureList = New-Object System.Collections.Generic.List[System.Object]
 $ConfigConnectionStringList = New-Object System.Collections.Generic.List[System.Object]
@@ -204,9 +194,6 @@ $partial_server_count = 0
 $success_database_count = 0
 $failure_database_count = 0
 [bool] $isDatabaseListDefined = 0
-
-# TODO: Do we want to support this?
-# Get user input if script execution is for all resource groups or a specific resource group, and change below accordingly
 
 if ($SubscriptionId -ne '' -and $SubscriptionId -ne $null -and $ResourceGroupName -ne '' -and $ResourceGroupName -ne $null) {
     # Subscription and ResourceGroup has been provided
@@ -457,10 +444,6 @@ if($ConfigConnectionStringList.Count -gt 0){
 } else {
     WriteToConsoleAndLogFile("No records in Config Connection String list")
 }
-
-# TODO - Display a summary of success and failure count
-WriteToConsoleAndLogFile("`r`nEXECUTION SUMMARY")
-WriteToConsoleAndLogFile("-- to do")
 
 # Generating log file - this includes all the Write-Host comments and success/failure records
 Out-File -FilePath $logFilePath -InputObject $logMessageList
