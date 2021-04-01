@@ -45,7 +45,7 @@ The custom formatting is same as Grid's custom formatting except "Custom text fo
 ![Image showing custom format settings](../Images/NumberFormatSettings.png)
 
 #### Threshold Line
-Add a threshold line to the chart at Y value that you define. Supported chart types include line, bar, bar categorical, area, scatter chart, and time chart. To enable the threshold line on the chart, check the "Show threshold line" checkbox and set the Y value in chart settings in the "Custom threshold line" field.
+Add a threshold line to the chart at a Y value that you define. Supported chart types include line, bar, bar categorical, area, scatter chart, and time chart. To enable the threshold line on the chart, check the "Show threshold line" checkbox and set the Y value in chart settings in the "Custom threshold line" field.
 
 ![Image showing threshold line explicit setting](../Images/ThresholdLineSettingsManual.png)
 
@@ -56,7 +56,6 @@ Alternatively, you can link the Y value to a workbook parameter by inputting the
 The threshold line will be updated on the chart whenever the linked parameter value is changed.
 
 ![Image showing chart with parameterized threshold line](../Images/ThresholdLineParamExample.png)
-
 
 ### The Series tab
 The series settings tab lets you adjust the labels and colors shown for series in the chart.
