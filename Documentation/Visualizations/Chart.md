@@ -35,6 +35,7 @@ The settings tab controls:
 * the axis settings, including which fields, custom formating that allows users to set the number formatting to the axis values, and custom ranges.
 * grouping settings, including which field, the limits before an "Others" group is created
 * legend settings, including showing metrics (series name, colors and numbers) at the bottom, and/or a legend (series names and colors)
+* Threshold line settings
 
 ![Image showing chart settings series tab](../Images/ChartSettings.png)
 
@@ -42,6 +43,20 @@ The settings tab controls:
 The custom formatting is same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
 
 ![Image showing custom format settings](../Images/NumberFormatSettings.png)
+
+#### Threshold Line
+Add a threshold line to the chart at Y value that you define. Supported chart types include line, bar, bar categorical, area, scatter chart, and time chart. To enable the threshold line on the chart, check the "Show threshold line" checkbox and set the Y value in chart settings in the "Custom threshold line" field.
+
+![Image showing threshold line explicit setting](../Images/ThresholdLineSettingsManual.png)
+
+You can alternatively link the Y value to a workbook parameter defined above the chart by inputing the parameter name wrapped in curley brackets (eg. {thresholdParam1}). 
+
+![Image showing charts with threshold line enabled](../Images/ThresholdLineSettingsParam.png)
+
+The threshold line will be updated on the chart whenever the linked parameter value is changed.
+
+![Image showing chart with parameterized threshold line](../Images/ThresholdLineParamExample.png)
+
 
 ### The Series tab
 The series settings tab lets you adjust the labels and colors shown for series in the chart.
