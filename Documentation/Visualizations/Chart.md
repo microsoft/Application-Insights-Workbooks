@@ -35,7 +35,7 @@ The settings tab controls:
 * the axis settings, including which fields, custom formating that allows users to set the number formatting to the axis values, and custom ranges.
 * grouping settings, including which field, the limits before an "Others" group is created
 * legend settings, including showing metrics (series name, colors and numbers) at the bottom, and/or a legend (series names and colors)
-* Threshold line settings
+* threshold line settings
 
 ![Image showing chart settings series tab](../Images/ChartSettings.png)
 
@@ -49,7 +49,7 @@ Add a threshold line to the chart at Y value that you define. Supported chart ty
 
 ![Image showing threshold line explicit setting](../Images/ThresholdLineSettingsManual.png)
 
-You can alternatively link the Y value to a workbook parameter defined above the chart by inputing the parameter name wrapped in curley brackets (eg. {thresholdParam1}). 
+Alternatively, you can link the Y value to a workbook parameter by inputting the parameter name wrapped in curley brackets (eg. {thresholdParam1}). 
 
 ![Image showing charts with threshold line enabled](../Images/ThresholdLineSettingsParam.png)
 
