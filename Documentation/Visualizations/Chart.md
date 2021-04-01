@@ -15,7 +15,7 @@ Workbooks supports charts for both analytics logs and metric data sources. Use t
 ![Image showing a metric line chart for Storage transactions split by API name](../Images/MetricChart-Storage-Split-Line.png)
 
 ### Segmented bar chart
-![Image showing a large metric bar chart for Storage transactions split by response type](../Images/MetricChart-Storage-Bar-Large.png)
+![Image showing a large metric bar chart for Storage transactions split by response type](../Images/MetricChart-Storage-Bar-Large-2.png)
 
 ### Scatter chart
 ![Image showing a metric scatter chart for Storage latency](../Images/MetricChart-Storage-Scatter.png)
