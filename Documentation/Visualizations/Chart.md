@@ -40,7 +40,7 @@ The settings tab controls:
 ![Image showing chart settings series tab](../Images/ChartSettings.png)
 
 #### Custom Formatting
-The custom formatting is same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
+The custom formatting is same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
 
 ![Image showing custom format settings](../Images/NumberFormatSettings.png)
 
