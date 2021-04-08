@@ -7,7 +7,9 @@ const ArrayLocIdentifier = {
     "items": "name",
     "parameters": "id",
     "labelSettings": "columnId",
-    "links": "id"
+    "links": "id",
+    "categories": "id", // for gallery
+    "templates": "id" // for gallery
 };
 
 const LocalizeableFileExt = [
@@ -16,17 +18,13 @@ const LocalizeableFileExt = [
 ];
 
 const WorkbookFileType = {
-    CategoryResources: 1,
-    Settings: 2,
-    Template: 3,
-    ARMTemplate: 4
+    Template: 1,
+    ARMTemplate: 2,
+    Gallery: 3
 };
 
-const CategoryResourcesFile = "categoryResources.json";
-const SettingsFile = "settings.json";
 const IndexFile = "_index.json";
 const GalleryFilePrefix = "_gallery.";
-const CohortsGalleryFileName = "_gallery.Cohorts-microsoft.insights-components";
 
 const Encoding = 'utf8';
 const RESJSONFileExtension = ".resjson";
@@ -34,6 +32,7 @@ const DefaultLang = "en";
 
 const WorkbookTemplateFolder = "\\Workbooks\\";
 const CohortsTemplateFolder = "\\Cohorts\\";
+const GalleryFolder = "\\gallery";
 const PackageOutputFolder = "\\output\\package\\";
 const LangOutputSpecifier = "{Lang}";
 
@@ -83,6 +82,11 @@ function getCohortDirectories(rootDirectory) {
     return getDirectoriesRecursive(cohortsSubDir);
 }
 
+function getGalleryDirectory(rootDirectory) {
+    const gallerySubDir =  rootDirectory.concat(GalleryFolder);
+    return getDirectoriesRecursive(gallerySubDir);
+}
+
 function flatten(lists) {
     return lists.reduce((a, b) => a.concat(b), []);
 }
@@ -90,7 +94,8 @@ function flatten(lists) {
 function getLocalizeableFileDirectories(directoryPath) {
     const workbooksDirectories = getWorkbookDirectories(directoryPath);
     const cohortsDirectories = getCohortDirectories(directoryPath);
-    return (workbooksDirectories || []).concat(cohortsDirectories);
+    const galleryDirectory = getGalleryDirectory(directoryPath);
+    return (workbooksDirectories || []).concat(...cohortsDirectories, galleryDirectory);
 }
 
 function getDirectories(srcpath) {
@@ -103,12 +108,10 @@ function getDirectoriesRecursive(srcpath) {
     return [srcpath, ...flatten(getDirectories(srcpath).map(getDirectoriesRecursive))];
 }
 
-/** Validates file type. Expected to be either workbook/cohort file, settings/categoryjson file, or amtemplate. Returns null if file type is not supported */
-function getWorkbookFileType(fileName) {
-    if (fileName.localeCompare(CategoryResourcesFile) === 0) {
-        return WorkbookFileType.CategoryResources;
-    } else if (fileName.localeCompare(SettingsFile) === 0) {
-        return WorkbookFileType.Settings;
+/** Validates file type. Expected to be either workbook/cohort file, armtemplate, or gallery file. Returns null if file type is not supported */
+function getWorkbookFileType(path, fileName) {
+    if (path.indexOf("\\gallery") !== -1 && fileName.endsWith(".json")) {
+        return WorkbookFileType.Gallery;
     }
     var a = fileName.split(".");
     if (a.length === 1 || (a[0] === "" && a.length === 2)) {
@@ -135,13 +138,13 @@ function logError(message, shouldExit) {
     }
 }
 
-function openFile(file) {
+function openAndParseJSONFile(file) {
     try {
         logMessage("Processing workbook or file: " + file);
         const data = fs.readFileSync(file, Encoding);
-        return data;
+        return JSON.parse(data);
     } catch (err) {
-        logError("Cannot open file: " + file + " Error: " + err, true);
+        logError("Cannot open and parse file: " + file + " Error: " + err, true);
     }
 }
 
@@ -166,107 +169,6 @@ function getDirectoryFromPath(path) {
     return path.substr(0, path.lastIndexOf("\\"));
 }
 
-function addGalleryEntry(settingsData, settingsName, settingsDescription, gallery, categoryResourcesMap, templatePath, rootDirectory, language) {
-    if (!gallery[language]) {
-        gallery[language] = {};
-    }
-    const galleryMap = gallery[language];
-
-    var removedIndex = templatePath.replace(rootDirectory, "");
-    if (removedIndex.startsWith("\\")) {
-        removedIndex = removedIndex.substring(1);
-    }
-    var workbookName = "";
-
-    const split = removedIndex.split("\\");
-    for (s = 1; s < split.length; s++) {
-        if (workbookName === "") {
-            workbookName = workbookName.concat(split[s]);
-        } else {
-            workbookName = workbookName.concat("-", split[s]);
-        }
-    }
-
-    const indexEntry = workbookName.concat(".json");
-    const indexKey = removedIndex.split("\\").join("/");
-
-    const templateSplit = templatePath.split("\\");
-    const isCohorts = templatePath.includes(CohortsTemplateFolder);
-    var galleryKey = CohortsGalleryFileName;
-    const galleries = isCohorts ? [settingsData] : settingsData.galleries || [];
-
-    for (var g in galleries) {
-        var key = templateSplit[templateSplit.length - 2];
-
-        if (!isCohorts) {
-            const galleryEntry = settingsData.galleries[g];
-            galleryKey = GalleryFilePrefix.concat(galleryEntry.type, "-", galleryEntry.resourceType.split("/").join("-"));
-            if (galleryEntry.categoryKey) {
-                key = galleryEntry.categoryKey;
-            }
-        }
-
-        if (!galleryMap[galleryKey]) {
-            galleryMap[galleryKey] = {};
-        }
-        // add entry for gallery
-        if (!galleryMap[galleryKey][key]) {
-            galleryMap[galleryKey][key] = {};
-        }
-        if (!galleryMap[galleryKey][key].description || !galleryMap[galleryKey][key].name) {
-            if (categoryResourcesMap[key][language]) {
-                galleryMap[galleryKey][key].description = categoryResourcesMap[key][language].description;
-                galleryMap[galleryKey][key].name = categoryResourcesMap[key][language].name;
-                galleryMap[galleryKey][key].order = categoryResourcesMap[key][language].order;
-            }
-        }
-        if (!galleryMap[galleryKey][key].templates) {
-            galleryMap[galleryKey][key].templates = [];
-        }
-
-        galleryMap[galleryKey][key].templates.push({
-            id: indexKey,
-            fileName: indexEntry,
-            order: isCohorts ? 0 : galleries[g].order,
-            author: settingsData.author,
-            description: settingsDescription || settingsData.description,
-            name: settingsName || settingsData.name,
-            isPreview: settingsData.isPreview ? true : undefined,
-            tags: isCohorts ? [] : settingsData.tags || undefined
-        });
-    }
-}
-
-/** Extract category resource info to build gallery files */
-function getCategoryResourcesInfo(object, categoryResourcesMap, templatePath) {
-    if (object) {
-        if (object[LanguagesMap[DefaultLang]]) {
-            const templateSplit = templatePath.split("\\");
-            const key = templateSplit[templateSplit.length - 1];
-            const entry = object[LanguagesMap[DefaultLang]];
-            extractCategoryResourcesInfo(entry, key, categoryResourcesMap);
-        } else if (object.categories) {
-            object.categories.forEach(category => {
-                if (category.settings && category.settings[LanguagesMap[DefaultLang]]) {
-                    const key = category.key;
-                    const entry = category.settings[LanguagesMap[DefaultLang]];
-                    extractCategoryResourcesInfo(entry, key, categoryResourcesMap);
-                }
-            });
-        }
-    }
-}
-
-function extractCategoryResourcesInfo(entry, key, categoryResourcesMap) {
-    categoryResourcesMap[key] = {
-        "en": {
-            name: entry.name,
-            description: entry.description,
-            order: entry.order
-        }
-    }
-}
-
 function getRootFolder(dir) {
     var root = "";
     if (dir.includes(CohortsTemplateFolder)) {
@@ -277,28 +179,35 @@ function getRootFolder(dir) {
     return root;
 }
 
-/** Processes category resource file */
-function processCategoryResourceFile(fileData, templatePath, rootDirectory) {
+function processTemplateFile(fileData, cohortIndexEntries, workbookIndexEntries, templatePath, rootDirectory, languages) {
     try {
-        const data = JSON.parse(fileData);
-        getCategoryResourcesInfo(data, categoryResourcesData, templatePath);
-        return getPackageOutputPath(templatePath, rootDirectory);
-    } catch (e) {
-        logError("Failed to process categoryResources file: " + templatePath + "Error: " + e, true);
-    }
-}
+        // Location of translated RESJSON outputted by the localization build
+        const translatedRESJSONPath = getClonedLocFilePath(templatePath, rootDirectory, WorkbookFileType.Template);
 
-function processSettingsFile(settingsParsedData, galleryMap, categoryResourcesData, templatePath, rootDirectory) {
-    try {
-        addGalleryEntry(settingsParsedData, null, null, galleryMap, categoryResourcesData, templatePath, rootDirectory, DefaultLang);
-    } catch (e) {
-        logError("Failed to process settings file: " + templatePath + "Error: " + e, true);
-    }
-}
+        const packageOutputPath = getPackageOutputPath(templatePath, rootDirectory, cohortIndexEntries, workbookIndexEntries);
+        if (!templatePath.endsWith("\\")) {
+            // Generate localized templates
+            languages.forEach(lang => {
+                // Location of translated resjson
+                const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
+                // Location of package for translated workbook
+                const translatedResultPath = packageOutputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
 
-function processTemplateFile(cohortIndexEntries, workbookIndexEntries, templatePath, rootDirectory) {
-    try {
-        return getPackageOutputPath(templatePath, rootDirectory, cohortIndexEntries, workbookIndexEntries);
+                if (lang === DefaultLang) {
+                    writeTranslatedFile(fileData, translatedResultPath);
+                } else {
+                    if (fs.existsSync(localizedFilePath)) {
+                        // Do workbook string replacement here
+                        const jsonData = fs.readFileSync(localizedFilePath, Encoding);
+                        parseTemplateResult(jsonData, fileData, translatedResultPath);
+                    } else {
+                        // No loc file found, just push the workbook file as is in English
+                        logMessage("Did not find localized file in: " + localizedFilePath);
+                        writeTranslatedFile(fileData, translatedResultPath);
+                    }
+                }
+            });
+        }
     } catch (e) {
         logError("Failed to process template file: " + templatePath + "Error: " + e, true);
     }
@@ -311,52 +220,76 @@ function processARMTemplateFile(templatePath, rootDirectory, fileName, armTempla
         path = path.concat("-", fileName, ".json");
         languages.forEach(lang => {
             const translatedResultPath = path.replace(LangOutputSpecifier, LanguagesMap[lang]);
-            writeTranslatedWorkbookToFile(armTemplateData, translatedResultPath);
+            writeTranslatedFile(armTemplateData, translatedResultPath);
         });
     } catch (e) {
         logError("Failed to process ARM template file: " + templatePath + "Error: " + e, true);
     }
 }
 
-function parseCategoryResourcesStrings(fileData, categoryResourcesData, templatePath, lang) {
-    const jsonData = JSON.parse(fileData);
-    const templateSplit = templatePath.split("\\");
-    const key = templateSplit[templateSplit.length - 1];
-    const categoryResourcesMap = categoryResourcesData[key];
-    // strings 
-    var locStringData = {};
-
-    // Extract strings from JSON file to map to
-    for (const [itemId, translatedText] of Object.entries(jsonData)) {
-        locStringData[itemId] = translatedText;
-    }
-
-    if (!categoryResourcesMap[lang]) {
-        categoryResourcesMap[lang] = {};
-    }
-
-    const categoryResourcesLoc = categoryResourcesMap[lang];
-    const keys = Object.keys(locStringData);
-    keys.forEach(key => {
-        if (key === "en-us.name") {
-            categoryResourcesLoc["name"] = locStringData[key];
-        } else if (key === "en-us.description") {
-            categoryResourcesLoc["description"] = locStringData[key];
+function processGalleryFile(galleryPath, rootDirectory, fileName, galleryData) {
+    try {
+        // Assign file names
+        if (galleryData && galleryData.categories) {
+            galleryData.categories.forEach(category => {
+                category.templates.forEach(template => {
+                    const templateId = template.id;
+                    const templatePath = rootDirectory.endsWith("\\") ? rootDirectory.concat("\\", templateId) : rootDirectory.concat(templateId);
+                    assignFileName(templatePath, rootDirectory, template);
+                });
+            });
         }
-        categoryResourcesLoc["order"] = categoryResourcesMap[DefaultLang].order;
-    });
+
+        var path = getPackageOutputPath(galleryPath, rootDirectory);
+        if (galleryPath.endsWith("cohorts")) {
+            path = path.replace("gallery\\", "Cohorts\\");
+        } else {
+            path = path.replace("gallery\\", "Workbooks\\");
+        }
+
+        const p = path.substr(0, path.lastIndexOf('\\'));
+        const subDir = path.split("\\").pop();
+        const workbookType = subDir.substr(0, subDir.lastIndexOf('.'));
+        path = p.concat("\\", GalleryFilePrefix, workbookType, "-", fileName);
+
+        // Location of translated RESJSON outputted by the localization build
+        const translatedRESJSONPath = getClonedLocFilePath(galleryPath, rootDirectory, WorkbookFileType.Gallery, fileName);
+        // Generate localized templates
+        languages.forEach(lang => {
+            // Location of translated resjson
+            const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
+            // Location of package for translated gallery file
+            const translatedResultPath = path.replace(LangOutputSpecifier, LanguagesMap[lang]);
+            if (lang === DefaultLang) {
+                writeTranslatedFile(galleryData, translatedResultPath);
+            } else {
+                if (fs.existsSync(localizedFilePath)) {
+                    // Do workbook string replacement here
+                    const jsonData = fs.readFileSync(localizedFilePath, Encoding);
+                    parseTemplateResult(jsonData, galleryData, translatedResultPath);
+                } else {
+                    // No loc file found, just push the workbook file as is in English
+                    logMessage("Did not find localized file in: " + localizedFilePath);
+                    writeTranslatedFile(galleryData, translatedResultPath);
+                }
+            }
+        });
+    } catch (e) {
+        logError("Failed to process gallery file: " + galleryPath + "Error: " + e, true);
+    }
 }
 
-function parseTemplateResult(jsonData, lang, workbookJSON, settingsJSON, templatePath, fullpath, rootdirectory, categoryResourcesMap, galleryMap) {
+
+function parseTemplateResult(jsonData, workbookJSON, fullpath) {
     const locStringData = JSON.parse(jsonData);
 
     // Strings extracted. Replace results into workbook JSON
-    const translatedJSON = replaceText(workbookJSON, settingsJSON, locStringData, templatePath, rootdirectory, categoryResourcesMap, lang, galleryMap);
-    writeTranslatedWorkbookToFile(translatedJSON, fullpath);
+    const translatedJSON = replaceText(workbookJSON, locStringData);
+    writeTranslatedFile(translatedJSON, fullpath);
 }
 
-/** Write file as new workbook  */
-function writeTranslatedWorkbookToFile(data, fullPath) {
+/** Write output file */
+function writeTranslatedFile(data, fullPath) {
     const fileName = fullPath.split('\\').pop().split('/').pop();
     if (fileName.length > 99) {
         // not currently blocking - local builds don't actually have an issue here but something on the build machine is truncating files?
@@ -368,12 +301,13 @@ function writeTranslatedWorkbookToFile(data, fullPath) {
     logMessage("Generated translated file: " + fullPath);
 }
 
+
 /** Replace the strings in the workbook json */
-function replaceText(workbookTemplate, settingsJSON, stringMap, templatePath, rootDirectory, categoryResourcesMap, lang, galleryMap) {
+function replaceText(workbookTemplate, stringMap) {
     var workbookJSON = JSON.parse(JSON.stringify(workbookTemplate));
     const keys = Object.keys(stringMap);
-    addGalleryEntry(settingsJSON, stringMap["settings.name"], stringMap["settings.description"], galleryMap, categoryResourcesMap, templatePath, rootDirectory, lang);
     keys.forEach(key => {
+        // keeping this here for now because the string files will still have this info
         if (key !== "settings.name" && key !== "settings.description") {
             const keyArray = convertStringKeyToPath(key);
             // value in the template
@@ -473,23 +407,52 @@ function assignValueToObject(obj, keys, value) {
 };
 
 /** Returns matching localized file location */
-function getClonedLocFilePath(templatePath, rootDirectory) {
+function getClonedLocFilePath(templatePath, rootDirectory, fileType, fileName) {
     var result = rootDirectory;
     if (rootDirectory.endsWith("\\")) {
         result = result.substring(0, result.length - 1);
     }
     result = result.concat("\\out\\loc\\", LangOutputSpecifier, "\\output\\loc")
     var removedIndex = templatePath.replace(rootDirectory, "");
+    if (!result.endsWith("\\")) {
+        result = result.concat("\\");
+    }
     if (removedIndex.startsWith("\\")) {
         removedIndex = removedIndex.substring(1);
     }
 
-    if (removedIndex.startsWith("Workbooks")) {
-        removedIndex = removedIndex.replace("Workbooks", "");
-    } else if (removedIndex.startsWith("Cohorts")) {
-        removedIndex = removedIndex.replace("Cohorts", "");
+    if (fileType === WorkbookFileType.Gallery) {
+        if (removedIndex.endsWith("\\")) {
+            removedIndex = removedIndex.concat(fileName.substring(0, fileName.lastIndexOf('.')));
+        } else {
+            removedIndex = removedIndex.concat("\\", fileName.substring(0, fileName.lastIndexOf('.')));
+        }
+    } else {
+        if (removedIndex.startsWith("Workbooks\\")) {
+            removedIndex = removedIndex.replace("Workbooks\\", "");
+        } else if (removedIndex.startsWith("Cohorts\\")) {
+            removedIndex = removedIndex.replace("Cohorts\\", "");
+        }
     }
     return result.concat(removedIndex, RESJSONFileExtension);
+}
+
+/** Assign file name field to all templates, since it is not required for authors to specify this */
+function assignFileName(templatePath, rootDirectory, templateData) {
+    var removedIndex = templatePath.replace(rootDirectory, "");
+    if (removedIndex.startsWith("\\")) {
+        removedIndex = removedIndex.substring(1);
+    }
+    const split = removedIndex.split("/");
+    var workbookName = "";
+    for (s = 1; s < split.length; s++) {
+        if (workbookName === "") {
+            workbookName = workbookName.concat(split[s]);
+        } else {
+            workbookName = workbookName.concat("-", split[s]);
+        }
+    }
+    templateData.fileName = workbookName.concat(".json");
 }
 
 /** Returns the path of where the translated template should be dropped */
@@ -540,30 +503,16 @@ function generateIndexFiles(indexData, outputPath, languages) {
     });
 }
 
-function generateGalleryFiles(galleryMap, outputPath, languages) {
-    languages.forEach(lang => {
-        const localizedGallery = galleryMap[lang];
-        for (var g in localizedGallery) {
-            const subdir = g === CohortsGalleryFileName ? CohortsTemplateFolder : WorkbookTemplateFolder;
-            const galleryFilePath = outputPath.concat(LanguagesMap[lang], subdir, g.concat(".json"));
-            const galleryJSON = JSON.stringify(localizedGallery[g]);
-            writeJSONToFile(galleryJSON, galleryFilePath, true);
-            logMessage("Generated Gallery File: " + galleryFilePath);
-        }
-    });
-}
-
 /**
  * ============================================================
  * SCRIPT MAIN
  * ============================================================
  */
 
-if (!process.argv[2]) { // Root path of template repository
+const directoryPath = process.argv[2];
+if (!directoryPath) { // Root path of template repository
     logError("Workbook path not provided. Please provide the path to the workbook folder.", true);
 }
-
-const directoryPath = process.argv[2];
 const generateEnUsOnly = process.argv[3] === "dev";
 
 const exists = testPath(directoryPath); // Verify directory path
@@ -572,123 +521,53 @@ if (!exists) {
 }
 
 // Valid args, start processing the files.
-logMessage("Template generation script starting...");
+logMessage("Template package generation script starting...");
 
-var directories = getLocalizeableFileDirectories(directoryPath);
-    // Languages to generate
+const directories = getLocalizeableFileDirectories(directoryPath);
+// Languages to generate
 const languages = generateEnUsOnly ? [DefaultLang] : Object.keys(LanguagesMap);
 
 var cohortIndexEntries = {}; // Map for generating cohort index files
 var workbookIndexEntries = {}; // Map for generating workbook index files
-var galleryMap = { // Map for generating gallery files
-    "en": {}
-};
-var categoryResourcesData = {};
 var rootDirectory;
 
-for (var d in directories) {
-    const templatePath = directories[d];
+directories.forEach(filePath => {
     if (!rootDirectory) {
-        rootDirectory = getRootFolder(templatePath);
+        rootDirectory = getRootFolder(filePath);
     }
 
-    const files = fs.readdirSync(templatePath);
+    const files = fs.readdirSync(filePath);
     if (!files || files.length === 0) {
-        continue;
+        return;
     }
 
-    var file;
-    var templateParsedData;
-    var settingsParsedData;
-
-    // Location of translated RESJSON outputted by the localization build
-    const translatedRESJSONPath = getClonedLocFilePath(templatePath, rootDirectory);
-
-    // Path for for translated workbook in output package
-    var packageOutputPath;
-
-    for (var i in files) {
-        const fileName = files[i];
-        const fileType = getWorkbookFileType(fileName);
+    files.forEach(fileName => {
+        const fileType = getWorkbookFileType(filePath, fileName);
         // If file type is not valid, skip
         if (!fileType) {
-            continue;
+            return;
+        }
+        const fullPath = filePath.concat("\\", fileName);
+
+        // Parse the JSON file
+        const fileData = openAndParseJSONFile(fullPath);
+
+        switch (fileType) {
+            case WorkbookFileType.ARMTemplate:
+                processARMTemplateFile(filePath, rootDirectory, fileName, fileData, languages);
+                break;
+            case WorkbookFileType.Gallery:
+                processGalleryFile(filePath, rootDirectory, fileName, fileData);
+                break;
+            default:
+                processTemplateFile(fileData, cohortIndexEntries, workbookIndexEntries, filePath, rootDirectory, languages);
         }
 
-        if (fileType !== WorkbookFileType.Settings) {
-            file = fileName;
-            packageOutputPath = getPackageOutputPath(templatePath, rootDirectory);
-        }
-
-        const filePath = templatePath.concat("\\", fileName);
-
-        // Parse the template for localizeable strings
-        const fileData = openFile(filePath);
-        if (fileType === WorkbookFileType.CategoryResources) {
-            // Category Resources file
-            packageOutputPath = processCategoryResourceFile(fileData, templatePath, rootDirectory);
-        } else if (fileType === WorkbookFileType.Settings) {
-            // Settings file
-            settingsParsedData = JSON.parse(fileData);
-            processSettingsFile(settingsParsedData, galleryMap, categoryResourcesData, templatePath, rootDirectory);
-        } else if (fileType === WorkbookFileType.ARMTemplate) {
-            // ARM Template file
-            const armTemplateData = JSON.parse(fileData);
-            processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData, languages);
-        } else {
-            // Workbook template file
-            templateParsedData = JSON.parse(fileData);
-            packageOutputPath = processTemplateFile(cohortIndexEntries, workbookIndexEntries, templatePath, rootDirectory);
-        }
-    };
-
-    // Template Generation 
-    if (!templatePath.endsWith("\\")) {
-        const fileType = getWorkbookFileType(file);
-
-        if (fileType === WorkbookFileType.CategoryResources) {
-            languages.forEach(lang => {
-            // Add category resources strings to map
-                if (lang !== DefaultLang && !generateEnUsOnly) {
-                    // Location of translated resjson
-                    const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
-                    if (fs.existsSync(localizedFilePath)) {
-                        const jsonFileData = fs.readFileSync(localizedFilePath, Encoding);
-                        parseCategoryResourcesStrings(jsonFileData, categoryResourcesData, templatePath, lang);
-                    } else {
-                        logMessage("Did not find localized file in: " + localizedFilePath);
-                    }
-                }
-            });
-        } else if (fileType === WorkbookFileType.Template || fileType === WorkbookFileType.ARMTemplate) {
-            // Generate localized templates
-            languages.forEach(lang => {
-                // Location of translated resjson
-                const localizedFilePath = translatedRESJSONPath.replace(LangOutputSpecifier, lang);
-                // Location of package for translated workbook
-                const translatedResultPath = packageOutputPath.replace(LangOutputSpecifier, LanguagesMap[lang]);
-
-                if (lang === DefaultLang) {
-                    writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
-                } else if (!generateEnUsOnly) {
-                    if (fs.existsSync(localizedFilePath)) {
-                        // Do workbook string replacement here
-                        const jsonData = fs.readFileSync(localizedFilePath, Encoding);
-                        parseTemplateResult(jsonData, lang, templateParsedData, settingsParsedData, templatePath, translatedResultPath, rootDirectory, categoryResourcesData, galleryMap);
-                    } else {
-                        // No loc file found, just push the workbook file as is in English
-                        logMessage("Did not find localized file in: " + localizedFilePath);
-                        writeTranslatedWorkbookToFile(templateParsedData, translatedResultPath);
-                    }
-                }
-            });
-        }
-    }
-}
+    });
+});
 
 const outputFolder = rootDirectory.concat(rootDirectory.startsWith("\\") ? PackageOutputFolder.substring(1) : PackageOutputFolder);
 
-generateGalleryFiles(galleryMap, outputFolder, languages);
 generateIndexFiles(cohortIndexEntries, outputFolder.concat(LangOutputSpecifier, CohortsTemplateFolder, IndexFile), languages);
 generateIndexFiles(workbookIndexEntries, outputFolder.concat(LangOutputSpecifier, WorkbookTemplateFolder, IndexFile), languages);
 
