@@ -14,7 +14,7 @@ Workbooks supports charts for both analytics logs and metric data sources. Use t
 ### Segmented line chart
 ![Image showing a metric line chart for Storage transactions split by API name](../Images/MetricChart-Storage-Split-Line.png)
 
-### Segmented bar chart ([Threshold Line enabled](https://github.com/microsoft/Application-Insights-Workbooks/blob/user/tolee/thresholdLineFeature/Documentation/Visualizations/Chart.md#threshold-line))
+### Segmented bar chart ([Threshold Line enabled](#threshold-line))
 ![Image showing a large metric bar chart for Storage transactions split by response type](../Images/MetricChart-Storage-Bar-Large-2.png)
 
 ### Scatter chart
@@ -40,7 +40,7 @@ The settings tab controls:
 ![Image showing chart settings series tab](../Images/ChartSettings.png)
 
 #### Custom Formatting
-The custom formatting is same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](https://github.com/microsoft/Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
+The custom formatting is same as Grid's custom formatting except "Custom text for missing values" is not applicable for charts. More description [here](Application-Insights-Workbooks/blob/master/Documentation/Visualizations/Grid.md#custom-formatting).
 
 ![Image showing custom format settings](../Images/NumberFormatSettings.png)
 
