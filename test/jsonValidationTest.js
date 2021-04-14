@@ -2,6 +2,7 @@ const assert = require('chai').assert;
 const Mocha = require('mocha');
 const fs = require('fs');
 const path = require('path');
+const Validator = require('jsonschema').Validator;
 
 const ArrayLocIdentifier = {
     "items": "name",
@@ -26,53 +27,19 @@ const LocKeys = [
 ];
 
 
+const GallerySchema = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
+const GalleryVersion = "TemplateGallery/1.0";
+
 describe('Validating Cohorts...', () => {
     const cohortPath = './Cohorts';
 
     it('Verifying .cohort files', function (done) {
         let failedList = [];
         browseDirectory(cohortPath, (error, results) => {
+            validateNoImplicitGalleryFiles(results);
             results.filter(file => file.endsWith('.cohort'))
                 .forEach(file => {
                     validateJsonStringAndGetObject(file)
-                });
-
-            done();
-        });
-    });
-
-    it('Verifying cohort settings files', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('settings.json'))
-                .forEach(file => {
-                    let settings = validateJsonStringAndGetObject(file);
-                    validateSettingsForCohort(settings, file);
-                });
-
-            done();
-        });
-    });
-
-    it('Verifying cohort category files', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('categoryResources.json'))
-                .forEach(file => {
-                    let category = validateJsonStringAndGetObject(file);
-                    validateCategory(category, file);
-                });
-
-            done();
-        });
-    });
-
-    it('Verifying cohort category or settings json exists', function (done) {
-        browseDirectory(cohortPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('.cohort'))
-                .forEach(folder => {
-                    validateJsonExistForWorkbook(cohortPath, results, folder.substr(cohortPath.length+1))
                 });
 
             done();
@@ -85,6 +52,8 @@ describe('Validating Workbooks...', () => {
 
     it('Verifying .workbook files', function (done) {
         browseDirectory(workbookPath, (error, results) => {
+
+            validateNoImplicitGalleryFiles(results);
             results.filter(file => file.endsWith('.workbook'))
                 .forEach(file => {
                     let settings = validateJsonStringAndGetObject(file);
@@ -95,20 +64,6 @@ describe('Validating Workbooks...', () => {
                     validateWorkbookFilePathLength(file);
                 });
 
-            done();
-        });
-    });
-
-    it('Verifying workbook settings.json files', function (done) {
-        browseDirectory(workbookPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('settings.json'))
-                .forEach(file => {
-                    let settings = validateJsonStringAndGetObject(file)
-                    validateSettingsForWorkbook(settings, file);
-                    // verify there is a workbook file in this directory too
-                    validateWorkbookExistForSettings(file);
-                });
             done();
         });
     });
@@ -128,68 +83,36 @@ describe('Validating Workbooks...', () => {
             done();
         });
     });
-
-    it('Verifying workbook category json files', function (done) {
-        browseDirectory(workbookPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('categoryResources.json'))
-                .forEach(file => {
-                    let category = validateJsonStringAndGetObject(file);
-                    validateCategory(category, file);
-                });
-
-            done();
-        }, true, workbookPath);
-    });
-
-    it('Verifying workbook category or settings json exists', function (done) {
-        browseDirectory(workbookPath, (error, results) => {
-            if (error) throw error;
-            results.filter(file => file.endsWith('.workbook'))
-                .forEach(folder => {
-                    validateJsonExistForWorkbook(workbookPath, results, folder.substr(workbookPath.length+1))
-                });
-
-            done();
-        }, true, workbookPath);
-    });
 });
 
-function validateJsonExistForWorkbook(rootPath, results, file) {
-    let paths = getProgressivePaths(rootPath, file);
-    paths.forEach(folder => {
-        let result = results.filter(s => {
-            return s.indexOf(folder + "/categoryResources.json") > -1 || s.indexOf(folder + "/settings.json") > -1;
+describe('Validating Gallery files...', () => {
+    const galleryPath = './gallery';
+
+    it('Verifying gallery files', function (done) {
+        browseDirectory(galleryPath, (error, results) => {
+            if (error) throw error;
+
+            var validator = new Validator();
+            const schemaFile = "./schema/gallery.json";
+            const schemaJSON = fs.readFileSync(schemaFile, 'utf8');
+            const schema = TryParseJson(schemaJSON);
+
+            validateGalleryFileNames(results);
+
+            results.forEach(file => {
+                    let settings = validateJsonStringAndGetObject(file);
+                    validateGallerySchema(file, settings, validator, schema);
+                    validateGalleryVersionAndSchemaFields(file, settings);
+                    validateNoDuplicateCategories(file, settings);
+                    validateNoDuplicateTemplates(file, settings);
+                    validateTemplateIds(file, settings);
+                });
+            done();
         });
-        if (result.length === 0) {
-            assert.fail("categoryResources.json or settings.json doesn't exist in folder '" + folder + "'")
-        }
     });
-}
 
-function validateWorkbookExistForSettings(file) {
-    let folder = path.dirname(file);
-    fs.readdir(folder, (err, list) => {
-        let workbooks = list.filter(s => s.endsWith(".workbook"));
-        if (workbooks.length == 0 ) {
-            assert.fail("settings.json file exists with no corresponding .workbook in folder '" + folder + "'")
-        }
-    });
-}
 
-function getProgressivePaths(rootPath, file) {
-    let paths = file.split("/").filter(folder => folder !== "." && folder !== ".." && folder.indexOf(".workbook") === -1 && folder.indexOf(".cohort") === -1);
-    let files = [];
-    if (paths && paths.length > 0) {
-        var runningPath = rootPath + "/" + paths[0];
-        files[0] = runningPath;
-        for (let i = 1; i < paths.length; i++) {
-            runningPath += "/" + paths[i];
-            files[i] = runningPath;
-        }
-    }
-    return files;
-}
+});
 
 function validateWorkbookFilePathLength(file) {
     // validate the length of the category+file name. this is hard to do directly because of galleries and the specifics
@@ -261,19 +184,18 @@ function validateJsonStringAndGetObject(file) {
     return obj;
 }
 
-function validateSettingsForCohort(settings, file) {
-    ["$schema", "name", "author"].forEach( field => checkProperty(settings, field, file) );
-}
-
-function validateSettingsForWorkbook(settings, file) {
-    ["$schema", "name", "author", "galleries"].forEach( field => checkProperty(settings, field, file) );
-    if (!Array.isArray(settings.galleries)) {
-        assert.fail("The galleries should be an array with '" + file + "'");
-    }
-}
-
 function validateSettingsForArmTemplate(settings, file) {
     ["$schema"].forEach( field => checkProperty(settings, field, file) );
+}
+
+// Implicit gallery files (categoryResources.json and settings.json) are switched to using explicit gallery files.
+// Check to make sure no one is trying to make galleries this way anymore
+function validateNoImplicitGalleryFiles(files) {
+    files.forEach(file => {
+        if (file.endsWith("categoryResources.json") || file.endsWith("settings.json")) {
+          assert.fail(file + ": Galleries are no longer being generated implicitly through categoryResources.json and settings.json files. Please review Contributing.md for latest guidance.");
+        }
+    });
 }
 
 function validateNoResourceIds(settings, file) {
@@ -361,17 +283,11 @@ function removeNonAplhaNumeric(str) {
 function validateSingleWorkbookFile(settings, file) {
     let dir = path.dirname(file);
     fs.readdir(dir, (err, list) => {
-        let workbooks = list.filter(s => s.endsWith(".workbook"));
+        let workbooks = list.filter(s => s.endsWith(".workbook") );
         if (workbooks.length > 1) {
             assert.fail(file + ": Found " + workbooks.length + " .workbook files in folder. Only one is allowed.");
         }
     });
-}
-
-function validateCategory(category, file) {
-    checkProperty(category, "$schema", file);
-    checkProperty(category, 'en-us', file);
-    ["name", "description", "order"].forEach( field => checkProperty(category['en-us'], field, file) );
 }
 
 function checkProperty(obj, name, file) {
@@ -382,6 +298,81 @@ function checkProperty(obj, name, file) {
     if (!obj.hasOwnProperty(name)) {
         assert.fail("The " + name + " field is missing with '" + file + "'");
     }
+}
+
+function validateGalleryFileNames(files) {
+    const galleryFileNameRegex = new RegExp("[a-z\\-\\s]+.json");
+    files.forEach(file => {
+        const fileName = file.split("/").pop();
+        const matchesRegex = galleryFileNameRegex.test(fileName);
+        if (!matchesRegex) {
+            assert.fail(file + ": Gallery file should be a JSON file, and should be named the ARM resource type where '\\' are replaced with '-'");
+        }
+
+        const fileSubDir = file.replace("./gallery/", "");
+        const subDirCount = fileSubDir.split("/").length - 1;
+        // Ensures that there is only one sub-directory for workbookType 
+        if (subDirCount !== 1) {
+            assert.fail(file + ": Gallery file should follow the naming convension /gallery/{workbookType}/{resourceType}.json");
+        }
+    });
+}
+
+function validateGallerySchema(file, settings, validator, schema) {
+    const validationResult  = validator.validate(settings, schema);
+    if (validationResult && validationResult.errors.length !== 0) {
+        assert.fail(file + " : Gallery file does not conform to the gallery schema. Errors: " + validationResult.errors.join(", "));
+    }
+}
+
+function validateNoDuplicateCategories(file, settings) {
+    const areUnique = areArrayItemsUnique(settings["categories"], "id");
+    if (!areUnique) {
+        assert.fail(file + " : Gallery file contains categories with non-unique ids");
+    }
+}
+
+function validateGalleryVersionAndSchemaFields(file, settings) {
+    const isCorrectVersion = settings["version"] === GalleryVersion;
+    if (!isCorrectVersion) {
+        assert.fail(file + " : Gallery file does not contain correct version. Version should be set to: " + GalleryVersion);
+    }
+    const isCorrectSchema = settings["$schema"] === GallerySchema;
+    if (!isCorrectSchema) {
+        assert.fail(file + " : Gallery file does not contain correct $schema. Schema should be set to: " + GallerySchema);
+    }
+}
+
+function validateNoDuplicateTemplates(file, settings) {
+    settings["categories"].forEach(category => {
+        const areUnique = areArrayItemsUnique(category["templates"], "id");
+        if (!areUnique) {
+            assert.fail(file + " : Gallery file contains templates with non-unique ids");
+        }
+    });
+}
+
+function validateTemplateIds(file, settings) {
+    settings["categories"].forEach(category => {
+        category["templates"].forEach(template => {
+            const templatePath = "./".concat(template.id);
+            fs.readdir(templatePath, (err, list) => {
+                if (err) {
+                    assert.fail(file + " : Template with ID: " + template.id + " could not be found in the specified path. The ID should be the folder where the template resides relative to the root repository (eg. Workbooks/Performance/Apdex)");
+                }
+                let templates = list.filter(s => s.endsWith(".workbook") || s.endsWith(".cohort"));
+                if (templates.length === 0) {
+                    assert.fail(file + " : Template with ID: " + template.id + " does not exist in specified path. The ID should be the folder where the template resides relative to the root repository (eg. Workbooks/Performance/Apdex)");
+                }
+            });
+        });
+    });
+}
+
+
+function areArrayItemsUnique(arr, key) {   
+    const uniques = new Set(arr.map(item => item[key.toLowerCase()]));   
+    return [...uniques].length === arr.length; 
 }
 
 function TryParseJson(str, file) {
