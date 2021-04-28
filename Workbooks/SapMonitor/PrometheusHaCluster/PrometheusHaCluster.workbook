@@ -40,14 +40,15 @@
           }
         ],
         "style": "above",
-        "queryType": 0
+        "queryType": 0,
+        "resourceType": "microsoft.hanaonazure/sapmonitors"
       },
       "name": "Test_HAClusterTableExists"
     },
     {
       "type": 1,
       "content": {
-        "json": "## High-availability cluster status\n---\nPlease select a cluster below to show further details."
+        "json": "## High-availability Pacemaker cluster status\n---\n"
       },
       "name": "text - 2"
     },
@@ -58,6 +59,7 @@
         "style": "tabs",
         "links": [
           {
+            "id": "88532a5b-f6c1-4f72-924b-691160b4d5ec",
             "cellValue": "selectedTabView",
             "linkTarget": "parameter",
             "linkLabel": "Cluster Status",
@@ -65,6 +67,7 @@
             "style": "link"
           },
           {
+            "id": "bf49b82f-1e86-4527-8339-ca74ef12b5e5",
             "cellValue": "selectedTabView",
             "linkTarget": "parameter",
             "linkLabel": "Endpoint Status",
@@ -81,6 +84,84 @@
       "name": "developerViewSelection"
     },
     {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"1.0.0\",\"content\":\"[\\n\\t{ \\\"Status\\\": \\\"Available\\\", \\\"Color\\\": 0 },\\n\\t{ \\\"Status\\\": \\\"Not Functional\\\", \\\"Color\\\": 1 },\\n\\t{ \\\"Status\\\": \\\"Error\\\", \\\"Color\\\": 2 },\\n\\t{ \\\"Status\\\": \\\"Offline\\\", \\\"Color\\\": 3 },\\n\\t{ \\\"Status\\\": \\\"Status Updated 5 Minutes Earlier\\\", \\\"Color\\\": 4 }\\n\\n]\",\"transformers\":null}",
+        "size": 4,
+        "title": "Status Legend",
+        "queryType": 8,
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Status",
+            "formatter": 2
+          },
+          "secondaryContent": {
+            "columnMatch": "Color",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "colors",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "0",
+                  "representation": "green",
+                  "text": ""
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "1",
+                  "representation": "yellow",
+                  "text": ""
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "2",
+                  "representation": "red",
+                  "text": ""
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "3",
+                  "representation": "gray",
+                  "text": ""
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "4",
+                  "representation": "grayBlue",
+                  "text": ""
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "blue",
+                  "text": ""
+                }
+              ]
+            },
+            "tooltipFormat": {
+              "tooltip": "Available Tooltip for {0}"
+            }
+          },
+          "showBorder": false,
+          "size": "auto"
+        }
+      },
+      "name": "query - 5"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\nPlease select a cluster below to show further details"
+      },
+      "name": "text - 2 - Copy"
+    },
+    {
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
@@ -90,7 +171,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "// of all currently running endpoints\r\n// find the most recent correlation id\r\nlet upstatus = Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where name_s == \"up\"\r\n| summarize arg_max(TimeGenerated, correlation_id_g, value_d) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| project correlation_id_g;\r\n//identify the master (status = DC)\r\nlet dcstatus = Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (upstatus)\r\n| where name_s == 'ha_cluster_pacemaker_nodes'\r\n| where value_d == 1\r\n| extend node_status=parse_json(labels_s)\r\n| where node_status['status']=='dc'\r\n| where tostring(node_status['node']) == metadata_hostname_s\r\n| summarize arg_max(TimeGenerated, correlation_id_g) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| project correlation_id_g;\r\n//find all pacemaker resources and their status from dc metrics\r\n( Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (dcstatus)\r\n| where name_s == \"ha_cluster_pacemaker_resources\" \r\n| where value_d == 1\r\n| extend  resources = parse_json(labels_s)\r\n| summarize \r\n    status_red = countif(resources['status'] == 'failed' or resources['status'] == 'failed_ignored'), \r\n    status_yellow = countif(resources['status'] == 'blocked' or resources['status'] == 'orphaned'), \r\n    status_green = countif(resources['status'] == 'active' and resources['managed'] == 'true'),\r\n    status_grey = countif(resources['managed'] == 'false')\r\n    by metadata_sid_s, metadata_clustername_s)\r\n| union \r\n//find all pacemaker nodes and their status from dc metrics\r\n( Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (dcstatus)\r\n| where name_s == \"ha_cluster_pacemaker_nodes\" \r\n| where value_d == 1\r\n| extend  nodes = parse_json(labels_s)\r\n| summarize \r\n    status_red = countif(nodes['status'] == 'unclean'), \r\n    status_yellow = countif(nodes['status'] == 'pending' or nodes['status'] == 'shutdown'  or nodes['status'] == 'standby_onfail'), \r\n    status_green = countif(nodes['status'] == 'online' or nodes['status'] == 'dc'),\r\n    status_grey = countif(nodes['status'] == 'maintenance' or nodes['status'] == 'standby')\r\n    by metadata_sid_s, metadata_clustername_s)   \r\n| union \r\n//find all exporter up-status as additional metric\r\n(Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (upstatus)\r\n| where name_s == 'up'\r\n| summarize status_grey = case(countif(value_d==1) == 0, 1, 0)//only count grey status if there is no (0) endpoints up\r\n    by metadata_sid_s, metadata_clustername_s)\r\n//summarize per cluster per sid\r\n| summarize sum(status_red), sum(status_green), sum(status_yellow), sum(status_grey), cluster_status = case(sum(status_red) > 0, 'red', sum(status_yellow) > 0, 'yellow', sum(status_grey) > 0, 'grey', 'green') by metadata_sid_s, metadata_clustername_s",
+              "query": "// of all currently running endpoints\r\n// find the most recent correlation id\r\nlet upstatus = Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where name_s == \"up\"\r\n| summarize arg_max(TimeGenerated, correlation_id_g, value_d) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| project correlation_id_g;\r\n//identify the master (status = DC)\r\nlet dcstatus = Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (upstatus)\r\n| where name_s == 'ha_cluster_pacemaker_nodes'\r\n| where value_d == 1\r\n| extend node_status=parse_json(labels_s)\r\n| where node_status['status']=='dc'\r\n| where tostring(node_status['node']) == metadata_hostname_s\r\n| summarize arg_max(TimeGenerated, correlation_id_g) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| project correlation_id_g;\r\n//find all pacemaker resources and their status from dc metrics\r\n( Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (dcstatus)\r\n| where name_s == \"ha_cluster_pacemaker_resources\" \r\n| where value_d == 1\r\n| extend  resources = parse_json(labels_s)\r\n| summarize \r\n    status_red = countif(resources['status'] == 'failed' or resources['status'] == 'failed_ignored'), \r\n    status_yellow = countif(resources['status'] == 'blocked' or resources['status'] == 'orphaned'), \r\n    status_green = countif(resources['status'] == 'active' and resources['managed'] == 'true'),\r\n    status_grey = countif(resources['managed'] == 'false')\r\n    by metadata_sid_s, metadata_clustername_s)\r\n| union \r\n//find all pacemaker nodes and their status from dc metrics\r\n( Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (dcstatus)\r\n| where name_s == \"ha_cluster_pacemaker_nodes\" \r\n| where value_d == 1\r\n| extend  nodes = parse_json(labels_s)\r\n| summarize \r\n    status_red = countif(nodes['status'] == 'unclean'), \r\n    status_yellow = countif(nodes['status'] == 'pending' or nodes['status'] == 'shutdown'  or nodes['status'] == 'standby_onfail'), \r\n    status_green = countif(nodes['status'] == 'online' or nodes['status'] == 'dc'),\r\n    status_grey = countif(nodes['status'] == 'maintenance' or nodes['status'] == 'standby')\r\n    by metadata_sid_s, metadata_clustername_s)   \r\n| union \r\n//find all exporter up-status as additional metric\r\n(Prometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (upstatus)\r\n| where name_s == 'up'\r\n| summarize status_grey = case(countif(value_d==1) == 0, 1, 0)//only count grey status if there is no (0) endpoints up\r\n    by metadata_sid_s, metadata_clustername_s)\r\n//summarize per cluster per sid\r\n| summarize sum(status_red), sum(status_green), sum(status_yellow), sum(status_grey), cluster_status = case(sum(status_red) > 0, 'red', sum(status_yellow) > 0, 'yellow', sum(status_grey) > 0, 'grey', sum(status_green) > 0, 'green', 'greyblue') by metadata_sid_s, metadata_clustername_s",
               "size": 0,
               "exportedParameters": [
                 {
@@ -111,15 +192,15 @@
                 "type": 2,
                 "topContent": {
                   "columnMatch": "metadata_clustername_s",
-                  "formatter": 1,
-                  "formatOptions": {}
+                  "formatter": 1
                 },
                 "bottomContent": {
                   "columnMatch": "metadata_sid_s",
-                  "formatter": 1,
-                  "formatOptions": {}
+                  "formatter": 1
                 },
                 "nodeIdField": "metadata_sid_s",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
                 "nodeSize": null,
                 "staticNodeSize": 100,
                 "colorSettings": {
@@ -147,6 +228,11 @@
                       "representation": "green"
                     },
                     {
+                      "operator": "==",
+                      "thresholdValue": "greyblue",
+                      "representation": "grayBlue"
+                    },
+                    {
                       "operator": "Default",
                       "thresholdValue": null,
                       "representation": "blue"
@@ -167,315 +253,727 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "//find the most recent records for each cluster node\r\n//identify the master (status = DC)\r\n//and return the correlation ID from that node only\r\nlet master = Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where value_d == 1\r\n| extend node_status=parse_json(labels_s)\r\n| where node_status['status']=='dc'\r\n| where tostring(node_status['node']) == metadata_hostname_s\r\n| where metadata_sid_s == '{selected_sid}'\r\n| where metadata_clustername_s=='{selected_clustername}'\r\n| summarize arg_max(TimeGenerated, correlation_id_g) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| top 1 by TimeGenerated\r\n| project correlation_id_g;\r\nPrometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (master)\r\n| where name_s == \"ha_cluster_pacemaker_nodes\"\r\n| where value_d == 1\r\n| extend  resources = parse_json(labels_s)\r\n| project metadata_hostname_s, correlation_id_g, resources['node'], resources['type'], resources['status'], value_d",
-              "size": 2,
-              "title": "Node status",
-              "noDataMessage": "No monitoring data has been received.",
-              "noDataMessageStyle": 4,
+              "query": "let master = Prometheus_HaClusterExporter_CL\n| where TimeGenerated > ago(10min)\n| where value_d == 1\n| extend node_status=parse_json(labels_s)\n| where node_status['status']=='dc'\n| where metadata_sid_s == '{selected_sid}'\n| where metadata_clustername_s == '{selected_clustername}'\n| where tostring(node_status['node']) == metadata_hostname_s\n| summarize arg_max(TimeGenerated, correlation_id_g, value_d) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\n| top 1 by TimeGenerated\n| project correlation_id_g;\n//find all pacemaker resources and their status from dc metrics\nPrometheus_HaClusterExporter_CL\n| where correlation_id_g in (master)\n//| where name_s == 'ha_cluster_pacemaker_location_constraints' \n| extend  resources = parse_json(labels_s)\n| where ( resources['constraint'] startswith 'cli-ban' ) or ( resources['constraint'] startswith 'cli-prefer' )\n| project   resource_constraint=resources['constraint'],Impact=\"warning\"",
+              "size": 4,
+              "title": "We checked the cluster settings and found these location constraints that will impact cluster behavior:",
+              "noDataMessage": "no cli location constraints",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "table",
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "metadata_hostname",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "correlation_id_g",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "resources_node",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "resources_type",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "resources_status",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "unclean",
-                          "representation": "critical",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "pending",
-                          "representation": "warning",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "shutdown",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "standby_onfail",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "online",
-                          "representation": "Available",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "dc",
-                          "representation": "Available",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "expected_up",
-                          "representation": "Available",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "maintenance",
-                          "representation": "stopped",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "standby",
-                          "representation": "stopped",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "uninitialized",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "value_d",
-                    "formatter": 5,
-                    "formatOptions": {}
+                    "columnMatch": "Impact",
+                    "formatter": 11
                   }
                 ],
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "resources_node"
-                  ],
-                  "expandTopLevel": true,
-                  "finalBy": "resources_type"
-                },
                 "labelSettings": [
                   {
-                    "columnId": "correlation_id_g"
-                  },
-                  {
-                    "columnId": "resources_node",
-                    "label": "Node"
-                  },
-                  {
-                    "columnId": "resources_type",
-                    "label": "Resource Type"
-                  },
-                  {
-                    "columnId": "resources_status",
-                    "label": "Status"
-                  },
-                  {
-                    "columnId": "value_d"
+                    "columnId": "resource_constraint",
+                    "label": "Resource constraint name",
+                    "comment": "The name of the resource constraint"
                   }
                 ]
               }
             },
-            "customWidth": "30",
             "conditionalVisibility": {
-              "parameterName": "selected_sid",
+              "parameterName": "selected_clustername",
               "comparison": "isNotEqualTo"
             },
-            "name": "Node status"
+            "name": "locationconstraints-query"
           },
           {
-            "type": 3,
+            "type": 12,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "//find the most recent records for each cluster node\r\n//identify the master (status = DC)\r\n//and return the correlation ID from that node only\r\nlet master = Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where value_d == 1\r\n| extend node_status=parse_json(labels_s)\r\n| where node_status['status']=='dc'\r\n| where metadata_sid_s == '{selected_sid}'\r\n| where metadata_clustername_s == '{selected_clustername}'\r\n| where tostring(node_status['node']) == metadata_hostname_s\r\n| summarize arg_max(TimeGenerated, correlation_id_g, value_d) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| top 1 by TimeGenerated\r\n| project correlation_id_g;\r\n//find all pacemaker resources and their status from dc metrics\r\nPrometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (master)\r\n| where name_s == 'ha_cluster_pacemaker_resources' \r\n| where value_d == 1\r\n| extend  resources = parse_json(labels_s)\r\n| project  correlation_id_g, name_s, value_d, resource_agent = resources['agent'], resource_resource = resources['resource'], resource_node = resources['node'], resource_managed = resources['managed'], resource_role= resources['role'], resource_status=resources['status']",
-              "size": 2,
-              "title": "Resource status",
-              "noDataMessage": "No monitoring data has been received.",
-              "noDataMessageStyle": 4,
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "correlation_id_g",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "name_s",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "value_d",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "resource_agent",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "resource_resource",
-                    "formatter": 5,
-                    "formatOptions": {}
-                  },
-                  {
-                    "columnMatch": "resource_managed",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "true",
-                          "representation": "success",
-                          "text": ""
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "disabled",
-                          "text": ""
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "resource_status",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "failed",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "failed_ignored",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "blocked",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "orphaned",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "active",
-                          "representation": "Available",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "uninitialized",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "resource_resource"
-                  ],
-                  "expandTopLevel": true,
-                  "finalBy": "resource_agent"
-                },
-                "sortBy": [
-                  {
-                    "itemKey": "$gen_group",
-                    "sortOrder": 2
-                  }
-                ],
-                "labelSettings": [
-                  {
-                    "columnId": "correlation_id_g"
-                  },
-                  {
-                    "columnId": "name_s"
-                  },
-                  {
-                    "columnId": "value_d"
-                  },
-                  {
-                    "columnId": "resource_agent",
-                    "label": "Agent"
-                  },
-                  {
-                    "columnId": "resource_resource",
-                    "label": "Resource"
-                  },
-                  {
-                    "columnId": "resource_node",
-                    "label": "Node"
-                  },
-                  {
-                    "columnId": "resource_managed",
-                    "label": "Managed"
-                  },
-                  {
-                    "columnId": "resource_role",
-                    "label": "Role status"
-                  },
-                  {
-                    "columnId": "resource_status",
-                    "label": "Resource status"
-                  }
-                ]
-              },
-              "sortBy": [
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
                 {
-                  "itemKey": "$gen_group",
-                  "sortOrder": 2
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "//find the most recent records for each cluster node\r\n//identify the master (status = DC)\r\n//and return the correlation ID from that node only\r\nlet master = Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where value_d == 1\r\n| extend node_status=parse_json(labels_s)\r\n| where node_status['status']=='dc'\r\n| where tostring(node_status['node']) == metadata_hostname_s\r\n| where metadata_sid_s == '{selected_sid}'\r\n| where metadata_clustername_s=='{selected_clustername}'\r\n| summarize arg_max(TimeGenerated, correlation_id_g) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| top 1 by TimeGenerated\r\n| project correlation_id_g;\r\nPrometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (master)\r\n| where name_s == \"ha_cluster_pacemaker_nodes\"\r\n| where value_d == 1\r\n| extend  resources = parse_json(labels_s)\r\n| project metadata_hostname_s, correlation_id_g, resources['node'], resources['type'], resources['status'], value_d\r\n| order by tostring(resources_node) asc",
+                    "size": 2,
+                    "title": "Node status",
+                    "noDataMessage": "No monitoring data has been received.",
+                    "noDataMessageStyle": 4,
+                    "exportedParameters": [
+                      {
+                        "parameterType": 1
+                      },
+                      {
+                        "fieldName": "resources_node",
+                        "parameterName": "selected_hostname",
+                        "parameterType": 1
+                      },
+                      {
+                        "fieldName": "resources_status",
+                        "parameterName": "selected_status",
+                        "parameterType": 1
+                      }
+                    ],
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "metadata_hostname",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "correlation_id_g",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "resources_node",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "resources_type",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "resources_status",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "unclean",
+                                "representation": "critical",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "pending",
+                                "representation": "warning",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "shutdown",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "standby_onfail",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "online",
+                                "representation": "Available",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "dc",
+                                "representation": "Available",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "expected_up",
+                                "representation": "Available",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "maintenance",
+                                "representation": "stopped",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "standby",
+                                "representation": "stopped",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "uninitialized",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "columnMatch": "value_d",
+                          "formatter": 5
+                        }
+                      ],
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "resources_node"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "resources_type"
+                      },
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_thresholds_resources_status_5",
+                          "sortOrder": 1
+                        }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "correlation_id_g"
+                        },
+                        {
+                          "columnId": "resources_node",
+                          "label": "Node"
+                        },
+                        {
+                          "columnId": "resources_type",
+                          "label": "Resource Type"
+                        },
+                        {
+                          "columnId": "resources_status",
+                          "label": "Status"
+                        },
+                        {
+                          "columnId": "value_d"
+                        }
+                      ]
+                    },
+                    "sortBy": [
+                      {
+                        "itemKey": "$gen_thresholds_resources_status_5",
+                        "sortOrder": 1
+                      }
+                    ]
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "selected_clustername",
+                    "comparison": "isNotEqualTo"
+                  },
+                  "name": "Nodestatus-query"
+                },
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "ac3e5581-5682-4da9-aa10-5ff4ed939e9b",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "node_timerange",
+                        "label": "Time Range",
+                        "type": 4,
+                        "description": "Time range for node status display",
+                        "isRequired": true,
+                        "value": {
+                          "durationMs": 14400000
+                        },
+                        "typeSettings": {
+                          "selectableValues": [
+                            {
+                              "durationMs": 300000
+                            },
+                            {
+                              "durationMs": 900000
+                            },
+                            {
+                              "durationMs": 1800000
+                            },
+                            {
+                              "durationMs": 3600000
+                            },
+                            {
+                              "durationMs": 14400000
+                            },
+                            {
+                              "durationMs": 43200000
+                            },
+                            {
+                              "durationMs": 86400000
+                            },
+                            {
+                              "durationMs": 172800000
+                            },
+                            {
+                              "durationMs": 259200000
+                            },
+                            {
+                              "durationMs": 604800000
+                            },
+                            {
+                              "durationMs": 1209600000
+                            },
+                            {
+                              "durationMs": 2419200000
+                            },
+                            {
+                              "durationMs": 2592000000
+                            },
+                            {
+                              "durationMs": 5184000000
+                            },
+                            {
+                              "durationMs": 7776000000
+                            }
+                          ],
+                          "allowCustom": true
+                        },
+                        "timeContext": {
+                          "durationMs": 86400000
+                        }
+                      },
+                      {
+                        "id": "62e5c1d6-0169-474e-ac4b-c3008dfbbdae",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "selected_hostname",
+                        "label": "Node Name",
+                        "type": 2,
+                        "isRequired": true,
+                        "isGlobal": true,
+                        "query": "let local_selected_sid = '{selected_sid}';\nlet local_selected_clustername = '{selected_clustername}';\n//let local_selected_sid = 'H10';\n//let local_selected_clustername = 'hacluster';\nlet master = Prometheus_HaClusterExporter_CL\n| where TimeGenerated > ago(10min)\n| where value_d == 1\n| extend node_status=parse_json(labels_s)\n| where node_status['status']=='dc'\n| where tostring(node_status['node']) == metadata_hostname_s\n| where metadata_sid_s == local_selected_sid\n| where metadata_clustername_s== local_selected_clustername\n| summarize arg_max(TimeGenerated, correlation_id_g) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\n| top 1 by TimeGenerated\n| project correlation_id_g;\nPrometheus_HaClusterExporter_CL\n| where correlation_id_g in (master)\n| where name_s == \"ha_cluster_pacemaker_nodes\"\n| where value_d == 1\n| extend  resources = parse_json(labels_s)\n| project node=tostring(resources['node'])\n| distinct node\n| order by node asc\n| project node_value=node, node_display=node, is_selected=row_number() == 1",
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "nodestatus-timerange"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "//let local_selected_sid = 'H10';\n//let local_selected_clustername = 'hacluster';\n//let local_selected_hostname = 'hana2';\n//let local_timeframe_start = ago(1h);\n//let local_timeframe_end = ago(1m);\nlet local_selected_sid = '{selected_sid}';\nlet local_selected_clustername = '{selected_clustername}';\nlet local_selected_hostname =  '{selected_hostname}';\nlet local_timeframe_start = {node_timerange:start} ;\nlet local_timeframe_end = {node_timerange:end} ;\n//\n//find the most recent records for each cluster node\n//identify the master (status = DC)\n//and return the correlation ID from that node only\n//find the most recent records for each cluster node\n//identify the master (status = DC)\n//and return the correlation IDs from that node only\nlet master = Prometheus_HaClusterExporter_CL\n| where TimeGenerated > local_timeframe_start\n| where TimeGenerated < local_timeframe_end\n| where value_d == 1\n| extend node_status=parse_json(labels_s)\n| where node_status['status']=='dc'\n| where tostring(node_status['node']) == metadata_hostname_s\n| where metadata_sid_s == local_selected_sid\n| where metadata_clustername_s==local_selected_clustername\n//| summarize TimeGenerated, correlation_id_g by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\n| project correlation_id_g;\n//master\nlet workdata=Prometheus_HaClusterExporter_CL\n| where correlation_id_g in (master)\n| where name_s == \"ha_cluster_pacemaker_nodes\"\n| where value_d == 1\n| extend  resources = parse_json(labels_s)\n| extend nodename=tostring(resources['node'])\n| where nodename == local_selected_hostname \n//| where nodename in ( {selected_hostname} )\n| project TimeGenerated, nodename, node_status=resources['status'], value=value_d;\n//workdata\nlet ts3=workdata\n| where node_status == 'dc'\n| order by TimeGenerated desc;\nlet ts2=workdata\n| where node_status == 'online'\n| order by TimeGenerated desc;\nlet ts1=workdata\n| where node_status == 'expected_up'\n| order by TimeGenerated desc;\nts1 \n| join kind=leftouter ( ts2 ) on TimeGenerated,nodename\n| join kind=leftouter ( ts3 ) on TimeGenerated,nodename\n| project TimeGenerated, nodename, expected_up=value, is_online=value1, is_dc=value2\n| order by TimeGenerated desc;",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node {selected_hostname} status over time",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "timechart",
+                    "chartSettings": {
+                      "xAxis": "TimeGenerated",
+                      "showLegend": true,
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "value_d",
+                          "label": "Value"
+                        },
+                        {
+                          "seriesName": "expected_up",
+                          "label": "expected up"
+                        },
+                        {
+                          "seriesName": "is_online",
+                          "label": "online"
+                        },
+                        {
+                          "seriesName": "is_dc",
+                          "label": "is dc"
+                        }
+                      ],
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 0,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true
+                          }
+                        },
+                        "min": 0,
+                        "max": 1
+                      }
+                    }
+                  },
+                  "name": "nodestatusovertime-query"
                 }
               ]
             },
-            "customWidth": "70",
+            "customWidth": "45",
             "conditionalVisibility": {
-              "parameterName": "selected_sid",
+              "parameterName": "selected_clustername",
               "comparison": "isNotEqualTo"
             },
-            "name": "query - 4"
+            "name": "node-status-detail-group"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let truefalse = datatable(Key:string , Value1:long)\n[\n    'false',0,\n    'true',1\n];\nlet local_selected_sid = '{selected_sid}';\nlet local_selected_clustername = '{selected_clustername}';\nlet local_selected_resource = '{selected_resource}';\n//find the most recent records for each cluster node\n//identify the master (status = DC)\n//and return the correlation ID from that node only\nlet master = Prometheus_HaClusterExporter_CL\n| where TimeGenerated > {param_resource_timerange:start} \n| where TimeGenerated < {param_resource_timerange:end} \n| where value_d == 1\n| extend node_status=parse_json(labels_s)\n| where node_status['status']=='dc'\n| where metadata_sid_s == local_selected_sid\n| where metadata_clustername_s == local_selected_clustername\n| where tostring(node_status['node']) == metadata_hostname_s\n| project correlation_id_g;\n//find all pacemaker resources and their status from dc metrics\nPrometheus_HaClusterExporter_CL\n| where correlation_id_g in (master)\n| where name_s == 'ha_cluster_pacemaker_resources' \n//| where value_d == 1\n| extend  resources = parse_json(labels_s)\n| where resources['resource'] == local_selected_resource\n| project TimeGenerated, resource_agent = resources['agent'], resource_resource = resources['resource'], resource_node = resources['node'], resource_managed = resources['managed'], resource_role= resources['role'], resource_status=resources['status']\n| extend resource_managed_string = tostring(resource_managed) \n| join kind=leftouter truefalse on $left.resource_managed_string == $right.Key",
+                    "size": 0,
+                    "title": "{selected_sid}-{selected_clustername} - {selected_resource}",
+                    "timeContext": {
+                      "durationMs": 86400000
+                    },
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "query - 0"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "selected_resource",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "group - 5"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "//find the most recent records for each cluster node\r\n//identify the master (status = DC)\r\n//and return the correlation ID from that node only\r\nlet master = Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where value_d == 1\r\n| extend node_status=parse_json(labels_s)\r\n| where node_status['status']=='dc'\r\n| where metadata_sid_s == '{selected_sid}'\r\n| where metadata_clustername_s == '{selected_clustername}'\r\n| where tostring(node_status['node']) == metadata_hostname_s\r\n| summarize arg_max(TimeGenerated, correlation_id_g, value_d) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| top 1 by TimeGenerated\r\n| project correlation_id_g;\r\n//find all pacemaker resources and their status from dc metrics\r\nPrometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (master)\r\n| where name_s == 'ha_cluster_pacemaker_resources' \r\n| where value_d == 1\r\n| extend  resources = parse_json(labels_s)\r\n| project  correlation_id_g, name_s, value_d, resource_agent = resources['agent'], resource_resource = resources['resource'], resource_node = resources['node'], resource_managed = resources['managed'], resource_role= resources['role'], resource_status=resources['status']",
+                    "size": 2,
+                    "title": "Resource status",
+                    "noDataMessage": "No monitoring data has been received.",
+                    "noDataMessageStyle": 4,
+                    "exportedParameters": [
+                      {
+                        "parameterType": 1
+                      },
+                      {
+                        "fieldName": "resource_resource",
+                        "parameterName": "selected_resource",
+                        "parameterType": 1
+                      },
+                      {
+                        "fieldName": "resource_agent",
+                        "parameterName": "selected_agent",
+                        "parameterType": 1
+                      }
+                    ],
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "correlation_id_g",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "name_s",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "value_d",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "resource_agent",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "resource_resource",
+                          "formatter": 5,
+                          "formatOptions": {}
+                        },
+                        {
+                          "columnMatch": "resource_managed",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "true",
+                                "representation": "success",
+                                "text": ""
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "disabled",
+                                "text": ""
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "columnMatch": "resource_status",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "failed",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "failed_ignored",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "blocked",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "orphaned",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "active",
+                                "representation": "Available",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "uninitialized",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "resource_resource"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "resource_agent"
+                      },
+                      "labelSettings": [
+                        {
+                          "columnId": "correlation_id_g"
+                        },
+                        {
+                          "columnId": "name_s"
+                        },
+                        {
+                          "columnId": "value_d"
+                        },
+                        {
+                          "columnId": "resource_agent",
+                          "label": "Agent"
+                        },
+                        {
+                          "columnId": "resource_resource",
+                          "label": "Resource"
+                        },
+                        {
+                          "columnId": "resource_node",
+                          "label": "Node"
+                        },
+                        {
+                          "columnId": "resource_managed",
+                          "label": "Managed"
+                        },
+                        {
+                          "columnId": "resource_role",
+                          "label": "Role status"
+                        },
+                        {
+                          "columnId": "resource_status",
+                          "label": "Resource status"
+                        }
+                      ]
+                    },
+                    "sortBy": []
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "selected_sid",
+                    "comparison": "isNotEqualTo"
+                  },
+                  "name": "resourcestatus-query"
+                },
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "60571c79-f539-4813-9069-c1d5b14a8627",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "param_resource_timerange",
+                        "type": 4,
+                        "isRequired": true,
+                        "typeSettings": {
+                          "selectableValues": [
+                            {
+                              "durationMs": 300000
+                            },
+                            {
+                              "durationMs": 900000
+                            },
+                            {
+                              "durationMs": 1800000
+                            },
+                            {
+                              "durationMs": 3600000
+                            },
+                            {
+                              "durationMs": 14400000
+                            },
+                            {
+                              "durationMs": 43200000
+                            },
+                            {
+                              "durationMs": 86400000
+                            },
+                            {
+                              "durationMs": 172800000
+                            },
+                            {
+                              "durationMs": 259200000
+                            },
+                            {
+                              "durationMs": 604800000
+                            },
+                            {
+                              "durationMs": 1209600000
+                            },
+                            {
+                              "durationMs": 2419200000
+                            },
+                            {
+                              "durationMs": 2592000000
+                            },
+                            {
+                              "durationMs": 5184000000
+                            },
+                            {
+                              "durationMs": 7776000000
+                            }
+                          ]
+                        },
+                        "value": {
+                          "durationMs": 14400000
+                        },
+                        "label": "Time Range"
+                      },
+                      {
+                        "id": "ef192577-da05-4ff0-9a4c-45a667c9d9f9",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "selected_resource",
+                        "label": "Resource",
+                        "type": 2,
+                        "isRequired": true,
+                        "isGlobal": true,
+                        "query": "let local_selected_sid = '{selected_sid}';\nlet local_selected_clustername = '{selected_clustername}';\n//let local_selected_sid = 'H10';\n//let local_selected_clustername = 'hacluster';\nlet master = Prometheus_HaClusterExporter_CL\n| where TimeGenerated > ago(10min)\n| where value_d == 1\n| extend node_status=parse_json(labels_s)\n| where node_status['status']=='dc'\n| where tostring(node_status['node']) == metadata_hostname_s\n| where metadata_sid_s == local_selected_sid\n| where metadata_clustername_s== local_selected_clustername\n| summarize arg_max(TimeGenerated, correlation_id_g) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\n| top 1 by TimeGenerated\n| project correlation_id_g;\nPrometheus_HaClusterExporter_CL\n| where correlation_id_g in (master)\n| where name_s == \"ha_cluster_pacemaker_resources\"\n| where value_d == 1\n| extend  resources = parse_json(labels_s)\n| project resource=tostring(resources['resource'])\n| distinct resource\n| order by resource asc\n| project resource_value=resource, resource_display=resource, is_selected=row_number() == 1",
+                        "value": "nfsserver",
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "parameters - 7"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "//let local_selected_sid = 'H10';\n//let local_selected_clustername = 'hacluster';\n//let local_selected_resource = 'stonith-sbd';\n//let local_selected_hostname = 'hana1';\n//let local_timeframe_start = ago(1h);\n//let local_timeframe_end = ago(1m);\nlet local_selected_sid = '{selected_sid}';\nlet local_selected_clustername = '{selected_clustername}';\nlet local_selected_resource = '{selected_resource}';\nlet local_timeframe_start = {param_resource_timerange:start} ;\nlet local_timeframe_end = {param_resource_timerange:end} ;\n//\n//find the most recent records for each cluster node\n//identify the master (status = DC)\n//and return the correlation ID from that node only\nlet master = Prometheus_HaClusterExporter_CL\n| where TimeGenerated > local_timeframe_start\n| where TimeGenerated < local_timeframe_end\n| where value_d == 1\n| extend node_status=parse_json(labels_s)\n| where node_status['status']=='dc'\n| where metadata_sid_s == local_selected_sid\n| where metadata_clustername_s == local_selected_clustername\n| where tostring(node_status['node']) == metadata_hostname_s\n| project correlation_id_g;\n//find all pacemaker resources and their status from dc metrics\nlet clusterdata = Prometheus_HaClusterExporter_CL\n| where correlation_id_g in (master)\n//| where name_s == 'ha_cluster_pacemaker_resources' \n//| where value_d == 1\n| extend  resources = parse_json(labels_s)\n| where resources['resource'] == local_selected_resource\n| project TimeGenerated, name_s,resource_agent = resources['agent'],  resource_node = resources['node'], value = value_d ;\nlet c1 = clusterdata\n| where name_s == 'ha_cluster_pacemaker_migration_threshold' ;\nlet c2 = clusterdata\n| where name_s == 'ha_cluster_pacemaker_fail_count' ;\nc1 | join c2 on TimeGenerated \n| project TimeGenerated, node=resource_node, threshold = value, failcount = value1",
+                    "size": 0,
+                    "aggregation": 2,
+                    "title": "Resource {selected_resource} status over time",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "timechart",
+                    "chartSettings": {
+                      "xAxis": "TimeGenerated",
+                      "yAxis": [
+                        "threshold",
+                        "failcount"
+                      ],
+                      "seriesLabelSettings": [
+                        {
+                          "seriesName": "failcount",
+                          "label": "failure count"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "resourcesovertime-query"
+                }
+              ]
+            },
+            "customWidth": "45",
+            "conditionalVisibility": {
+              "parameterName": "selected_clustername",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "resource-status-detail-group"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "13dae9f5-3681-4d49-90e5-a858c263c78f",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "selected_sid",
+                  "type": 1,
+                  "isGlobal": true,
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "value": "nfs"
+                },
+                {
+                  "id": "cbf5ac1c-2af4-4178-b3bc-7a6d9c5f581f",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "selected_clustername",
+                  "type": 1,
+                  "isGlobal": true,
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "value": "hacluster"
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.hanaonazure/sapmonitors"
+            },
+            "conditionalVisibility": {
+              "parameterName": "developerMode",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
+            "name": "parameters - 5"
           }
         ]
       },
@@ -499,6 +997,7 @@
               "query": "//find latest correlation id per node per cluster per sid, consider only last 10min\r\nlet correlations = materialize(Prometheus_HaClusterExporter_CL\r\n| where TimeGenerated > ago(10min)\r\n| where name_s == \"up\"\r\n| summarize arg_max(TimeGenerated, correlation_id_g, labels_s) by metadata_sid_s, metadata_clustername_s, metadata_hostname_s\r\n| project correlation_id_g);\r\nPrometheus_HaClusterExporter_CL\r\n| where correlation_id_g in (correlations)\r\n| where name_s == \"up\"\r\n| order by metadata_sid_s asc, metadata_clustername_s asc\r\n| summarize num_nodes = count(), nodes_online = countif(value_d == 1), cluster_status = round(countif(value_d == 1) / (count() * 1.0), 2)\r\n    by metadata_sid_s, metadata_clustername_s",
               "size": 0,
               "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
               "visualization": "graph",
               "graphSettings": {
                 "type": 2,
