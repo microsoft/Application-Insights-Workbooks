@@ -6,7 +6,7 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "crossComponentResources": [
-          "value::selected"
+          "{subscription}"
         ],
         "parameters": [
           {
@@ -62,15 +62,18 @@
             "id": "09a907b9-5b7b-42e2-93e1-e88ed2dbbff0",
             "version": "KqlParameterItem/1.0",
             "name": "subscription",
-            "label": "Subscription",
+            "label": "Subscriptions",
             "type": 6,
             "isRequired": true,
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "Resources\r\n| where type =~ 'microsoft.azurestackhci/clusters'\r\n| summarize Count = count() by subscriptionId\r\n| order by Count desc\r\n| extend Rank = row_number()\r\n| project value = subscriptionId, label = subscriptionId, selected = Rank == 1",
+            "query": "Resources\r\n| where type =~ 'microsoft.azurestackhci/clusters'\r\n| summarize by subscriptionId\r\n| union (Resources\r\n| where type =~ 'microsoft.azurestackhci/clusters'\r\n| summarize Count = count() by subscriptionId\r\n| top 1 by Count desc)\r\n| summarize Count = count() by subscriptionId\r\n| project value = subscriptionId, label = subscriptionId, selected = Count > 1",
             "crossComponentResources": [
               "value::selected"
+            ],
+            "value": [
+              "/subscriptions/680d0dad-59aa-4464-adf3-b34b2b427e8c"
             ],
             "typeSettings": {
               "additionalResourceOptions": [
@@ -109,7 +112,7 @@
             "id": "194d34fb-ab23-4c89-b903-0c985acd3f60",
             "version": "KqlParameterItem/1.0",
             "name": "selectedCluster",
-            "label": "Cluster Name",
+            "label": "HCI clusters",
             "type": 5,
             "isRequired": true,
             "multiSelect": true,
@@ -161,9 +164,9 @@
               {
                 "criteriaContext": {
                   "leftOperand": "clusters",
-                  "operator": "is Empty",
+                  "operator": "==",
                   "rightValType": "static",
-                  "rightVal": "``",
+                  "rightVal": "not set",
                   "resultValType": "static",
                   "resultVal": "gettingStarted"
                 }
@@ -178,16 +181,16 @@
               }
             ],
             "timeContext": {
-              "durationMs": 604800000
+              "durationMs": 0
             },
             "timeContextFromParameter": "timeRange"
           }
         ],
         "style": "pills",
-        "queryType": 1,
-        "resourceType": "microsoft.resourcegraph/resources"
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "parameters - 1",
+      "name": "HCI Parameters",
       "styleSettings": {
         "margin": "10",
         "padding": "10"
@@ -269,7 +272,7 @@
                   "content": {
                     "json": "### State of all the virtual machines in selected clusters\r\nVM can be in one of the following states: Running, Stopped, Failed, or Other (Unknown, Starting, Snapshoting, Saving, Stopping, Pausing, Resuming, Paused, Suspended)"
                   },
-                  "name": "text - 2"
+                  "name": "Virtual Machine Description"
                 },
                 {
                   "type": 3,
@@ -320,7 +323,7 @@
                     "value": "virtualMachines"
                   },
                   "showPin": false,
-                  "name": "vm pie chart"
+                  "name": "Virtual Machine Chart"
                 },
                 {
                   "type": 3,
@@ -467,15 +470,21 @@
                     "value": "virtualMachines"
                   },
                   "showPin": false,
-                  "name": "grid view"
+                  "name": "Virtual Machines Grid View"
                 }
               ]
             },
-            "conditionalVisibility": {
-              "parameterName": "selectedTab",
-              "comparison": "isEqualTo",
-              "value": "virtualMachines"
-            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "selectedTab",
+                "comparison": "isEqualTo",
+                "value": "virtualMachines"
+              },
+              {
+                "parameterName": "selectedCluster",
+                "comparison": "isNotEqualTo"
+              }
+            ],
             "name": "Virtual Machines Group"
           },
           {
@@ -489,7 +498,7 @@
                   "content": {
                     "json": "<p> This view provides an overview of selected clusters and associated nodes that have connected to Azure in the last 24 hours. \r\nIf you don't see a particular cluster, check the filters here as well as the cluster's connection to Azure on the **Azure Stack HCI** resource page. To see if monitoring is enabled on the cluster, use the **Get started** tab."
                   },
-                  "name": "text - 4"
+                  "name": "Overview Description"
                 },
                 {
                   "type": 3,
@@ -564,7 +573,7 @@
                       "size": "auto"
                     }
                   },
-                  "name": "query - 1"
+                  "name": "Clusters Summary"
                 },
                 {
                   "type": 3,
@@ -977,15 +986,21 @@
                       ]
                     }
                   },
-                  "name": "Log Event info"
+                  "name": "Clusters Grid View"
                 }
               ]
             },
-            "conditionalVisibility": {
-              "parameterName": "selectedTab",
-              "comparison": "isEqualTo",
-              "value": "overview"
-            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "selectedTab",
+                "comparison": "isEqualTo",
+                "value": "overview"
+              },
+              {
+                "parameterName": "selectedCluster",
+                "comparison": "isNotEqualTo"
+              }
+            ],
             "name": "overview group"
           },
           {
@@ -999,100 +1014,7 @@
                   "content": {
                     "json": "### We are working on the alerts, stay tuned"
                   },
-                  "name": "text - 1"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "Event\r\n| where EventLog == \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3004\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| summarize arg_max(TimeGenerated,*) by ClusterArmId\r\n| extend description = parse_json(RenderedDescription)\r\n| extend HealthyAlert = toint(description.m_alerts.m_totalHealthy)\r\n| extend CriticalAlert = toint(description.m_alerts.m_totalCritical)\r\n| extend WarningAlert = toint(description.m_alerts.m_totalWarning)\r\n| extend UnknownAlert = toint(description.m_alerts.m_totalUnknown)\r\n| order by tolower(ClusterName) asc\r\n| project ClusterArmId, TotalAlert = CriticalAlert + WarningAlert, CriticalAlert, WarningAlert",
-                    "size": 0,
-                    "showAnalytics": true,
-                    "title": "Cluster Level Alerts",
-                    "timeContext": {
-                      "durationMs": 604800000
-                    },
-                    "timeContextFromParameter": "timeRange",
-                    "showRefreshButton": true,
-                    "showExportToExcel": true,
-                    "exportToExcelOptions": "all",
-                    "queryType": 0,
-                    "resourceType": "microsoft.resources/subscriptions",
-                    "crossComponentResources": [
-                      "{subscription}"
-                    ],
-                    "gridSettings": {
-                      "formatters": [
-                        {
-                          "columnMatch": "ClusterArmId",
-                          "formatter": 13,
-                          "formatOptions": {
-                            "linkTarget": "Resource",
-                            "linkIsContextBlade": true,
-                            "showIcon": true
-                          }
-                        },
-                        {
-                          "columnMatch": "TotalAlert",
-                          "formatter": 22,
-                          "formatOptions": {
-                            "compositeBarSettings": {
-                              "labelText": "",
-                              "columnSettings": [
-                                {
-                                  "columnName": "CriticalAlert",
-                                  "color": "redBright"
-                                },
-                                {
-                                  "columnName": "WarningAlert",
-                                  "color": "yellow"
-                                },
-                                {
-                                  "columnName": "UnknownAlert",
-                                  "color": "gray"
-                                }
-                              ]
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "CriticalAlert",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "WarningAlert",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "UnknownAlert",
-                          "formatter": 5
-                        }
-                      ],
-                      "filter": true,
-                      "labelSettings": [
-                        {
-                          "columnId": "ClusterArmId",
-                          "label": "Cluster"
-                        },
-                        {
-                          "columnId": "TotalAlert",
-                          "label": "Alerts"
-                        },
-                        {
-                          "columnId": "CriticalAlert"
-                        },
-                        {
-                          "columnId": "WarningAlert"
-                        }
-                      ]
-                    }
-                  },
-                  "conditionalVisibility": {
-                    "parameterName": "1",
-                    "comparison": "isEqualTo",
-                    "value": "2"
-                  },
-                  "name": "query - 3"
+                  "name": "Alerts Description"
                 }
               ]
             },
@@ -1191,7 +1113,7 @@
                             "size": "auto"
                           }
                         },
-                        "name": "query - 1"
+                        "name": "Volume Tile"
                       },
                       {
                         "type": 3,
@@ -1519,7 +1441,7 @@
                             ]
                           }
                         },
-                        "name": "query - 2"
+                        "name": "Volume Grid View"
                       }
                     ]
                   },
@@ -1607,7 +1529,7 @@
                             "size": "auto"
                           }
                         },
-                        "name": "query - 4"
+                        "name": "Drive Tile"
                       },
                       {
                         "type": 3,
@@ -1724,7 +1646,7 @@
                             ]
                           }
                         },
-                        "name": "query - 5"
+                        "name": "Drive Grid View"
                       }
                     ]
                   },
@@ -1732,11 +1654,17 @@
                 }
               ]
             },
-            "conditionalVisibility": {
-              "parameterName": "selectedTab",
-              "comparison": "isEqualTo",
-              "value": "storage"
-            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "selectedTab",
+                "comparison": "isEqualTo",
+                "value": "storage"
+              },
+              {
+                "parameterName": "selectedCluster",
+                "comparison": "isNotEqualTo"
+              }
+            ],
             "name": "storage group"
           },
           {
@@ -1789,7 +1717,7 @@
                       }
                     }
                   },
-                  "name": "query - 0"
+                  "name": "CPU Usage Chart"
                 },
                 {
                   "type": 3,
@@ -1831,7 +1759,7 @@
                       }
                     }
                   },
-                  "name": "query - 1"
+                  "name": "Average Volume Latency Chart"
                 },
                 {
                   "type": 3,
@@ -1873,7 +1801,7 @@
                       }
                     }
                   },
-                  "name": "query - 2"
+                  "name": "Volume IOPS Chart"
                 },
                 {
                   "type": 3,
@@ -1914,15 +1842,21 @@
                       }
                     }
                   },
-                  "name": "query - 3"
+                  "name": "Volume Throughput Chart"
                 }
               ]
             },
-            "conditionalVisibility": {
-              "parameterName": "selectedTab",
-              "comparison": "isEqualTo",
-              "value": "clusterPerformance"
-            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "selectedTab",
+                "comparison": "isEqualTo",
+                "value": "clusterPerformance"
+              },
+              {
+                "parameterName": "selectedCluster",
+                "comparison": "isNotEqualTo"
+              }
+            ],
             "name": "cluster performance"
           },
           {
@@ -1936,7 +1870,7 @@
                   "content": {
                     "json": "<p> This workbook provides health, performance and usage insights about registered Azure Stack HCI, version 21H2 clusters that are connected to Azure and are enrolled in monitoring. This feature is available in preview. You will be billed based on the amount of data ingested into Log Analytics and your data retention settings. [Learn more about Azure Stack HCI monitoring ](https://aka.ms/enable-hci-monitoring)"
                   },
-                  "name": "text - 3"
+                  "name": "Getting Started Description"
                 },
                 {
                   "type": 1,
@@ -2046,10 +1980,48 @@
               "value": "gettingStarted"
             },
             "name": "getting started group"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "## No clusters are selected.\r\nSelect one or more Azure Stack HCI clusters to monitor. If no HCI clusters appear, you may need to [enable HCI monitoring](https://aka.ms/enable-hci-monitoring)."
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "selectedCluster",
+                "comparison": "isEqualTo"
+              },
+              {
+                "parameterName": "selectedTab",
+                "comparison": "isNotEqualTo",
+                "value": "gettingStarted"
+              },
+              {
+                "parameterName": "selectedTab",
+                "comparison": "isNotEqualTo",
+                "value": "alerts"
+              }
+            ],
+            "name": "No cluster text"
           }
         ]
       },
+      "conditionalVisibility": {
+        "parameterName": "subscription",
+        "comparison": "isNotEqualTo"
+      },
       "name": "Tabs Group"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## No Subscriptions are selected.\r\nSelect one or more subscriptions to get started. If no subscriptions appear, we could not find any Azure Stack HCI cluster resources in your subscriptions and you may need to [update your default subscription filter](https://azure.microsoft.com/en-us/updates/updates-to-subscription-filtering/)."
+      },
+      "conditionalVisibility": {
+        "parameterName": "subscription",
+        "comparison": "isEqualTo"
+      },
+      "name": "No subscription text"
     }
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
