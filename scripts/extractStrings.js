@@ -357,7 +357,7 @@ function generateLocProjectFile(locItems, directoryPath) {
   const locProjectJson = {
     "Projects": [
       {
-        "LanguageSet": "Azure_Languages",
+        "LanguageSet": "Azure_LanguagesExt",
         "LocItems": locItems
       }
     ]
