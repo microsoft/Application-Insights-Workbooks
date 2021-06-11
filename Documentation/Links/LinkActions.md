@@ -51,6 +51,40 @@ When using the `Make this item a link` option, the following settings are availa
 | `Menu item` | same as above. |
 | `Open link in Context Blade` | same as above. |
 
+## ARM Action Settings
+
+Use this setting to invoke an ARM action by specifying the ARM api details.
+
+### ARM Action Settings Tab
+
+This section defines the ARM action API.
+
+| Source | Explanation |
+|:------------- |:-------------|
+|`ARM Action path` | The ARM action path. eg /subscriptions/:subscription/resourceGroups/:resourceGroup/someAction?api-version=:apiversion. Select from `Cell`, `Column`, `Static Value`, or `Parameter` in [Link sources](#link-sources).|
+|`Http Method` | Select an Http Method. The available choices are `POST`, `PUT`, `PATCH`, `DELETE`|
+|`Long Operation` | Long Operations will poll the URI from the Azure-AsyncOperation response header from the original operation.|
+|`Parameters`| URL parameters grid with the key and value.|
+|`Headers` | Headers grid with the key and value.|
+|`Body` | Editor for the request payload.|
+
+![Image showing ARM Action settings](../Images/ArmActionSettings.png)
+
+### ARM Action UX Settings
+
+This section configures what the users will see before they run the ARM action.
+
+| Source | Explanation |
+|:------------- |:-------------|
+|`Title from` | Title used on the run view. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
+|`Customize success result` | Authors can customize the success result when an ARM action is successful but no content is returned in the response.|
+|`Description from` | This is the markdown text used to provide a helpful description to users when they want to run the ARM action. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
+|`Run button text from` | Label used on the run (execute) button to trigger the ARM action.|
+
+![Image showing ARM UX settings](../Images/ArmActionUXSettings.png)
+
+After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings). 
+
 ## ARM Deployment link settings
 If the selected link type is `ARM Deployment` the author must specify additional settings to open an ARM deployment. There are two main tabs for configuration. 
 
