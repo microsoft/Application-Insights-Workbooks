@@ -62,7 +62,7 @@ This section defines the ARM action API.
 | Source | Explanation |
 |:------------- |:-------------|
 |`ARM Action path` | The ARM action path. eg /subscriptions/:subscription/resourceGroups/:resourceGroup/someAction?api-version=:apiversion. Select from `Cell`, `Column`, `Static Value`, or `Parameter` in [Link sources](#link-sources).|
-|`Http Method` | Select an Http Method. The available choices are `POST`, `PUT`, `PATCH`, `DELETE`|
+|`Http Method` | Select an HTTP method. The available choices are `POST`, `PUT`, `PATCH`, `DELETE`|
 |`Long Operation` | Long Operations will poll the URI from the Azure-AsyncOperation response header from the original operation.|
 |`Parameters`| URL parameters grid with the key and value.|
 |`Headers` | Headers grid with the key and value.|
