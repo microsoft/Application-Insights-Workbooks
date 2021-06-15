@@ -54,7 +54,8 @@ const LanguagesMap = {
     "sv": "sv-se",
     "tr": "tr-tr",
     "zh-Hans": "zh-cn",
-    "zh-Hant": "zh-tw"
+    "zh-Hant": "zh-tw",
+    "id": "id-id"
 };
 
 /**
