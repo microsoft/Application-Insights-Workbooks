@@ -5,6 +5,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "value::all"
+        ],
         "parameters": [
           {
             "id": "b859a03f-2283-43dd-8536-42714bbfced6",
@@ -12,12 +15,13 @@
             "name": "Subscription",
             "type": 6,
             "isRequired": true,
-            "query": "summarize Count = count() by subscriptionId\r\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId, Selected = Count >= 0",
+            "query": "where type startswith 'Microsoft.DesktopVirtualization/'\r\n    | summarize Count = count() by subscriptionId\r\n    | order by Count desc\r\n    | extend Rank = row_number()\r\n    | project value = subscriptionId, label = subscriptionId, selected = Rank == 1\r\n",
             "crossComponentResources": [
-              "value::selected"
+              "value::all"
             ],
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
@@ -36,7 +40,7 @@
               "additionalResourceOptions": []
             },
             "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"            
+            "resourceType": "microsoft.resourcegraph/resources"
           },
           {
             "id": "951b5870-e216-45c6-b159-34150868a46e",
@@ -171,11 +175,12 @@
             "type": 5,
             "query": "resources\r\n| where type == \"microsoft.operationalinsights/workspaces\"\r\n| where properties.customerId == \"{WorkspaceId}\"",
             "crossComponentResources": [
-              "value::selected"
+              "value::all"
             ],
             "isHiddenWhenLocked": true,
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
             "timeContext": {
               "durationMs": 0
@@ -209,9 +214,10 @@
           }
         ],
         "style": "pills",
-        "queryType": 12
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
       },
-      "name": "Parameters"
+      "name": "parameters_general"
     },
     {
       "type": 12,
@@ -235,7 +241,7 @@
             "content": {
               "version": "KqlParameterItem/1.0",
               "crossComponentResources": [
-                "{HostPool}"
+                "{Subscription}"
               ],
               "parameters": [
                 {
@@ -266,7 +272,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "Cores",
                   "type": 1,
-                  "query": "Resources \r\n| where type =~ 'Microsoft.Compute/virtualMachines'  \r\n| where name in( {MachineName})\r\n| extend sku = tostring(properties.hardwareProfile.vmSize)\r\n| project cores = extract(\"_[[:alpha:]]+([0-9]+)\",1, sku)\r\n| distinct cores",
+                  "query": "Resources \r\n| where type =~ 'Microsoft.Compute/virtualMachines'  \r\n| where name in( {MachineName})\r\n| extend sku = tostring(properties.hardwareProfile.vmSize)\r\n| project cores = extract(\"_[[:alpha:]]+([0-9]+)\",1, sku)\r\n| top 1 by cores asc",
                   "crossComponentResources": [
                     "{Subscription}"
                   ],
@@ -341,17 +347,10 @@
                 }
               ],
               "style": "pills",
-              "queryType": 0,
-              "resourceType": "microsoft.desktopvirtualization/hostpools"
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
             },
             "name": "parameters - 4"
-          },
-          {
-            "type": 1,
-            "content": {
-              "json": "# Utilization Report"
-            },
-            "name": "Notice"
           },
           {
             "type": 12,
@@ -370,7 +369,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue) by bin(TimeGenerated, 1m), Computer\r\n| summarize Val= sum(Val) by TimeGenerated\r\n| summarize arg_max(MaxSessions=Val, MaxTime=TimeGenerated), arg_min(MinSessions=Val, MinTime=TimeGenerated), Average=avg(Val)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max\"]= MaxSessions, MaxTime, [\"Min\"]= MinSessions, MinTime, Average, Metric=\"Sessions\"\r\n\r\n\r\n",
+                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue-2) by bin(TimeGenerated, 1m), Computer\r\n| summarize Val= sum(Val) by TimeGenerated\r\n| make-series Sessions = max(Val)\r\n      on TimeGenerated step {TimeRange:grain}\r\n| extend series_stats(Sessions)\r\n| project Sessions, TimeGenerated, Average=series_stats_Sessions_avg\r\n| mvexpand Sessions, TimeGenerated\r\n| project Sessions=todouble(Sessions), TimeGenerated= todatetime(TimeGenerated), Average\r\n| summarize arg_max(MaxSessions=Sessions, MaxTime=TimeGenerated), arg_min(MinSessions=Sessions, MinTime=TimeGenerated), Average =any(Average)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max\"]= MaxSessions, MaxTime, [\"Min\"]= MinSessions, MinTime, Average, Metric=\"Sessions\"\r\n\r\n\r\n",
                           "size": 4,
                           "title": "Sessions summary",
                           "queryType": 0,
@@ -467,7 +466,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and (CounterName == \"Total Sessions\" or CounterName ==\"Inactive Sessions\")\r\n| summarize Val= max(CounterValue) by bin(TimeGenerated, 1m), Computer, CounterName\r\n| summarize Val= sum(Val) by TimeGenerated, CounterName\r\n| make-series Sessions = max(iif(CounterName==\"Total Sessions\",Val,0.0)), [\"Idle Sessions\"] = max(iif(CounterName==\"Inactive Sessions\",Val,0.0))\r\n      on TimeGenerated step {TimeRange:grain}",
+                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and (CounterName == \"Total Sessions\" or CounterName ==\"Inactive Sessions\")\r\n| summarize Val= max(CounterValue-2) by bin(TimeGenerated, 1m), Computer, CounterName\r\n| summarize Val= sum(Val) by TimeGenerated, CounterName\r\n| make-series Sessions = max(iif(CounterName==\"Total Sessions\",Val,0.0)), [\"Idle Sessions\"] = max(iif(CounterName==\"Inactive Sessions\",Val,0.0))  on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Session history",
@@ -480,7 +479,19 @@
                           "visualization": "timechart",
                           "chartSettings": {
                             "group": null,
-                            "createOtherGroup": 0
+                            "createOtherGroup": 0,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 0,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "minimumFractionDigits": 1,
+                                  "maximumFractionDigits": 1
+                                }
+                              },
+                              "min": 0
+                            }
                           }
                         },
                         "name": "SessionHistoryGraph",
@@ -492,7 +503,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue) by bin(TimeGenerated, 1m), Computer\r\n| summarize Val= sum(Val) by TimeGenerated\r\n| project Val = ({VSessionLimit}*{SessionHostCount}) - Val, TimeGenerated\r\n| make-series [\"Available Sessions\"] = min(Val) on TimeGenerated step {TimeRange:grain}",
+                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue-2) by bin(TimeGenerated, 1m), Computer\r\n| summarize Val= sum(Val) by TimeGenerated\r\n| project Val = ({VSessionLimit}*{SessionHostCount}) - Val, TimeGenerated\r\n| make-series [\"Available Sessions\"] = min(Val) on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0\r\n",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Available sessions",
@@ -505,7 +516,10 @@
                           "visualization": "timechart",
                           "chartSettings": {
                             "group": null,
-                            "createOtherGroup": 0
+                            "createOtherGroup": 0,
+                            "ySettings": {
+                              "min": 0
+                            }
                           }
                         },
                         "name": "AvailableSessionsGraph",
@@ -529,7 +543,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue)/{Cores} by TimeGenerated\r\n| summarize arg_max(MaxSessions=Val, MaxTime=TimeGenerated), arg_min(MinSessions=Val, MinTime=TimeGenerated), Average=avg(Val)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n",
+                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| make-series [\"Users/cores\"] = max((CounterValue-2)/{Cores}) on TimeGenerated step {TimeRange:grain}\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"]\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n//| summarize Val= max(CounterValue)/{Cores} by TimeGenerated\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n",
                           "size": 4,
                           "title": "User per core summary",
                           "queryType": 0,
@@ -578,8 +592,8 @@
                                   "options": {
                                     "style": "decimal",
                                     "useGrouping": false,
-                                    "minimumFractionDigits": 1,
-                                    "maximumFractionDigits": 1
+                                    "minimumFractionDigits": 2,
+                                    "maximumFractionDigits": 2
                                   }
                                 }
                               }
@@ -634,7 +648,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)\r\n| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| as Objects\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n//| summarize Val= max(CounterValue) by bin(TimeGenerated, 1m), Computer\r\n//| summarize Val= msx(Val)/{Cores} by TimeGenerated\r\n| make-series [\"Users/cores\"] = max(CounterValue/{Cores}) on TimeGenerated step {TimeRange:grain}",
+                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)\r\n| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| make-series [\"Users/cores\"] = max((CounterValue-2)/{Cores}) on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Max users per core",
@@ -654,7 +668,7 @@
                                   "useGrouping": true,
                                   "minimumIntegerDigits": 1,
                                   "minimumSignificantDigits": 2,
-                                  "maximumSignificantDigits": 3
+                                  "maximumSignificantDigits": 2
                                 }
                               },
                               "min": 0
@@ -696,7 +710,7 @@
                                   "useGrouping": true,
                                   "minimumIntegerDigits": 1,
                                   "minimumSignificantDigits": 2,
-                                  "maximumSignificantDigits": 3
+                                  "maximumSignificantDigits": 2
                                 }
                               },
                               "min": 0
@@ -1077,10 +1091,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName\r\n| top 10 by Hours desc nulls last",
                     "size": 1,
                     "aggregation": 5,
-                    "title": "Connection time by user",
+                    "title": "Top 10 users by connection time",
                     "noDataMessage": "No connections found",
                     "showExportToExcel": true,
                     "queryType": 0,
@@ -1184,6 +1198,11 @@
                       ]
                     },
                     "chartSettings": {
+                      "xAxis": "UserName",
+                      "yAxis": [
+                        "Hours"
+                      ],
+                      "createOtherGroup": 10,
                       "ySettings": {
                         "numberFormatSettings": {
                           "unit": 26,
@@ -1208,10 +1227,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName, SessionHostName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, SessionHostName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by Computer = trim_end(@'\\..*', SessionHostName)",
+                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName, SessionHostName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, SessionHostName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by Computer = trim_end(@'\\..*', SessionHostName)\r\n| top 10 by Hours desc nulls last",
                     "size": 1,
                     "aggregation": 5,
-                    "title": "Connection time by host",
+                    "title": "Top 10 hosts by connection time",
                     "noDataMessage": "No connections found",
                     "showExportToExcel": true,
                     "queryType": 0,
@@ -1315,6 +1334,7 @@
                       ]
                     },
                     "chartSettings": {
+                      "createOtherGroup": 10,
                       "ySettings": {
                         "numberFormatSettings": {
                           "unit": 26,
@@ -1341,13 +1361,6 @@
             "styleSettings": {
               "showBorder": true
             }
-          },
-          {
-            "type": 1,
-            "content": {
-              "json": "Results shown with a time grain of {TimeRange:grain} over a time duration of {TimeRange:label} for the current hostpool.\r\n"
-            },
-            "name": "text - 4"
           }
         ]
       },
