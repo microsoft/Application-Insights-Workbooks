@@ -53,7 +53,7 @@ When using the `Make this item a link` option, the following settings are availa
 
 ## ARM Action Settings
 
-Use this setting to invoke an ARM action by specifying the ARM api details.
+Use this setting to invoke an ARM action by specifying the ARM api details. The documentation for ARM REST apis can be found [here](https://aka.ms/armrestapi). In all of the UX fields, you can resolve parameters using `{paramName}`. Also you can resolve columns using `["columnName"]`. In the example images below, we can reference the column `id` by writing `["id"]`. If the column is an Azure Resource Id, you can get a friendly name of the resource using the formatter `label`. This is similar to [parameter formatters](../Parameters/Parameters.md#parameter-formatting).
 
 ### ARM Action Settings Tab
 
@@ -61,12 +61,12 @@ This section defines the ARM action API.
 
 | Source | Explanation |
 |:------------- |:-------------|
-|`ARM Action path` | The ARM action path. eg /subscriptions/:subscription/resourceGroups/:resourceGroup/someAction?api-version=:apiversion. Select from `Cell`, `Column`, `Static Value`, or `Parameter` in [Link sources](#link-sources).|
+|`ARM Action path` | The ARM action path. eg /subscriptions/:subscription/resourceGroups/:resourceGroup/someAction?api-version=:apiversion.|
 |`Http Method` | Select an HTTP method. The available choices are `POST`, `PUT`, `PATCH`, `DELETE`|
-|`Long Operation` | Long Operations will poll the URI from the Azure-AsyncOperation response header from the original operation.|
+|`Long Operation` | Long Operations will poll the URI from the `Azure-AsyncOperation` or the `Location` response header from the original operation. More info [here](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/async-operations).|
 |`Parameters`| URL parameters grid with the key and value.|
 |`Headers` | Headers grid with the key and value.|
-|`Body` | Editor for the request payload.|
+|`Body` | Editor for the request payload in JSON.|
 
 ![Image showing ARM Action settings](../Images/ArmActionSettings.png)
 
@@ -76,15 +76,20 @@ This section configures what the users will see before they run the ARM action.
 
 | Source | Explanation |
 |:------------- |:-------------|
-|`Title from` | Title used on the run view. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Customize success result` | Authors can customize the success result when an ARM action is successful but no content is returned in the response.|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to run the ARM action. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
+|`Title` | Title used on the run view. |
+|`Customize ARM Action name` | Authors can customize the ARM action that is displayed on the notification after the action is triggered.|
+|`Description of ARM Action` | This is the markdown text used to provide a helpful description to users when they want to run the ARM action. |
 |`Run button text from` | Label used on the run (execute) button to trigger the ARM action.|
 
 ![Image showing ARM UX settings](../Images/ArmActionUXSettings.png)
 
-After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings). 
+After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings).
 
+![Image showing ARM Action settings](../Images/ArmActionBlade.png)
+
+The progress and result of the ARM Action will be shown as an Azure Portal notification.
+
+![Image showing ARM UX settings](../Images/ArmActionCustomNotification.png)
 ## ARM Deployment link settings
 If the selected link type is `ARM Deployment` the author must specify additional settings to open an ARM deployment. There are two main tabs for configuration. 
 
