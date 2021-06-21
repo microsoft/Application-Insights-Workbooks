@@ -139,13 +139,13 @@ There are two types of inputs, Grid and JSON. Use 'Grid' for simple key and valu
 
 - Grid 
     - `Parameter Name`: The name of the View input parameter
-    - `Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.
+    - `Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be referenced by using `["columnName"]`.
     - `Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.
 
 ![Image showing Custom View settings link settings](../Images/CustomBladeSettings.png)
 
 - JSON
-    - Specify your blade input in a json format on the editor. Like the `Grid` mode, parameters and columns may be referenced by using `{paramName}` for parameters, and `{columnName_column}` for columns. By clicking on the button `Show JSON Sample`, it will show the expected output of all resolved parameters and columns used for the view input.
+    - Specify your blade input in a json format on the editor. Like the `Grid` mode, parameters and columns may be referenced by using `{paramName}` for parameters, and `["columnName"]` for columns. In the JSON Sample editor, it will show all the actual input values that will be used to open the Custom View.
 
 ![Image showing Custom View settings link settings in JSON mode](../Images/CustomBladeJSON.png)
 
