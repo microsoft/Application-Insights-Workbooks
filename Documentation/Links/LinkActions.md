@@ -68,7 +68,7 @@ This section defines the ARM action API.
 |`Headers` | Headers grid with the key and value.|
 |`Body` | Editor for the request payload in JSON.|
 
-![Image showing ARM Action settings](../Images/ArmActionSettings.png)
+![Image showing ARM Action settings](../Images/ARMActionSettings.png)
 
 ### ARM Action UX Settings
 
@@ -81,15 +81,15 @@ This section configures what the users will see before they run the ARM action.
 |`Description of ARM Action` | This is the markdown text used to provide a helpful description to users when they want to run the ARM action. |
 |`Run button text from` | Label used on the run (execute) button to trigger the ARM action.|
 
-![Image showing ARM UX settings](../Images/ArmActionUXSettings.png)
+![Image showing ARM UX settings](../Images/ARMActionUXSettings.png)
 
 After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings). On the bottom of the context pane there is a `View Request Details` expander where a user can inspect the HTTP method and the ARM API endpoint that will be used for the ARM action.
 
-![Image showing ARM Action settings](../Images/ArmActionBlade.png)
+![Image showing ARM Action settings](../Images/ARMActionBlade.png)
 
 The progress and result of the ARM Action will be shown as an Azure Portal notification.
 
-![Image showing ARM UX settings](../Images/ArmActionCustomNotification.png)
+![Image showing ARM UX settings](../Images/ARMActionCustomNotification.png)
 ## ARM Deployment link settings
 If the selected link type is `ARM Deployment` the author must specify additional settings to open an ARM deployment. There are two main tabs for configuration. 
 
@@ -112,7 +112,7 @@ This section configures what the users will see before they run the ARM deployme
 | Source | Explanation |
 |:------------- |:-------------|
 |`Title from` | Title used on the run view. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
+|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can reference the column `VMName` by writing `["VMName"]`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
 |`Run button text from` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
 ![Image showing ARM UX settings](../Images/ArmUXSettings.png)
