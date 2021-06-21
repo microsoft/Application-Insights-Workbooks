@@ -83,7 +83,7 @@ This section configures what the users will see before they run the ARM action.
 
 ![Image showing ARM UX settings](../Images/ArmActionUXSettings.png)
 
-After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings).
+After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings). On the bottom of the context pane there is a `View Request Details` expander where a user can inspect the HTTP method and the ARM API endpoint that will be used for the ARM action.
 
 ![Image showing ARM Action settings](../Images/ArmActionBlade.png)
 
