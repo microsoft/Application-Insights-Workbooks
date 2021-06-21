@@ -85,11 +85,11 @@ This section configures what the users will see before they run the ARM action.
 
 After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings). On the bottom of the context pane there is a `View Request Details` expander where a user can inspect the HTTP method and the ARM API endpoint that will be used for the ARM action.
 
-![Image showing ARM Action settings](../Images/ARMActionBlade.png)
+![Image showing ARM Action settings](../Images/ARMActionBlade.PNG)
 
 The progress and result of the ARM Action will be shown as an Azure Portal notification.
 
-![Image showing ARM UX settings](../Images/ARMActionCustomNotification.png)
+![Image showing ARM UX settings](../Images/ARMActionCustomNotification.PNG)
 ## ARM Deployment link settings
 If the selected link type is `ARM Deployment` the author must specify additional settings to open an ARM deployment. There are two main tabs for configuration. 
 
