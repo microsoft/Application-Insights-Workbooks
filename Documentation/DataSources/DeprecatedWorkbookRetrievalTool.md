@@ -10,7 +10,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 2. Go into Edit mode in the toolbar and navigate to the advanced editor
     ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
 3. Copy the following workbook json and paste it into your open advanced editor
->!{
+>{
   "version": "Notebook/1.0",
   "items": [
     {
@@ -199,7 +199,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 2. Click Edit in the toolbar and navigate to the advanced editor
     ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
 3. Copy the following workbook json and paste it into your open advanced editor
->!{
+>{
   "version": "Notebook/1.0",
   "items": [
     {
