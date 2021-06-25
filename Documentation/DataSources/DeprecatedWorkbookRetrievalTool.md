@@ -27,7 +27,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
             "name": "Subscription",
             "type": 6,
             "isRequired": true,
-            "value": "value::1",
+            "value": "/subscriptions/8980832b-9589-4ac2-b322-a6ae6a97f02b",
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::1"
@@ -47,7 +47,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
             "crossComponentResources": [
               "{Subscription}"
             ],
-            "value": "value::1",
+            "value": "tolee-test",
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::1"
@@ -75,8 +75,8 @@ _To move forward with the deprecation of these workbooks, this tool will only be
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GETARRAY\",\"path\":\"/{Subscription}/resourceGroups/{ResourceGroup}/providers/microsoft.insights/myworkbooks\",\"urlParams\":[{\"key\":\"api-version\",\"value\":\"2020-10-20\"}],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..[?(@.kind == \\\"user\\\")]\",\"columns\":[{\"path\":\"$.properties.displayName\",\"columnid\":\"name\"},{\"path\":\"$.name\",\"columnid\":\"id\"},{\"path\":\"$.kind\",\"columnid\":\"type\",\"columnType\":\"string\"},{\"path\":\"$.properties.timeModified\",\"columnid\":\"modified\",\"columnType\":\"datetime\"},{\"path\":\"$.id\",\"columnid\":\"resource\"}]}}]}",
-        "size": 0,
+        "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GETARRAY\",\"path\":\"/{Subscription}/resourceGroups/{ResourceGroup}/providers/microsoft.insights/myworkbooks\",\"urlParams\":[{\"key\":\"api-version\",\"value\":\"2020-10-20\"}],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..[?(@.kind == \\\"user\\\")]\",\"columns\":[{\"path\":\"$.properties.displayName\",\"columnid\":\"name\"},{\"path\":\"$.name\",\"columnid\":\"id\"},{\"path\":\"$.kind\",\"columnid\":\"type\",\"columnType\":\"string\"},{\"path\":\"$.properties.timeModified\",\"columnid\":\"modified\",\"columnType\":\"datetime\"},{\"path\":\"$.id\",\"columnid\":\"resource\",\"columnType\":\"string\"}]}}]}",
+        "size": 1,
         "title": "Private Workbooks",
         "noDataMessage": "No private workbooks found",
         "noDataMessageStyle": 3,
@@ -98,6 +98,12 @@ _To move forward with the deprecation of these workbooks, this tool will only be
         ],
         "queryType": 12,
         "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "resource",
+              "formatter": 5
+            }
+          ],
           "rowLimit": 1000,
           "filter": true,
           "sortBy": [
