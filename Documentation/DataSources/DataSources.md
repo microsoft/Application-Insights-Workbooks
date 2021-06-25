@@ -151,26 +151,16 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 This provider supports [JSON Path](../Transformations/JSONPath.md).
 
 ## Azure RBAC
-The Azure RBAC provider allows you to check permissions on resources. It is most commonly used to export the resulting checks to a parameter and display an error message or disable a button if there's no permission. Simple JSON arrays or objects will automatically be converted into grid rows and columns or text with a 'hasPermission' column with either true or false. The permission is checked on each resource and then either 'or' or 'and' to get the result. The [operations or actions](https://docs.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations) can be a string, an array, or json with action array.
+The Azure RBAC provider allows you to check permissions on resources. It is most commonly used in parameter to check if the correct RBAC are setup. A use case would be to create a parameter to check deployment permission and then notify the user if they don't have deployment permission. Simple JSON arrays or objects will automatically be converted into grid rows and columns or text with a 'hasPermission' column with either true or false. The permission is checked on each resource and then either 'or' or 'and' to get the result. The [operations or actions](https://docs.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations) can be a string or an array.
 
 **String:**
 ```
-"microsoft.insights/workbooks/read"
+"Microsoft.Resources/deployments/validate/action"
 ```
 
 **Array:**
 ```
-["microsoft.insights/workbooks/read", "microsoft.insights/workbooks/write"]
-```
-
-**Action list:**
-```
-{
-  "actions": [
-      "microsoft.insights/workbooks/read",
-      "microsoft.insights/workbooks/write"
-  ]
-}
+["Microsoft.Resources/deployments/read","Microsoft.Resources/deployments/write","Microsoft.Resources/deployments/validate/action","Microsoft.Resources/operations/read"]
 ```
 
 # Deprecated Data Sources
