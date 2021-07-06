@@ -200,11 +200,11 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 9. A new workbook will open with the exact content of the old private workbook that you selected. You can now treat this like any new workbook.
 
 ## Favorites Based (Legacy) Workbook Retrieval
-0. Navigate to your Application Insights Resource > Workbooks gallery
-1. Open up an new or empty workbook
-2. Click Edit in the toolbar and navigate to the advanced editor
+1. Navigate to your Application Insights Resource > Workbooks gallery
+2. Open up an new or empty workbook
+3. Click Edit in the toolbar and navigate to the advanced editor
     ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
-3. Copy the following workbook json and paste it into your open advanced editor
+4. Copy the following workbook json and paste it into your open advanced editor
 >{
   "version": "Notebook/1.0",
   "items": [
@@ -344,7 +344,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
 
-4. Click Apply at the top right
+5. Click Apply at the top right
 6. The grid at the bottom of this workbook will list all the legacy workbooks within the current AppInsights resource.
 7. Click on one of the workbooks in the grid. Your workbook should now look something like this:
     > ![advanced editor](../Images/DeprecatedWb_RetrievalTool_LegacyWbConversion.png)
