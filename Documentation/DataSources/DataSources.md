@@ -14,6 +14,7 @@ Workbooks support these data sources:
 * [JSON](#json)
 * [Custom Endpoint](#custom-endpoint)
 * Custom Provider
+* [Azure RBAC](#azure-rbac)
 
 Deprecated (Previously available):
 * [Alerts](#alerts-preview)
@@ -148,6 +149,19 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 > **Note:** Do not write any secrets in any of the fields (headers, parameters, body, url), since they will be visible to all of the Workbook users.`
 
 This provider supports [JSON Path](../Transformations/JSONPath.md).
+
+## Azure RBAC
+The Azure RBAC provider allows you to check permissions on resources. It is most commonly used in parameter to check if the correct RBAC are setup. A use case would be to create a parameter to check deployment permission and then notify the user if they don't have deployment permission. Simple JSON arrays or objects will automatically be converted into grid rows and columns or text with a 'hasPermission' column with either true or false. The permission is checked on each resource and then either 'or' or 'and' to get the result. The [operations or actions](https://docs.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations) can be a string or an array.
+
+**String:**
+```
+"Microsoft.Resources/deployments/validate/action"
+```
+
+**Array:**
+```
+["Microsoft.Resources/deployments/read","Microsoft.Resources/deployments/write","Microsoft.Resources/deployments/validate/action","Microsoft.Resources/operations/read"]
+```
 
 # Deprecated Data Sources
 The following previously preview data sources have been deprecated.  They may continue to restore/work in workbooks for some amount of time while services and resource provides may still be available. Usage of these providers in templates is not recommended, as they will stop functioning at some point.
