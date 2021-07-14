@@ -1,7 +1,7 @@
 # Deprecated Workbook Retrieval Tool
 
 
-Private and Legacy workbooks have been deprecated and are unaccessable from the Azure Portal UX. If you are here because you are looking for the deprecated workbook that you forgot to convert before the deadline, you're in luck! We've created a tool that will allow you to retrieve the content of your old workbook and load it into a new workbook so that you can save it as a new workbook.
+Private and Legacy workbooks have been deprecated and are inaccessible from the Azure Portal UX. If you are here because you are looking for the deprecated workbook that you forgot to convert before the deadline, you're in luck! We've created a tool that will allow you to retrieve the content of your old workbook and load it into a new workbook so that you can save it as a new workbook.
 
 _To move forward with the deprecation of these workbooks, this tool will only be available for a limited time until **August 31, 2021**._
 
