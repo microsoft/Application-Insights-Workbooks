@@ -9,7 +9,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 1. Open up an new or empty workbook
 2. Go into Edit mode in the toolbar and navigate to the advanced editor
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
-3. Copy the following workbook json and paste it into your open advanced editor: [Private Workbook Conversion](Documentation/LegacyAI/PrivateWorkbookConversion.workbook)
+3. Copy the following workbook json and paste it into your open advanced editor: [Private Workbook Conversion](../PrivateWorkbookConversion.workbook)
 4. Click Apply at the top right
 5. Select the subscription and resource group of the workbook you'd like to retrieve the workbook from
 6. The grid at the bottom of this workbook will list all the private workbooks in the selected subscription / resource group above.
@@ -23,7 +23,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 2. Open up an new or empty workbook
 3. Click Edit in the toolbar and navigate to the advanced editor
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
-4. Copy the workbook json and paste it into your open advanced editor: [Legacy Workbook Conversion](Documentation/LegacyAI/LegacyWorkbookConversion.workbook)
+4. Copy the workbook json and paste it into your open advanced editor: [Legacy Workbook Conversion](../LegacyWorkbookConversion.workbook)
 5. Click Apply at the top right
 6. The grid at the bottom of this workbook will list all the legacy workbooks within the current AppInsights resource.
 7. Click on one of the workbooks in the grid. Your workbook should now look something like this:
