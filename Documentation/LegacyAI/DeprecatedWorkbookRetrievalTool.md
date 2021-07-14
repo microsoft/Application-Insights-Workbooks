@@ -16,7 +16,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 7. Click on one of the workbooks in the grid. Your workbook should look something like this:
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_PrivateWbConversion.png)
 8. Click the button at the bottom of the workbook labeled "Open Content as Workbook"
-9. A new workbook will open with the exact content of the old private workbook that you selected. You can now treat this like any new workbook.
+9. A new workbook view will appear with the content of the old private workbook that you selected. In that view you can save this as a standard Workbook.
 
 ## Favorites Based (Legacy) Workbook Retrieval
 1. Navigate to your Application Insights Resource > Workbooks gallery
@@ -29,4 +29,4 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 7. Click on one of the workbooks in the grid. Your workbook should now look something like this:
     ![advanced editor](../Images/DeprecatedWb_RetrievalTool_LegacyWbConversion.png)
 8. Click the button at the bottom of the workbook labeled "Open Content as Workbook"
-9. A new workbook will open with the exact content of the old private workbook that you selected. You can now treat this like any new workbook.
+9. A new workbook view will appear with the content of the old legacy workbook that you selected. In that view you can save this as a standard Workbook.
