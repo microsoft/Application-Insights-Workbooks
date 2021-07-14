@@ -75,4 +75,4 @@ If you do not convert your private workbook to shared it will not be accessible 
 
 # Workbook Conversion Tool
 
-If you need weren't able to convert your private/legacy workbook before the deprecation date, you can migrate its content to a new workbook by following the steps here: [Workbooks Conversion Tool](../LegacyAI/DeprecatedWorkbookRetrievalTool.md)
+If you need weren't able to convert your private workbook before the deprecation date, you can migrate its content to a new workbook by following the steps here: [Workbooks Conversion Tool](../LegacyAI/DeprecatedWorkbookRetrievalTool.md)
