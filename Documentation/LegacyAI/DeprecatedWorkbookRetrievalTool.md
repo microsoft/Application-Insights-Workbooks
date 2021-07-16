@@ -6,7 +6,7 @@ Private and Legacy workbooks have been deprecated and are inaccessible from the 
 _To move forward with the deprecation of these workbooks, this tool will only be available for a limited time until **August 31, 2021**._
 
 ## Private Workbook Retrieval
-1. Open up an new or empty workbook
+1. Open up a new or empty workbook
 2. Go into Edit mode in the toolbar and navigate to the advanced editor
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
 3. Copy the following workbook json and paste it into your open advanced editor: [Private Workbook Conversion](./PrivateWorkbookConversion.workbook)
@@ -21,7 +21,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
 
 ## Favorites Based (Legacy) Workbook Retrieval
 1. Navigate to your Application Insights Resource > Workbooks gallery
-2. Open up an new or empty workbook
+2. Open up a new or empty workbook
 3. Click Edit in the toolbar and navigate to the advanced editor
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
 4. Copy the workbook json and paste it into your open advanced editor: [Legacy Workbook Conversion](./LegacyWorkbookConversion.workbook)
