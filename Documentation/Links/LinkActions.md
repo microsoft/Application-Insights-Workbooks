@@ -51,6 +51,45 @@ When using the `Make this item a link` option, the following settings are availa
 | `Menu item` | same as above. |
 | `Open link in Context Blade` | same as above. |
 
+## ARM Action Settings
+
+Use this setting to invoke an ARM action by specifying the ARM api details. The documentation for ARM REST apis can be found [here](https://aka.ms/armrestapi). In all of the UX fields, you can resolve parameters using `{paramName}`. Also you can resolve columns using `["columnName"]`. In the example images below, we can reference the column `id` by writing `["id"]`. If the column is an Azure Resource Id, you can get a friendly name of the resource using the formatter `label`. This is similar to [parameter formatters](../Parameters/Parameters.md#parameter-formatting).
+
+### ARM Action Settings Tab
+
+This section defines the ARM action API.
+
+| Source | Explanation |
+|:------------- |:-------------|
+|`ARM Action path` | The ARM action path. eg /subscriptions/:subscription/resourceGroups/:resourceGroup/someAction?api-version=:apiversion.|
+|`Http Method` | Select an HTTP method. The available choices are `POST`, `PUT`, `PATCH`, `DELETE`|
+|`Long Operation` | Long Operations will poll the URI from the `Azure-AsyncOperation` or the `Location` response header from the original operation. More info [here](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/async-operations).|
+|`Parameters`| URL parameters grid with the key and value.|
+|`Headers` | Headers grid with the key and value.|
+|`Body` | Editor for the request payload in JSON.|
+
+![Image showing ARM Action settings](../Images/ARMActionSettings.png)
+
+### ARM Action UX Settings
+
+This section configures what the users will see before they run the ARM action.
+
+| Source | Explanation |
+|:------------- |:-------------|
+|`Title` | Title used on the run view. |
+|`Customize ARM Action name` | Authors can customize the ARM action that is displayed on the notification after the action is triggered.|
+|`Description of ARM Action` | This is the markdown text used to provide a helpful description to users when they want to run the ARM action. |
+|`Run button text from` | Label used on the run (execute) button to trigger the ARM action.|
+
+![Image showing ARM UX settings](../Images/ARMActionUXSettings.png)
+
+After these configurations are set, when the user clicks on the link, it will open up the view with the UX described in [ARM Action UX Settings](#ARM-Action-UX-Settings). From here, if the user clicks on the button specified by `Run button text from` it will run the ARM action using the values from [ARM Action UX Settings](#ARM-Action-UX-Settings). On the bottom of the context pane there is a `View Request Details` expander where a user can inspect the HTTP method and the ARM API endpoint that will be used for the ARM action.
+
+![Image showing ARM Action settings](../Images/ARMActionBlade.PNG)
+
+The progress and result of the ARM Action will be shown as an Azure Portal notification.
+
+![Image showing ARM UX settings](../Images/ARMActionCustomNotification.PNG)
 ## ARM Deployment link settings
 If the selected link type is `ARM Deployment` the author must specify additional settings to open an ARM deployment. There are two main tabs for configuration. 
 
@@ -73,7 +112,7 @@ This section configures what the users will see before they run the ARM deployme
 | Source | Explanation |
 |:------------- |:-------------|
 |`Title from` | Title used on the run view. Select from `Cell`, `Column`, `Parameter`, or `Static Value` in [Link sources](#link-sources).|
-|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can treat columns as parameters by appending `_column` after the column name like `{columnName_column}`. In the example image below, we can reference the column `VMName` by writing `{VMName_column}`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
+|`Description from` | This is the markdown text used to provide a helpful description to users when they want to deploy the template. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). <br/><br/> **NOTE:** If `Static Value` is selected, a multi-line text box will appear. In this text box you can resolve parameters using `{paramName}`. Also you can reference the column `VMName` by writing `["VMName"]`. The value after the colon is the [parameter formatter](../Parameters/Parameters.md#parameter-formatting), in this case it's `value`.|
 |`Run button text from` | Label used on the run (execute) button to deploy the ARM template. This is what users will click on to start deploying the ARM template.|
 
 ![Image showing ARM UX settings](../Images/ArmUXSettings.png)
@@ -100,13 +139,13 @@ There are two types of inputs, Grid and JSON. Use 'Grid' for simple key and valu
 
 - Grid 
     - `Parameter Name`: The name of the View input parameter
-    - `Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be treated as parameters columns by appending `_column` after the column name like `{columnName_column}`.
+    - `Parameter Comes From`: Where the value of the View parameter should come from. Select from `Cell`, `Column`, `Parameter`, or `Static Value`  in [Link sources](#link-sources). **NOTE** If `Static Value` is selected, the parameters can be resolved using brackets like `{paramName}` in the text box. Also, columns can be referenced by using `["columnName"]`.
     - `Parameter Value`: depending on `Parameter Comes From`, this will be a dropdown of available parameters, columns, or a static value.
 
 ![Image showing Custom View settings link settings](../Images/CustomBladeSettings.png)
 
 - JSON
-    - Specify your blade input in a json format on the editor. Like the `Grid` mode, parameters and columns may be referenced by using `{paramName}` for parameters, and `{columnName_column}` for columns. By clicking on the button `Show JSON Sample`, it will show the expected output of all resolved parameters and columns used for the view input.
+    - Specify your blade input in a json format on the editor. Like the `Grid` mode, parameters and columns may be referenced by using `{paramName}` for parameters, and `["columnName"]` for columns. In the JSON Sample editor, it will show all the actual input values that will be used to open the Custom View.
 
 ![Image showing Custom View settings link settings in JSON mode](../Images/CustomBladeJSON.png)
 
