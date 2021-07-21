@@ -68,5 +68,6 @@ Starting July 1 2021 you will not see your Legacy Workbooks in Azure Portal.
 
 You will still be able to retrieve the content of Legacy Workbooks for another 30 days (until July 31 2021) by using Azure CLI or PowerShell tools, to query `microsoft.insights/components/[name]/favorites` for the specific resource using `api-version=2015-05-01`. 
 
-## What if I *need* to temporarily save change to a Legacy Workbook
-To revert to the previous behavior of Legacy Workbooks, you can use the setting `feature.legacyWorkbooks=true` on the Azure Portal Url, like `https://portal.azure.com/?feature.legacyWorkbooks=true`, adjusting for your portal environment and any other flags you may have set. This feature will be removed in the future but is provided temporarily if needed.
+# Workbook Conversion Tool
+
+If you need weren't able to convert your legacy workbook before the deprecation date, you can migrate its content to a new workbook by following the steps here: [Workbooks Conversion Tool](../LegacyAI/DeprecatedWorkbookRetrievalTool.md)
