@@ -66,7 +66,7 @@ For these reasons, we suggest that users manually migrate the workbooks they wan
 ## What happens if I do not convert Legacy workbooks?
 Starting July 1 2021 you will not see your Legacy Workbooks in Azure Portal. 
 
-You will still be able to retrieve the content of Legacy Workbooks for another 60 days (until August 31 2021) by using Azure CLI or PowerShell tools, to query `microsoft.insights/components/[name]/favorites` for the specific resource using `api-version=2015-05-01`. 
+You will still be able to retrieve the content of Legacy Workbooks for a limited time by using Azure CLI or PowerShell tools, to query `microsoft.insights/components/[name]/favorites` for the specific resource using `api-version=2015-05-01`. 
 
 # Workbook Conversion Tool
 
