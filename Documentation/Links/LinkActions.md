@@ -23,7 +23,8 @@ Link actions can be accessed through Workbook [link steps](./Links.md#link-actio
 ## Azure Resource
 | Link action | Action on click |
 |:------------- |:-------------|
-| `ARM Deployment` | Deploy an ARM template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings)   |
+| `ARM Deployment` | Deploy an ARM template.  When this item is selected, additional fields are displayed to let the author configure which ARM template to open, parameters for the template, etc. [See ARM Deployment Link Settings](#ARM-Deployment-link-settings) |
+| `ARM Action (preview)` | Run an action against an ARM resource.  When this item is selected, additional fields are displayed to let the author configure the ARM API to execute, etc. [See ARM Action Settings](#ARM-Action-Settings) |
 | `Create Alert Rule` | Creates an Alert rule for a resource.  |
 | `Custom View` | Opens a custom View. When this item is selected, additional fields are displayed to let the author configure the View extension, View name, and any parameters used to open the View. [See Custom View](#custom-view-link-settings) |
 | `Metrics` | Opens a metrics view  |
