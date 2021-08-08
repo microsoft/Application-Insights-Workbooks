@@ -71,4 +71,8 @@ Learn more about Workbook Access control here: https://docs.microsoft.com/en-us/
 
 # What happens if I don't Convert? 
 
-If you do not convert your private workbook to shared it will not be accessible in Azure Portal after **June 30, 2021**. 
+If you do not convert your private workbook to shared it will not be directly accessible from the Workbooks tools in the Azure Portal after **July 2021**. 
+
+# Workbook Conversion Tool
+
+If you need weren't able to convert your private workbook before the deprecation date, you can migrate its content to a new workbook by following the steps here: [Workbooks Conversion Tool](../LegacyAI/DeprecatedWorkbookRetrievalTool.md)

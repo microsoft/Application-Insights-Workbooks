@@ -15,7 +15,9 @@ const LocKeys = [
   "defaultItemsText",
   "loadButtonText",
   "noDataMessage",
-  "markDown" // specific to cohorts
+  "markDown", // specific to cohorts
+  "actionName",
+  "runLabel"
 ];
 
 // For Workbook items that are arrays, these are the following field names that uniquely identify them
