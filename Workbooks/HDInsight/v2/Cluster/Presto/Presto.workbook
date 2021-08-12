@@ -10,8 +10,13 @@
             "id": "a4b3932e-9ccf-4ffa-839a-ad3dc7137269",
             "version": "KqlParameterItem/1.0",
             "name": "timeRange",
+            "label": "Time Range",
             "type": 4,
             "description": "Filter data by time range",
+            "isRequired": true,
+            "value": {
+              "durationMs": 3600000
+            },
             "typeSettings": {
               "selectableValues": [
                 {
@@ -39,6 +44,9 @@
                   "durationMs": 172800000
                 },
                 {
+                  "durationMs": 259200000
+                },
+                {
                   "durationMs": 604800000
                 },
                 {
@@ -56,42 +64,37 @@
                 {
                   "durationMs": 7776000000
                 }
-              ]
+              ],
+              "allowCustom": true
             },
             "timeContext": {
               "durationMs": 86400000
             },
-            "value": {
-              "durationMs": 1209600000
-            }
+            "timeContextFromParameter": "timeRange"
           },
           {
-            "id": "777f8f12-338c-473e-87cf-81ea931b63a0",
+            "id": "d2876cbd-26c1-4c51-9e4a-81995456ff0b",
             "version": "KqlParameterItem/1.0",
-            "name": "clusterNamespace",
-            "type": 1,
-            "description": "Cluster Namespace",
-            "timeContext": {
-              "durationMs": 86400000
-            },
-            "value": ""
-          },
-          {
-            "id": "4c992ece-00e3-4343-9296-c4694fe369ed",
-            "version": "KqlParameterItem/1.0",
-            "name": "controllerName",
-            "type": 2,
+            "name": "nodePool",
+            "label": "Node Pool",
+            "type": 5,
+            "description": "Select desired node pool of this AKS cluster",
+            "isRequired": true,
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "KubePodInventory\r\n| where TimeGenerated > {timeRange:start}\r\n| distinct ControllerName\r\n| where isnotempty(ControllerName)\r\n| order by ControllerName asc",
-            "value": [
-              "flinkdemo-flink-taskmanager-5798455756"
-            ],
+            "query": "KubeNodeInventory   \r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| distinct agentpool",
             "typeSettings": {
-              "additionalResourceOptions": [],
+              "additionalResourceOptions": [
+                "value::all"
+              ],
               "showDefault": false
             },
+            "timeContext": {
+              "durationMs": 3600000
+            },
+            "timeContextFromParameter": "timeRange",
+            "defaultValue": "value::all",
             "queryType": 0,
             "resourceType": "microsoft.containerservice/managedclusters"
           }
@@ -109,92 +112,299 @@
         "style": "tabs",
         "links": [
           {
-            "id": "28dc8109-43d1-4efd-a37f-1840822fac08",
+            "id": "8555c972-5cfb-40fe-88fc-ddfe4cffd375",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Overview",
-            "subTarget": "Overview",
+            "linkLabel": "Cluster Overview",
+            "subTarget": "clusterOverview",
             "style": "link"
           },
           {
             "id": "aee16927-0441-4c69-83bd-ca252099589e",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Container Status",
-            "subTarget": "pod_status",
+            "linkLabel": "Presto Cluster",
+            "subTarget": "presto_cluster_group",
             "style": "link"
           }
         ]
       },
-      "name": "links - 1"
+      "name": "allTabs"
     },
     {
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
         "groupType": "editable",
-        "title": "Pod Max Memory Usage",
         "items": [
           {
-            "type": 3,
+            "type": 12,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "let endDateTime = {timeRange:end};\r\nlet startDateTime = {timeRange:start};\r\nlet trendBinSize = {timeRange:grain};\r\nlet capacityCounterName = 'memoryLimitBytes';\r\nlet usageCounterName = 'memoryWorkingSetBytes';\r\nlet controllerName = {controllerName};\r\nKubePodInventory\r\n| where TimeGenerated < endDateTime\r\n| where TimeGenerated >= startDateTime\r\n| where ControllerName == controllerName\r\n| extend InstanceName = strcat(ClusterId, '/', ContainerName),\r\n         ContainerName = strcat(ControllerName, '/', tostring(split(ContainerName, '/')[1])),\r\n         PodName=Name\r\n| distinct Computer, InstanceName, ContainerName, Namespace\r\n| join hint.strategy=shuffle (\r\n    Perf\r\n    | where TimeGenerated < endDateTime\r\n    | where TimeGenerated >= startDateTime\r\n    | where ObjectName == 'K8SContainer'\r\n    | where CounterName == capacityCounterName\r\n    | summarize LimitValue = max(CounterValue) by Computer, InstanceName, bin(TimeGenerated, trendBinSize)\r\n    | project Computer, InstanceName, LimitStartTime = TimeGenerated, LimitEndTime = TimeGenerated + trendBinSize, LimitValue\r\n) on Computer, InstanceName\r\n| join kind=inner hint.strategy=shuffle (\r\n    Perf\r\n    | where TimeGenerated < endDateTime + trendBinSize\r\n    | where TimeGenerated >= startDateTime - trendBinSize\r\n    | where ObjectName == 'K8SContainer'\r\n    | where CounterName == usageCounterName\r\n    | project Computer, InstanceName, UsageValue = CounterValue, TimeGenerated\r\n) on Computer, InstanceName\r\n| where TimeGenerated >= LimitStartTime and TimeGenerated < LimitEndTime\r\n| project Computer, ContainerName, TimeGenerated, UsagePercent = UsageValue * 100.0 / LimitValue\r\n| summarize AggregatedValue = max(UsagePercent) by bin(TimeGenerated, trendBinSize) , ContainerName\r\n",
-              "size": 0,
-              "aggregation": 2,
-              "queryType": 0,
-              "resourceType": "microsoft.containerservice/managedclusters",
-              "visualization": "timechart",
-              "chartSettings": {
-                "ySettings": {
-                  "numberFormatSettings": {
-                    "unit": 1,
-                    "options": {
-                      "style": "decimal",
-                      "useGrouping": true
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = 1m;     \r\nlet MaxListSize = 1000;    \r\nlet materializedPerfData =\r\nPerf     \r\n| where ObjectName  == 'K8SNode'\r\n| summarize arg_max(TimeGenerated, *) by CounterName, Computer, bin(TimeGenerated, trendBinSize)         \r\n| where CounterName == 'cpuAllocatableNanoCores' or CounterName == 'cpuUsageNanoCores'// or CounterName == 'memoryRssBytes' or CounterName == 'memoryCapacityBytes'        \r\n| project TimeGenerated, Computer, CounterName, CounterValue\r\n| summarize StoredValue = max(CounterValue) by Computer, CounterName, bin(TimeGenerated, trendBinSize);\r\n\r\nKubeNodeInventory\r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool in ({nodePool})\r\n| summarize arg_max(TimeGenerated, *) by Computer, bin(TimeGenerated, trendBinSize)     \r\n| join( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuAllocatableNanoCores' or CounterName == 'memoryCapacityBytes'\r\n| project Computer, CounterName = iif(CounterName == 'cpuAllocatableNanoCores', 'cpu', 'memory'), CapacityValue = StoredValue, TimeGenerated     \r\n) on Computer, TimeGenerated     \r\n| join kind=inner( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuUsageNanoCores' or CounterName == 'memoryRssBytes'         \r\n| project Computer, CounterName = iif(CounterName == 'cpuUsageNanoCores', 'cpu', 'memory'), UsageValue = StoredValue, TimeGenerated     \r\n) on Computer, CounterName, TimeGenerated     \r\n| project Computer, CounterName, TimeGenerated, UsagePercent = UsageValue * 100.0 / CapacityValue",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node CPU Utilization %",
+                    "timeContext": {
+                      "durationMs": 3600000
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "filter": true
+                    },
+                    "chartSettings": {
+                      "showLegend": true,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 1,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      }
                     }
-                  }
+                  },
+                  "name": "node_cpu_utilization_percent_query"
                 }
-              }
+              ]
             },
-            "name": "Pod memory usage"
+            "customWidth": "50",
+            "name": "node_cpu_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = 1m;     \r\nlet MaxListSize = 1000;    \r\nlet materializedPerfData =\r\nPerf     \r\n| where ObjectName  == 'K8SNode'\r\n| summarize arg_max(TimeGenerated, *) by CounterName, Computer, bin(TimeGenerated, trendBinSize)         \r\n| where CounterName == 'memoryRssBytes' or CounterName == 'memoryCapacityBytes'        \r\n| project TimeGenerated, Computer, CounterName, CounterValue\r\n| summarize StoredValue = max(CounterValue) by Computer, CounterName, bin(TimeGenerated, trendBinSize);\r\n\r\nKubeNodeInventory    \r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool in ({nodePool})\r\n| summarize arg_max(TimeGenerated, *) by Computer, bin(TimeGenerated, trendBinSize)     \r\n| join( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuAllocatableNanoCores' or CounterName == 'memoryCapacityBytes'\r\n| project Computer, CounterName = iif(CounterName == 'cpuAllocatableNanoCores', 'cpu', 'memory'), CapacityValue = StoredValue, TimeGenerated     \r\n) on Computer, TimeGenerated     \r\n| join kind=inner( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuUsageNanoCores' or CounterName == 'memoryRssBytes'         \r\n| project Computer, CounterName = iif(CounterName == 'cpuUsageNanoCores', 'cpu', 'memory'), UsageValue = StoredValue, TimeGenerated     \r\n) on Computer, CounterName, TimeGenerated     \r\n| project Computer, CounterName, TimeGenerated, UsagePercent = UsageValue * 100.0 / CapacityValue",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node Memory Utilization %",
+                    "timeContext": {
+                      "durationMs": 3600000
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "chartSettings": {
+                      "yAxis": [
+                        "UsagePercent"
+                      ],
+                      "showLegend": true,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 1,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "name": "node_memory_utilization_percent_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "node_memory_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = 5m;     \r\nlet maxListSize = 1000;\r\nlet rawData =     \r\nKubeNodeInventory     \r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool in ({nodePool})\r\n| distinct ClusterId, TimeGenerated     \r\n| summarize ClusterSnapshotCount = count() by Timestamp = bin(TimeGenerated, trendBinSize), ClusterId     \r\n| join hint.strategy=broadcast (         \r\n    KubeNodeInventory\r\n    | extend labels = parse_json(Labels)\r\n    | extend agentpool=tostring(['labels'][0]['agentpool'])\r\n    | where agentpool in ({nodePool})\r\n    | summarize TotalCount = count(), ReadyCount = sumif(1, Status contains ('Ready')) by ClusterId, Timestamp = bin(TimeGenerated, trendBinSize), agentpool\r\n    | extend NotReadyCount = TotalCount - ReadyCount     \r\n    ) on ClusterId, Timestamp     \r\n| project ClusterId, Timestamp,  agentpool,           \r\nTotalCount = todouble(TotalCount) / ClusterSnapshotCount,              \r\nReadyCount = todouble(ReadyCount) / ClusterSnapshotCount,               \r\nNotReadyCount = todouble(NotReadyCount) / ClusterSnapshotCount;  \r\n\r\nrawData     \r\n| order by Timestamp asc     \r\n//| summarize makelist(Timestamp, maxListSize),                 \r\n//makelist(TotalCount, maxListSize),                 \r\n//makelist(ReadyCount, maxListSize),                 \r\n//makelist(NotReadyCount, maxListSize)             \r\n//by ClusterId, agentpool \r\n//| project ClusterId, agentpool, list_Timestamp, list_TotalCount, list_ReadyCount, list_NotReadyCount\r\n",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node Count",
+                    "timeContext": {
+                      "durationMs": 3600000
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "filter": true
+                    },
+                    "chartSettings": {
+                      "showLegend": true
+                    }
+                  },
+                  "name": "node_count_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "node_count_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = 5m;     \r\nlet maxListSize = 1000;         \r\nKubePodInventory     \r\n| distinct TimeGenerated, Namespace    \r\n| summarize ClusterSnapshotCount = count() by bin(TimeGenerated, trendBinSize), Namespace     \r\n| join hint.strategy=broadcast (         \r\nKubePodInventory\r\n| summarize PodStatus=any(PodStatus) by TimeGenerated, PodUid, Namespace       \r\n| summarize Total = count(),                     \r\nPending = sumif(1, PodStatus =~ 'Pending'),                     \r\nRunning = sumif(1, PodStatus =~ 'Running'),                     \r\nSucceeded = sumif(1, PodStatus =~ 'Succeeded'),                     \r\nFailed = sumif(1, PodStatus =~ 'Failed'),                     \r\nTerminating = sumif(1, PodStatus =~ 'Terminating')                  \r\nby Namespace, bin(TimeGenerated, trendBinSize)    \r\n) on Namespace, TimeGenerated\r\n| extend Unknown = Total - Pending - Running - Succeeded - Failed - Terminating     \r\n| project Namespace, Timestamp = TimeGenerated,              \r\nTotal = todouble(Total) / ClusterSnapshotCount,               \r\nPending = todouble(Pending) / ClusterSnapshotCount,               \r\nRunning = todouble(Running) / ClusterSnapshotCount,               \r\nSucceeded = todouble(Succeeded) / ClusterSnapshotCount,               \r\nFailed = todouble(Failed) / ClusterSnapshotCount,               \r\nTerminating = todouble(Terminating) / ClusterSnapshotCount,               \r\nUnknown = todouble(Unknown) / ClusterSnapshotCount",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Active Pod Count",
+                    "timeContext": {
+                      "durationMs": 3600000
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "filter": true
+                    },
+                    "chartSettings": {
+                      "showLegend": true
+                    }
+                  },
+                  "name": "active_pod_count_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "active_pod_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
           }
         ]
       },
       "conditionalVisibility": {
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
-        "value": "pod_status"
+        "value": "clusterOverview"
       },
-      "name": "pod_status"
+      "name": "clusterOverview_group",
+      "styleSettings": {
+        "showBorder": true
+      }
     },
     {
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
         "groupType": "editable",
-        "title": "Flink Job Manager",
         "items": [
           {
-            "type": 3,
+            "type": 9,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "InsightsMetrics\r\n| where TimeGenerated > {timeRange:start}\r\n| where Namespace == \"prometheus\"\r\n| extend tags = parse_json(Tags)\r\n| extend k8sns = tostring(['tags']['namespace'])\r\n| where k8sns == \"flinkdemo2\"\r\n| where Name in (\"flink_jobmanager_Status_JVM_Memory_Heap_Used\", \"flink_jobmanager_Status_JVM_Memory_Heap_Max\")\r\n| project Computer, k8sns, Name, Val, Tags, TimeGenerated\r\n| render timechart \r\n",
-              "size": 0,
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "4bf91b5b-4406-4813-8cd2-eccb737f3a41",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "namespace",
+                  "label": "LLAP Namespace",
+                  "type": 2,
+                  "description": "Select namespaces of LLAP cluster type",
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "KubePodInventory\r\n| distinct Namespace",
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "timeRange",
+                  "defaultValue": "value::all",
+                  "queryType": 0,
+                  "resourceType": "microsoft.containerservice/managedclusters"
+                }
+              ],
+              "style": "above",
               "queryType": 0,
-              "resourceType": "microsoft.containerservice/managedclusters",
-              "visualization": "timechart"
+              "resourceType": "microsoft.containerservice/managedclusters"
             },
-            "name": "query - 0"
+            "name": "parameters - 0 - Copy"
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "tabs",
+              "links": [
+                {
+                  "id": "ca80d8fd-e466-4915-b8ca-743ec007959d",
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Cluster Stats",
+                  "subTarget": "llap_cluster_stats_group",
+                  "style": "link"
+                }
+              ]
+            },
+            "name": "flinkTabs"
           }
         ]
       },
       "conditionalVisibility": {
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
-        "value": "Overview"
+        "value": "presto_cluster_group"
       },
-      "name": "Overview"
+      "name": "presto_cluster_group"
     }
-  ]
+  ],
+  "fallbackResourceIds": [],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
