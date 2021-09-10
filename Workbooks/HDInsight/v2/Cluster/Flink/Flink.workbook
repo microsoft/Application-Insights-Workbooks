@@ -1,0 +1,1613 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a4b3932e-9ccf-4ffa-839a-ad3dc7137269",
+            "version": "KqlParameterItem/1.0",
+            "name": "timeRange",
+            "label": "Time Range",
+            "type": 4,
+            "description": "Filter data by time range",
+            "isRequired": true,
+            "value": {
+              "durationMs": 1209600000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000
+                },
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2419200000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 5184000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "timeContextFromParameter": "timeRange"
+          },
+          {
+            "id": "d2876cbd-26c1-4c51-9e4a-81995456ff0b",
+            "version": "KqlParameterItem/1.0",
+            "name": "clusterName",
+            "label": "Cluster Name",
+            "type": 1,
+            "description": "Select desired cluster from this cluster pool",
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "timeRange",
+            "defaultValue": "value::all",
+            "value": ""
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.containerservice/managedclusters"
+      },
+      "name": "parameters - 0"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "8555c972-5cfb-40fe-88fc-ddfe4cffd375",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Cluster Overview",
+            "subTarget": "clusterOverview",
+            "style": "link"
+          },
+          {
+            "id": "aee16927-0441-4c69-83bd-ca252099589e",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Flink Cluster",
+            "subTarget": "flink_cluster_group",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "allTabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h); \r\nlet materializedPerfData =\r\nPerf     \r\n| where ObjectName  == 'K8SNode'\r\n| summarize arg_max(TimeGenerated, *) by CounterName, Computer, bin(TimeGenerated, trendBinSize)         \r\n| where CounterName == 'cpuAllocatableNanoCores' or CounterName == 'cpuUsageNanoCores'// or CounterName == 'memoryRssBytes' or CounterName == 'memoryCapacityBytes'        \r\n| project TimeGenerated, Computer, CounterName, CounterValue\r\n| summarize StoredValue = max(CounterValue) by Computer, CounterName, bin(TimeGenerated, trendBinSize);\r\n\r\nKubeNodeInventory\r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool == \"{clusterName}\"\r\n| summarize arg_max(TimeGenerated, *) by Computer, bin(TimeGenerated, trendBinSize)     \r\n| join( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuAllocatableNanoCores' or CounterName == 'memoryCapacityBytes'\r\n| project Computer, CounterName = iif(CounterName == 'cpuAllocatableNanoCores', 'cpu', 'memory'), CapacityValue = StoredValue, TimeGenerated     \r\n) on Computer, TimeGenerated     \r\n| join kind=inner( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuUsageNanoCores' or CounterName == 'memoryRssBytes'         \r\n| project Computer, CounterName = iif(CounterName == 'cpuUsageNanoCores', 'cpu', 'memory'), UsageValue = StoredValue, TimeGenerated     \r\n) on Computer, CounterName, TimeGenerated     \r\n| project Computer, CounterName, TimeGenerated, UsagePercent = UsageValue * 100.0 / CapacityValue",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node CPU Utilization %",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "filter": true
+                    },
+                    "chartSettings": {
+                      "showLegend": true,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 1,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "name": "node_cpu_utilization_percent_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "node_cpu_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);\r\nlet materializedPerfData =\r\nPerf     \r\n| where ObjectName  == 'K8SNode'\r\n| summarize arg_max(TimeGenerated, *) by CounterName, Computer, bin(TimeGenerated, trendBinSize)         \r\n| where CounterName == 'memoryRssBytes' or CounterName == 'memoryCapacityBytes'        \r\n| project TimeGenerated, Computer, CounterName, CounterValue\r\n| summarize StoredValue = max(CounterValue) by Computer, CounterName, bin(TimeGenerated, trendBinSize);\r\n\r\nKubeNodeInventory    \r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool == \"{clusterName}\"\r\n| summarize arg_max(TimeGenerated, *) by Computer, bin(TimeGenerated, trendBinSize)     \r\n| join( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuAllocatableNanoCores' or CounterName == 'memoryCapacityBytes'\r\n| project Computer, CounterName = iif(CounterName == 'cpuAllocatableNanoCores', 'cpu', 'memory'), CapacityValue = StoredValue, TimeGenerated     \r\n) on Computer, TimeGenerated     \r\n| join kind=inner( \r\nmaterializedPerfData          \r\n| where CounterName == 'cpuUsageNanoCores' or CounterName == 'memoryRssBytes'         \r\n| project Computer, CounterName = iif(CounterName == 'cpuUsageNanoCores', 'cpu', 'memory'), UsageValue = StoredValue, TimeGenerated     \r\n) on Computer, CounterName, TimeGenerated     \r\n| project Computer, CounterName, TimeGenerated, UsagePercent = UsageValue * 100.0 / CapacityValue",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node Memory Utilization %",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "chartSettings": {
+                      "yAxis": [
+                        "UsagePercent"
+                      ],
+                      "showLegend": true,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 1,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": true,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "name": "node_memory_utilization_percent_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "node_memory_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);\r\nlet rawData =     \r\nKubeNodeInventory     \r\n| extend labels=parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool == \"{clusterName}\"\r\n| distinct ClusterId, TimeGenerated     \r\n| summarize ClusterSnapshotCount = count() by Timestamp = bin(TimeGenerated, trendBinSize), ClusterId     \r\n| join hint.strategy=broadcast (         \r\n    KubeNodeInventory\r\n    | extend labels = parse_json(Labels)\r\n    | extend agentpool=tostring(['labels'][0]['agentpool'])\r\n    | where agentpool == \"{clusterName}\"\r\n    | summarize TotalCount = count(), ReadyCount = sumif(1, Status contains ('Ready')) by ClusterId, Timestamp = bin(TimeGenerated, trendBinSize), agentpool\r\n    | extend NotReadyCount = TotalCount - ReadyCount     \r\n    ) on ClusterId, Timestamp     \r\n| project ClusterId, Timestamp,  agentpool,           \r\nTotalCount = todouble(TotalCount) / ClusterSnapshotCount,              \r\nReadyCount = todouble(ReadyCount) / ClusterSnapshotCount,               \r\nNotReadyCount = todouble(NotReadyCount) / ClusterSnapshotCount;  \r\n\r\nrawData     \r\n| order by Timestamp asc     \r\n",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Node Count",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "filter": true
+                    },
+                    "chartSettings": {
+                      "showLegend": true
+                    }
+                  },
+                  "name": "node_count_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "node_count_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);    \r\nlet raw=\r\nKubeNodeInventory\r\n| extend labels = parse_json(Labels)\r\n| extend agentpool=tostring(['labels'][0]['agentpool'])\r\n| where agentpool == \"{clusterName}\"\r\n| project Computer, Cluster = agentpool\r\n| distinct Computer, Cluster\r\n| join kind=inner ( \r\n    KubePodInventory\r\n    | project Name, Namespace, ClusterPool=ClusterName, PodIp, PodUid, Computer, PodStatus, TimeGenerated\r\n    | distinct Name, Namespace, ClusterPool, PodIp, PodUid, Computer, PodStatus, TimeGenerated\r\n) on Computer;\r\n\r\nraw     \r\n| distinct TimeGenerated, Namespace, Cluster  \r\n| summarize ClusterSnapshotCount = count() by bin(TimeGenerated, trendBinSize), Namespace, Cluster     \r\n| join hint.strategy=broadcast (         \r\nraw\r\n| summarize PodStatus=any(PodStatus) by TimeGenerated, PodUid, Namespace, Cluster  \r\n| summarize Total = count(),                     \r\nPending = sumif(1, PodStatus =~ 'Pending'),                     \r\nRunning = sumif(1, PodStatus =~ 'Running'),                     \r\nSucceeded = sumif(1, PodStatus =~ 'Succeeded'),                     \r\nFailed = sumif(1, PodStatus =~ 'Failed'),                     \r\nTerminating = sumif(1, PodStatus =~ 'Terminating')                  \r\nby Namespace, Cluster, bin(TimeGenerated, trendBinSize)    \r\n) on Namespace, Cluster, TimeGenerated\r\n| extend Unknown = Total - Pending - Running - Succeeded - Failed - Terminating     \r\n| project Namespace, Cluster, Timestamp = TimeGenerated,              \r\nTotal = todouble(Total) / ClusterSnapshotCount,               \r\nPending = todouble(Pending) / ClusterSnapshotCount,               \r\nRunning = todouble(Running) / ClusterSnapshotCount,               \r\nSucceeded = todouble(Succeeded) / ClusterSnapshotCount,               \r\nFailed = todouble(Failed) / ClusterSnapshotCount,               \r\nTerminating = todouble(Terminating) / ClusterSnapshotCount,               \r\nUnknown = todouble(Unknown) / ClusterSnapshotCount",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Active Pod Count",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "gridSettings": {
+                      "filter": true
+                    },
+                    "chartSettings": {
+                      "showLegend": true
+                    }
+                  },
+                  "name": "active_pod_count_query"
+                }
+              ]
+            },
+            "customWidth": "50",
+            "name": "active_pod_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10",
+              "maxWidth": "50",
+              "showBorder": true
+            }
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "clusterOverview"
+      },
+      "name": "clusterOverview_group",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "4bf91b5b-4406-4813-8cd2-eccb737f3a41",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "namespace",
+                  "label": "Flink Namespace",
+                  "type": 2,
+                  "description": "Select namespaces of this Flink cluster",
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "KubePodInventory\r\n| distinct Namespace",
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 3600000
+                  },
+                  "timeContextFromParameter": "timeRange",
+                  "defaultValue": "value::all",
+                  "queryType": 0,
+                  "resourceType": "microsoft.containerservice/managedclusters"
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.containerservice/managedclusters"
+            },
+            "name": "parameters - 0 - Copy"
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "tabs",
+              "links": [
+                {
+                  "id": "ca80d8fd-e466-4915-b8ca-743ec007959d",
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Cluster Stats",
+                  "subTarget": "flink_cluster_stats_group",
+                  "style": "link"
+                },
+                {
+                  "id": "f1db1332-98cd-41a2-8a65-14908833c3be",
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Job Stats",
+                  "subTarget": "flink_cluster_job_stats_group",
+                  "style": "link"
+                },
+                {
+                  "id": "ae398761-831f-4a53-98f5-9aa645b4a831",
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "JVM",
+                  "subTarget": "flink_cluster_jvm_group",
+                  "style": "link"
+                }
+              ]
+            },
+            "name": "flinkTabs"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "Task Manager Count",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_numRegisteredTaskManagers\"\r\n| extend tags=parse_json(Tags)\r\n| extend  k8snm=tostring(['tags']['namespace'])\r\n| where k8snm in ({namespace})\r\n| project TimeGenerated, k8snm, Name, Val",
+                          "size": 0,
+                          "aggregation": 5,
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "chartSettings": {
+                            "showLegend": true
+                          }
+                        },
+                        "name": "flink_cluster_task_manager_count_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "customWidth": "50",
+                  "name": "flink_task_manager_count_group",
+                  "styleSettings": {
+                    "maxWidth": "50"
+                  }
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "Running Jobs Count",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "InsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_numRunningJobs\"\r\n| extend tags=parse_json(Tags)\r\n| extend  k8snm=tostring(['tags']['namespace'])\r\n| where k8snm in ({namespace})\r\n| project TimeGenerated, k8snm, Name, Val",
+                          "size": 0,
+                          "aggregation": 5,
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "chartSettings": {
+                            "showLegend": true
+                          }
+                        },
+                        "name": "flink_cluster_stat_running_job_count_query",
+                        "styleSettings": {
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "customWidth": "50",
+                  "name": "flink_cluster_stat_running_jobs_count_group",
+                  "styleSettings": {
+                    "maxWidth": "50"
+                  }
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "flink_cluster_stats_group"
+            },
+            "name": "flink_cluster_stat_group",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10"
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "title": "Basics",
+              "expandable": true,
+              "expanded": true,
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "InsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_job_restartingTime\"\r\n| extend tags=parse_json(Tags)\r\n| extend  k8snm=tostring(['tags']['namespace'])\r\n| where k8snm in ({namespace})\r\n| project TimeGenerated, k8snm, Name, Val",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Job Restarting Time",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "chartSettings": {
+                      "showLegend": true,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 0,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": false
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "customWidth": "50",
+                  "name": "flink_jobmanager_job_restartingTime_query",
+                  "styleSettings": {
+                    "margin": "10",
+                    "padding": "10",
+                    "maxWidth": "50",
+                    "showBorder": true
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "InsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_job_numRestarts\"\r\n| extend tags=parse_json(Tags)\r\n| extend  k8snm=tostring(['tags']['namespace'])\r\n| where k8snm in ({namespace})\r\n| project TimeGenerated, k8snm, Name, Val",
+                    "size": 0,
+                    "aggregation": 5,
+                    "title": "Job Restart Count",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "timechart",
+                    "chartSettings": {
+                      "showLegend": true,
+                      "ySettings": {
+                        "numberFormatSettings": {
+                          "unit": 0,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": false
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "customWidth": "50",
+                  "name": "flink_jobmanager_job_numRestarts_query",
+                  "styleSettings": {
+                    "margin": "10",
+                    "padding": "10",
+                    "maxWidth": "50",
+                    "showBorder": true
+                  }
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "flink_cluster_job_stats_group"
+            },
+            "name": "flink_cluster_job_stat_group_basic",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10"
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "title": "Checkpointing",
+              "expandable": true,
+              "expanded": true,
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let CheckpointRawValue =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_job_totalNumberOfCheckpoints\"\r\n    or Name == \"flink_jobmanager_job_numberOfCompletedCheckpoints\" or Name == \"flink_jobmanager_job_numberOfFailedCheckpoints\" \r\n    or Name == \"flink_jobmanager_job_numberOfInProgressCheckpoints\"\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend jobid=tostring(['tags']['job_id'])\r\n| extend podname=tostring(['tags']['pod_name'])\r\n| extend jobname=tostring(['tags']['job_name'])\r\n| where k8snm in ({namespace})\r\n| project StoredValue = Val, k8snm, jobid, jobname, podname, Name, TimeGenerated;\r\nlet CheckpointProcessed=\r\nCheckpointRawValue          \r\n| where Name == 'flink_jobmanager_job_numberOfFailedCheckpoints'\r\n| project k8snm, jobname, jobid, podname, Name, TimeGenerated, FailedCheckpoints = StoredValue\r\n| join kind=inner( \r\nCheckpointRawValue          \r\n| where Name == 'flink_jobmanager_job_totalNumberOfCheckpoints'\r\n| project k8snm, jobname, jobid, podname, Name, TimeGenerated, TotalCheckpoints = StoredValue\r\n) on k8snm, jobname, jobid, TimeGenerated     \r\n| join kind=inner( \r\nCheckpointRawValue          \r\n| where Name == 'flink_jobmanager_job_numberOfCompletedCheckpoints'\r\n| project k8snm, jobname, jobid, podname, Name, TimeGenerated, CompletedCheckpoints = StoredValue\r\n) on k8snm, jobname, jobid, TimeGenerated     \r\n| join kind=inner( \r\nCheckpointRawValue          \r\n| where Name == 'flink_jobmanager_job_numberOfInProgressCheckpoints'\r\n| project k8snm, jobname, jobid, podname, Name, TimeGenerated, InProgressCheckpoints = StoredValue\r\n) on k8snm, jobname, jobid, TimeGenerated\r\n| project TimeGenerated,TotalCheckpoints, FailedCheckpoints, CompletedCheckpoints, InProgressCheckpoints, \r\nk8snm, jobname, jobid, podname\r\n| order by TimeGenerated desc;\r\nCheckpointProcessed\r\n| serialize \r\n| extend lastCompleteCount = next(CompletedCheckpoints, 1, 0)\r\n| extend CompletedDiff = CompletedCheckpoints - lastCompleteCount\r\n| extend Status = case(CompletedDiff > 0, \"Completed\", \r\n                    InProgressCheckpoints == 1, \"In Progress\",\r\n                    \"Failed\")\r\n| project TimeGenerated, k8snm, jobname, jobid, podname, Status, \r\nTotalCheckpoints, FailedCheckpoints, CompletedCheckpoints, InProgressCheckpoints\r\n| summarize arg_max(TimeGenerated, jobname, podname, LastStatus=Status, \r\nTotalCheckpoints, FailedCheckpoints, CompletedCheckpoints, InProgressCheckpoints) by k8snm, jobid\r\n",
+                    "size": 0,
+                    "title": "Latest Job Checkpoint Counts (Completed vs. Failed)",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "timeContextFromParameter": "timeRange",
+                    "queryType": 0,
+                    "resourceType": "microsoft.containerservice/managedclusters",
+                    "visualization": "tiles",
+                    "tileSettings": {
+                      "titleContent": {
+                        "columnMatch": "jobname",
+                        "formatter": 1
+                      },
+                      "subtitleContent": {
+                        "columnMatch": "jobid"
+                      },
+                      "leftContent": {
+                        "columnMatch": "CompletedCheckpoints",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "min": 0,
+                          "max": 1,
+                          "palette": "green",
+                          "compositeBarSettings": {
+                            "labelText": "",
+                            "columnSettings": []
+                          }
+                        },
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "style": "decimal"
+                          }
+                        },
+                        "tooltipFormat": {
+                          "tooltip": "Completed Checkpoint Count"
+                        }
+                      },
+                      "rightContent": {
+                        "columnMatch": "FailedCheckpoints",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "min": 0,
+                          "max": 1,
+                          "palette": "red",
+                          "compositeBarSettings": {
+                            "labelText": "",
+                            "columnSettings": []
+                          }
+                        },
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "style": "decimal",
+                            "useGrouping": false
+                          }
+                        },
+                        "tooltipFormat": {
+                          "tooltip": "Failed Checkpoint Count"
+                        }
+                      },
+                      "secondaryContent": {
+                        "columnMatch": "TimeGenerated",
+                        "formatter": 6
+                      },
+                      "showBorder": true,
+                      "size": "auto"
+                    },
+                    "graphSettings": {
+                      "type": 0,
+                      "topContent": {
+                        "columnMatch": "k8snm",
+                        "formatter": 1
+                      },
+                      "centerContent": {
+                        "columnMatch": "TotalCheckpoints",
+                        "formatter": 1,
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "maximumSignificantDigits": 3,
+                            "maximumFractionDigits": 2
+                          }
+                        }
+                      }
+                    },
+                    "mapSettings": {
+                      "locInfo": "LatLong",
+                      "sizeSettings": "TotalCheckpoints",
+                      "sizeAggregation": "Sum",
+                      "legendMetric": "TotalCheckpoints",
+                      "legendAggregation": "Sum",
+                      "itemColorSettings": {
+                        "type": "heatmap",
+                        "colorAggregation": "Sum",
+                        "nodeColorField": "TotalCheckpoints",
+                        "heatmapPalette": "greenRed"
+                      }
+                    }
+                  },
+                  "name": "flink_jobmanager_job_lastCheckpointCounts_query",
+                  "styleSettings": {
+                    "showBorder": true
+                  }
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let CheckpointRawValue =\r\n\tInsightsMetrics\r\n\t| where Namespace == \"prometheus\"\r\n\t| where Name == \"flink_jobmanager_job_lastCheckpointSize\" or Name == \"flink_jobmanager_job_lastCheckpointDuration\"\r\n\t    or Name == \"flink_jobmanager_job_lastCheckpointRestoreTimestamp\" or Name == \"flink_jobmanager_job_totalNumberOfCheckpoints\"\r\n\t    or Name == \"flink_jobmanager_job_numberOfCompletedCheckpoints\" or Name == \"flink_jobmanager_job_numberOfFailedCheckpoints\" \r\n\t    or Name == \"flink_jobmanager_job_numberOfInProgressCheckpoints\"\r\n\t| extend tags=parse_json(Tags)\r\n\t| extend k8snm=tostring(['tags']['namespace'])\r\n\t| extend jobid=tostring(['tags']['job_id'])\r\n\t| extend podname=tostring(['tags']['pod_name'])\r\n\t| extend jobname=tostring(['tags']['job_name'])\r\n\t| where k8snm in ({namespace})\r\n\t| project StoredValue = Val, k8snm, jobid, jobname, podname, Name, TimeGenerated;\r\n\tlet CheckpointProcessed=\r\n\tCheckpointRawValue \r\n\t| where Name == 'flink_jobmanager_job_lastCheckpointSize'\r\n\t| project k8snm, jobname, jobid, podname, Name, LastCheckpointSize = StoredValue/1024, TimeGenerated        \r\n\t| join kind=inner( \r\n\tCheckpointRawValue          \r\n\t| where Name == 'flink_jobmanager_job_lastCheckpointDuration'\r\n\t| project k8snm, jobname, jobid, podname, Name, TimeGenerated, LastCheckpointDuration = StoredValue\r\n\t) on k8snm, jobname,jobid, TimeGenerated\r\n\t| join kind=inner( \r\n\tCheckpointRawValue          \r\n\t| where Name == 'flink_jobmanager_job_lastCheckpointRestoreTimestamp'\r\n\t| project k8snm, jobname, jobid, podname, Name, TimeGenerated, LastCheckpointRestoreTimestamp = unixtime_milliseconds_todatetime(StoredValue)\r\n\t) on k8snm, jobname, jobid, TimeGenerated\r\n\t| join kind=inner( \r\n\tCheckpointRawValue          \r\n\t| where Name == 'flink_jobmanager_job_numberOfFailedCheckpoints'\r\n\t| project k8snm, jobname, jobid, podname, Name, TimeGenerated, FailedCheckpoints = StoredValue\r\n\t) on k8snm, jobname, jobid, TimeGenerated     \r\n\t| join kind=inner( \r\n\tCheckpointRawValue          \r\n\t| where Name == 'flink_jobmanager_job_totalNumberOfCheckpoints'\r\n\t| project k8snm, jobname, jobid, podname, Name, TimeGenerated, TotalCheckpoints = StoredValue\r\n\t) on k8snm, jobname, jobid, TimeGenerated     \r\n\t| join kind=inner( \r\n\tCheckpointRawValue          \r\n\t| where Name == 'flink_jobmanager_job_numberOfCompletedCheckpoints'\r\n\t| project k8snm, jobname, jobid, podname, Name, TimeGenerated, CompletedCheckpoints = StoredValue\r\n\t) on k8snm, jobname, jobid, TimeGenerated     \r\n\t| join kind=inner( \r\n\tCheckpointRawValue          \r\n\t| where Name == 'flink_jobmanager_job_numberOfInProgressCheckpoints'\r\n\t| project k8snm, jobname, jobid, podname, Name, TimeGenerated, InProgressCheckpoints = StoredValue\r\n\t) on k8snm, jobname, jobid, TimeGenerated\r\n\t| project TimeGenerated, LastCheckpointSize, LastCheckpointDuration, LastCheckpointRestoreTimestamp, \r\n\tTotalCheckpoints, FailedCheckpoints, CompletedCheckpoints, InProgressCheckpoints, \r\n\tk8snm, jobname, jobid, podname\r\n\t| order by TimeGenerated desc;\r\n\tCheckpointProcessed\r\n\t| serialize \r\n\t| extend lastCompleteCount = next(CompletedCheckpoints, 1, 0)\r\n\t| extend lastFailedCount = next(FailedCheckpoints, 1, 0)\r\n\t| extend lastTotalCount = next(CompletedCheckpoints, 1, 0)\r\n\t| extend CompletedDiff = CompletedCheckpoints - lastCompleteCount\r\n\t| extend FailedDiff = FailedCheckpoints - lastFailedCount\r\n\t| extend TotalDiff = TotalCheckpoints > lastTotalCount\r\n\t| extend Status = case(CompletedDiff > 0 and TotalDiff > 0, \"Completed\", \r\n                        FailedDiff > 0 and TotalDiff > 0, \"Failed\",  \r\n\t                    InProgressCheckpoints == 1, \"In Progress\",\r\n\t                    \"?\")\r\n\t| project TimeGenerated, k8snm, jobname, jobid, podname, Status, \r\n\tTotalCheckpoints, FailedCheckpoints, CompletedCheckpoints, InProgressCheckpoints, \r\n\tLastCheckpointSize, LastCheckpointDuration, LastCheckpointRestoreTimestamp\r\n\t//| summarize arg_max(TimeGenerated, jobname, podname, LastStatus=Status, \r\n\t//TotalCheckpoints, FailedCheckpoints, CompletedCheckpoints, InProgressCheckpoints, \r\n//LastCheckpointSize, LastCheckpointDuration, LastCheckpointRestoreTimestamp) by k8snm, jobid",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Checkpoint History",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "jobname",
+                              "formatter": 1
+                            },
+                            "subtitleContent": {
+                              "columnMatch": "jobid"
+                            },
+                            "leftContent": {
+                              "columnMatch": "CompletedCheckpoints",
+                              "formatter": 12,
+                              "formatOptions": {
+                                "min": 0,
+                                "max": 1,
+                                "palette": "green",
+                                "compositeBarSettings": {
+                                  "labelText": "",
+                                  "columnSettings": []
+                                }
+                              },
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "style": "decimal"
+                                }
+                              },
+                              "tooltipFormat": {
+                                "tooltip": "Completed Checkpoint Count"
+                              }
+                            },
+                            "rightContent": {
+                              "columnMatch": "FailedCheckpoints",
+                              "formatter": 12,
+                              "formatOptions": {
+                                "min": 0,
+                                "max": 1,
+                                "palette": "red",
+                                "compositeBarSettings": {
+                                  "labelText": "",
+                                  "columnSettings": []
+                                }
+                              },
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false
+                                }
+                              },
+                              "tooltipFormat": {
+                                "tooltip": "Failed Checkpoint Count"
+                              }
+                            },
+                            "secondaryContent": {
+                              "columnMatch": "TimeGenerated",
+                              "formatter": 6
+                            },
+                            "showBorder": true,
+                            "size": "auto"
+                          },
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "TotalCheckpoints",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "mapSettings": {
+                            "locInfo": "LatLong",
+                            "sizeSettings": "TotalCheckpoints",
+                            "sizeAggregation": "Sum",
+                            "legendMetric": "TotalCheckpoints",
+                            "legendAggregation": "Sum",
+                            "itemColorSettings": {
+                              "type": "heatmap",
+                              "colorAggregation": "Sum",
+                              "nodeColorField": "TotalCheckpoints",
+                              "heatmapPalette": "greenRed"
+                            }
+                          }
+                        },
+                        "name": "flink_jobmanager_job_checkpoint_history",
+                        "styleSettings": {
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "name": "flink_cluster_job_checkpointing_group",
+                  "styleSettings": {
+                    "margin": "10",
+                    "padding": "10",
+                    "showBorder": true
+                  }
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "flink_cluster_job_stats_group"
+            },
+            "name": "flink_cluster_job_stats_group_checkpointing",
+            "styleSettings": {
+              "margin": "10",
+              "padding": "10"
+            }
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "JVM CPU",
+                    "expandable": true,
+                    "expanded": true,
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "InsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_Status_JVM_CPU_Load\"\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| where k8snm in ({namespace})\r\n| extend percentVal = Val*100\r\n| project TimeGenerated, k8snm, Name, percentVal",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Job Manager JVM CPU Load",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "percentVal"
+                            ],
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 17,
+                                "options": {
+                                  "style": "percent",
+                                  "useGrouping": true
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_jobmanager_status_jvm_cpu_load_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "InsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_JVM_CPU_Load\"\r\n| extend tags=parse_json(Tags)\r\n| extend  k8snm=tostring(['tags']['namespace'])\r\n| where k8snm in ({namespace})\r\n| extend percentVal = Val*100\r\n| project TimeGenerated, k8snm, Name, percentVal",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager JVM CPU Load",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 0,
+                                "options": {
+                                  "style": "percent",
+                                  "useGrouping": true
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_status_jvm_cpu_load_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "name": "flink_jvm_cpu_group"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "JVM Memory",
+                    "expandable": true,
+                    "expanded": true,
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_Status_JVM_Memory_Heap_Committed\" or Name == \"flink_jobmanager_Status_JVM_Memory_NonHeap_Committed\"\r\n    or Name == \"flink_jobmanager_Status_JVM_Memory_Heap_Used\" or Name == \"flink_jobmanager_Status_JVM_Memory_NonHeap_Used\"\r\n| extend ShortName = case(\r\n        Name == \"flink_jobmanager_Status_JVM_Memory_Heap_Committed\", \"Heap_Committed\",\r\n        Name == \"flink_jobmanager_Status_JVM_Memory_NonHeap_Committed\", \"NonHeap_Committed\",\r\n        Name == \"flink_jobmanager_Status_JVM_Memory_Heap_Used\", \"Heap_Used\",\r\n        Name == \"flink_jobmanager_Status_JVM_Memory_NonHeap_Used\", \"NonHeap_Used\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Job Manager JVM (Heap/Non-Heap) Memory",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 2,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_jobmanager_status_jvm_memory_query",
+                        "styleSettings": {
+                          "maxWidth": "50"
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_JVM_Memory_Heap_Committed\" or Name == \"flink_taskmanager_Status_JVM_Memory_NonHeap_Committed\"\r\n    or Name == \"flink_taskmanager_Status_JVM_Memory_Heap_Used\" or Name == \"flink_taskmanager_Status_JVM_Memory_NonHeap_Used\"\r\n| extend ShortName = case(\r\n        Name == \"flink_taskmanager_Status_JVM_Memory_Heap_Committed\", \"Heap_Total\",\r\n        Name == \"flink_taskmanager_Status_JVM_Memory_NonHeap_Committed\", \"NonHeap_Total\",\r\n        Name == \"flink_taskmanager_Status_JVM_Memory_Heap_Used\", \"Heap_Used\",\r\n        Name == \"flink_taskmanager_Status_JVM_Memory_NonHeap_Used\", \"NonHeap_Used\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager JVM (Heap/Non-Heap) Memory",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 2,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_status_jvm_memory_query",
+                        "styleSettings": {
+                          "maxWidth": "50"
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_Status_JVM_Memory_Metaspace_Max\" or Name == \"flink_jobmanager_Status_JVM_Memory_Metaspace_Used\"\r\n| extend ShortName = case(\r\n        Name == \"flink_jobmanager_Status_JVM_Memory_Metaspace_Max\", \"Total\",\r\n        Name == \"flink_jobmanager_Status_JVM_Memory_Metaspace_Used\", \"Used\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Job Manager JVM Metaspace Memory",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 2,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_jobmanager_jvm_metaspace_memory_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_JVM_Memory_Metaspace_Max\" or Name == \"flink_taskmanager_Status_JVM_Memory_Metaspace_Used\"\r\n| extend ShortName = case(\r\n        Name == \"flink_taskmanager_Status_JVM_Memory_Metaspace_Max\", \"Total\",\r\n        Name == \"flink_taskmanager_Status_JVM_Memory_Metaspace_Used\", \"Used\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager JVM Metaspace Memory",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 2,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_jvm_metaspace_memory_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);   \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_Flink_Memory_Managed_Total\" or Name == \"flink_taskmanager_Status_Flink_Memory_Managed_Used\"\r\n| extend ShortName = case(\r\n        Name == \"flink_taskmanager_Status_Flink_Memory_Managed_Total\", \"Total\",\r\n        Name == \"flink_taskmanager_Status_Flink_Memory_Managed_Used\", \"Used\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData          \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager Flink Managed Memory",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 2,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_jobmanager_status_flink_managed_memory_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_Shuffle_Netty_TotalMemory\" or Name == \"flink_taskmanager_Status_Shuffle_Netty_UsedMemory\"\r\n| extend ShortName = case(\r\n        Name == \"flink_taskmanager_Status_Shuffle_Netty_TotalMemory\", \"Total\",\r\n        Name == \"flink_taskmanager_Status_Shuffle_Netty_UsedMemory\", \"Used\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager Flink Network Memory",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 2,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_flink_network_memory_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "name": "flink_jvm_memory_group"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "JVM Threads",
+                    "expandable": true,
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_jobmanager_Status_JVM_Threads_Count\"\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n\r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Job Manager JVM Thread Count",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": null,
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 17,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_jobmanager_status_jvm_threads_count_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_JVM_Threads_Count\"\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(k8snm, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n\r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager JVM Thread Count",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 17,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_status_jvm_threads_count_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "name": "flink_jvm_threads_group"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "JVM Garbage Collection",
+                    "expandable": true,
+                    "expanded": true,
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Time\" or Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Time\"\r\n| extend ShortName = case(\r\n        Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Time\", \"G1_Old\",\r\n        Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Time\", \"G1_Young\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager Garbage Collection Time",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 24,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_status_jvm_gc_time_query",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let trendBinSize = case(\r\n    {timeRange:end}-{timeRange:start} <= 12h, 1m,   \r\n    {timeRange:end}-{timeRange:start} > 12h and {timeRange:end}-{timeRange:start} <= 24h, 5m,\r\n    {timeRange:end}-{timeRange:start} > 24h and {timeRange:end}-{timeRange:start} <= 3d, 10m, \r\n    {timeRange:end}-{timeRange:start} > 3d and {timeRange:end}-{timeRange:start} <= 5d, 30m,\r\n    1h);  \r\nlet materializedPerfData =\r\nInsightsMetrics\r\n| where Namespace == \"prometheus\"\r\n| where Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Count\" or Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Count\"\r\n| extend ShortName = case(\r\n        Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Old_Generation_Count\", \"G1_Old\",\r\n        Name == \"flink_taskmanager_Status_JVM_GarbageCollector_G1_Young_Generation_Count\", \"G1_Young\",\r\n        Name)\r\n| extend tags=parse_json(Tags)\r\n| extend k8snm=tostring(['tags']['namespace'])\r\n| extend address=tostring(['tags']['address'])\r\n| where k8snm in ({namespace})\r\n| extend pod_Name=strcat(ShortName, \"_\", address)\r\n| summarize StoredValue = max(Val) by k8snm, pod_Name, bin(TimeGenerated, trendBinSize);\r\n\r\nmaterializedPerfData \r\n",
+                          "size": 0,
+                          "aggregation": 5,
+                          "title": "Task Manager Garbage Collection Count",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.containerservice/managedclusters",
+                          "visualization": "timechart",
+                          "sortBy": [],
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "k8snm",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Val",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "yAxis": [
+                              "StoredValue"
+                            ],
+                            "group": "pod_Name",
+                            "createOtherGroup": 0,
+                            "showLegend": true,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 17,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "flink_taskmanager_gc_count",
+                        "styleSettings": {
+                          "margin": "10",
+                          "padding": "10",
+                          "maxWidth": "50",
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "name": "flink_jvm_gc_group"
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "flink_cluster_jvm_group"
+            },
+            "name": "flink_cluster_jvm_group"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "flink_cluster_group"
+      },
+      "name": "flink_cluster_group"
+    }
+  ],
+  "fallbackResourceIds": [],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
