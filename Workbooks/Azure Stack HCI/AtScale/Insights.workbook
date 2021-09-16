@@ -1648,7 +1648,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| extend DrivesHealthy = toint(Description.m_totalDrivesHealthy)\r\n| extend DrivesUnhealthy = toint(Description.m_totalDrivesUnhealthy)\r\n| extend DrivesWarning = toint(Description.m_totalDrivesWarning)\r\n| extend DrivesUnknown = toint(Description.m_totalDrivesUnknown)\r\n| extend DrivesTotal = DrivesHealthy + DrivesUnhealthy + DrivesWarning + DrivesUnknown\r\n| summarize arg_max(TimeGenerated,*) by ClusterArmId\r\n| order by tolower(ClusterName) asc\r\n| project ClusterArmId, LastUpdated = TimeGenerated, DrivesHealthy, DrivesWarning, DrivesUnhealthy, DrivesUnknown, DrivesTotal, Healthy = strcat(tostring(DrivesHealthy),\"/\",tostring(DrivesTotal)), Warning = strcat(tostring(DrivesWarning),\"/\",tostring(DrivesTotal)), Critical = strcat(tostring(DrivesUnhealthy),\"/\",tostring(DrivesTotal)), Unknown = strcat(tostring(DrivesUnknown),\"/\",tostring(DrivesTotal))\r\n\r\n",
+                          "query": "let drives = Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(Description.m_correlationId)\r\n| join kind=leftsemi (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| where tostring(Description.m_isLastElement) == \"true\"\r\n| extend CorrelationId = tostring(Description.m_correlationId)\r\n| summarize arg_max(TimeGenerated, CorrelationId) by ClusterArmId\r\n) on CorrelationId\r\n| extend type = toint(Description.m_type)\r\n| extend Type = case(type == 1, \"SCM\", type == 2, \"NVMe\", type == 3, \"SSD\", type == 4, \"HDD\", type == 5, \"Virtual\", type == 6, \"Other\", \"Unknown\")\r\n| extend SizeTotalInBytes = todecimal(Description.m_sizeInBytes)\r\n| extend SizeUsedInBytes = todecimal(Description.m_sizeUsedInBytes)\r\n| extend SizeAvailableInBytes = SizeTotalInBytes - SizeUsedInBytes\r\n| extend UniqueId = tostring(Description.m_uniqueId)\r\n| extend Alerts = Description.m_alerts\r\n| extend TotalCritical = tolong(Alerts.m_totalCritical)\r\n| extend TotalWarning = tolong(Alerts.m_totalWarning)\r\n| extend TotalUnknown = tolong(Alerts.m_totalUnknown)\r\n| extend TotalHealthy = tolong(Alerts.m_totalHealthy)\r\n| extend Health = case(TotalCritical > 0, \"Critical\", TotalWarning > 0, \"Warning\", TotalUnknown > 0, \"Unknown\", \"Healthy\")\r\n| project ParentId = ClusterArmId, Id = strcat(ClusterArmId, \"/\", UniqueId), Name = UniqueId, LastUpdated = TimeGenerated, Model = tostring(Description.m_model), TotalCritical, TotalWarning, TotalUnknown, TotalHealthy, Health, Type, type, CanPool = tostring(Description.m_canPool), SizeTotal = round(SizeTotalInBytes/1073741824, 2), SizeUsed = round(SizeUsedInBytes/1073741824, 2), SizeAvailable = round(SizeAvailableInBytes/1073741824, 2), SizeTotalInBytes, SizeUsedInBytes, SizeAvailableInBytes;\r\ndrives\r\n| union (drives\r\n| summarize SizeTotalInBytes = sum(SizeTotalInBytes), SizeUsedInBytes = sum(SizeUsedInBytes), SizeAvailableInBytes = sum(SizeAvailableInBytes), ClusterArmId = any(ParentId), TotalCritical = sum(TotalCritical), TotalWarning = sum(TotalWarning), TotalUnknown = sum(TotalUnknown), TotalHealthy = sum(TotalHealthy), Total = count(), CanPool = countif(CanPool == true), TotalUnknownType = countif(type == 0), TotalScm = countif(type == 1), TotalNvme = countif(type == 2), TotalSdd = countif(type == 3), TotalHdd = countif(type == 4), TotalVirtual = countif(type == 5), TotalOther = countif(type == 6), LastUpdated = max(LastUpdated) by ParentId\r\n| extend CanPool = strcat(CanPool, \" of \", Total)\r\n| extend Type = \"\"\r\n| extend Type = iff(TotalUnknownType > 0, strcat(Type, \"Unknown:\", TotalUnknownType, \",\"), Type)\r\n| extend Type = iff(TotalScm > 0, strcat(Type, \"SCM:\", TotalScm, \",\"), Type)\r\n| extend Type = iff(TotalNvme > 0, strcat(Type, \"NVMe:\", TotalNvme, \",\"), Type)\r\n| extend Type = iff(TotalSdd > 0, strcat(Type, \"SDD:\", TotalSdd, \",\"), Type)\r\n| extend Type = iff(TotalHdd > 0, strcat(Type, \"HDD:\", TotalHdd, \",\"), Type)\r\n| extend Type = iff(TotalVirtual > 0, strcat(Type, \"Virtual:\", TotalVirtual, \",\"), Type)\r\n| extend Type = iff(TotalOther > 0, strcat(Type, \"Other:\", TotalOther, \",\"), Type)\r\n| extend Type = iff(Type != \"\", trim(\",\", Type), Type)\r\n| extend Health = strcat(TotalHealthy, \" of \", Total, \" healthy\")\r\n| project ParentId = '', Id = ClusterArmId, Name = ClusterArmId, LastUpdated, CanPool, SizeTotal = round(SizeTotalInBytes/1073741824, 2), Type, SizeUsed = round(SizeUsedInBytes/1073741824, 2), SizeAvailable = round(SizeAvailableInBytes/1073741824, 2), SizeTotalInBytes, SizeUsedInBytes, SizeAvailableInBytes, TotalCritical, TotalWarning, TotalUnknown, TotalHealthy, Health)",
                           "size": 3,
                           "showAnalytics": true,
                           "timeContext": {
@@ -1666,111 +1666,181 @@
                           "gridSettings": {
                             "formatters": [
                               {
-                                "columnMatch": "ClusterArmId",
+                                "columnMatch": "ParentId",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "Id",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "Name",
                                 "formatter": 13,
                                 "formatOptions": {
                                   "linkTarget": "Resource",
-                                  "linkIsContextBlade": false,
-                                  "showIcon": true
+                                  "showIcon": true,
+                                  "customColumnWidthSetting": "85ch"
                                 }
                               },
                               {
-                                "columnMatch": "LastUpdated",
-                                "formatter": 6,
-                                "numberFormat": {
-                                  "unit": 0,
-                                  "options": {
-                                    "style": "decimal",
-                                    "useGrouping": false
-                                  }
-                                },
-                                "dateFormat": {
-                                  "showUtcTime": null,
-                                  "formatName": "shortDateTimePattern"
-                                }
-                              },
-                              {
-                                "columnMatch": "DrivesHealthy",
+                                "columnMatch": "TotalCritical",
                                 "formatter": 5
                               },
                               {
-                                "columnMatch": "DrivesWarning",
+                                "columnMatch": "TotalWarning",
                                 "formatter": 5
                               },
                               {
-                                "columnMatch": "DrivesUnhealthy",
+                                "columnMatch": "TotalUnknown",
                                 "formatter": 5
                               },
                               {
-                                "columnMatch": "DrivesUnknown",
+                                "columnMatch": "TotalHealthy",
                                 "formatter": 5
                               },
                               {
-                                "columnMatch": "DrivesTotal",
+                                "columnMatch": "Health",
                                 "formatter": 22,
                                 "formatOptions": {
                                   "compositeBarSettings": {
-                                    "labelText": "[\"DrivesHealthy\"] of [\"DrivesTotal\"] healthy",
+                                    "labelText": "[\"Health\"]",
                                     "columnSettings": [
                                       {
-                                        "columnName": "DrivesHealthy",
-                                        "color": "green"
+                                        "columnName": "TotalCritical",
+                                        "color": "red"
                                       },
                                       {
-                                        "columnName": "DrivesUnhealthy",
-                                        "color": "redBright"
-                                      },
-                                      {
-                                        "columnName": "DrivesWarning",
+                                        "columnName": "TotalWarning",
                                         "color": "yellow"
                                       },
                                       {
-                                        "columnName": "DrivesUnknown",
+                                        "columnName": "TotalUnknown",
                                         "color": "gray"
+                                      },
+                                      {
+                                        "columnName": "TotalHealthy",
+                                        "color": "green"
                                       }
-                                    ]
+                                    ],
+                                    "noRowsScaling": true
                                   }
                                 }
                               },
                               {
-                                "columnMatch": "Unknown",
+                                "columnMatch": "type",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "SizeTotal",
+                                "formatter": 22,
+                                "formatOptions": {
+                                  "compositeBarSettings": {
+                                    "labelText": "[\"SizeAvailable\"] of [\"SizeTotal\"] GB available",
+                                    "columnSettings": [
+                                      {
+                                        "columnName": "SizeUsedInBytes",
+                                        "color": "blue"
+                                      },
+                                      {
+                                        "columnName": "SizeAvailableInBytes",
+                                        "color": "gray"
+                                      }
+                                    ],
+                                    "noRowsScaling": true
+                                  },
+                                  "customColumnWidthSetting": "25ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "SizeUsed",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "SizeAvailable",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "SizeTotalInBytes",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "SizeUsedInBytes",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "SizeAvailableInBytes",
                                 "formatter": 5
                               }
                             ],
                             "filter": true,
+                            "hierarchySettings": {
+                              "idColumn": "Id",
+                              "parentColumn": "ParentId",
+                              "treeType": 0,
+                              "expanderColumn": "Name"
+                            },
                             "labelSettings": [
                               {
-                                "columnId": "ClusterArmId",
-                                "label": "Cluster"
+                                "columnId": "ParentId"
+                              },
+                              {
+                                "columnId": "Id"
+                              },
+                              {
+                                "columnId": "Name",
+                                "label": "Cluster > Drive"
                               },
                               {
                                 "columnId": "LastUpdated",
                                 "label": "Last updated"
                               },
                               {
-                                "columnId": "DrivesHealthy"
+                                "columnId": "Model"
                               },
                               {
-                                "columnId": "DrivesWarning"
+                                "columnId": "TotalCritical"
                               },
                               {
-                                "columnId": "DrivesUnhealthy"
+                                "columnId": "TotalWarning"
                               },
                               {
-                                "columnId": "DrivesUnknown"
+                                "columnId": "TotalUnknown"
                               },
                               {
-                                "columnId": "DrivesTotal",
-                                "label": "Total drives"
+                                "columnId": "TotalHealthy"
                               },
                               {
-                                "columnId": "Healthy"
+                                "columnId": "Health",
+                                "label": "Drive Health"
                               },
                               {
-                                "columnId": "Warning"
+                                "columnId": "Type"
                               },
                               {
-                                "columnId": "Unknown"
+                                "columnId": "type"
+                              },
+                              {
+                                "columnId": "CanPool",
+                                "label": "Can Pool?"
+                              },
+                              {
+                                "columnId": "SizeTotal",
+                                "label": "Size"
+                              },
+                              {
+                                "columnId": "SizeUsed"
+                              },
+                              {
+                                "columnId": "SizeAvailable"
+                              },
+                              {
+                                "columnId": "SizeTotalInBytes"
+                              },
+                              {
+                                "columnId": "SizeUsedInBytes"
+                              },
+                              {
+                                "columnId": "SizeAvailableInBytes"
                               }
                             ]
                           }
