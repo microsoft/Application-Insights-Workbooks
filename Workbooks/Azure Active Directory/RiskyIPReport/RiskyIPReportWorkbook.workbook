@@ -6,15 +6,50 @@
       "content": {
         "json": "# Risky IP Workbook"
       },
-      "name": "text - 14"
+      "name": "titleText"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "e8df0096-0969-4423-91ec-7952ec1615e2",
+            "version": "KqlParameterItem/1.0",
+            "name": "ShowHelp",
+            "label": "Show Help",
+            "type": 10,
+            "description": "Toggle for Workbook Information",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": " [{ \"value\": \"1\", \"label\": \"Yes\" },{ \"value\": \"2\", \"label\": \"No\", \"selected\":true}]",
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "ShowHelp"
     },
     {
       "type": 1,
       "content": {
-        "json": "This risky IP workbook analyzes data from ADFSSignInLogs to help you detect password spray or password brute force attacks. The workbook has two parts. The first part \"Risky IP Analysis\" identifies risky IP addresses based on designated error thresholds and detection window length. The second part provides the sign-in details and error eounts for selected IPs.\r\n\r\nSelect a data time range to get started.",
+        "json": "This risky IP workbook analyzes data from ADFSSignInLogs to help you detect password spray or password brute force attacks. The workbook has two parts. The first part \"Risky IP Analysis\" identifies risky IP addresses based on designated error thresholds and detection window length. The second part provides the sign-in details and error eounts for selected IPs.\r\n\r\n
+        ** Prerequisites:** \r\n* Ensure that Azure AD Connect Health for AD FS is installed. Installation instructions can be found [here](https://docs.microsoft.com/azure/active-directory/hybrid/how-to-connect-health-agent-install). This is required to send data to the ADFSSignInLogs Log Analytics stream.\r\n * Enable the ADFSSignInLogs Log Analytics stream in the Azure AD Diagnostic Settings blade prior to using the Workbook.\r\n",
         "style": "info"
       },
-      "name": "text - 15"
+      "conditionalVisibility": {
+        "parameterName": "ShowHelp",
+        "comparison": "isEqualTo",
+        "value": "1"
+      },
+      "name": "HelpText"
     },
     {
       "type": 9,
@@ -346,9 +381,9 @@
       "content": {
         "json": "# Sign-in Details and Error Counts by IP\r\nSelect one or multiple IP addresses to view failed sign-in details and error counts.\r\nThe \"Failed Sign-in Details for Selected IP Addresses\" table shows the failed ADFS sign-in activities due to bad password errors or extranet lockout errors for the selected IP addresses.\r\nThe \"Error Count for Selected IPs by Time\" chart visualizes the number of the errors for the selected IP addresses."
       },
-      "name": "text - 12"
+      "name": "SignInDetailsText"
     },
-    {
+{
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
@@ -381,6 +416,31 @@
             "value": [
               "value::all"
             ]
+          },
+          {
+            "id": "cc653927-6afa-44f3-a3cb-cd6f9a2fdb04",
+            "version": "KqlParameterItem/1.0",
+            "name": "UserSelectedUserName",
+            "label": "User Name",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "ADFSSignInLogs\r\n| extend ErrorCode = ResultType\r\n| where ErrorCode in (\"50126\",\"300030\")\r\n| where NetworkLocationDetails !contains \"Intranet\" // Filter out sign-ins from local network as local IPs are not considered risky\r\n| summarize by UserDisplayName\r\n",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "",
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "defaultValue": "value::all",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
           }
         ],
         "style": "pills",
@@ -393,11 +453,11 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "ADFSSignInLogs\r\n| extend ErrorCode = ResultType\r\n| where IPAddress in ({UserSelectedIPAddress})\r\n| where ErrorCode in (\"50126\",\"300030\")\r\n| sort by IPAddress, CreatedDateTime\r\n//| summarize by IPAddress\r\n| project IPAddress, ['Sign-in Activity Time'] = CreatedDateTime, Location, ['User Name'] = UserDisplayName, ['Alternate Sign-in Name'] = AlternateSignInName, ['User Principal Name'] = UserPrincipalName, ['UserId'] = UserId, ['Error Code']= ResultType, ['Error Description'] = ResultDescription, ['Authentication Details'] = AuthenticationDetails",
+        "query": "ADFSSignInLogs\r\n| extend ErrorCode = ResultType\r\n| where IPAddress in ({UserSelectedIPAddress})\r\n| where ErrorCode in (\"50126\",\"300030\")\r\n| where UserDisplayName in ({UserSelectedUserName})\r\n| sort by IPAddress, CreatedDateTime\r\n//| summarize by IPAddress\r\n| project IPAddress, ['Sign-in Activity Time'] = CreatedDateTime, Location, ['User Name'] = UserDisplayName, ['Alternate Sign-in Name'] = AlternateSignInName, ['User Principal Name'] = UserPrincipalName, ['UserId'] = UserId, ['Error Code']= ResultType, ['Error Description'] = ResultDescription, ['Authentication Details'] = AuthenticationDetails",
         "size": 0,
         "title": "Failed Sign-in Details for Selected IPs",
         "timeContext": {
-          "durationMs": 2592000000
+          "durationMs": 0
         },
         "timeContextFromParameter": "TimeRange",
         "showExportToExcel": true,
@@ -412,18 +472,18 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "ADFSSignInLogs\r\n| extend ErrorCode = ResultType\r\n| where IPAddress in ({UserSelectedIPAddress})\r\n| extend SigninErrors = case(ErrorCode == \"50126\", \"Bad Password Errors\", ErrorCode == \"300030\", \"Extranet Lockout Errors\", \"Others\")\r\n| make-series errorCount = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step iff('{DetectionWindowLength}'=='Hour', 1h, 1d) by SigninErrors",
+        "query": "ADFSSignInLogs\r\n| extend ErrorCode = ResultType\r\n| where UserDisplayName in ({UserSelectedUserName})\r\n| where IPAddress in ({UserSelectedIPAddress})\r\n| extend SigninErrors = case(ErrorCode == \"50126\", \"Bad Password Errors\", ErrorCode == \"300030\", \"Extranet Lockout Errors\", \"Others\")\r\n| make-series errorCount = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step iff('{DetectionWindowLength}'=='Hour', 1h, 1d) by SigninErrors",
         "size": 0,
         "title": "Error Count for Selected IPs by Time",
         "timeContext": {
-          "durationMs": 2592000000
+          "durationMs": 0
         },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "visualization": "barchart"
       },
-      "name": "query - 16"
+      "name": "BarChartSelectIP"
     }
    ]
    }
