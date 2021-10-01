@@ -2,13 +2,6 @@
   "version": "Notebook/1.0",
   "items": [
     {
-      "type": 1,
-      "content": {
-        "json": "# Windows Virtual Desktop"
-      },
-      "name": "header"
-    },
-    {
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
@@ -179,11 +172,32 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
+            "id": "f9689a3a-7490-4d0f-9a7f-94590ac0b760",
+            "version": "KqlParameterItem/1.0",
+            "name": "WVDHostsId",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "\"",
+            "delimiter": ",",
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GETARRAY\",\"path\":\"/subscriptions/{Subscription:id}/resourcegroups/{ResourceGroup}/providers/Microsoft.DesktopVirtualization/hostpools/{HostPool:label}/sessionhosts?api-version=2019-01-23-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"columns\":[{\"path\":\"$.properties.resourceId\",\"columnid\":\"Id\"},{\"path\":\"$.properties.resourceId\",\"columnid\":\"Disp\"},{\"path\":\"$.properties.resourceId\",\"columnid\":\"selected\"}]}}]}",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 12
+          },
+          {
             "id": "08f46c2a-f080-40c5-b36f-acd0e80c6259",
             "version": "KqlParameterItem/1.0",
             "name": "WorkspaceId",
             "type": 1,
-            "query": "resources\r\n| where type =~ \"Microsoft.Compute/virtualMachines/extensions\"and properties.type == \"MicrosoftMonitoringAgent\"\r\n| where id contains extract(\"/(.*?)[.]\",1,\"{WVDHosts}\")\r\n| project Value = parse_json(properties.settings).workspaceId, selected=true\r\n| limit 1",
+            "query": "resources\r\n| where type =~ \"Microsoft.Compute/virtualMachines/extensions\"and properties.type == \"MicrosoftMonitoringAgent\"\r\n| extend vmname = extract(\"(.*?)/extensions\",1, id)\r\n| where vmname in~ ({WVDHostsId})\r\n| project Value = parse_json(properties.settings).workspaceId, selected=true\r\n| limit 1",
             "crossComponentResources": [
               "value::all"
             ],
@@ -213,8 +227,7 @@
             },
             "timeContextFromParameter": "TimeRange",
             "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources",
-            "value": null
+            "resourceType": "microsoft.resourcegraph/resources"
           },
           {
             "id": "2dee2c3f-e86d-48b4-bf63-4a36e98379d4",
@@ -284,13 +297,184 @@
                   "resultVal": "yes"
                 }
               }
+            ],
+            "value": "yes"
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "MissingSHNumber",
+            "type": 2,
+            "query": "resources\r\n| where id in~ ({WVDHostsId})\r\n| project id=tolower(id), name\r\n| join kind=leftouter (\r\nresources\r\n| where type =~ \"Microsoft.Compute/virtualMachines/extensions\"and properties.type == \"MicrosoftMonitoringAgent\" and properties.settings.workspaceId==\"{WorkspaceId}\"\r\n| project vmname = tolower(extract(\"(.*?)/extension\", 1, id))\r\n) on $left.id == $right.vmname\r\n| where isempty(vmname)\r\n| summarize vmcount=count() \r\n| project vmcount, disp=vmcount, selected=1",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "id": "9fb4bdb5-d356-4d41-97b6-97c7bb9477d0"
+          },
+          {
+            "id": "875c91e3-2744-4509-9656-68bdce082076",
+            "version": "KqlParameterItem/1.0",
+            "name": "wvdworkspace",
+            "type": 5,
+            "isRequired": true,
+            "query": "resources\r\n| where type == \"microsoft.desktopvirtualization/applicationgroups\"\r\n| project id, workspace= properties.workspaceArmPath, hp=properties.hostPoolArmPath\r\n| where isnotnull(workspace)\r\n| where hp =~ \"{HostPool}\"\r\n| project workspace, label=workspace,selected=1",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "0899cc5f-8ffe-4462-add5-b898b398f81c",
+            "version": "KqlParameterItem/1.0",
+            "name": "wvdworkspacediag",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/{wvdworkspace}/providers/microsoft.insights/diagnosticSettings?api-version=2017-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":null}",
+            "isHiddenWhenLocked": true,
+            "queryType": 12
+          },
+          {
+            "id": "af4425a5-ffaa-49ee-9ce1-1f8de1f49d5e",
+            "version": "KqlParameterItem/1.0",
+            "name": "wvdworkspacesettingsMain",
+            "type": 1,
+            "query": "resources\r\n| take 1\r\n| project config=dynamic({wvdworkspacediag})\r\n| project config = parse_json(config).value\r\n| mv-expand config\r\n| project Name=config.name, Workspace=config.properties.workspaceId, tables=config.properties.logs\r\n| where Workspace =~ \"{poolla}\"\r\n| project Workspace, disp=Workspace, selected=1",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "91b55e35-2cc8-4601-b33b-0694d21b24ac",
+            "version": "KqlParameterItem/1.0",
+            "name": "ShowConfigWarning",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "MissingSHNumber",
+                  "operator": ">",
+                  "rightValType": "static",
+                  "rightVal": "0",
+                  "resultValType": "static",
+                  "resultVal": "Show"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "wvdworkspacesettingsMain",
+                  "operator": "is Empty",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "Show"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "{MissingSHNumber} or {wvdworkspacesettingsMain}"
+                }
+              }
             ]
           }
         ],
         "style": "pills",
-        "queryType": 12
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "parameters - 2"
+      "name": "parameters_general"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "There are session hosts not sending data to the expected Log Analytics workspace. Number of session hosts needing attention: {MissingSHNumber}",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "MissingSHNumber",
+              "comparison": "isNotEqualTo",
+              "value": "0"
+            },
+            "name": "MissingVmWarning",
+            "styleSettings": {
+              "margin": "5px",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The wvd workspace **{wvdworkspace:name}** does not have diagnostic settings configured correctly.",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "wvdworkspacesettingsMain",
+              "comparison": "isEqualTo"
+            },
+            "name": "WvdWorkSpaceWarning",
+            "styleSettings": {
+              "margin": "5px",
+              "showBorder": true
+            }
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "paragraph",
+              "links": [
+                {
+                  "id": "7ea3b667-d3ef-4be8-8cc3-13705a565982",
+                  "cellValue": "community-Workbooks/Windows Virtual Desktop/Check Configuration",
+                  "linkTarget": "WorkbookTemplate",
+                  "linkLabel": "Configuration workbook ",
+                  "preText": "See the ",
+                  "postText": "to repair the issue.",
+                  "style": "link"
+                }
+              ]
+            },
+            "name": "CheckConfigLinkMissingVms",
+            "styleSettings": {
+              "margin": "5px"
+            }
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "ShowConfigWarning",
+        "comparison": "isEqualTo",
+        "value": "Show"
+      },
+      "name": "MissingVMGroup",
+      "styleSettings": {
+        "showBorder": true
+      }
     },
     {
       "type": 12,
@@ -348,7 +532,7 @@
                   "id": "96f06d16-b9ca-43fd-9cab-f92588645d9c",
                   "cellValue": "selectedTab",
                   "linkTarget": "parameter",
-                  "linkLabel": "User Report",
+                  "linkLabel": "Users",
                   "subTarget": "UserReport",
                   "style": "link"
                 },
@@ -356,7 +540,7 @@
                   "id": "cea8adb6-7f1e-4c86-a0fa-75d9888e7f62",
                   "cellValue": "selectedTab",
                   "linkTarget": "parameter",
-                  "linkLabel": "Utilization Report",
+                  "linkLabel": "Utilization",
                   "subTarget": "UtilizationReport",
                   "style": "link"
                 },
@@ -364,7 +548,7 @@
                   "id": "30cbee12-5b2d-4da1-bf18-eac5337c5d85",
                   "cellValue": "selectedTab",
                   "linkTarget": "parameter",
-                  "linkLabel": "Client Report",
+                  "linkLabel": "Clients",
                   "subTarget": "ClientReport",
                   "style": "link"
                 },
@@ -372,13 +556,13 @@
                   "id": "9a3c30f3-ef92-4913-b4fc-d42f0d262d4d",
                   "cellValue": "selectedTab",
                   "linkTarget": "parameter",
-                  "linkLabel": "Alerts Report",
+                  "linkLabel": "Alerts",
                   "subTarget": "AlertsReport",
                   "style": "link"
                 }
               ]
             },
-            "name": "tabs"
+            "name": "ReportTabs"
           },
           {
             "type": 12,
@@ -582,6 +766,15 @@
         "value": "no"
       },
       "name": "NoData"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "template",
+        "loadFromTemplateId": "community-Workbooks/Windows Virtual Desktop/shared/Template Versioning Footer"
+      },
+      "name": "TemplateVersioningFooter"
     }
   ],
   "fallbackResourceIds": [
