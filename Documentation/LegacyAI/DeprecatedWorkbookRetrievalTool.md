@@ -11,7 +11,7 @@ _To move forward with the deprecation of these workbooks, this tool will only be
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_AdvancedEditor.png)
 3. Copy the following (raw) workbook json and paste it into your open advanced editor: [Private Workbook Conversion](./PrivateWorkbookConversion.workbook)
 4. Click Apply at the top right
-5. Select the subscription and resource group of the workbook you'd like to retrieve the workbook from
+5. Select the subscription and resource group and category of the workbook you'd like to retrieve. 
 6. The grid at the bottom of this workbook will list all the private workbooks in the selected subscription / resource group above.
 7. Click on one of the workbooks in the grid. Your workbook should look something like this:
   ![advanced editor](../Images/DeprecatedWb_RetrievalTool_PrivateWbConversion.png)
