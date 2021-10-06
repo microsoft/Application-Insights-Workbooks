@@ -166,7 +166,13 @@
                       "customColumnWidthSetting": "68ch"
                     }
                   }
-                ]
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Description"
+                  ]
+                }
               }
             },
             "customWidth": "50",
@@ -205,7 +211,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "\r\nlet TableUsageStatsWithLookBack = ADXTableUsageStatistics\r\n| where TimeGenerated  {TimeRange}\r\n| extend LookBackPeriod = datetime_diff('day', StartedOn, MinCreatedOn) \r\n| summarize CountQueries=count() by DatabaseName, TableName, LookBackPeriod;\r\n\r\nlet sumAllQueries = TableUsageStatsWithLookBack | summarize sumQueries=sum(CountQueries) by DatabaseName, TableName;\r\n\r\nlet percentileLookBackTable= TableUsageStatsWithLookBack | summarize percentile_LookbackDuration_ = percentilesw(LookBackPeriod, CountQueries, 95) by DatabaseName, TableName;\r\n\r\nlet defaultRetention = 365d * 10;\r\n\r\nADXTableDetails \r\n| where TimeGenerated>=ago(1d) // so we filter out tables that are deprecated\r\n| summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),\r\n        CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n| join kind = leftouter (percentileLookBackTable) on DatabaseName, TableName\r\n| join kind = leftouter (sumAllQueries) on DatabaseName, TableName\r\n| where DatabaseName != \"KustoMonitoringPersistentDatabase\"\r\n| top 351 by HotExtentSize desc\r\n| project DatabaseName, TableName, CacheSize = HotExtentSize, format_timespan(ActiveCachingPolicy, 'd'),  \r\nsumQueries=sumQueries,QueryPeriod = percentile_LookbackDuration_",
+              "query": "\r\nlet TableUsageStatsWithLookBack = ADXTableUsageStatistics\r\n| where TimeGenerated  {TimeRange}\r\n| extend LookBackPeriod = datetime_diff('day', StartedOn, MinCreatedOn) \r\n| summarize CountQueries=count() by DatabaseName, TableName, LookBackPeriod;\r\n\r\nlet sumAllQueries = TableUsageStatsWithLookBack | summarize sumQueries=sum(CountQueries) by DatabaseName, TableName;\r\n\r\nlet percentileLookBackTable= TableUsageStatsWithLookBack | summarize percentile_LookbackDuration_ = percentilesw(LookBackPeriod, CountQueries, 95) by DatabaseName, TableName;\r\n\r\nlet defaultRetention = 365d * 10;\r\n\r\nADXTableDetails \r\n| where TimeGenerated>=ago(1d) // so we filter out tables that are deprecated\r\n| summarize arg_max(TimeGenerated, *) by DatabaseName, TableName\r\n| extend RetentionPolicy = iff(isnull(RetentionPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(RetentionPolicy)).SoftDeletePeriod)),\r\n        CachingPolicy = iff(isnull(CachingPolicy) or RetentionPolicy == \"null\", defaultRetention, totimespan(parse_json(tostring(CachingPolicy)).DataHotSpan))\r\n        | extend ActiveCachingPolicy = min_of(CachingPolicy, RetentionPolicy)\r\n| join kind = leftouter (percentileLookBackTable) on DatabaseName, TableName\r\n| join kind = leftouter (sumAllQueries) on DatabaseName, TableName\r\n| where DatabaseName != \"KustoMonitoringPersistentDatabase\"\r\n| top 351 by HotExtentSize desc\r\n| extend difference = toint(format_timespan(ActiveCachingPolicy, 'd'))-percentile_LookbackDuration_\r\n| extend difference2 = iif(isnull(difference),\"nq\",iif(difference<0,\"i\",iif(difference>0,\"d\",\"e\")))\r\n| project DatabaseName, TableName, CacheSize = HotExtentSize, format_timespan(ActiveCachingPolicy, 'd'),  \r\nsumQueries=sumQueries,QueryPeriod = percentile_LookbackDuration_, difference2",
               "size": 0,
               "showAnalytics": true,
               "exportedParameters": [
@@ -232,14 +238,14 @@
                     "columnMatch": "DatabaseName",
                     "formatter": 0,
                     "formatOptions": {
-                      "customColumnWidthSetting": "15%"
+                      "customColumnWidthSetting": "10%"
                     }
                   },
                   {
                     "columnMatch": "TableName",
                     "formatter": 0,
                     "formatOptions": {
-                      "customColumnWidthSetting": "15%"
+                      "customColumnWidthSetting": "10%"
                     }
                   },
                   {
@@ -248,7 +254,7 @@
                     "formatOptions": {
                       "min": 0,
                       "palette": "blue",
-                      "customColumnWidthSetting": "15%"
+                      "customColumnWidthSetting": "10%"
                     },
                     "numberFormat": {
                       "unit": 36,
@@ -273,7 +279,7 @@
                     "formatOptions": {
                       "min": 0,
                       "palette": "pink",
-                      "customColumnWidthSetting": "15%"
+                      "customColumnWidthSetting": "10%"
                     },
                     "numberFormat": {
                       "unit": 17,
@@ -300,14 +306,54 @@
                       },
                       "emptyValCustomText": "-"
                     }
+                  },
+                  {
+                    "columnMatch": "difference2",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "e",
+                          "representation": "Check",
+                          "text": "The actual usage lookback is equal to the cache policy"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "i",
+                          "representation": "CaretUp",
+                          "text": "The actual usage lookback exceeds the cache policy"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "d",
+                          "representation": "CaretDown",
+                          "text": "The actual usage lookback is below the cache policy"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "nq",
+                          "representation": "Disable",
+                          "text": "0 queries were run on the table"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ],
+                      "customColumnWidthSetting": "20%"
+                    }
                   }
                 ],
                 "rowLimit": 350,
                 "filter": true,
                 "sortBy": [
                   {
-                    "itemKey": "$gen_bar_sumQueries_4",
-                    "sortOrder": 2
+                    "itemKey": "$gen_bar_QueryPeriod_5",
+                    "sortOrder": 1
                   }
                 ],
                 "labelSettings": [
@@ -334,13 +380,17 @@
                   {
                     "columnId": "QueryPeriod",
                     "label": "Actual queries lookback period (days) (95th percentile)"
+                  },
+                  {
+                    "columnId": "difference2",
+                    "label": "Usage comapred to caching policy"
                   }
                 ]
               },
               "sortBy": [
                 {
-                  "itemKey": "$gen_bar_sumQueries_4",
-                  "sortOrder": 2
+                  "itemKey": "$gen_bar_QueryPeriod_5",
+                  "sortOrder": 1
                 }
               ]
             },
