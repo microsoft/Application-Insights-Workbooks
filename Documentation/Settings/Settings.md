@@ -11,7 +11,7 @@ __NOTE:__ Workbook versions are usually retained for 90 days.
 
 
 ### Compare
-When comparing, you'll be able to see the previous workbook as a JSON, versus the most recently saved version
+When comparing, you'll be able to see the previous workbook as a JSON, versus the most recently saved version.
 
 ![Image showing the versions tab](../Images/Compare-Workbook-Versions.png)
 
