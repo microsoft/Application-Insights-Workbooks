@@ -17,6 +17,7 @@ Styling can be applied to the links step itself, and the style of individual lin
 | `Paragraph` | ![link style paragraph](../Images/LinkStyleParagraph.png) | Links will appear as a paragraph of links, wrapped like a paragraph of text |
 | `Navigation` | ![link style navigation](../Images/LinkStyleNavigation.png) | Links will appear as links, with vertical `|` dividers between each link |
 | `Tabs` | ![link style tabs](../Images/LinkStyleTabs.png) | Links appear as tabs.  Each link will appear as a tab, no link styling options apply to individual links.  See the [tabs](#Using-Tabs) section below for how to configure tabs |
+| `Toolbar` | ![link style toolbar](../Images/LinkStyleToolbar.png) | Links appear an Azure Portal styled toolbar, with icons and text.  Each link will appear as a toolbar button.  See the [toolbar](#Using-Toolbars) section below for how to configure toolbars |
 
 
 ### Link styling
@@ -26,6 +27,7 @@ Styling can be applied to the links step itself, and the style of individual lin
 | `Button (Primary)` | the link will appear as a "primary" button in the portal, usually a blue color |
 | `Button (Secondary)` | the links will appears as a "secondary" button in the portal, usually a "transparent" color, a white button in light themes and a dark gray button in dark themes.  |
 
+When using buttons, if required parameters are used in Button text, Tooltip text, or Value fields, and the required parameter is unset, the button will be disabled. For example, this can be used to disable buttons when no value is selected in another paramter/control.
 
 ### Link Actions
 Links in the link step can use all of the link actions available in [grids and other visualizations](./LinkActions.md), and have 2 more available actions:
@@ -56,3 +58,16 @@ A full example of the above tabs is available as [LinkSample.workbook](LinkSampl
 * When using tabs, no item styling is available. Items will only be displayed as tabs, and only the tab name (link text) field will be displayed. Fields that are not used in tab style are hidden while in edit mode.
 * When using tabs, the first tab will become selected by default, invoking whatever action that tab has specified. If the first tab's action opens another view, that means as soon as the tabs are created, a view will appear.
 * While having tabs open other views is *supported*, it should be used sparingly, as most users won't expect clicking a tab to navigate. (Also, if other tabs are setting parameter to a specific value, a tab that opens a view would not change that value, so the rest of the workbook content will continue to show the view/data for the previous tab.)
+
+# Using Toolbars
+
+To have your links appear styled as a toolbar, use the "Toolbar" style.  In toolbar style, the author must fill in fields for
+* Button text, the text to display on the toolbar. Parameters may be used in this field.
+* Icon, the icon to display in the toolbar.
+* Tooltip Text, text to be displayed on the toolbar button's tooltip text. Parameters may be used in this field.
+
+![creating tabs example](../Images/LinksCreateToolbar.png)
+
+If any required parameters are used in Button text, Tooltip text, or Value fields, and the required parameter is unset, the toolbar button will be disabled. For example, this can be used to disable toolbar buttons when no value is selected in another paramter/control.
+
+A full example of using toolbars, globals parameters, and ARM Actions is available as [ToolbarSample.workbook](ToolbarSample.workbook)
