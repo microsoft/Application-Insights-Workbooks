@@ -114,6 +114,36 @@
             "resourceType": "microsoft.resources/subscriptions"
           },
           {
+            "id": "2385a289-b8db-470c-87dc-949ff2aa2467",
+            "version": "KqlParameterItem/1.0",
+            "name": "dataCenter",
+            "label": "Data Center",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where id in~ (dynamic([{clusters}]))\r\n| extend dataCenter = tostring(tags.Datacenter)\r\n| where isnotempty(dataCenter) == true\r\n| distinct dataCenter\r\n| order by tolower(dataCenter) desc\r\n| extend Rank = row_number()\r\n| project id = dataCenter, name = dataCenter, Rank\r\n| union (datatable (id:string, name:string, Rank:long)[\"\", \"Others\", 0])\r\n| order by tolower(Rank) desc\r\n| extend Rank = row_number()\r\n| project id, name, selected = Rank == 1",
+            "crossComponentResources": [
+              "{subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "timeContextFromParameter": "timeRange",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "value::all"
+            ]
+          },
+          {
             "id": "194d34fb-ab23-4c89-b903-0c985acd3f60",
             "version": "KqlParameterItem/1.0",
             "name": "selectedCluster",
@@ -123,7 +153,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where properties.status !in ('Disconnected', 'NotYetRegistered')\r\n| where id in~ (dynamic([{clusters}]))\r\n| order by tolower(name) asc\r\n| extend Rank = row_number()\r\n| project id, selected = Rank <= 10",
+            "query": "Resources\r\n|where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where properties.status !in ('Disconnected', 'NotYetRegistered')\r\n| where id in~ (dynamic([{clusters}]))\r\n| extend selectedCenters = dynamic([{dataCenter}])\r\n| where (isnotempty(tags.Datacenter) and selectedCenters has tostring(tags.Datacenter))\r\n     or (isempty(tags.Datacenter) and selectedCenters has \"Others\")\r\n| order by tolower(name) asc\r\n| extend Rank = row_number()\r\n| project id, selected = Rank <= 10",
             "crossComponentResources": [
               "{subscription}"
             ],
@@ -142,11 +172,26 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
+            "id": "08074e3b-9b15-4c59-85cb-8a0be8b7d170",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedDatacenter",
+            "type": 9,
+            "isGlobal": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "timeContextFromParameter": "timeRange"
+          },
+          {
             "id": "0fd64f15-3e8b-4f65-b64b-759620b7eb3f",
             "version": "KqlParameterItem/1.0",
             "name": "Message",
             "type": 1,
-            "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where properties.status !in ('Disconnected', 'NotYetRegistered')\r\n| summarize Total = count(), RegisteredClusters = countif(id in~ (dynamic([{clusters}])))\r\n| project Message = strcat('# ', RegisteredClusters, ' / ', Total)",
+            "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where properties.status !in ('Disconnected', 'NotYetRegistered')\r\n| extend Datacenter = tostring(tags.Datacenter)\r\n| extend SelectedDatacenter = dynamic([{selectedDatacenter}])\r\n| where (array_length(SelectedDatacenter) == 0) or (isnotempty(Datacenter) and SelectedDatacenter has Datacenter)\r\n| summarize Total = count(), RegisteredClusters = countif(id in~ (dynamic([{clusters}])))\r\n| project Message = strcat('# ', RegisteredClusters, ' / ', Total)",
             "crossComponentResources": [
               "{subscription}"
             ],
@@ -228,6 +273,14 @@
                   "linkLabel": "Overview",
                   "subTarget": "overview",
                   "preText": "Overview",
+                  "style": "link"
+                },
+                {
+                  "id": "a96a973d-1db8-4a4e-a408-991f02a41f86",
+                  "cellValue": "selectedTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Map",
+                  "subTarget": "map",
                   "style": "link"
                 },
                 {
@@ -1913,7 +1966,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where properties.status !in ('Disconnected', 'NotYetRegistered')\r\n| where id !in~ (dynamic([{clusters}]))\r\n| extend Status = iff(properties.status == 'NotYetRegistered', 0, iff(properties.status == 'Disconnected', 1, iff(properties.status == 'NotConnectedRecently', 2, iff(properties.status == 'ConnectedRecently', 3, -1))))\r\n| extend Nodes = parse_json(properties.reportedProperties.nodes)\r\n| mv-expand Nodes\r\n| extend OsVersion = tostring(Nodes.osVersion)\r\n| summarize arg_min(parse_version(OsVersion), OsVersion), RegistrationStatus = min(Status), ClusterName = any(name) by id\r\n| order by tolower(ClusterName) asc\r\n| project id, RegistrationStatus, OsVersion",
+                    "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where properties.status !in ('Disconnected', 'NotYetRegistered')\r\n| where id !in~ (dynamic([{clusters}]))\r\n| extend Datacenter = tostring(tags.Datacenter)\r\n| extend SelectedDatacenter = dynamic([{selectedDatacenter}])\r\n| where (array_length(SelectedDatacenter) == 0) or (isnotempty(Datacenter) and SelectedDatacenter has Datacenter)\r\n| extend Status = iff(properties.status == 'NotYetRegistered', 0, iff(properties.status == 'Disconnected', 1, iff(properties.status == 'NotConnectedRecently', 2, iff(properties.status == 'ConnectedRecently', 3, -1))))\r\n| extend Nodes = parse_json(properties.reportedProperties.nodes)\r\n| mv-expand Nodes\r\n| extend OsVersion = tostring(Nodes.osVersion)\r\n| summarize arg_min(parse_version(OsVersion), OsVersion), RegistrationStatus = min(Status), ClusterName = any(name) by id\r\n| order by tolower(ClusterName) asc\r\n| project id, RegistrationStatus, OsVersion",
                     "size": 2,
                     "showAnalytics": true,
                     "title": "Unmonitored clusters",
@@ -1998,9 +2051,58 @@
                       "locInfoColumn": "id"
                     }
                   },
-                  "customWidth": "70",
+                  "customWidth": "35",
                   "showPin": false,
-                  "name": "Unmonitored"
+                  "name": "Unmonitored",
+                  "styleSettings": {
+                    "maxWidth": "35%"
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where isnotempty(tags.Latitude) and isnotempty(tags.Longitude)\r\n| extend Datacenter = tostring(tags.Datacenter)\r\n| summarize Latitude = avg(todouble(tags.Latitude)), Longitude = avg(todouble(tags.Longitude)), Clusters = count() by Datacenter\r\n| project Datacenter, Latitude, Longitude, Clusters",
+                    "size": 3,
+                    "showRefreshButton": true,
+                    "exportMultipleValues": true,
+                    "exportAggregateParts": true,
+                    "exportedParameters": [
+                      {
+                        "fieldName": "Datacenter",
+                        "parameterName": "selectedDatacenter",
+                        "parameterType": 1,
+                        "quote": "'"
+                      }
+                    ],
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{subscription}"
+                    ],
+                    "visualization": "map",
+                    "mapSettings": {
+                      "locInfo": "LatLong",
+                      "latitude": "Latitude",
+                      "longitude": "Longitude",
+                      "sizeSettings": "Clusters",
+                      "sizeAggregation": "Sum",
+                      "labelSettings": "Datacenter",
+                      "legendMetric": "Clusters",
+                      "legendAggregation": "Sum",
+                      "itemColorSettings": {
+                        "nodeColorField": "Clusters",
+                        "colorAggregation": "Sum",
+                        "type": "heatmap",
+                        "heatmapPalette": "blue"
+                      }
+                    }
+                  },
+                  "customWidth": "65",
+                  "name": "map query",
+                  "styleSettings": {
+                    "maxWidth": "65"
+                  }
                 }
               ]
             },
@@ -2010,6 +2112,54 @@
               "value": "gettingStarted"
             },
             "name": "getting started group"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "where type =~ 'Microsoft.AzureStackHCI/clusters'\r\n| where isnotempty(tags.Latitude) and isnotempty(tags.Longitude)\r\n| extend Datacenter = tostring(tags.Datacenter)\r\n| summarize Latitude = avg(todouble(tags.Latitude)), Longitude = avg(todouble(tags.Longitude)), Clusters = count() by Datacenter\r\n| project Datacenter, Latitude, Longitude, Clusters",
+                    "size": 3,
+                    "showRefreshButton": true,
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{subscription}"
+                    ],
+                    "visualization": "map",
+                    "mapSettings": {
+                      "locInfo": "LatLong",
+                      "locInfoColumn": "location",
+                      "latitude": "Latitude",
+                      "longitude": "Longitude",
+                      "sizeSettings": "Clusters",
+                      "sizeAggregation": "Sum",
+                      "labelSettings": "Datacenter",
+                      "legendMetric": "Clusters",
+                      "legendAggregation": "Sum",
+                      "itemColorSettings": {
+                        "nodeColorField": "Clusters",
+                        "colorAggregation": "Sum",
+                        "type": "heatmap",
+                        "heatmapPalette": "blue"
+                      }
+                    }
+                  },
+                  "name": "map query"
+                }
+              ]
+            },
+            "conditionalVisibility": {
+              "parameterName": "selectedTab",
+              "comparison": "isEqualTo",
+              "value": "map"
+            },
+            "name": "map group"
           },
           {
             "type": 1,
