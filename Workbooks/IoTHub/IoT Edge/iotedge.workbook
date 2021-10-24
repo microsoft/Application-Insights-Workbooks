@@ -546,12 +546,9 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "// Set thresholds based on workbook parameter values.\r\nlet hostMemPercentThreshold = toint({hostMemPercentThreshold}); // 80;\r\nlet hostCpuPercentThreshold = toint({hostCpuPercentThreshold}); // 80;\r\nlet hostDiskPercentThreshold = toint({hostDiskPercentThreshold}); // 90;\r\nlet localMessagesSentThreshold = toint({localMessagesSentThreshold}); // 0;\r\nlet upstreamMessagesSentThreshold = toint({upstreamMessagesSentThreshold}); // 0;\r\nlet qlenThreshold = toint({qlenThreshold}); // 100;\r\nlet firstPanicNoDataThresholdMins = toint({firstPanicNoDataThresholdMins}); // 30;\r\nlet secondPanicNoDataThresholdMins = max_of(firstPanicNoDataThresholdMins, toint({secondPanicNoDataThresholdMins})); // 120;\r\nlet startTime = {timeRange:start};\r\nlet endTime =  {timeRange:end};\r\nlet _data = InsightsMetrics\r\n    | where TimeGenerated between (startTime .. endTime) // restrict the time window\r\n    | extend iothub = extract(\"iothub.:.([^,]+).,\", 1, Tags, typeof(string))\r\n    | extend iothub = tostring(split(iothub, \".\")[0])\r\n    | extend device = strcat(iothub, \"/\", extract(\"edge_device.:.([^,]+).,\", 1, Tags, typeof(string)));\r\nlet _latestData = materialize(\r\n    _data\r\n    | summarize TimeGenerated = max(TimeGenerated)\r\n        by device // restrict data to only the latest entries for each device\r\n    | join kind=inner _data\r\n        on device, TimeGenerated\r\n    | extend dimensions=parse_json(Tags) // expand the tags now that we have a reduced set\r\n    | extend scope = tostring(dimensions.module_name)\r\n    | extend quantile = todouble(dimensions.quantile)\r\n    | project TimeGenerated, dimensions, device, scope, quantile, Computer, Name, Val\r\n    );\r\n//\r\nlet cpu_and_mem = _latestData\r\n| where scope == \"host\" \r\n    and Name in (\"edgeAgent_total_memory_bytes\", \"edgeAgent_used_memory_bytes\", \"edgeAgent_used_cpu_percent\")\r\n| extend total_bytes = iif(Name == \"edgeAgent_total_memory_bytes\", tolong(Val), 0)\r\n| extend used_bytes = iif(Name == \"edgeAgent_used_memory_bytes\", tolong(Val), 0)\r\n| extend cpu = iif(Name == \"edgeAgent_used_cpu_percent\"\r\n     and quantile >= 0.99, toint(Val), 0)\r\n| partition by device (\r\n    summarize used_bytes=sum(used_bytes), total_bytes=sum(total_bytes), cpu=max(cpu)\r\n           by device, TimeGenerated\r\n    | order by TimeGenerated desc \r\n    | top 1 by device\r\n    )\r\n| summarize used_bytes=sum(used_bytes), totalMemByDevice=sum(total_bytes), p95HostCpu=max(cpu)\r\n         by device, TimeGenerated\r\n| extend p95HostMem = round(todouble(used_bytes) / todouble(totalMemByDevice) * 100, 0)\r\n| project device, p95HostCpu, p95HostMem;\r\n//\r\nlet used_disk_trend = _latestData\r\n    | where Name in (\"edgeAgent_total_disk_space_bytes\", \"edgeAgent_available_disk_space_bytes\")\r\n    | extend value = tolong(Val)\r\n    | extend diskname = tostring(dimensions.disk_name)\r\n    | extend diskfs = tostring(dimensions.disk_filesystem)\r\n    | where diskfs != \"overlay\"\r\n    | summarize Bytes=max(value)\r\n             by device, diskname, Name // order the relevant entries by device + disk\r\n    | order by diskname asc, Name asc\r\n    | extend values = pack(\"Name\", Name, \"Bytes\", Bytes) // pack the each name/value pair\r\n    | project-away Name, Bytes    \r\n    | summarize disksizes = make_list(values)\r\n             by device, diskname // collapse rows for each device + disk to make an array containing both avail and total byte values\r\n    | extend availBytes = disksizes[0].Bytes, // we packed entries alphabetically putting \"available\" before \"total\"\r\n             totalBytes = disksizes[1].Bytes  \r\n    | summarize p95Disk = round((sum(todouble(totalBytes)) - sum(todouble(availBytes))) / sum(todouble(totalBytes)) * 100, 0)\r\n             by device;\r\n//\r\nlet cpu_mem_disk = cpu_and_mem\r\n    | join used_disk_trend\r\n        on device\r\n    | project device, p95HostCpu, p95HostMem, p95Disk;\r\n//\r\nlet p95QlenByDevice = _latestData\r\n    | where Name == \"edgehub_queue_length\"\r\n    | extend ep = tostring(dimensions.endpoint)\r\n    | extend qlen = toint(Val)\r\n    | summarize sum_qlen = sum(qlen)\r\n             by device\r\n    | summarize p95QLen = max_of(0, max(sum_qlen))\r\n             by device;\r\n//\r\nlet lastUpdateTimeByDevice = _latestData\r\n    | where Name == \"edgehub_gettwin_total\"\r\n         or Name == \"edgeAgent_total_time_running_correctly_seconds\"\r\n    | summarize lastUpdateTime = max(TimeGenerated) \r\n             by device\r\n// BEGIN: test data generator\r\n    | extend lastUpdateTime = iif({genTestRows} > 0, iif(rand() > 0.7, datetime_add('minute', -tolong(rand(120)), lastUpdateTime), lastUpdateTime), lastUpdateTime) // add a random # of minutes about ~30% of the time\r\n// END: test data generator\r\n    | extend lastUpdatedSeconds = tolong(datetime_diff('second', now(), lastUpdateTime))\r\n    | extend lastUpdatedMins    = tolong(datetime_diff('minute', now(), lastUpdateTime))\r\n    | extend lastUpdatedHours   = tolong(datetime_diff('hour', now(), lastUpdateTime))\r\n    | extend lastUpdatedDays    = tolong(datetime_diff('day', now(), lastUpdateTime))\r\n    | extend agoText = case(\r\n        lastUpdatedSeconds <= 60,    strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\r\n        lastUpdatedSeconds <= 3600,  strcat(lastUpdatedMins,    iff(lastUpdatedMins    == 1,    \" min ago\", \" mins ago\")), \r\n        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours,   iff(lastUpdatedHours   == 1,   \" hr ago\",  \" hrs ago\")),\r\n        strcat(\"👀 \", lastUpdatedDays, iff(lastUpdatedDays > 1, \" days ago\", \" day ago\")))\r\n    | project device, agoText, lastUpdatedMins;\r\n//\r\nlet qlenAndLastUpdate = lastUpdateTimeByDevice\r\n    | join kind=leftouter cpu_mem_disk\r\n        on device\r\n    | join kind=leftouter p95QlenByDevice \r\n        on device\r\n    | project-away device1, device2;\r\n// Local and upstream messages\r\n// TODO: Consider having the _latestData table contain the most recent 2 entries instead of only the latest\r\nlet recentMessageCount = _data // using our _data table here since it has more than the most recent entry\r\n    | where Name == \"edgehub_messages_sent_total\"\r\n    | project TimeGenerated, device, Val, Tags\r\n    | partition by device (\r\n        sort by device, TimeGenerated desc \r\n        | extend target = trim_start(@\"[^/]+/\", extract(\"to.:.([^,]+).,\", 1, Tags, typeof(string))) // using extract which is faster than extractjson\r\n        | extend isupstream = target has \"Upstream\"\r\n        | extend source = strcat(device, \"::\", trim_start(@\"[^/]+/\", extract(\"from.:.([^,]+).,\", 1, Tags, typeof(string))))\r\n        | extend sourceTarget = strcat(source, \"::\", target)\r\n        | summarize msgCounts = make_list(Val)\r\n                 by device, source, sourceTarget, isupstream\r\n    )\r\n    | extend diffs = series_subtract(msgCounts, array_shift_left(msgCounts, 1, toint(msgCounts[-1])))\r\n    | extend latestDiff = max_of(toint(diffs[0]), 0)\r\n    | summarize recentUpstreamMessages = sumif(latestDiff, isupstream),\r\n                totalUpstreamMessages = sumif(array_sum(diffs), isupstream),\r\n                recentLocalMessages = sumif(latestDiff, not(isupstream)),\r\n                totalLocalMessages = sumif(array_sum(diffs), not(isupstream))\r\n             by device;\r\n// Final join\r\nqlenAndLastUpdate\r\n| join kind=leftouter recentMessageCount\r\n    on device\r\n| project-away device1\r\n// BEGIN: test data generator\r\n| mv-expand with_itemindex=index range (1, {genTestRows}, 1)\r\n| extend device = iif({genTestRows} > 0, strcat(device, index), device),\r\n         p95HostCpu = iif({genTestRows} > 0, tolong(rand(100)), p95HostCpu), \r\n         p95HostMem = iif({genTestRows} > 0, toreal(rand(100)), p95HostMem), \r\n         p95Disk = iif({genTestRows} > 0, toreal(rand(100)), p95Disk),\r\n         recentLocalMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentLocalMessages),\r\n         recentUpstreamMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentUpstreamMessages),\r\n         totalLocalMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalLocalMessages),\r\n         totalUpstreamMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalUpstreamMessages)\r\n// END: test data generator\r\n| extend hostMemPercentThreshold = hostMemPercentThreshold,\r\n        hostCpuPercentThreshold = hostCpuPercentThreshold,\r\n        hostDiskPercentThreshold = hostDiskPercentThreshold,\r\n        localMessagesSentThreshold = localMessagesSentThreshold,\r\n        upstreamMessagesSentThreshold = upstreamMessagesSentThreshold,\r\n        qlenThreshold = qlenThreshold,\r\n        firstPanicNoDataThresholdMins = firstPanicNoDataThresholdMins,\r\n        secondPanicNoDataThresholdMins = secondPanicNoDataThresholdMins\r\n| extend healthIndicator = \r\n            iff((p95HostMem < hostMemPercentThreshold \r\n                and p95HostCpu < hostCpuPercentThreshold \r\n                and p95Disk < hostDiskPercentThreshold \r\n                and p95QLen < qlenThreshold),\r\n                iff(lastUpdatedMins < firstPanicNoDataThresholdMins, 0, 1),\r\n                2\r\n            )\r\n| extend healthIndicator = \r\n            iff(lastUpdatedMins > secondPanicNoDataThresholdMins,\r\n                1,\r\n                iff((isnull(p95HostMem) or p95HostMem < hostMemPercentThreshold) \r\n                    and (isnull(p95HostCpu) or p95HostCpu < hostCpuPercentThreshold)\r\n                    and (isnull(p95Disk) or p95Disk < hostDiskPercentThreshold)\r\n                    and (isnull(p95QLen) or p95QLen < qlenThreshold) \r\n                    and (recentLocalMessages >= localMessagesSentThreshold or localMessagesSentThreshold == 0)\r\n                    and (recentUpstreamMessages >= upstreamMessagesSentThreshold or upstreamMessagesSentThreshold == 0),\r\n                    0,\r\n                    2\r\n                )\r\n            )\r\n| extend statusHelper = \r\n    case(\r\n        lastUpdatedMins > secondPanicNoDataThresholdMins, -2,\r\n        lastUpdatedMins > firstPanicNoDataThresholdMins, -1,\r\n        healthIndicator\r\n    )\r\n| extend healthText = \r\n            case(\r\n                statusHelper == 0, \"Healthy\",\r\n                statusHelper == 1, \"Unhealthy\",\r\n                statusHelper == 2, \"Unhealthy\",\r\n                \"Unknown\"\r\n            )\r\n| summarize Devices=count() by healthText;\r\n",
+              "query": "// Set thresholds based on workbook parameter values.\r\nlet hostMemPercentThreshold = toint({hostMemPercentThreshold}); // 80;\r\nlet hostCpuPercentThreshold = toint({hostCpuPercentThreshold}); // 80;\r\nlet hostDiskPercentThreshold = toint({hostDiskPercentThreshold}); // 90;\r\nlet localMessagesSentThreshold = toint({localMessagesSentThreshold}); // 0;\r\nlet upstreamMessagesSentThreshold = toint({upstreamMessagesSentThreshold}); // 0;\r\nlet qlenThreshold = toint({qlenThreshold}); // 100;\r\nlet firstPanicNoDataThresholdMins = toint({firstPanicNoDataThresholdMins}); // 30;\r\nlet secondPanicNoDataThresholdMins = max_of(firstPanicNoDataThresholdMins, toint({secondPanicNoDataThresholdMins})); // 120;\r\nlet startTime = {timeRange:start};\r\nlet endTime =  {timeRange:end};\r\nlet _data = InsightsMetrics\r\n    | where TimeGenerated between (startTime .. endTime) // restrict the time window\r\n    | extend iothub = extract(\"iothub.:.([^,]+).,\", 1, Tags, typeof(string))\r\n    | extend iothub = tostring(split(iothub, \".\")[0])\r\n    | extend device = strcat(iothub, \"/\", extract(\"edge_device.:.([^,]+).,\", 1, Tags, typeof(string)));\r\nlet _latestData = materialize(\r\n    _data\r\n    | summarize TimeGenerated = max(TimeGenerated)\r\n        by device, Name // restrict data to only the latest entries for each device and metric\r\n    | join kind=inner _data\r\n        on device, Name, TimeGenerated\r\n    | extend dimensions=parse_json(Tags) // expand the tags now that we have a reduced set\r\n    | extend scope = tostring(dimensions.module_name)\r\n    | extend quantile = todouble(dimensions.quantile)\r\n    | project TimeGenerated, dimensions, device, scope, quantile, Computer, Name, Val\r\n    );\r\n//\r\nlet cpu_and_mem = _latestData\r\n| where scope == \"host\" \r\n    and Name in (\"edgeAgent_total_memory_bytes\", \"edgeAgent_used_memory_bytes\", \"edgeAgent_used_cpu_percent\")\r\n| extend total_bytes = iif(Name == \"edgeAgent_total_memory_bytes\", tolong(Val), 0)\r\n| extend used_bytes = iif(Name == \"edgeAgent_used_memory_bytes\", tolong(Val), 0)\r\n| extend cpu = iif(Name == \"edgeAgent_used_cpu_percent\"\r\n     and quantile >= 0.99, toint(Val), 0)\r\n| partition by device (\r\n    summarize used_bytes=sum(used_bytes), total_bytes=sum(total_bytes), cpu=max(cpu)\r\n           by device, TimeGenerated\r\n    | order by TimeGenerated desc \r\n    | top 1 by device\r\n    )\r\n| summarize used_bytes=sum(used_bytes), totalMemByDevice=sum(total_bytes), p95HostCpu=max(cpu)\r\n         by device, TimeGenerated\r\n| extend p95HostMem = round(todouble(used_bytes) / todouble(totalMemByDevice) * 100, 0)\r\n| project device, p95HostCpu, p95HostMem;\r\n//\r\nlet used_disk_trend = _latestData\r\n    | where Name in (\"edgeAgent_total_disk_space_bytes\", \"edgeAgent_available_disk_space_bytes\")\r\n    | extend value = tolong(Val)\r\n    | extend diskname = tostring(dimensions.disk_name)\r\n    | extend diskfs = tostring(dimensions.disk_filesystem)\r\n    | where diskfs != \"overlay\"\r\n    | summarize Bytes=max(value)\r\n             by device, diskname, Name // order the relevant entries by device + disk\r\n    | order by diskname asc, Name asc\r\n    | extend values = pack(\"Name\", Name, \"Bytes\", Bytes) // pack the each name/value pair\r\n    | project-away Name, Bytes    \r\n    | summarize disksizes = make_list(values)\r\n             by device, diskname // collapse rows for each device + disk to make an array containing both avail and total byte values\r\n    | extend availBytes = disksizes[0].Bytes, // we packed entries alphabetically putting \"available\" before \"total\"\r\n             totalBytes = disksizes[1].Bytes  \r\n    | summarize p95Disk = round((sum(todouble(totalBytes)) - sum(todouble(availBytes))) / sum(todouble(totalBytes)) * 100, 0)\r\n             by device;\r\n//\r\nlet cpu_mem_disk = cpu_and_mem\r\n    | join used_disk_trend\r\n        on device\r\n    | project device, p95HostCpu, p95HostMem, p95Disk;\r\n//\r\nlet p95QlenByDevice = _latestData\r\n    | where Name == \"edgehub_queue_length\"\r\n    | extend ep = tostring(dimensions.endpoint)\r\n    | extend qlen = toint(Val)\r\n    | summarize sum_qlen = sum(qlen)\r\n             by device\r\n    | summarize p95QLen = max_of(0, max(sum_qlen))\r\n             by device;\r\n//\r\nlet lastUpdateTimeByDevice = _latestData\r\n    | where Name == \"edgehub_gettwin_total\"\r\n         or Name == \"edgeAgent_total_time_running_correctly_seconds\"\r\n    | summarize lastUpdateTime = max(TimeGenerated) \r\n             by device\r\n// BEGIN: test data generator\r\n    | extend lastUpdateTime = iif({genTestRows} > 0, iif(rand() > 0.7, datetime_add('minute', -tolong(rand(120)), lastUpdateTime), lastUpdateTime), lastUpdateTime) // add a random # of minutes about ~30% of the time\r\n// END: test data generator\r\n    | extend lastUpdatedSeconds = tolong(datetime_diff('second', now(), lastUpdateTime))\r\n    | extend lastUpdatedMins    = tolong(datetime_diff('minute', now(), lastUpdateTime))\r\n    | extend lastUpdatedHours   = tolong(datetime_diff('hour', now(), lastUpdateTime))\r\n    | extend lastUpdatedDays    = tolong(datetime_diff('day', now(), lastUpdateTime))\r\n    | extend agoText = case(\r\n        lastUpdatedSeconds <= 60,    strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\r\n        lastUpdatedSeconds <= 3600,  strcat(lastUpdatedMins,    iff(lastUpdatedMins    == 1,    \" min ago\", \" mins ago\")), \r\n        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours,   iff(lastUpdatedHours   == 1,   \" hr ago\",  \" hrs ago\")),\r\n        strcat(\"👀 \", lastUpdatedDays, iff(lastUpdatedDays > 1, \" days ago\", \" day ago\")))\r\n    | project device, agoText, lastUpdatedMins;\r\n//\r\nlet qlenAndLastUpdate = lastUpdateTimeByDevice\r\n    | join kind=leftouter cpu_mem_disk\r\n        on device\r\n    | join kind=leftouter p95QlenByDevice \r\n        on device\r\n    | project-away device1, device2;\r\n// Local and upstream messages\r\n// TODO: Consider having the _latestData table contain the most recent 2 entries instead of only the latest\r\nlet recentMessageCount = _data // using our _data table here since it has more than the most recent entry\r\n    | where Name == \"edgehub_messages_sent_total\"\r\n    | project TimeGenerated, device, Val, Tags\r\n    | partition by device (\r\n        sort by device, TimeGenerated desc \r\n        | extend target = trim_start(@\"[^/]+/\", extract(\"to.:.([^,]+).,\", 1, Tags, typeof(string))) // using extract which is faster than extractjson\r\n        | extend isupstream = target has \"Upstream\"\r\n        | extend source = strcat(device, \"::\", trim_start(@\"[^/]+/\", extract(\"from.:.([^,]+).,\", 1, Tags, typeof(string))))\r\n        | extend sourceTarget = strcat(source, \"::\", target)\r\n        | summarize msgCounts = make_list(Val)\r\n                 by device, source, sourceTarget, isupstream\r\n    )\r\n    | extend diffs = series_subtract(msgCounts, array_shift_left(msgCounts, 1, toint(msgCounts[-1])))\r\n    | extend latestDiff = max_of(toint(diffs[0]), 0)\r\n    | summarize recentUpstreamMessages = sumif(latestDiff, isupstream),\r\n                totalUpstreamMessages = sumif(array_sum(diffs), isupstream),\r\n                recentLocalMessages = sumif(latestDiff, not(isupstream)),\r\n                totalLocalMessages = sumif(array_sum(diffs), not(isupstream))\r\n             by device;\r\n// Final join\r\nqlenAndLastUpdate\r\n| join kind=leftouter recentMessageCount\r\n    on device\r\n| project-away device1\r\n// BEGIN: test data generator\r\n| mv-expand with_itemindex=index range (1, {genTestRows}, 1)\r\n| extend device = iif({genTestRows} > 0, strcat(device, index), device),\r\n         p95HostCpu = iif({genTestRows} > 0, tolong(rand(100)), p95HostCpu), \r\n         p95HostMem = iif({genTestRows} > 0, toreal(rand(100)), p95HostMem), \r\n         p95Disk = iif({genTestRows} > 0, toreal(rand(100)), p95Disk),\r\n         recentLocalMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentLocalMessages),\r\n         recentUpstreamMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentUpstreamMessages),\r\n         totalLocalMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalLocalMessages),\r\n         totalUpstreamMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalUpstreamMessages)\r\n// END: test data generator\r\n| extend hostMemPercentThreshold = hostMemPercentThreshold,\r\n        hostCpuPercentThreshold = hostCpuPercentThreshold,\r\n        hostDiskPercentThreshold = hostDiskPercentThreshold,\r\n        localMessagesSentThreshold = localMessagesSentThreshold,\r\n        upstreamMessagesSentThreshold = upstreamMessagesSentThreshold,\r\n        qlenThreshold = qlenThreshold,\r\n        firstPanicNoDataThresholdMins = firstPanicNoDataThresholdMins,\r\n        secondPanicNoDataThresholdMins = secondPanicNoDataThresholdMins\r\n| extend healthIndicator = \r\n            iff((p95HostMem < hostMemPercentThreshold \r\n                and p95HostCpu < hostCpuPercentThreshold \r\n                and p95Disk < hostDiskPercentThreshold \r\n                and p95QLen < qlenThreshold),\r\n                iff(lastUpdatedMins < firstPanicNoDataThresholdMins, 0, 1),\r\n                2\r\n            )\r\n| extend healthIndicator = \r\n            iff(lastUpdatedMins > secondPanicNoDataThresholdMins,\r\n                1,\r\n                iff((isnull(p95HostMem) or p95HostMem < hostMemPercentThreshold) \r\n                    and (isnull(p95HostCpu) or p95HostCpu < hostCpuPercentThreshold)\r\n                    and (isnull(p95Disk) or p95Disk < hostDiskPercentThreshold)\r\n                    and (isnull(p95QLen) or p95QLen < qlenThreshold) \r\n                    and (recentLocalMessages >= localMessagesSentThreshold or localMessagesSentThreshold == 0)\r\n                    and (recentUpstreamMessages >= upstreamMessagesSentThreshold or upstreamMessagesSentThreshold == 0),\r\n                    0,\r\n                    2\r\n                )\r\n            )\r\n| extend statusHelper = \r\n    case(\r\n        lastUpdatedMins > secondPanicNoDataThresholdMins, -2,\r\n        lastUpdatedMins > firstPanicNoDataThresholdMins, -1,\r\n        healthIndicator\r\n    )\r\n| extend healthText = \r\n            case(\r\n                statusHelper == 0, \"Healthy\",\r\n                statusHelper == 1, \"Unhealthy\",\r\n                statusHelper == 2, \"Unhealthy\",\r\n                \"Unknown\"\r\n            )\r\n| summarize Devices=count() by healthText;\r\n",
               "size": 3,
               "title": "Fleet Health Status",
-              "timeContext": {
-                "durationMs": 86400000
-              },
               "queryType": 0,
               "resourceType": "microsoft.devices/iothubs",
               "crossComponentResources": [
@@ -689,8 +686,7 @@
                               "delimiter": ",",
                               "value": [
                                 "Unhealthy",
-                                "Unknown",
-                                "Healthy"
+                                "Unknown"
                               ],
                               "typeSettings": {
                                 "additionalResourceOptions": [],
@@ -875,7 +871,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "// Set thresholds based on workbook parameter values.\nlet hostMemPercentThreshold = toint({hostMemPercentThreshold}); // 80;\nlet hostCpuPercentThreshold = toint({hostCpuPercentThreshold}); // 80;\nlet hostDiskPercentThreshold = toint({hostDiskPercentThreshold}); // 90;\nlet localMessagesSentThreshold = toint({localMessagesSentThreshold}); // 0;\nlet upstreamMessagesSentThreshold = toint({upstreamMessagesSentThreshold}); // 0;\nlet qlenThreshold = toint({qlenThreshold}); // 100;\nlet firstPanicNoDataThresholdMins = toint({firstPanicNoDataThresholdMins}); // 30;\nlet secondPanicNoDataThresholdMins = max_of(firstPanicNoDataThresholdMins, toint({secondPanicNoDataThresholdMins})); // 120;\nlet startTime = {timeRange:start};\nlet endTime =  {timeRange:end};\nlet _data = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime) // restrict the time window\n    | extend iothub = extract(\"iothub.:.([^,]+).,\", 1, Tags, typeof(string))\n    | extend iothub = tostring(split(iothub, \".\")[0])\n    | extend device = strcat(iothub, \"/\", extract(\"edge_device.:.([^,]+).,\", 1, Tags, typeof(string)));\nlet _latestData = materialize(\n    _data\n    | summarize TimeGenerated = max(TimeGenerated)\n        by device // restrict data to only the latest entries for each device\n    | join kind=inner _data\n        on device, TimeGenerated\n    | extend dimensions=parse_json(Tags) // expand the tags now that we have a reduced set\n    | extend scope = tostring(dimensions.module_name)\n    | extend quantile = todouble(dimensions.quantile)\n    | project TimeGenerated, dimensions, device, scope, quantile, Computer, Name, Val\n    );\n//\nlet cpu_and_mem = _latestData\n| where scope == \"host\" \n    and Name in (\"edgeAgent_total_memory_bytes\", \"edgeAgent_used_memory_bytes\", \"edgeAgent_used_cpu_percent\")\n| extend total_bytes = iif(Name == \"edgeAgent_total_memory_bytes\", tolong(Val), 0)\n| extend used_bytes = iif(Name == \"edgeAgent_used_memory_bytes\", tolong(Val), 0)\n| extend cpu = iif(Name == \"edgeAgent_used_cpu_percent\"\n     and quantile >= 0.99, toint(Val), 0)\n| partition by device (\n    summarize used_bytes=sum(used_bytes), total_bytes=sum(total_bytes), cpu=max(cpu)\n           by device, TimeGenerated\n    | order by TimeGenerated desc \n    | top 1 by device\n    )\n| summarize used_bytes=sum(used_bytes), totalMemByDevice=sum(total_bytes), p95HostCpu=max(cpu)\n         by device, TimeGenerated\n| extend p95HostMem = round(todouble(used_bytes) / todouble(totalMemByDevice) * 100, 0)\n| project device, p95HostCpu, p95HostMem;\n//\nlet used_disk_trend = _latestData\n    | where Name in (\"edgeAgent_total_disk_space_bytes\", \"edgeAgent_available_disk_space_bytes\")\n    | extend value = tolong(Val)\n    | extend diskname = tostring(dimensions.disk_name)\n    | extend diskfs = tostring(dimensions.disk_filesystem)\n    | where diskfs != \"overlay\"\n    | summarize Bytes=max(value)\n             by device, diskname, Name // order the relevant entries by device + disk\n    | order by diskname asc, Name asc\n    | extend values = pack(\"Name\", Name, \"Bytes\", Bytes) // pack the each name/value pair\n    | project-away Name, Bytes    \n    | summarize disksizes = make_list(values)\n             by device, diskname // collapse rows for each device + disk to make an array containing both avail and total byte values\n    | extend availBytes = disksizes[0].Bytes, // we packed entries alphabetically putting \"available\" before \"total\"\n             totalBytes = disksizes[1].Bytes  \n    | summarize p95Disk = round((sum(todouble(totalBytes)) - sum(todouble(availBytes))) / sum(todouble(totalBytes)) * 100, 0)\n             by device;\n//\nlet cpu_mem_disk = cpu_and_mem\n    | join used_disk_trend\n        on device\n    | project device, p95HostCpu, p95HostMem, p95Disk;\n//\nlet p95QlenByDevice = _latestData\n    | where Name == \"edgehub_queue_length\"\n    | extend ep = tostring(dimensions.endpoint)\n    | extend qlen = toint(Val)\n    | summarize sum_qlen = sum(qlen)\n             by device\n    | summarize p95QLen = max_of(0, max(sum_qlen))\n             by device;\n//\nlet lastUpdateTimeByDevice = _latestData\n    | where Name == \"edgehub_gettwin_total\"\n         or Name == \"edgeAgent_total_time_running_correctly_seconds\"\n    | summarize lastUpdateTime = max(TimeGenerated) \n             by device\n// BEGIN: test data generator\n    | extend lastUpdateTime = iif({genTestRows} > 0, iif(rand() > 0.7, datetime_add('minute', -tolong(rand(120)), lastUpdateTime), lastUpdateTime), lastUpdateTime) // add a random # of minutes about ~30% of the time\n// END: test data generator\n    | extend lastUpdatedSeconds = tolong(datetime_diff('second', now(), lastUpdateTime))\n    | extend lastUpdatedMins    = tolong(datetime_diff('minute', now(), lastUpdateTime))\n    | extend lastUpdatedHours   = tolong(datetime_diff('hour', now(), lastUpdateTime))\n    | extend lastUpdatedDays    = tolong(datetime_diff('day', now(), lastUpdateTime))\n    | extend agoText = case(\n        lastUpdatedSeconds <= 60,    strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n        lastUpdatedSeconds <= 3600,  strcat(lastUpdatedMins,    iff(lastUpdatedMins    == 1,    \" min ago\", \" mins ago\")), \n        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours,   iff(lastUpdatedHours   == 1,   \" hr ago\",  \" hrs ago\")),\n        strcat(\"👀 \", lastUpdatedDays, iff(lastUpdatedDays > 1, \" days ago\", \" day ago\")))\n    | project device, agoText, lastUpdatedMins;\n//\nlet qlenAndLastUpdate = lastUpdateTimeByDevice\n    | join kind=leftouter cpu_mem_disk\n        on device\n    | join kind=leftouter p95QlenByDevice \n        on device\n    | project-away device1, device2;\n// Local and upstream messages\n// TODO: Consider having the _latestData table contain the most recent 2 entries instead of only the latest\nlet recentMessageCount = _data // using our _data table here since it has more than the most recent entry\n    | where Name == \"edgehub_messages_sent_total\"\n    | project TimeGenerated, device, Val, Tags\n    | partition by device (\n        sort by device, TimeGenerated desc \n        | extend target = trim_start(@\"[^/]+/\", extract(\"to.:.([^,]+).,\", 1, Tags, typeof(string))) // using extract which is faster than extractjson\n        | extend isupstream = target has \"Upstream\"\n        | extend source = strcat(device, \"::\", trim_start(@\"[^/]+/\", extract(\"from.:.([^,]+).,\", 1, Tags, typeof(string))))\n        | extend sourceTarget = strcat(source, \"::\", target)\n        | summarize msgCounts = make_list(Val)\n                 by device, source, sourceTarget, isupstream\n    )\n    | extend diffs = series_subtract(msgCounts, array_shift_left(msgCounts, 1, toint(msgCounts[-1])))\n    | extend latestDiff = max_of(toint(diffs[0]), 0)\n    | summarize recentUpstreamMessages = sumif(latestDiff, isupstream),\n                totalUpstreamMessages = sumif(array_sum(diffs), isupstream),\n                recentLocalMessages = sumif(latestDiff, not(isupstream)),\n                totalLocalMessages = sumif(array_sum(diffs), not(isupstream))\n             by device;\n// Final join\nqlenAndLastUpdate\n| join kind=leftouter recentMessageCount\n    on device\n| project-away device1\n// BEGIN: test data generator\n| mv-expand with_itemindex=index range (1, {genTestRows}, 1)\n| extend device = iif({genTestRows} > 0, strcat(device, index), device),\n         p95HostCpu = iif({genTestRows} > 0, tolong(rand(100)), p95HostCpu), \n         p95HostMem = iif({genTestRows} > 0, toreal(rand(100)), p95HostMem), \n         p95Disk = iif({genTestRows} > 0, toreal(rand(100)), p95Disk),\n         recentLocalMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentLocalMessages),\n         recentUpstreamMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentUpstreamMessages),\n         totalLocalMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalLocalMessages),\n         totalUpstreamMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalUpstreamMessages)\n// END: test data generator\n| extend hostMemPercentThreshold = hostMemPercentThreshold,\n        hostCpuPercentThreshold = hostCpuPercentThreshold,\n        hostDiskPercentThreshold = hostDiskPercentThreshold,\n        localMessagesSentThreshold = localMessagesSentThreshold,\n        upstreamMessagesSentThreshold = upstreamMessagesSentThreshold,\n        qlenThreshold = qlenThreshold,\n        firstPanicNoDataThresholdMins = firstPanicNoDataThresholdMins,\n        secondPanicNoDataThresholdMins = secondPanicNoDataThresholdMins\n| extend healthIndicator = \n            iff((p95HostMem < hostMemPercentThreshold \n                and p95HostCpu < hostCpuPercentThreshold \n                and p95Disk < hostDiskPercentThreshold \n                and p95QLen < qlenThreshold),\n                iff(lastUpdatedMins < firstPanicNoDataThresholdMins, 0, 1),\n                2\n            )\n| extend healthIndicator = \n            iff(lastUpdatedMins > secondPanicNoDataThresholdMins,\n                1,\n                iff((isnull(p95HostMem) or p95HostMem < hostMemPercentThreshold) \n                    and (isnull(p95HostCpu) or p95HostCpu < hostCpuPercentThreshold)\n                    and (isnull(p95Disk) or p95Disk < hostDiskPercentThreshold)\n                    and (isnull(p95QLen) or p95QLen < qlenThreshold) \n                    and (recentLocalMessages >= localMessagesSentThreshold or localMessagesSentThreshold == 0)\n                    and (recentUpstreamMessages >= upstreamMessagesSentThreshold or upstreamMessagesSentThreshold == 0),\n                    0,\n                    2\n                )\n            )\n| extend statusHelper = \n    case(\n        lastUpdatedMins > secondPanicNoDataThresholdMins, -2,\n        lastUpdatedMins > firstPanicNoDataThresholdMins, -1,\n        healthIndicator\n    )\n| extend healthText = \n            case(\n                statusHelper == 0, \"Healthy\",\n                statusHelper == 1, \"Unhealthy\",\n                statusHelper == 2, \"Unhealthy\",\n                \"Unknown\"\n            )\n| where healthText in ({healthStatus})\n    and p95HostMem >= tolong({minMem})\n    and p95HostCpu >= tolong({minCpu})\n    and p95Disk >= tolong({minDisk})\n    and lastUpdatedMins >= {minLastSeen}\n| extend iothub_device = split(device, \"/\")\n| extend iothub = tostring(iothub_device[0])\n| extend device = tostring(iothub_device[1])\n| project iothub, device, healthIndicator, statusHelper, healthText, agoText, lastUpdatedMins, p95QLen, p95HostCpu, p95HostMem, p95Disk, recentLocalMessages, recentUpstreamMessages, totalLocalMessages, totalUpstreamMessages,\n          hostCpuPercentThreshold, hostMemPercentThreshold, hostDiskPercentThreshold, localMessagesSentThreshold, upstreamMessagesSentThreshold, qlenThreshold,\n          firstPanicNoDataThresholdMins, secondPanicNoDataThresholdMins\n| order by statusHelper desc, lastUpdatedMins desc, p95QLen desc, p95HostCpu desc, p95HostMem desc, p95Disk desc, device asc;",
+                    "query": "// Set thresholds based on workbook parameter values.\nlet hostMemPercentThreshold = toint({hostMemPercentThreshold}); // 80;\nlet hostCpuPercentThreshold = toint({hostCpuPercentThreshold}); // 80;\nlet hostDiskPercentThreshold = toint({hostDiskPercentThreshold}); // 90;\nlet localMessagesSentThreshold = toint({localMessagesSentThreshold}); // 0;\nlet upstreamMessagesSentThreshold = toint({upstreamMessagesSentThreshold}); // 0;\nlet qlenThreshold = toint({qlenThreshold}); // 100;\nlet firstPanicNoDataThresholdMins = toint({firstPanicNoDataThresholdMins}); // 30;\nlet secondPanicNoDataThresholdMins = max_of(firstPanicNoDataThresholdMins, toint({secondPanicNoDataThresholdMins})); // 120;\nlet startTime = {timeRange:start};\nlet endTime =  {timeRange:end};\nlet _data = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime) // restrict the time window\n    | extend iothub = extract(\"iothub.:.([^,]+).,\", 1, Tags, typeof(string))\n    | extend iothub = tostring(split(iothub, \".\")[0])\n    | extend device = strcat(iothub, \"/\", extract(\"edge_device.:.([^,]+).,\", 1, Tags, typeof(string)));\nlet _latestData = materialize(\n    _data\n    | summarize TimeGenerated = max(TimeGenerated)\n        by device, Name // restrict data to only the latest entries for each device and metric\n    | join kind=inner _data\n        on device, Name, TimeGenerated\n    | extend dimensions=parse_json(Tags) // expand the tags now that we have a reduced set\n    | extend scope = tostring(dimensions.module_name)\n    | extend quantile = todouble(dimensions.quantile)\n    | project TimeGenerated, dimensions, device, scope, quantile, Computer, Name, Val\n    );\n//\nlet cpu_and_mem = _latestData\n| where scope == \"host\" \n    and Name in (\"edgeAgent_total_memory_bytes\", \"edgeAgent_used_memory_bytes\", \"edgeAgent_used_cpu_percent\")\n| extend total_bytes = iif(Name == \"edgeAgent_total_memory_bytes\", tolong(Val), 0)\n| extend used_bytes = iif(Name == \"edgeAgent_used_memory_bytes\", tolong(Val), 0)\n| extend cpu = iif(Name == \"edgeAgent_used_cpu_percent\"\n     and quantile >= 0.99, toint(Val), 0)\n| partition by device (\n    summarize used_bytes=sum(used_bytes), total_bytes=sum(total_bytes), cpu=max(cpu)\n           by device, TimeGenerated\n    | order by TimeGenerated desc \n    | top 1 by device\n    )\n| summarize used_bytes=sum(used_bytes), totalMemByDevice=sum(total_bytes), p95HostCpu=max(cpu)\n         by device, TimeGenerated\n| extend p95HostMem = round(todouble(used_bytes) / todouble(totalMemByDevice) * 100, 0)\n| project device, p95HostCpu, p95HostMem;\n//\nlet used_disk_trend = _latestData\n    | where Name in (\"edgeAgent_total_disk_space_bytes\", \"edgeAgent_available_disk_space_bytes\")\n    | extend value = tolong(Val)\n    | extend diskname = tostring(dimensions.disk_name)\n    | extend diskfs = tostring(dimensions.disk_filesystem)\n    | where diskfs != \"overlay\"\n    | summarize Bytes=max(value)\n             by device, diskname, Name // order the relevant entries by device + disk\n    | order by diskname asc, Name asc\n    | extend values = pack(\"Name\", Name, \"Bytes\", Bytes) // pack the each name/value pair\n    | project-away Name, Bytes    \n    | summarize disksizes = make_list(values)\n             by device, diskname // collapse rows for each device + disk to make an array containing both avail and total byte values\n    | extend availBytes = disksizes[0].Bytes, // we packed entries alphabetically putting \"available\" before \"total\"\n             totalBytes = disksizes[1].Bytes  \n    | summarize p95Disk = round((sum(todouble(totalBytes)) - sum(todouble(availBytes))) / sum(todouble(totalBytes)) * 100, 0)\n             by device;\n//\nlet cpu_mem_disk = cpu_and_mem\n    | join used_disk_trend\n        on device\n    | project device, p95HostCpu, p95HostMem, p95Disk;\n//\nlet p95QlenByDevice = _latestData\n    | where Name == \"edgehub_queue_length\"\n    | extend ep = tostring(dimensions.endpoint)\n    | extend qlen = toint(Val)\n    | summarize sum_qlen = sum(qlen)\n             by device\n    | summarize p95QLen = max_of(0, max(sum_qlen))\n             by device;\n//\nlet lastUpdateTimeByDevice = _latestData\n    | where Name == \"edgehub_gettwin_total\"\n         or Name == \"edgeAgent_total_time_running_correctly_seconds\"\n    | summarize lastUpdateTime = max(TimeGenerated) \n             by device\n// BEGIN: test data generator\n    | extend lastUpdateTime = iif({genTestRows} > 0, iif(rand() > 0.7, datetime_add('minute', -tolong(rand(120)), lastUpdateTime), lastUpdateTime), lastUpdateTime) // add a random # of minutes about ~30% of the time\n// END: test data generator\n    | extend lastUpdatedSeconds = tolong(datetime_diff('second', now(), lastUpdateTime))\n    | extend lastUpdatedMins    = tolong(datetime_diff('minute', now(), lastUpdateTime))\n    | extend lastUpdatedHours   = tolong(datetime_diff('hour', now(), lastUpdateTime))\n    | extend lastUpdatedDays    = tolong(datetime_diff('day', now(), lastUpdateTime))\n    | extend agoText = case(\n        lastUpdatedSeconds <= 60,    strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n        lastUpdatedSeconds <= 3600,  strcat(lastUpdatedMins,    iff(lastUpdatedMins    == 1,    \" min ago\", \" mins ago\")), \n        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours,   iff(lastUpdatedHours   == 1,   \" hr ago\",  \" hrs ago\")),\n        strcat(\"👀 \", lastUpdatedDays, iff(lastUpdatedDays > 1, \" days ago\", \" day ago\")))\n    | project device, agoText, lastUpdatedMins;\n//\nlet qlenAndLastUpdate = lastUpdateTimeByDevice\n    | join kind=leftouter cpu_mem_disk\n        on device\n    | join kind=leftouter p95QlenByDevice \n        on device\n    | project-away device1, device2;\n// Local and upstream messages\n// TODO: Consider having the _latestData table contain the most recent 2 entries instead of only the latest\nlet recentMessageCount = _data // using our _data table here since it has more than the most recent entry\n    | where Name == \"edgehub_messages_sent_total\"\n    | project TimeGenerated, device, Val, Tags\n    | partition by device (\n        sort by device, TimeGenerated desc \n        | extend target = trim_start(@\"[^/]+/\", extract(\"to.:.([^,]+).,\", 1, Tags, typeof(string))) // using extract which is faster than extractjson\n        | extend isupstream = target has \"Upstream\"\n        | extend source = strcat(device, \"::\", trim_start(@\"[^/]+/\", extract(\"from.:.([^,]+).,\", 1, Tags, typeof(string))))\n        | extend sourceTarget = strcat(source, \"::\", target)\n        | summarize msgCounts = make_list(Val)\n                 by device, source, sourceTarget, isupstream\n    )\n    | extend diffs = series_subtract(msgCounts, array_shift_left(msgCounts, 1, toint(msgCounts[-1])))\n    | extend latestDiff = max_of(toint(diffs[0]), 0)\n    | summarize recentUpstreamMessages = sumif(latestDiff, isupstream),\n                totalUpstreamMessages = sumif(array_sum(diffs), isupstream),\n                recentLocalMessages = sumif(latestDiff, not(isupstream)),\n                totalLocalMessages = sumif(array_sum(diffs), not(isupstream))\n             by device;\n// Final join\nqlenAndLastUpdate\n| join kind=leftouter recentMessageCount\n    on device\n| project-away device1\n// BEGIN: test data generator\n| mv-expand with_itemindex=index range (1, {genTestRows}, 1)\n| extend device = iif({genTestRows} > 0, strcat(device, index), device),\n         p95HostCpu = iif({genTestRows} > 0, tolong(rand(100)), p95HostCpu), \n         p95HostMem = iif({genTestRows} > 0, toreal(rand(100)), p95HostMem), \n         p95Disk = iif({genTestRows} > 0, toreal(rand(100)), p95Disk),\n         recentLocalMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentLocalMessages),\n         recentUpstreamMessages = iif({genTestRows} > 0, tolong(rand(10000)), recentUpstreamMessages),\n         totalLocalMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalLocalMessages),\n         totalUpstreamMessages = iif({genTestRows} > 0, toreal(rand(100000)), totalUpstreamMessages)\n// END: test data generator\n| extend hostMemPercentThreshold = hostMemPercentThreshold,\n        hostCpuPercentThreshold = hostCpuPercentThreshold,\n        hostDiskPercentThreshold = hostDiskPercentThreshold,\n        localMessagesSentThreshold = localMessagesSentThreshold,\n        upstreamMessagesSentThreshold = upstreamMessagesSentThreshold,\n        qlenThreshold = qlenThreshold,\n        firstPanicNoDataThresholdMins = firstPanicNoDataThresholdMins,\n        secondPanicNoDataThresholdMins = secondPanicNoDataThresholdMins\n| extend healthIndicator = \n            iff((p95HostMem < hostMemPercentThreshold \n                and p95HostCpu < hostCpuPercentThreshold \n                and p95Disk < hostDiskPercentThreshold \n                and p95QLen < qlenThreshold),\n                iff(lastUpdatedMins < firstPanicNoDataThresholdMins, 0, 1),\n                2\n            )\n| extend healthIndicator = \n            iff(lastUpdatedMins > secondPanicNoDataThresholdMins,\n                1,\n                iff((isnull(p95HostMem) or p95HostMem < hostMemPercentThreshold) \n                    and (isnull(p95HostCpu) or p95HostCpu < hostCpuPercentThreshold)\n                    and (isnull(p95Disk) or p95Disk < hostDiskPercentThreshold)\n                    and (isnull(p95QLen) or p95QLen < qlenThreshold) \n                    and (recentLocalMessages >= localMessagesSentThreshold or localMessagesSentThreshold == 0)\n                    and (recentUpstreamMessages >= upstreamMessagesSentThreshold or upstreamMessagesSentThreshold == 0),\n                    0,\n                    2\n                )\n            )\n| extend statusHelper = \n    case(\n        lastUpdatedMins > secondPanicNoDataThresholdMins, -2,\n        lastUpdatedMins > firstPanicNoDataThresholdMins, -1,\n        healthIndicator\n    )\n| extend healthText = \n            case(\n                statusHelper == 0, \"Healthy\",\n                statusHelper == 1, \"Unhealthy\",\n                statusHelper == 2, \"Unhealthy\",\n                \"Unknown\"\n            )\n| where healthText in ({healthStatus})\n    and p95HostMem >= tolong({minMem})\n    and p95HostCpu >= tolong({minCpu})\n    and p95Disk >= tolong({minDisk})\n    and lastUpdatedMins >= {minLastSeen}\n| extend iothub_device = split(device, \"/\")\n| extend iothub = tostring(iothub_device[0])\n| extend device = tostring(iothub_device[1])\n| extend hubIndex = array_index_of(split(\"{IoTHub:name}\", \",\"), iothub)\n| extend hubResourceId = split(\"{IoTHub}\", \",\")[hubIndex]\n| project hubResourceId, iothub, device, healthIndicator, statusHelper, healthText, agoText, lastUpdatedMins, p95QLen, p95HostCpu, p95HostMem, p95Disk, recentLocalMessages, recentUpstreamMessages, totalLocalMessages, totalUpstreamMessages,\n          hostCpuPercentThreshold, hostMemPercentThreshold, hostDiskPercentThreshold, localMessagesSentThreshold, upstreamMessagesSentThreshold, qlenThreshold,\n          firstPanicNoDataThresholdMins, secondPanicNoDataThresholdMins\n| order by statusHelper desc, lastUpdatedMins desc, p95QLen desc, p95HostCpu desc, p95HostMem desc, p95Disk desc, device asc;",
                     "size": 0,
                     "noDataMessage": "No results to display.  Some may have been filtered.",
                     "timeContext": {
@@ -899,6 +895,10 @@
                           "formatter": 1
                         },
                         {
+                          "columnMatch": "hubResourceId",
+                          "formatter": 5
+                        },
+                        {
                           "columnMatch": "iothub",
                           "formatter": 5
                         },
@@ -919,6 +919,11 @@
                               "passSpecificParams": true,
                               "templateParameters": [
                                 {
+                                  "name": "SelectedHub",
+                                  "source": "column",
+                                  "value": "iothub"
+                                },
+                                {
                                   "name": "SelectedDevice",
                                   "source": "cell",
                                   "value": ""
@@ -929,34 +934,9 @@
                                   "value": "timeRange"
                                 },
                                 {
-                                  "name": "resourceType",
-                                  "source": "parameter",
-                                  "value": "ResourceTypes"
-                                },
-                                {
-                                  "name": "resource",
-                                  "source": "parameter",
-                                  "value": "IoTHub"
-                                },
-                                {
-                                  "name": "Subscription",
-                                  "source": "parameter",
-                                  "value": "Subscription"
-                                },
-                                {
-                                  "name": "ResourceGroups",
-                                  "source": "parameter",
-                                  "value": "ResourceGroups"
-                                },
-                                {
-                                  "name": "ResourceTypes",
-                                  "source": "parameter",
-                                  "value": "ResourceTypes"
-                                },
-                                {
-                                  "name": "IoTHub",
-                                  "source": "parameter",
-                                  "value": "IoTHub"
+                                  "name": "resourceId",
+                                  "source": "column",
+                                  "value": "hubResourceId"
                                 }
                               ]
                             },
@@ -1020,6 +1000,11 @@
                               "passSpecificParams": true,
                               "templateParameters": [
                                 {
+                                  "name": "SelectedHub",
+                                  "source": "column",
+                                  "value": "iothub"
+                                },
+                                {
                                   "name": "SelectedDevice",
                                   "source": "column",
                                   "value": "device"
@@ -1068,26 +1053,6 @@
                                   "name": "invokedFromFleetViewWorkbook",
                                   "source": "static",
                                   "value": "yes"
-                                },
-                                {
-                                  "name": "Subscription",
-                                  "source": "parameter",
-                                  "value": "Subscription"
-                                },
-                                {
-                                  "name": "ResourceGroups",
-                                  "source": "parameter",
-                                  "value": "ResourceGroups"
-                                },
-                                {
-                                  "name": "ResourceTypes",
-                                  "source": "parameter",
-                                  "value": "ResourceTypes"
-                                },
-                                {
-                                  "name": "IoTHubs",
-                                  "source": "parameter",
-                                  "value": "IoTHub"
                                 }
                               ]
                             }
@@ -1383,179 +1348,7 @@
                         }
                       ]
                     },
-                    "sortBy": [],
-                    "graphSettings": {
-                      "type": 2,
-                      "topContent": {
-                        "columnMatch": "healthIndicator",
-                        "formatter": 18,
-                        "formatOptions": {
-                          "thresholdsOptions": "icons",
-                          "thresholdsGrid": [
-                            {
-                              "operator": "==",
-                              "thresholdValue": "0",
-                              "representation": "success",
-                              "text": ""
-                            },
-                            {
-                              "operator": "==",
-                              "thresholdValue": "1",
-                              "representation": "unknown",
-                              "text": ""
-                            },
-                            {
-                              "operator": "==",
-                              "thresholdValue": "2",
-                              "representation": "2",
-                              "text": ""
-                            },
-                            {
-                              "operator": "Default",
-                              "thresholdValue": null,
-                              "representation": "success",
-                              "text": "{0}{1}"
-                            }
-                          ],
-                          "compositeBarSettings": {
-                            "labelText": "[\"device\"]",
-                            "columnSettings": []
-                          }
-                        }
-                      },
-                      "centerContent": {
-                        "columnMatch": "device",
-                        "formatter": 7,
-                        "formatOptions": {
-                          "linkTarget": "WorkbookTemplate",
-                          "linkIsContextBlade": true,
-                          "workbookContext": {
-                            "componentIdSource": "workbook",
-                            "resourceIdsSource": "workbook",
-                            "templateIdSource": "static",
-                            "templateId": "Community-Workbooks/IoTHub/IoT Edge health snapshot",
-                            "typeSource": "default",
-                            "gallerySource": "default",
-                            "locationSource": "default",
-                            "passSpecificParams": true,
-                            "templateParameters": [
-                              {
-                                "name": "SelectedDevice",
-                                "source": "column",
-                                "value": "device"
-                              },
-                              {
-                                "name": "timeRange",
-                                "source": "parameter",
-                                "value": "timeRange"
-                              },
-                              {
-                                "name": "SnapshotSelect",
-                                "source": "static",
-                                "value": "'CPU'"
-                              },
-                              {
-                                "name": "hostMemPercentThreshold",
-                                "source": "column",
-                                "value": "hostMemPercentThreshold"
-                              },
-                              {
-                                "name": "hostCpuPercentThreshold",
-                                "source": "column",
-                                "value": "hostCpuPercentThreshold"
-                              },
-                              {
-                                "name": "hostDiskPercentThreshold",
-                                "source": "column",
-                                "value": "hostDiskPercentThreshold"
-                              },
-                              {
-                                "name": "localMessagesSentThreshold",
-                                "source": "column",
-                                "value": "localMessagesSentThreshold"
-                              },
-                              {
-                                "name": "upstreamMessagesSentThreshold",
-                                "source": "column",
-                                "value": "upstreamMessagesSentThreshold"
-                              },
-                              {
-                                "name": "qlenThreshold",
-                                "source": "column",
-                                "value": "qlenThreshold"
-                              },
-                              {
-                                "name": "invokedFromFleetViewWorkbook",
-                                "source": "static",
-                                "value": "yes"
-                              }
-                            ]
-                          },
-                          "compositeBarSettings": {
-                            "labelText": "[\"device\"]",
-                            "columnSettings": [
-                              {
-                                "columnName": "p95HostCpu",
-                                "color": "blueDark"
-                              }
-                            ]
-                          }
-                        },
-                        "numberFormat": {
-                          "unit": 1,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": false
-                          }
-                        }
-                      },
-                      "bottomContent": {
-                        "columnMatch": "agoText",
-                        "formatter": 1
-                      },
-                      "hivesContent": {
-                        "columnMatch": "healthText",
-                        "formatter": 1
-                      },
-                      "nodeIdField": "device",
-                      "graphOrientation": 3,
-                      "showOrientationToggles": false,
-                      "nodeSize": null,
-                      "staticNodeSize": 100,
-                      "colorSettings": {
-                        "nodeColorField": "colorHelper",
-                        "type": 3,
-                        "thresholdsGrid": [
-                          {
-                            "operator": "==",
-                            "thresholdValue": "-2",
-                            "representation": "blueDark"
-                          },
-                          {
-                            "operator": "==",
-                            "thresholdValue": "-1",
-                            "representation": "blue"
-                          },
-                          {
-                            "operator": "==",
-                            "thresholdValue": "0",
-                            "representation": "green"
-                          },
-                          {
-                            "operator": "==",
-                            "thresholdValue": "2",
-                            "representation": "orange"
-                          },
-                          {
-                            "operator": "Default",
-                            "thresholdValue": null,
-                            "representation": "gray"
-                          }
-                        ]
-                      },
-                      "groupByField": "healthText",
-                      "hivesMargin": 1
-                    }
+                    "sortBy": []
                   },
                   "showPin": true,
                   "name": "device-health-graph",
