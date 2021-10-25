@@ -12,7 +12,7 @@ In the grid shown, click on `Add Resources` to browse for any resource that you 
 ## Versions
 This tab contains a list of all the available versions of this workbook. Select a version and use the toolbar to [Compare](#compare), [View](#view), and [Restore](#restore). Previous workbook versions are available for 90 days.
 
-> **_NOTE_**: Version history is not available for [Bring your own storage](../BYOS/BringYourOwnStorage.md) workbooks
+> **_NOTE_**: Version history is not available for [Bring your own storage](../BYOS/BringYourOwnStorage.md) workbooks.
 
 ![Image showing the versions tab](../Images/WorkbookVersions.png)
 
