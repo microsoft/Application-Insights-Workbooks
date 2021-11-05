@@ -1,0 +1,222 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Update Compliance - Safeguard Holds\n---\nThis Workbook utilizes data from [**Update Compliance**](https://docs.microsoft.com/windows/deployment/update/update-compliance-monitor) to provide a report on active [**safeguard holds**](https://docs.microsoft.com/windows/deployment/update/safeguard-holds) in your environment.\n\nSafeguard holds each have an 8-digit identifier, which can be used (in most cases) to determine why the safeguard hold is in place.\n\nTo search for a safeguard hold on a release:\n\n1. In [Windows release health](https://docs.microsoft.com/windows/release-health/), go to the **Known issues** page for a specific release (e.g. [Windows 11 known issues and notifications](https://docs.microsoft.com/windows/release-health/status-windows-11-21h2)).\n2. Search within the webpage (e.g. \"CTRL + F\") for the safeguard hold ID."
+      },
+      "name": "Title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "f503a201-a9bd-4085-8862-22e2c0735ed4",
+            "version": "KqlParameterItem/1.0",
+            "name": "_SnapshotTime",
+            "label": "Snapshot time",
+            "type": 1,
+            "description": "Time indicating the latest snapshot",
+            "isRequired": true,
+            "query": "UCClient\r\n| where TimeGenerated >= ago(7d)\r\n| summarize max(TimeGenerated)",
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "Snapshot time parameter"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "b650e0a4-6e95-4021-b4ba-72fa7d0f7e06",
+            "version": "KqlParameterItem/1.0",
+            "name": "_SafeguardHoldID",
+            "label": "Safeguard hold ID(s)",
+            "type": 2,
+            "description": "Select a safeguard hold ID to list all devices affected by that safeguard hold.",
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "",
+            "delimiter": ",",
+            "query": "let _SafeguardHold = \"SafeguardHold\";\r\nlet _SnapshotTime = datetime(\"{_SnapshotTime}\");\r\n\r\nUCUpdateAlert\r\n| where TimeGenerated >= _SnapshotTime\r\n| where AlertSubtype == _SafeguardHold\r\n| extend SafeguardHoldIDs = parse_json(AlertData).safeguardHoldIDs\r\n| mv-expand SafeguardHoldID=SafeguardHoldIDs\r\n| summarize by SafeguardHoldID=iff(isempty(SafeguardHoldID), \"Unknown\", tostring(SafeguardHoldID))\r\n| order by SafeguardHoldID asc",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "ALL",
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "Safeguard hold IDs parameter"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Safeguard hold view\r\n\r\nThis view shows the safeguard holds that are active for your population, and how many devices are affected by each safeguard hold. Note that a device can be affected by more than one safeguard hold."
+            },
+            "name": "Safeguard hold view title"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let _SafeguardHold = \"SafeguardHold\";\r\nlet _SnapshotTime = datetime(\"{_SnapshotTime}\");\r\nlet _SafeguardHoldID = \"{_SafeguardHoldID}\";\r\n\r\nlet SafeguardHolds = UCUpdateAlert\r\n| where TimeGenerated >= _SnapshotTime\r\n| where AlertSubtype == _SafeguardHold\r\n| extend SafeguardHoldIDs = parse_json(AlertData).safeguardHoldIDs\r\n| extend TotalSafeguards = array_length(SafeguardHoldIDs)\r\n| mv-expand SafeguardHoldID=SafeguardHoldIDs\r\n| extend SafeguardHoldID=iff(isempty(SafeguardHoldID), \"Unknown\", tostring(SafeguardHoldID))\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId, SafeguardHoldID\r\n| summarize DeviceCount=count(AzureADDeviceId) by SafeguardHoldID\r\n| where iff(_SafeguardHoldID has \"ALL\", true, _SafeguardHoldID has SafeguardHoldID)\r\n| order by DeviceCount desc\r\n;\r\n\r\nSafeguardHolds\r\n| render piechart;",
+              "size": 0,
+              "showAnalytics": true,
+              "exportFieldName": "SafeguardHoldID",
+              "exportParameterName": "_SafeguardHoldID",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "sortBy": [],
+              "chartSettings": {
+                "yAxis": [
+                  "DeviceCount"
+                ],
+                "group": "SafeguardHoldID",
+                "createOtherGroup": 0
+              }
+            },
+            "customWidth": "50",
+            "name": "Safeguard hold chart"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let _SafeguardHold = \"SafeguardHold\";\r\nlet _SnapshotTime = datetime(\"{_SnapshotTime}\");\r\nlet _SafeguardHoldID = \"{_SafeguardHoldID}\";\r\n\r\nlet SafeguardHolds = UCUpdateAlert\r\n| where TimeGenerated >= _SnapshotTime\r\n| where AlertSubtype == _SafeguardHold\r\n| extend SafeguardHoldIDs = parse_json(AlertData).safeguardHoldIDs\r\n| extend TotalSafeguards = array_length(SafeguardHoldIDs)\r\n| mv-expand SafeguardHoldID=SafeguardHoldIDs\r\n| extend SafeguardHoldID=iff(isempty(SafeguardHoldID), \"Unknown\", tostring(SafeguardHoldID))\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId, SafeguardHoldID\r\n| summarize DeviceCount=count(AzureADDeviceId) by SafeguardHoldID\r\n| where iff(_SafeguardHoldID has \"ALL\", true, _SafeguardHoldID has SafeguardHoldID)\r\n| order by DeviceCount desc\r\n;\r\n\r\nSafeguardHolds;",
+              "size": 0,
+              "showAnalytics": true,
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DeviceCount",
+                    "formatter": 3,
+                    "formatOptions": {
+                      "min": 0,
+                      "palette": "blue"
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "SafeguardHoldID",
+                    "label": "Safeguard Hold ID"
+                  },
+                  {
+                    "columnId": "DeviceCount",
+                    "label": "Device Count"
+                  }
+                ]
+              },
+              "sortBy": []
+            },
+            "customWidth": "50",
+            "name": "Safeguard hold table"
+          }
+        ]
+      },
+      "name": "Safeguard hold view"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Device view\r\n\r\nThis view shows the devices in your organization that are affected by safeguard holds. You can use the **Safeguard hold ID(s)** dropdown at the top of the page to filter the list of devices."
+            },
+            "name": "Device view title"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let _SafeguardHold = \"SafeguardHold\";\r\nlet _SnapshotTime = datetime(\"{_SnapshotTime}\");\r\nlet _SafeguardHoldID = \"{_SafeguardHoldID}\";\r\nlet _SafeguardHoldIDArray = split(_SafeguardHoldID, \",\");\r\n\r\nlet SafeguardHoldDevices = UCUpdateAlert\r\n| where TimeGenerated >= _SnapshotTime\r\n| where AlertSubtype == _SafeguardHold\r\n| extend SafeguardHoldIDs = parse_json(AlertData).safeguardHoldIDs\r\n| mv-apply SafeguardHoldIDs on (summarize SafeguardHoldIDs = make_list(tostring(SafeguardHoldIDs)))\r\n| extend TotalSafeguards = array_length(SafeguardHoldIDs)\r\n| where iff(set_has_element(_SafeguardHoldIDArray, \"ALL\"), true, array_length(set_intersect(SafeguardHoldIDs, _SafeguardHoldIDArray)) > 0 or iif(set_has_element(_SafeguardHoldIDArray, \"Unknown\"), set_has_element(SafeguardHoldIDs, \"\"), false))\r\n| project DeviceName, AzureADDeviceId, TotalSafeguards, SafeguardHoldIDs, TargetVersion, TargetBuild\r\n;\r\n\r\nSafeguardHoldDevices;",
+              "size": 0,
+              "showAnalytics": true,
+              "showExportToExcel": true,
+              "exportToExcelOptions": "all",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "TargetVersion",
+                    "sortOrder": 2
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "DeviceName",
+                    "label": "Device Name"
+                  },
+                  {
+                    "columnId": "AzureADDeviceId",
+                    "label": "Azure AD Device ID"
+                  },
+                  {
+                    "columnId": "TotalSafeguards",
+                    "label": "Total Safeguards"
+                  },
+                  {
+                    "columnId": "SafeguardHoldIDs",
+                    "label": "Safeguard Hold IDs"
+                  },
+                  {
+                    "columnId": "TargetVersion",
+                    "label": "Target Version"
+                  },
+                  {
+                    "columnId": "TargetBuild",
+                    "label": "Target Build"
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "TargetVersion",
+                  "sortOrder": 2
+                }
+              ]
+            },
+            "name": "Device table"
+          }
+        ]
+      },
+      "name": "Device view"
+    }
+  ], 
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
