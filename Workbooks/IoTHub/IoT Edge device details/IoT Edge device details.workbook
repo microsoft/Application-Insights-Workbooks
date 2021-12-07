@@ -3308,7 +3308,7 @@
                           "aggregation": 2,
                           "title": "Queue length trend for {ep}",
                           "timeContext": {
-                            "durationMs": 0
+                            "durationMs": 7200000
                           },
                           "timeContextFromParameter": "timeRange",
                           "timeBrushParameterName": "timeRange",
@@ -3339,12 +3339,53 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
+                          "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = 5m;\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet endpSplit = split(endp, '::');\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgehub_messages_sent_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend target = tostring(extractjson(\"$.to\",Tags,typeof(string)))\n| extend routeInput = (dimensions.to_route_input)\n| where device == '{SelectedDevice}'\n| where target contains endpSplit[0]\n| where routeInput contains endpSplit[1]\n| extend source = iff(isempty(tostring(dimensions.from_route_output)),\n                        tostring(dimensions.from),\n                        strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), \"::\", tostring(dimensions.from_route_output)))\n| extend messages = toint(Val)\n| order by source, TimeGenerated\n| serialize | extend nextCount = next(messages, 1) | extend nextSource = next(source, 1)\n| extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n| project source, TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m by source\n\n",
+                          "size": 1,
+                          "title": "Messages delivered to {ep}",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "timeRange",
+                          "timeBrushExportOnlyWhenBrushed": true,
+                          "queryType": 0,
+                          "resourceType": "{resourceType}",
+                          "crossComponentResources": [
+                            "{IoTHub}"
+                          ],
+                          "visualization": "barchart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "seriesLabelSettings": [
+                              {
+                                "seriesName": "messages",
+                                "label": "Messages sent"
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalVisibilities": [
+                          {
+                            "parameterName": "latency",
+                            "comparison": "isEqualTo"
+                          },
+                          {
+                            "parameterName": "id",
+                            "comparison": "isNotEqualTo"
+                          }
+                        ],
+                        "name": "query - messages delivered to endpoint"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
                           "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nInsightsMetrics\n| where Name == 'edgehub_message_send_duration_seconds'\n| where TimeGenerated > {timeRange:start} and TimeGenerated < {timeRange:end}\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == '0.9'\n| extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n| extend targetInput = tostring(dimensions.to_route_input)\n| where target == tostring(targetSplit[0])\n| where targetInput == tostring(targetSplit[1])\n| extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n| extend sourceOutput = tostring(dimensions.from_route_output)\n| where source == tostring(sourceSplit[0])\n| where sourceOutput == tostring(sourceSplit[1])\n| where Val != 'NaN'\n| extend val = todouble(Val)\n| project TimeGenerated, val\n| make-series Count=max(val) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m\n",
                           "size": 1,
                           "aggregation": 3,
                           "title": "Message send latency from {ep} to {pid}",
                           "timeContext": {
-                            "durationMs": 0
+                            "durationMs": 7200000
                           },
                           "timeContextFromParameter": "timeRange",
                           "timeBrushParameterName": "timeRange",
@@ -3395,9 +3436,50 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let minPeriod = 5m;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_sent_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device  == '{SelectedDevice}'\n| extend targetInput = (dimensions.to_route_input)\n| extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n| extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n| extend sourceOutput = (dimensions.from_route_output)\n| where target == tostring(targetSplit[0])\n| where targetInput == tostring(targetSplit[1])\n| where source == tostring(sourceSplit[0])\n| where sourceOutput == tostring(sourceSplit[1])\n| extend messages = toint(Val)\n| order by TimeGenerated\n| serialize | extend nextCount = next(messages, 1) \n| extend diff = iff((messages - nextCount) >= 0, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n| project TimeGenerated, diff\n| make-series Count=sum(diff) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m",
+                          "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = 5m;\nlet endp = iff('{id}' != \"\", '{id}', '{pid}');\nlet endpSplit = split(endp, '+');\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend source = iif(isnotempty(tostring(dimensions.id)), strcat(trim_start(@\"[^/]+/\", trim_end(@\"[^\\+]+/\", tostring(dimensions.id))), \"::\", tostring(dimensions.route_output)), tostring(dimensions.id))\n//| extend source = iif(isnotempty(tostring(dimensions.route_output)), strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), \"::\", tostring(dimensions.route_output)),     tostring(dimensions.id))\n| where source == endpSplit[0]\n| extend messages = toint(Val)\n| sort by source, TimeGenerated\n| serialize\n| extend nextCount = next(messages, 1)\n| extend nextSource = next(source, 1)\n| extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2 * minPeriod, messages, 0))\n| project source, TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m by source\n\n",
                           "size": 1,
-                          "title": "Messages sent by {ep} to {pid}",
+                          "title": "Messages received in {ep}",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "timeContextFromParameter": "timeRange",
+                          "timeBrushParameterName": "timeRange",
+                          "timeBrushExportOnlyWhenBrushed": true,
+                          "queryType": 0,
+                          "resourceType": "{resourceType}",
+                          "crossComponentResources": [
+                            "{IoTHub}"
+                          ],
+                          "visualization": "barchart",
+                          "chartSettings": {
+                            "xAxis": "TimeGenerated",
+                            "seriesLabelSettings": [
+                              {
+                                "seriesName": "messages",
+                                "label": "Messages sent"
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalVisibilities": [
+                          {
+                            "parameterName": "latency",
+                            "comparison": "isNotEqualTo"
+                          },
+                          {
+                            "parameterName": "ep",
+                            "comparison": "isNotEqualTo"
+                          }
+                        ],
+                        "name": "query - messages received in queue"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let minPeriod = 5m;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_sent_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device  == '{SelectedDevice}'\n| extend targetInput = (dimensions.to_route_input)\n| extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n| extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n| extend sourceOutput = (dimensions.from_route_output)\n| where target == tostring(targetSplit[0])\n| where targetInput == tostring(targetSplit[1])\n| where source == tostring(sourceSplit[0])\n| where sourceOutput == tostring(sourceSplit[1])\n| extend messages = toint(Val)\n| order by TimeGenerated\n| serialize | extend nextCount = next(messages, 1) \n| extend diff = iff((messages - nextCount) >= 0, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n| project TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m",
+                          "size": 1,
+                          "title": "Messages sent from {ep} to {pid}",
                           "timeContext": {
                             "durationMs": 0
                           },
@@ -3427,48 +3509,7 @@
                           "parameterName": "latency",
                           "comparison": "isNotEqualTo"
                         },
-                        "name": "query - messages sent by"
-                      },
-                      {
-                        "type": 3,
-                        "content": {
-                          "version": "KqlItem/1.0",
-                          "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = 5m;\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet endpSplit = split(endp, '::');\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend target = tostring(extractjson(\"$.to\",Tags,typeof(string)))\n| extend routeInput = (dimensions.to_route_input)\n| where device == '{SelectedDevice}'\n| extend source = iif(isnotempty(tostring(dimensions.route_output)), strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), \"::\", tostring(dimensions.route_output)),     tostring(dimensions.id))\n| extend messages = toint(Val)\n| sort by source, TimeGenerated\n| serialize\n| extend nextCount = next(messages, 1)\n| extend nextSource = next(source, 1)\n| extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2 * minPeriod, messages, 0))\n| project source, TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m by source\n\n",
-                          "size": 1,
-                          "title": "Messages received for {ep}",
-                          "timeContext": {
-                            "durationMs": 0
-                          },
-                          "timeContextFromParameter": "timeRange",
-                          "timeBrushParameterName": "timeRange",
-                          "timeBrushExportOnlyWhenBrushed": true,
-                          "queryType": 0,
-                          "resourceType": "{resourceType}",
-                          "crossComponentResources": [
-                            "{IoTHub}"
-                          ],
-                          "visualization": "barchart",
-                          "chartSettings": {
-                            "xAxis": "TimeGenerated",
-                            "seriesLabelSettings": [
-                              {
-                                "seriesName": "diff",
-                                "label": "Messages sent"
-                              }
-                            ]
-                          }
-                        },
-                        "conditionalVisibilities": [
-                          {
-                            "parameterName": "latency",
-                            "comparison": "isEqualTo"
-                          },
-                          {
-                            "parameterName": "id",
-                            "comparison": "isNotEqualTo"
-                          }
-                        ],
-                        "name": "query - messages received for"
+                        "name": "query - messages sent from"
                       }
                     ],
                     "exportParameters": true
