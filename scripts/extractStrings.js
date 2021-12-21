@@ -272,7 +272,7 @@ function findAndGenerateLockedStringComment(jsonKey, stringToLoc, outputMap) {
 
   if (params || columns) {
     const commentKey = "_" + jsonKey + ".comment";
-    const commentEntry = "{Locked=" + (params || []).join(",") + (params && columns ? "," : "") + (columns || []).join(",") + "}";
+    const commentEntry = "{Locked=" + (params|| []).map(p => "\""  + p + "\"").join(",") + (params && columns ? "," : "") + (columns || []).map(c =>  "\""  + c + "\"").join(",") + "}";
     outputMap[commentKey] = commentEntry;
   }
 }
