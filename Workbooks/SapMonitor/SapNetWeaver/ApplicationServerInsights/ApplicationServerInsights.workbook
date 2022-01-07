@@ -703,9 +703,9 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "SapNetweaver_GetProcessList_CL\r\n| project Instance_Process = description_s, SID_s, hostname_s, instanceNr_d, dispstatus_s, serverTimestamp_t, textstatus_s, elapsedtime_s, starttime_s, description_s\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where SID_s == '{SID}'| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where appServer == '{ApplicationServer}'\r\n| where textstatus_s != 'Running'\r\n| extend temp_date = split(starttime_s, \" \")\r\n| extend outage_date = format_datetime(todatetime(strcat(temp_date[0], \"-\",temp_date[1], \"-\",temp_date[2], \" \", temp_date[3])), \"MM-dd-yyyy HH:mm:ss\")\r\n| summarize max(elapsedtime_s) by  description_s, outage_date, textstatus_s",
+              "query": "// base query\r\nlet baseQuery =  SapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where SID_s == '{SID}'\r\n| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where appServer == '{ApplicationServer}';\r\n//Get the time when the server was stopped\r\nlet laststoppedtime = baseQuery\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where textstatus_s == 'Stopped'\r\n| summarize  max(serverTimestamp_t);\r\n//Get the time when the status changed to Running after it was Stopped\r\nlet lastrunningtime = baseQuery\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where textstatus_s == 'Running'\r\n| where serverTimestamp_t > todatetime(toscalar(laststoppedtime))\r\n| summarize  min(serverTimestamp_t);\r\n//check if the last time the server was running successfully is empty use current datetime to calculate outtage duration\r\nlet updatedlastrunningtime = iff(isempty(toscalar(lastrunningtime)) == true, toscalar(now()), toscalar(lastrunningtime));\r\n//Find the difference between when the server was Stopped and when it started Running again\r\nlet outageduration = datetime_diff('second', todatetime(toscalar(updatedlastrunningtime)), todatetime(toscalar(laststoppedtime)));\r\n\r\nbaseQuery\r\n| project Instance_Process = description_s, SID_s, hostname_s, instanceNr_d, dispstatus_s, serverTimestamp_t, textstatus_s, elapsedtime_s, starttime_s, description_s\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where textstatus_s == \"Stopped\"\r\n| extend outage_date = todatetime(toscalar(laststoppedtime))\r\n| extend outage_duration = toscalar(outageduration) * 1s\r\n| distinct description_s, outage_date, textstatus_s, outage_duration;\r\n",
               "size": 0,
-              "title": "Service Unavailability Time Snapshot",
+              "title": "Most Recent Service Unavailability Time Snapshot",
               "exportedParameters": [
                 {
                   "fieldName": "title_s",
@@ -871,7 +871,7 @@
                     "label": "Status"
                   },
                   {
-                    "columnId": "max_elapsedtime_s",
+                    "columnId": "outage_duration",
                     "label": "Outage Duration"
                   }
                 ]
