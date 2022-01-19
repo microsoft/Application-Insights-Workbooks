@@ -723,7 +723,7 @@
                       {
                         "type": 1,
                         "content": {
-                          "json": "Use this summary table of EdgeHub metrics to understand overall messaging performance. The results are grouped by receivers (parent).\nSelect a row to drill-in further.\n * _Rx_ == messages EdgeHub received from the sender (and before the route is determined)\n * _Tx_ == messages EdgeHub delivered to the parent receiver\n * _Delivered_ == total count of messages delivered from all senders."
+                          "json": "Use this summary table of EdgeHub metrics to understand overall messaging performance. The results are grouped by receivers (parent).\nSelect a row to drill-in further.\n * _Rx_ == messages EdgeHub received from the sender (and before the route is determined)\n * _Tx_ == messages EdgeHub delivered to the parent receiver\n * _Count_ == total count of messages delivered from all senders."
                         },
                         "styleSettings": {
                           "margin": "0px 12px"
@@ -739,7 +739,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let deviceid = '{SelectedDevice}';\nlet minPeriod = time('{samplingFrequency}');\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet delivered = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime)\n    | where Name == \"edgehub_messages_sent_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend messages = tolong(Val)\n    | extend timeUtc = TimeGenerated\n    | extend sourceTarget = strcat(source, \"+\", target) \n    | project timeUtc, device, source, target, sourceTarget, messages, instance\n    | order by sourceTarget, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSourceTarget= next(sourceTarget, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and sourceTarget == nextSourceTarget and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, target, sourceTarget, messages, diff;\nlet deliveredByTarget = delivered\n    | summarize msgsDelivered = sum(diff) by target, source, sourceTarget\n    | extend ParentId=target\n    | extend Id=sourceTarget\n    | extend Name= iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, Id, ParentId, target, source, msgsDelivered;\nlet deliveredByParent = deliveredByTarget\n    | union (deliveredByTarget\n        | summarize msgsDelivered=sum(msgsDelivered) by target\n        | extend Id=target\n        | extend Name= iff((Id == \"upstream\"), strcat(' ☁️ ', Id), strcat(' 📩 ', Id))\n        )\n    | project-away target, source\n    | order by msgsDelivered;\nlet latencyByReceiver = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == 'edgehub_message_send_duration_seconds'\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend quantile = tostring(dimensions.quantile)\n    | where quantile == '0.9'\n    | where Val != 'NaN'\n    | extend val = todouble(Val)\n    | project TimeGenerated, target, source, val\n    | extend Id=strcat(source, \"+\", target)\n    | summarize P90Latency= round(percentile(val, 90), 6)  by Id;\nlet msgRateByParent = deliveredByParent\n    | join kind=leftouter latencyByReceiver on Id\n    | project-away Id1\n    | extend MsgRate = round(msgsDelivered / ((endTime - startTime) / 1s), 2)\n    | project Endpoint=Name, Id, ParentId, msgsDelivered, MsgRate, P90Latency;\nlet queue_size = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_queue_length\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend endpoint = trim_start(@\"[^/]+/\", tostring(dimensions.endpoint))\n    | extend endpoint = replace_string(endpoint, \"/\", \"::\")\n    | extend endpoint = iff((endpoint == \"iothub\"), \"upstream\", endpoint)\n    | extend val = max_of(tolong(Val), 0)\n    | project Id=endpoint, val, TimeGenerated\n    | order by Id, TimeGenerated\n    | summarize medianQSize=percentile(val, 95) by Id;\nlet summaryResults = msgRateByParent\n| join kind=leftouter queue_size on Id\n| project-away Id1\n| sort by Endpoint asc, Id asc;\nlet msgsReceivedBySender = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime)\n    | where Name == \"edgehub_messages_received_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend outputroute = tostring(dimensions.route_output)\n    | extend source = iff(tostring(dimensions.id) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.id))\n    | extend messages = tolong(Val)\n    | extend timeUtc = TimeGenerated\n    | project timeUtc, device, source, messages, instance\n    | order by source, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSource= next(source, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and source == nextSource and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, messages, diff\n    | summarize msgsReceived = sum(diff) by source\n    | extend Name = iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, source, msgsReceived;\nsummaryResults\n| join kind=leftouter msgsReceivedBySender on $left.Endpoint == $right.Name\n| project-away Name, source\n| extend messageCount = iif(isempty(ParentId), msgsDelivered, 0)\n| extend MsgRate = iif(isempty(ParentId), toreal(\"\"), MsgRate)\n| extend msgsDelivered = iif(isempty(ParentId), tolong(\"\"), msgsDelivered)\n| project Endpoint, Id, ParentId, msgsReceived, msgsDelivered, MsgRate, P90Latency, medianQSize, messageCount\n| sort by Endpoint asc, Id;\n",
+                          "query": "let deviceid = '{SelectedDevice}';\nlet minPeriod = time('{samplingFrequency}');\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet delivered = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime)\n    | where Name == \"edgehub_messages_sent_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend messages = tolong(Val)\n    | extend timeUtc = TimeGenerated\n    | extend sourceTarget = strcat(source, \"+\", target) \n    | project timeUtc, device, source, target, sourceTarget, messages, instance\n    | order by sourceTarget, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSourceTarget= next(sourceTarget, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and sourceTarget == nextSourceTarget and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, target, sourceTarget, messages, diff;\nlet deliveredByTarget = delivered\n    | summarize msgsDelivered = sum(diff) by target, source, sourceTarget\n    | extend ParentId=target\n    | extend Id=sourceTarget\n    | extend Name= iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, Id, ParentId, target, source, msgsDelivered;\nlet deliveredByParent = deliveredByTarget\n    | union (deliveredByTarget\n        | summarize msgsDelivered=sum(msgsDelivered) by target\n        | extend Id=target\n        | extend Name= iff((Id == \"upstream\"), strcat(' ☁️ ', Id), strcat(' 📩 ', Id))\n        )\n    | project-away target, source\n    | order by msgsDelivered;\nlet latencyByReceiver = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == 'edgehub_message_send_duration_seconds'\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend quantile = tostring(dimensions.quantile)\n    | where quantile == '0.9'\n    | where Val != 'NaN'\n    | extend val = todouble(Val)\n    | project TimeGenerated, target, source, val\n    | extend Id=strcat(source, \"+\", target)\n    | summarize P90Latency= round(percentile(val, 90), 6)  by Id;\nlet msgRateByParent = deliveredByParent\n    | join kind=leftouter latencyByReceiver on Id\n    | project-away Id1\n    | extend MsgRate = round(msgsDelivered / ((endTime - startTime) / 1s), 2)\n    | project Endpoint=Name, Id, ParentId, msgsDelivered, MsgRate, P90Latency;\nlet queue_size = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_queue_length\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend endpoint = trim_start(@\"[^/]+/\", tostring(dimensions.endpoint))\n    | extend endpoint = replace_string(endpoint, \"/\", \"::\")\n    | extend endpoint = iff((endpoint == \"iothub\"), \"upstream\", endpoint)\n    | extend val = max_of(tolong(Val), 0)\n    | project Id=endpoint, val, TimeGenerated\n    | order by Id, TimeGenerated\n    | summarize medianQSize=percentile(val, 95) by Id;\nlet summaryResults = msgRateByParent\n| join kind=leftouter queue_size on Id\n| project-away Id1\n| sort by Endpoint asc, Id asc;\nlet msgsReceivedBySender = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime)\n    | where Name == \"edgehub_messages_received_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend outputroute = tostring(dimensions.route_output)\n    | extend source = iff(tostring(dimensions.id) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.id))\n    | extend messages = tolong(Val)\n    | extend timeUtc = TimeGenerated\n    | project timeUtc, device, source, messages, instance\n    | order by source, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSource= next(source, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and source == nextSource and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, messages, diff\n    | summarize msgsReceived = sum(diff) by source\n    | extend Name = iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, source, msgsReceived;\nsummaryResults\n| join kind=leftouter msgsReceivedBySender on $left.Endpoint == $right.Name\n| project-away Name, source\n// don't show a message rate for receivers (no ParentId)\n| extend MsgRate = iif(isempty(ParentId), toreal(\"\"), MsgRate)\n// also for receivers the msgsDelivered is the sum of what was sent from children so use it as the messageCount and show blanks for the senders\n| extend messageCount = iif(isempty(ParentId), msgsDelivered, tolong(\"\"))\n// and then show blank for the msgsDelivered so its only given on senders\n| extend msgsDelivered = iif(isempty(ParentId), tolong(\"\"), msgsDelivered)\n| project Endpoint, Id, ParentId, messageCount, medianQSize, msgsReceived, msgsDelivered, MsgRate, P90Latency\n| sort by Endpoint asc, Id;\n",
                           "size": 0,
                           "noDataMessage": "No messages were routed",
                           "timeContext": {
@@ -799,6 +799,36 @@
                                 "formatter": 5
                               },
                               {
+                                "columnMatch": "medianQSize",
+                                "formatter": 8,
+                                "formatOptions": {
+                                  "min": 0,
+                                  "palette": "greenRed",
+                                  "customColumnWidthSetting": "11ch"
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "Queue length (90th percentile): {0}"
+                                }
+                              },
+                              {
+                                "columnMatch": "messageCount",
+                                "formatter": 4,
+                                "formatOptions": {
+                                  "palette": "blue",
+                                  "customColumnWidthSetting": "14ch"
+                                },
+                                "numberFormat": {
+                                  "unit": 17,
+                                  "options": {
+                                    "style": "decimal",
+                                    "useGrouping": true
+                                  }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "Sum of messages delivered: {0}"
+                                }
+                              },
+                              {
                                 "columnMatch": "msgsReceived",
                                 "formatter": 0,
                                 "numberFormat": {
@@ -808,6 +838,9 @@
                                     "useGrouping": true,
                                     "minimumFractionDigits": 1
                                   }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "{0} messages received by EdgeHub"
                                 }
                               },
                               {
@@ -820,6 +853,9 @@
                                     "useGrouping": true,
                                     "minimumFractionDigits": 1
                                   }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "{0} messages delivered via EdgeHub"
                                 }
                               },
                               {
@@ -836,6 +872,9 @@
                                     "minimumFractionDigits": 1,
                                     "maximumFractionDigits": 1
                                   }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "Message rate of {0}"
                                 }
                               },
                               {
@@ -854,33 +893,9 @@
                                     "minimumFractionDigits": 1,
                                     "maximumFractionDigits": 1
                                   }
-                                }
-                              },
-                              {
-                                "columnMatch": "medianQSize",
-                                "formatter": 8,
-                                "formatOptions": {
-                                  "min": 0,
-                                  "palette": "greenRed",
-                                  "customColumnWidthSetting": "11ch"
-                                }
-                              },
-                              {
-                                "columnMatch": "messageCount",
-                                "formatter": 4,
-                                "formatOptions": {
-                                  "palette": "blue",
-                                  "customColumnWidthSetting": "14ch"
-                                },
-                                "numberFormat": {
-                                  "unit": 17,
-                                  "options": {
-                                    "style": "decimal",
-                                    "useGrouping": true
-                                  }
                                 },
                                 "tooltipFormat": {
-                                  "tooltip": "{0}"
+                                  "tooltip": "Latency (90th percentile): {0}"
                                 }
                               }
                             ],
@@ -916,7 +931,7 @@
                               },
                               {
                                 "columnId": "messageCount",
-                                "label": "Delivered"
+                                "label": "Count"
                               }
                             ]
                           },
