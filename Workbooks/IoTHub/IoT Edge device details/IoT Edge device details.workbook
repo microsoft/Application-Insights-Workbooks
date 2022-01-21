@@ -180,7 +180,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "Resources\r\n| where type == '{ResourceType}'\r\n| extend inScope = iif(isempty(\"{SelectedResource}\") or name =~ \"{SelectedResource}\", true, false)\r\n| order by name asc\r\n| extend Rank = row_number()\r\n| where inScope\r\n| project value = id, label = name, selected = id == \"{CurrentWorkbooksResource}\" or name == \"{SelectedResource}\", group = resourceGroup",
+            "query": "Resources\r\n| where type == '{ResourceType}'\r\n| extend inScope = iif(isempty(\"{SelectedResource}\") or name =~ \"{SelectedResource}\", true, false)\r\n| order by name asc\r\n| extend Rank = row_number()\r\n| where inScope\r\n| project value = id, label = name, selected = id =~ \"{CurrentWorkbooksResource}\" or name =~ \"{SelectedResource}\", group = resourceGroup",
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::all"
@@ -194,9 +194,9 @@
             "id": "63aa6750-da91-4e11-af98-50e156843464",
             "version": "KqlParameterItem/1.0",
             "name": "DeviceSelector",
-            "label": "💻 Device",
+            "label": "Device",
             "type": 2,
-            "query": "\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet selectedResource = \"{SelectedResource}\";\nlet devices = () { \nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgehub_gettwin_total\" or Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend iotresource = tostring(split(_ResourceId, \"/\")[-1])\n| extend include = iif(isnotempty(selectedResource),\n                        iotresource =~ selectedResource,\n                        iotresource in~ (split(\"{IoTResources:label}\", \", \")))\n| where include\n| extend device = tostring(dimensions.edge_device)\n| distinct include, iotresource, device\n| order by device\n| project value=strcat(iotresource, \"/\", device), label=device, selected=row_number() == 1, group=iotresource\n};\ndevices()\n",
+            "query": "\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet selectedResource = \"{SelectedResource}\";\nlet devices = () { \nInsightsMetrics\n| where TimeGenerated between (startofday(startTime) .. endTime)\n| where Name == \"edgehub_gettwin_total\" or Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend iotresource = tostring(split(_ResourceId, \"/\")[-1])\n| extend include = iif(isnotempty(selectedResource),\n                        iotresource =~ selectedResource,\n                        iotresource in~ (split(\"{IoTResources:label}\", \", \")))\n| where include\n| extend device = tostring(dimensions.edge_device)\n| distinct include, iotresource, device\n| order by device\n| project value=strcat(iotresource, \"/\", device), label=device, selected=row_number() == 1, group=iotresource\n};\ndevices()\n",
             "crossComponentResources": [
               "{IoTResources}"
             ],
@@ -237,7 +237,7 @@
     {
       "type": 1,
       "content": {
-        "json": "<div style=\"display:flex; align-items: flex-end; flex-wrap: wrap;\">\r\n  <div class=\"msportalfx-text-ellipsis ext-usage-param\"  style=\"align-self:end; cursor: auto;\">\r\n    <span style=\"margin:0px 4px;\">IoT resource: &nbsp; <span style=\"font-weight:600\">{SelectedResource}</span></span>\r\n  </div>\r\n  <div class=\"msportalfx-text-ellipsis ext-usage-param\" style=\"align-self:end; cursor: auto;\">\r\n    <span style=\"margin:0px 4px\">💻 Device: &nbsp; <span style=\"font-weight:600\">{SelectedDevice}</span></span>\r\n  </div>\r\n </div>"
+        "json": "<div style=\"display:flex; align-items: flex-end; flex-wrap: wrap;\">\r\n  <div class=\"msportalfx-text-ellipsis ext-usage-param\"  style=\"align-self:end; cursor: auto;\">\r\n    <span style=\"margin:0px 4px;\">IoT resource: &nbsp; <span style=\"font-weight:600\">{SelectedResource}</span></span>\r\n  </div>\r\n  <div class=\"msportalfx-text-ellipsis ext-usage-param\" style=\"align-self:end; cursor: auto;\">\r\n    <span style=\"margin:0px 4px\">Device: &nbsp; <span style=\"font-weight:600\">{SelectedDevice}</span></span>\r\n  </div>\r\n </div>"
       },
       "conditionalVisibilities": [
         {
@@ -268,15 +268,11 @@
             "label": "Insights Metrics Exist",
             "type": 1,
             "description": "Checks if the InsightsMetrics table exists yet to conditionally inform visibility of other items in the workbook.",
-            "query": "let hasNonEmptyTable = (T:string) \n{ \n   toscalar( union isfuzzy=true ( table(T) | count as Count ), (print Count=0) | summarize sum(Count) ) > 0\n};\nlet TableName = 'InsightsMetrics';\nprint IsPresent=iif('{invokedFromFleetViewWorkbook}' == 'yes' or hasNonEmptyTable(TableName), \"yes\", \"no\")",
+            "query": "let hasMetrics = () \n{ \n   toscalar( union isfuzzy=true ( table('InsightsMetrics') | where TimeGenerated between (({timeRange:start} - 5m) .. ({timeRange:end} + 5m)) | count as Count ), (print Count=0) | summarize sum(Count) ) > 0\n};\nprint IsPresent=iif('{invokedFromFleetViewWorkbook}' == 'yes' or hasMetrics(), \"yes\", \"no\")",
             "crossComponentResources": [
               "{IoTResources}"
             ],
             "isHiddenWhenLocked": true,
-            "timeContext": {
-              "durationMs": 0
-            },
-            "timeContextFromParameter": "timeRange",
             "queryType": 0,
             "resourceType": "{ResourceType}"
           }
@@ -316,15 +312,11 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "LastUpdated",
                   "type": 1,
-                  "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where TimeGenerated < {timeRange:end}\n| where Name == \"edgehub_gettwin_total\" or Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| top-nested 1 of lastUpdateTime=TimeGenerated by max(TimeGenerated)\n//| summarize lastUpdateTime = max(TimeGenerated)\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', {timeRange:end}, lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', {timeRange:end}, lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| project agoText\n",
+                  "query": "InsightsMetrics\n| where TimeGenerated > startofday({timeRange:start})\n| where Name == \"edgehub_gettwin_total\" or Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| top-nested 1 of lastUpdateTime=TimeGenerated by max(TimeGenerated)\n//| summarize lastUpdateTime = max(TimeGenerated)\n| extend  lastUpdatedSeconds = tolong(datetime_diff('second', now(), lastUpdateTime))\n| extend  lastUpdatedMins = tolong(datetime_diff('minute', now(), lastUpdateTime))\n| extend  lastUpdatedHours = tolong(datetime_diff('hour', now(), lastUpdateTime))\n| extend  lastUpdatedDays = tolong(datetime_diff('day', now(), lastUpdateTime))\n| extend agoText = case(lastUpdatedSeconds <= 60, strcat(lastUpdatedSeconds, iff(lastUpdatedSeconds == 1, \" sec ago\", \" secs ago\")),\n                        lastUpdatedSeconds <= 3600, strcat(lastUpdatedMins, iff(lastUpdatedMins == 1, \" min ago\", \" mins ago\")), \n                        lastUpdatedSeconds <= 86400, strcat(lastUpdatedHours, iff(lastUpdatedHours == 1, \" hr ago\", \" hrs ago\")),\n                        strcat(lastUpdatedDays, iff(lastUpdatedHours == 1, \" day ago\", \" days ago\")))\n| project agoText\n",
                   "crossComponentResources": [
                     "{IoTResources}"
                   ],
                   "isHiddenWhenLocked": true,
-                  "timeContext": {
-                    "durationMs": 0
-                  },
-                  "timeContextFromParameter": "timeRange",
                   "queryType": 0,
                   "resourceType": "{ResourceType}"
                 }
@@ -439,6 +431,14 @@
                         "linkLabel": "💻 Host",
                         "subTarget": "host",
                         "style": "link"
+                      },
+                      {
+                        "id": "62b7e523-32bc-4549-86cd-bbfcf066bfaf",
+                        "cellValue": "ShowPane",
+                        "linkTarget": "parameter",
+                        "linkLabel": "🔧 Settings",
+                        "subTarget": "settings",
+                        "style": "link"
                       }
                     ]
                   },
@@ -533,6 +533,90 @@
             "content": {
               "version": "NotebookGroup/1.0",
               "groupType": "editable",
+              "loadType": "always",
+              "items": [
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "060313e0-e2a6-4cc1-98fb-70d6cdd8c198",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "ShowTips",
+                        "label": "Show Tips",
+                        "type": 10,
+                        "isRequired": true,
+                        "typeSettings": {
+                          "additionalResourceOptions": [],
+                          "showDefault": false
+                        },
+                        "jsonData": "[\r\n    { \"value\" : \"false\", \"label\" : \"No\", \"selected\" : true },\r\n    { \"value\" : \"true\", \"label\" : \"Yes\" }\r\n]"
+                      },
+                      {
+                        "id": "73e69eef-028d-4738-9d9f-f98b25f15352",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "samplingFrequency",
+                        "label": "Metric Sampling Frequency",
+                        "type": 1,
+                        "isRequired": true,
+                        "query": "{\"version\":\"1.0.0\",\"content\":\"[\\\"5m\\\"]\",\"transformers\":null}",
+                        "typeSettings": {
+                          "paramValidationRules": [
+                            {
+                              "regExp": "^(\\d+|\\d+\\.\\d+)(d|h|m|s|ms|microsecond|tick|)$",
+                              "match": true,
+                              "message": "Invalid timespan value.  See KQL's supported timespan formats."
+                            }
+                          ]
+                        },
+                        "timeContext": {
+                          "durationMs": 0
+                        },
+                        "queryType": 8
+                      }
+                    ],
+                    "style": "formVertical",
+                    "queryType": 8
+                  },
+                  "customWidth": "25",
+                  "name": "settings parameters"
+                },
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "Queries in this workbook assume metrics were sampled at a 5 minute interval. If you use a different frequency to collect and transport metrics then set it here to adjust the bin size used in queries."
+                  },
+                  "customWidth": "25",
+                  "styleSettings": {
+                    "margin": "72px 12px 0px 12px"
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "ShowTips",
+                    "comparison": "isEqualTo",
+                    "value": "true"
+                  },
+                  "name": "text - settings"
+                }
+              ],
+              "exportParameters": true
+            },
+            "conditionalVisibility": {
+              "parameterName": "ShowPane",
+              "comparison": "isEqualTo",
+              "value": "settings"
+            },
+            "styleSettings": {
+              "margin": "-34px 0px 0px 0px",
+              "padding": "0px 12px"
+            },
+            "name": "settings-view"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
               "items": [
                 {
                   "type": 11,
@@ -566,10 +650,7 @@
                       }
                     ]
                   },
-                  "name": "tabs-messaging",
-                  "styleSettings": {
-                    "margin": "0px 42px"
-                  }
+                  "name": "tabs-messaging"
                 },
                 {
                   "type": 12,
@@ -632,16 +713,27 @@
                         "name": "gridParameters"
                       },
                       {
+                        "type": 1,
+                        "content": {
+                          "json": "Use this summary table of EdgeHub metrics to understand overall messaging performance. The results are grouped by receivers (parent).\nSelect a row to drill-in further.\n * _Rx_ == messages EdgeHub received from the sender (and before the route is determined)\n * _Tx_ == messages EdgeHub delivered to the parent receiver\n * _Count_ == total count of messages delivered from all senders."
+                        },
+                        "styleSettings": {
+                          "margin": "0px 12px"
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "ShowTips",
+                          "comparison": "isEqualTo",
+                          "value": "true"
+                        },
+                        "name": "message-details description"
+                      },
+                      {
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let deviceid = '{SelectedDevice}';\nlet minPeriod = 5m;\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet data = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_messages_sent_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend messages = toint(Val)\n    | extend timeUtc = TimeGenerated\n    | extend sourceTarget = strcat(source, \"+\", target) \n    | project timeUtc, device, source, target, sourceTarget, messages, instance\n    | order by sourceTarget, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSourceTarget= next(sourceTarget, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and sourceTarget == nextSourceTarget and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, target, sourceTarget, messages, diff;\nlet set1 = data\n    | summarize messageCount = sum(diff) by target, source, sourceTarget\n    | extend ParentId=target\n    | extend Id=sourceTarget\n    | extend Name= iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, Id, ParentId, target, source, messageCount;\nlet set2 = set1\n    | union (set1\n        | summarize messageCount=sum(messageCount) by target\n        | extend Id=target\n        | extend Name= iff((Id == \"upstream\"), strcat(' ☁️ ', Id), strcat(' 📩 ', Id))\n        )\n    | project-away target, source\n    | order by messageCount;\nlet set3 = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == 'edgehub_message_send_duration_seconds'\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend quantile = tostring(dimensions.quantile)\n    | where quantile == '0.9'\n    | where Val != 'NaN'\n    | extend val = todouble(Val)\n    | project TimeGenerated, target, source, val\n    | extend Id=strcat(source, \"+\", target)\n    | summarize P90Latency= round(percentile(val, 90), 6)  by Id;\nlet msg_rate = set2\n    | join kind=leftouter set3 on Id\n    | project-away Id1\n    | extend MsgRate = round(messageCount / ((endTime - startTime) / 1s), 2)\n    | project Endpoint=Name, Id, ParentId, messageCount, MsgRate, P90Latency;\nlet queue_size = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_queue_length\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend endpoint = trim_start(@\"[^/]+/\", tostring(dimensions.endpoint))\n    | extend endpoint = replace_string(endpoint, \"/\", \"::\")\n    | extend endpoint = iff((endpoint == \"iothub\"), \"upstream\", endpoint)\n    | extend val = max_of(toint(Val), 0)\n    | project Id=endpoint, val, TimeGenerated\n    | order by Id, TimeGenerated\n    | summarize medianQSize=percentile(val, 95) by Id;\nmsg_rate \n| join kind=leftouter queue_size on Id\n| project-away Id1\n| sort by Endpoint asc, Id asc\n",
+                          "query": "let deviceid = '{SelectedDevice}';\nlet minPeriod = time('{samplingFrequency}');\nlet numPeriods = 24;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet timeBin_ = (endTime - startTime) / numPeriods;\nlet timeBin = iff(timeBin_ < minPeriod, minPeriod, timeBin_);\nlet delivered = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime)\n    | where Name == \"edgehub_messages_sent_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend messages = tolong(Val)\n    | extend timeUtc = TimeGenerated\n    | extend sourceTarget = strcat(source, \"+\", target) \n    | project timeUtc, device, source, target, sourceTarget, messages, instance\n    | order by sourceTarget, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSourceTarget= next(sourceTarget, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and sourceTarget == nextSourceTarget and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, target, sourceTarget, messages, diff;\nlet deliveredByTarget = delivered\n    | summarize msgsDelivered = sum(diff) by target, source, sourceTarget\n    | extend ParentId=target\n    | extend Id=sourceTarget\n    | extend Name= iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, Id, ParentId, target, source, msgsDelivered;\nlet deliveredByParent = deliveredByTarget\n    | union (deliveredByTarget\n        | summarize msgsDelivered=sum(msgsDelivered) by target\n        | extend Id=target\n        | extend Name= iff((Id == \"upstream\"), strcat(' ☁️ ', Id), strcat(' 📩 ', Id))\n        )\n    | project-away target, source\n    | order by msgsDelivered;\nlet latencyByReceiver = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == 'edgehub_message_send_duration_seconds'\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend inputroute = tostring(dimensions.to_route_input)\n    | extend outputroute = tostring(dimensions.from_route_output)\n    | where device == deviceid\n    | extend target = strcat(trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string))), iff(inputroute != \"\", strcat(\"::\", inputroute), \"\"))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.from))\n    | extend quantile = tostring(dimensions.quantile)\n    | where quantile == '0.9'\n    | where Val != 'NaN'\n    | extend val = todouble(Val)\n    | project TimeGenerated, target, source, val\n    | extend Id=strcat(source, \"+\", target)\n    | summarize P90Latency= round(percentile(val, 90), 6)  by Id;\nlet msgRateByParent = deliveredByParent\n    | join kind=leftouter latencyByReceiver on Id\n    | project-away Id1\n    | extend MsgRate = round(msgsDelivered / ((endTime - startTime) / 1s), 2)\n    | project Endpoint=Name, Id, ParentId, msgsDelivered, MsgRate, P90Latency;\nlet queue_size = InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_queue_length\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend endpoint = trim_start(@\"[^/]+/\", tostring(dimensions.endpoint))\n    | extend endpoint = replace_string(endpoint, \"/\", \"::\")\n    | extend endpoint = iff((endpoint == \"iothub\"), \"upstream\", endpoint)\n    | extend val = max_of(toreal(Val), toreal(0))\n    | extend val = iif(val > 0x7FFFFFFFFFFFFFFF, toreal(0), val)\n    | project Id=endpoint, val, TimeGenerated\n    | order by Id, TimeGenerated\n    | summarize medianQSize=percentile(val, 95) by Id;\nlet summaryResults = msgRateByParent\n| join kind=leftouter queue_size on Id\n| project-away Id1\n| sort by Endpoint asc, Id asc;\nlet msgsReceivedBySender = InsightsMetrics\n    | where TimeGenerated between (startTime .. endTime)\n    | where Name == \"edgehub_messages_received_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | extend instance = tostring(dimensions.instance_number)\n    | extend outputroute = tostring(dimensions.route_output)\n    | extend source = iff(tostring(dimensions.id) contains '{SelectedDevice}', strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), iff(outputroute != \"\", strcat(\"::\", outputroute), \"\")), tostring(dimensions.id))\n    | extend messages = tolong(Val)\n    | extend timeUtc = TimeGenerated\n    | project timeUtc, device, source, messages, instance\n    | order by source, timeUtc\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSource= next(source, 1)\n    | extend nextInstance= next(instance, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and source == nextSource and instance == nextInstance, messages - nextCount, iff(timeUtc - startTime > 2 * minPeriod, messages, 0))\n    | project timeUtc, device, source, messages, diff\n    | summarize msgsReceived = sum(diff) by source\n    | extend Name = iff(source contains '/', strcat('💻 ', source), strcat('📦 ', source))\n    | project Name, source, msgsReceived;\nsummaryResults\n| join kind=leftouter msgsReceivedBySender on $left.Endpoint == $right.Name\n| project-away Name, source\n// don't show a message rate for receivers (no ParentId)\n| extend MsgRate = iif(isempty(ParentId), toreal(\"\"), MsgRate)\n// also for receivers the msgsDelivered is the sum of what was sent from children so use it as the messageCount and show blanks for the senders\n| extend messageCount = iif(isempty(ParentId), msgsDelivered, tolong(\"\"))\n// and then show blank for the msgsDelivered so its only given on senders\n| extend msgsDelivered = iif(isempty(ParentId), tolong(\"\"), msgsDelivered)\n| project Endpoint, Id, ParentId, messageCount, medianQSize, msgsReceived, msgsDelivered, MsgRate, P90Latency\n| sort by Endpoint asc, Id;\n",
                           "size": 0,
                           "noDataMessage": "No messages were routed",
-                          "timeContext": {
-                            "durationMs": 7200000
-                          },
-                          "timeContextFromParameter": "timeRange",
                           "exportedParameters": [
                             {
                               "fieldName": "medianQSize",
@@ -695,37 +787,82 @@
                                 "formatter": 5
                               },
                               {
+                                "columnMatch": "medianQSize",
+                                "formatter": 8,
+                                "formatOptions": {
+                                  "min": 0,
+                                  "palette": "greenRed",
+                                  "customColumnWidthSetting": "11ch"
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "Queue length (90th percentile): {0}"
+                                }
+                              },
+                              {
                                 "columnMatch": "messageCount",
                                 "formatter": 4,
                                 "formatOptions": {
                                   "palette": "blue",
-                                  "customColumnWidthSetting": "79px"
+                                  "customColumnWidthSetting": "14ch"
                                 },
                                 "numberFormat": {
                                   "unit": 17,
                                   "options": {
                                     "style": "decimal",
-                                    "minimumFractionDigits": 2,
-                                    "maximumFractionDigits": 2
+                                    "useGrouping": true
                                   }
                                 },
                                 "tooltipFormat": {
-                                  "tooltip": "{0}"
+                                  "tooltip": "Sum of messages delivered: {0}"
+                                }
+                              },
+                              {
+                                "columnMatch": "msgsReceived",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 17,
+                                  "options": {
+                                    "style": "decimal",
+                                    "useGrouping": true,
+                                    "minimumFractionDigits": 1
+                                  }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "{0} messages received by EdgeHub"
+                                }
+                              },
+                              {
+                                "columnMatch": "msgsDelivered",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 17,
+                                  "options": {
+                                    "style": "decimal",
+                                    "useGrouping": true,
+                                    "minimumFractionDigits": 1
+                                  }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "{0} messages delivered via EdgeHub"
                                 }
                               },
                               {
                                 "columnMatch": "MsgRate",
                                 "formatter": 0,
                                 "formatOptions": {
-                                  "customColumnWidthSetting": "9.2857ch"
+                                  "customColumnWidthSetting": "10ch"
                                 },
                                 "numberFormat": {
                                   "unit": 31,
                                   "options": {
                                     "style": "decimal",
+                                    "useGrouping": false,
                                     "minimumFractionDigits": 1,
                                     "maximumFractionDigits": 1
                                   }
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "Message rate of {0}"
                                 }
                               },
                               {
@@ -733,25 +870,20 @@
                                 "formatter": 8,
                                 "formatOptions": {
                                   "min": 0,
-                                  "palette": "green",
-                                  "customColumnWidthSetting": "12.8571ch"
+                                  "palette": "yellow",
+                                  "customColumnWidthSetting": "13ch"
                                 },
                                 "numberFormat": {
                                   "unit": 24,
                                   "options": {
                                     "style": "decimal",
+                                    "useGrouping": false,
                                     "minimumFractionDigits": 1,
                                     "maximumFractionDigits": 1
                                   }
-                                }
-                              },
-                              {
-                                "columnMatch": "medianQSize",
-                                "formatter": 8,
-                                "formatOptions": {
-                                  "min": 0,
-                                  "palette": "greenRed",
-                                  "customColumnWidthSetting": "11.1429ch"
+                                },
+                                "tooltipFormat": {
+                                  "tooltip": "Latency (90th percentile): {0}"
                                 }
                               }
                             ],
@@ -763,16 +895,14 @@
                               "expanderColumn": "Endpoint",
                               "expandTopLevel": true
                             },
-                            "sortBy": [
-                              {
-                                "itemKey": "$gen_number_MsgRate_4",
-                                "sortOrder": 1
-                              }
-                            ],
                             "labelSettings": [
                               {
-                                "columnId": "messageCount",
-                                "label": "Count"
+                                "columnId": "msgsReceived",
+                                "label": "Rx"
+                              },
+                              {
+                                "columnId": "msgsDelivered",
+                                "label": "Tx"
                               },
                               {
                                 "columnId": "MsgRate",
@@ -786,19 +916,18 @@
                                 "columnId": "medianQSize",
                                 "label": "QLen (p90)",
                                 "comment": "Median queue length"
+                              },
+                              {
+                                "columnId": "messageCount",
+                                "label": "Count"
                               }
                             ]
                           },
-                          "sortBy": [
-                            {
-                              "itemKey": "$gen_number_MsgRate_4",
-                              "sortOrder": 1
-                            }
-                          ]
+                          "sortBy": []
                         },
                         "name": "message-details",
                         "styleSettings": {
-                          "margin": "-25px 0px 0px 0px"
+                          "margin": "-40px 0px 0px 0px"
                         }
                       }
                     ],
@@ -824,7 +953,7 @@
                   ],
                   "name": "message-details-left-pane",
                   "styleSettings": {
-                    "margin": "-40px 0px 0px 0px"
+                    "margin": "-20px 0px 0px 0px"
                   }
                 },
                 {
@@ -954,17 +1083,34 @@
                           "groupType": "editable",
                           "items": [
                             {
+                              "type": 1,
+                              "content": {
+                                "json": "Use the _Queue length trend_ to identify when message flow be impeded. Use the _Messages delivered_ to visualize the trend of messages successfully delivered to the receiver.\n\nDrill into individual senders to spot if the messages received is exceeding what is successfully sent."
+                              },
+                              "styleSettings": {
+                                "margin": "0px 0px 10px 0px"
+                              },
+                              "conditionalVisibilities": [
+                                {
+                                  "parameterName": "ShowTips",
+                                  "comparison": "isEqualTo",
+                                  "value": "true"
+                                },
+                                {
+                                  "parameterName": "qlen",
+                                  "comparison": "isNotEqualTo"
+                                }
+                              ],
+                              "name": "text - receiver messaging trends"
+                            },
+                            {
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet endp0 = iff('{pid}' != \"\", '{pid}', '{id}');\nlet endp = iff(endp0 contains \"::\", replace_string(endp0, \"::\", \"/\"), endp0);\nInsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend ep = tostring(dimensions.endpoint)\n| where ep contains iff((endp == 'upstream'), \"iothub\", endp)\n| project TimeGenerated, Val\n| make-series Qlen=max(Val) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m",
+                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet endp0 = iff('{pid}' != \"\", '{pid}', '{id}');\nlet endp = iff(endp0 contains \"::\", replace_string(endp0, \"::\", \"/\"), endp0);\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod * 2) .. endTime)\n    and Name == \"edgehub_queue_length\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend ep = tostring(dimensions.endpoint)\n| where ep contains iff((endp == 'upstream'), \"iothub\", endp)\n| project TimeGenerated, Val = iif(Val > 0x7FFFFFFFFFFFFFFF, toreal(0), Val)\n| make-series Qlen=max(Val) default=0 on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod",
                                 "size": 1,
                                 "aggregation": 2,
                                 "title": "Queue length trend for {ep}",
-                                "timeContext": {
-                                  "durationMs": 7200000
-                                },
-                                "timeContextFromParameter": "timeRange",
                                 "timeBrushParameterName": "timeRange",
                                 "timeBrushExportOnlyWhenBrushed": true,
                                 "queryType": 0,
@@ -972,7 +1118,7 @@
                                 "crossComponentResources": [
                                   "{IoTResources}"
                                 ],
-                                "visualization": "barchart",
+                                "visualization": "areachart",
                                 "chartSettings": {
                                   "xAxis": "TimeGenerated",
                                   "seriesLabelSettings": [
@@ -993,13 +1139,9 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = 5m;\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet endpSplit = split(endp, '::');\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgehub_messages_sent_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend target = tostring(extractjson(\"$.to\",Tags,typeof(string)))\n| extend routeInput = (dimensions.to_route_input)\n| where device == '{SelectedDevice}'\n| where target contains endpSplit[0]\n| where routeInput contains endpSplit[1]\n| extend source = iff(isempty(tostring(dimensions.from_route_output)),\n                        tostring(dimensions.from),\n                        strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), \"::\", tostring(dimensions.from_route_output)))\n| extend messages = toint(Val)\n| order by source, TimeGenerated\n| serialize | extend nextCount = next(messages, 1) | extend nextSource = next(source, 1)\n| extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n| project source, TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m by source\n\n",
+                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet endpSplit = split(endp, '::');\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod * 2) .. endTime)\n| where Name == \"edgehub_messages_sent_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend target = tostring(extractjson(\"$.to\",Tags,typeof(string)))\n| extend routeInput = (dimensions.to_route_input)\n| where device == '{SelectedDevice}'\n| where target contains endpSplit[0]\n| where routeInput contains endpSplit[1]\n| extend source = iff(isempty(tostring(dimensions.from_route_output)),\n                        tostring(dimensions.from),\n                        strcat(trim_start(@\"[^/]+/\", tostring(dimensions.from)), \"::\", tostring(dimensions.from_route_output)))\n| extend messages = toint(Val)\n| order by source, TimeGenerated\n| serialize | extend nextCount = next(messages, 1) | extend nextSource = next(source, 1)\n| extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n| project source, TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod by source\n\n",
                                 "size": 1,
                                 "title": "Messages delivered to {ep}",
-                                "timeContext": {
-                                  "durationMs": 7200000
-                                },
-                                "timeContextFromParameter": "timeRange",
                                 "timeBrushParameterName": "timeRange",
                                 "timeBrushExportOnlyWhenBrushed": true,
                                 "queryType": 0,
@@ -1007,7 +1149,7 @@
                                 "crossComponentResources": [
                                   "{IoTResources}"
                                 ],
-                                "visualization": "barchart",
+                                "visualization": "areachart",
                                 "chartSettings": {
                                   "xAxis": "TimeGenerated",
                                   "seriesLabelSettings": [
@@ -1031,17 +1173,38 @@
                               "name": "query - messages delivered to endpoint"
                             },
                             {
+                              "type": 1,
+                              "content": {
+                                "json": "Use the graphs below to understand when bottlenecks occurred. Note that in _Messages from_ \"received\" messages are counted before the destination endpoint is determined. A module that sends to multiple receivers can exhibit a \"received\" count that is greater than \"delivered\". Delivered messages are only counted for the known receiver."
+                              },
+                              "conditionalVisibilities": [
+                                {
+                                  "parameterName": "ShowTips",
+                                  "comparison": "isEqualTo",
+                                  "value": "true"
+                                },
+                                {
+                                  "parameterName": "qlen",
+                                  "comparison": "isEqualTo"
+                                },
+                                {
+                                  "parameterName": "id",
+                                  "comparison": "isNotEqualTo"
+                                }
+                              ],
+                              "styleSettings": {
+                                "margin": "0px 0px 10px 0px"
+                              },
+                              "name": "text - sender messaging trends"
+                            },
+                            {
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nInsightsMetrics\n| where Name == 'edgehub_message_send_duration_seconds'\n| where TimeGenerated > {timeRange:start} and TimeGenerated < {timeRange:end}\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == '0.9'\n| extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n| extend targetInput = tostring(dimensions.to_route_input)\n| where target == tostring(targetSplit[0])\n| where targetInput == tostring(targetSplit[1])\n| extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n| extend sourceOutput = tostring(dimensions.from_route_output)\n| where source == tostring(sourceSplit[0])\n| where sourceOutput == tostring(sourceSplit[1])\n| where Val != 'NaN'\n| extend val = todouble(Val)\n| project TimeGenerated, val\n| make-series Count=max(val) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m\n",
+                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nInsightsMetrics\n| where Name == 'edgehub_message_send_duration_seconds'\n| where TimeGenerated between (({timeRange:start} - minPeriod * 2) .. {timeRange:end})\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == '0.9'\n| extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n| extend targetInput = tostring(dimensions.to_route_input)\n| where target == tostring(targetSplit[0])\n| where targetInput == tostring(targetSplit[1])\n| extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n| extend sourceOutput = tostring(dimensions.from_route_output)\n| where source == tostring(sourceSplit[0])\n| where sourceOutput == tostring(sourceSplit[1])\n| where Val != 'NaN'\n| extend val = todouble(Val)\n| project TimeGenerated, val\n| make-series Count=max(val) default=0 on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod\n",
                                 "size": 1,
                                 "aggregation": 3,
                                 "title": "Message send latency from {ep} to {pid}",
-                                "timeContext": {
-                                  "durationMs": 7200000
-                                },
-                                "timeContextFromParameter": "timeRange",
                                 "timeBrushParameterName": "timeRange",
                                 "timeBrushExportOnlyWhenBrushed": true,
                                 "queryType": 0,
@@ -1049,7 +1212,7 @@
                                 "crossComponentResources": [
                                   "{IoTResources}"
                                 ],
-                                "visualization": "barchart",
+                                "visualization": "areachart",
                                 "chartSettings": {
                                   "xAxis": "TimeGenerated",
                                   "seriesLabelSettings": [
@@ -1090,13 +1253,9 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = 5m;\nlet endp = iff('{id}' != \"\", '{id}', '{pid}');\nlet endpSplit = split(endp, '+');\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgehub_messages_received_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend source = iif(isnotempty(tostring(dimensions.id)), strcat(trim_start(@\"[^/]+/\", trim_end(@\"[^\\+]+/\", tostring(dimensions.id))), \"::\", tostring(dimensions.route_output)), tostring(dimensions.id))\n//| extend source = iif(isnotempty(tostring(dimensions.route_output)), strcat(trim_start(@\"[^/]+/\", tostring(dimensions.id)), \"::\", tostring(dimensions.route_output)),     tostring(dimensions.id))\n| where source == endpSplit[0]\n| extend messages = toint(Val)\n| sort by source, TimeGenerated\n| serialize\n| extend nextCount = next(messages, 1)\n| extend nextSource = next(source, 1)\n| extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2 * minPeriod, messages, 0))\n| project source, TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m by source\n\n",
+                                "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nlet tx = InsightsMetrics\n    | where TimeGenerated between ((startTime - minPeriod * 2) .. endTime)\n    | where Name == \"edgehub_messages_sent_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device  == '{SelectedDevice}'\n    | extend targetInput = (dimensions.to_route_input)\n    | extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n    | extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n    | extend sourceOutput = (dimensions.from_route_output)\n    | where target == tostring(targetSplit[0])\n    | where targetInput == tostring(targetSplit[1])\n    | where source == tostring(sourceSplit[0])\n    | where sourceOutput == tostring(sourceSplit[1])\n    | extend messages = toint(Val)\n    | order by TimeGenerated\n    | serialize | extend nextCount = next(messages, 1) \n    | extend diff = iff((messages - nextCount) >= 0, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n    | project Event=\"Delivered\", TimeGenerated, messages=diff\n    | make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod by Event;\nlet rx = InsightsMetrics\n    | where TimeGenerated between ((startTime - minPeriod *2) .. endTime)\n    | where Name == \"edgehub_messages_received_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == '{SelectedDevice}'\n    | extend source = iif(isnotempty(tostring(dimensions.id)), strcat(trim_start(@\"[^/]+/\", trim_end(@\"[^\\+]+/\", tostring(dimensions.id))), \"::\", tostring(dimensions.route_output)), tostring(dimensions.id))\n    | where source == moduleid\n    | extend messages = toint(Val)\n    | sort by source, TimeGenerated\n    | serialize\n    | extend nextCount = next(messages, 1)\n    | extend nextSource = next(source, 1)\n    | extend diff = iff((messages - nextCount) >= 0 and source == nextSource, messages - nextCount, iff(TimeGenerated - startTime > 2 * minPeriod, messages, 0))\n    | project Event=\"Received\", TimeGenerated, messages=diff\n    | make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod by Event;\ntx | union rx;",
                                 "size": 1,
-                                "title": "Messages received from {ep}",
-                                "timeContext": {
-                                  "durationMs": 7200000
-                                },
-                                "timeContextFromParameter": "timeRange",
+                                "title": "Messages from {ep}",
                                 "timeBrushParameterName": "timeRange",
                                 "timeBrushExportOnlyWhenBrushed": true,
                                 "queryType": 0,
@@ -1104,48 +1263,7 @@
                                 "crossComponentResources": [
                                   "{IoTResources}"
                                 ],
-                                "visualization": "barchart",
-                                "chartSettings": {
-                                  "xAxis": "TimeGenerated",
-                                  "seriesLabelSettings": [
-                                    {
-                                      "seriesName": "messages",
-                                      "label": "Messages received"
-                                    }
-                                  ]
-                                }
-                              },
-                              "conditionalVisibilities": [
-                                {
-                                  "parameterName": "latency",
-                                  "comparison": "isNotEqualTo"
-                                },
-                                {
-                                  "parameterName": "ep",
-                                  "comparison": "isNotEqualTo"
-                                }
-                              ],
-                              "name": "query - messages received from endpoint"
-                            },
-                            {
-                              "type": 3,
-                              "content": {
-                                "version": "KqlItem/1.0",
-                                "query": "let minPeriod = 5m;\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet endp = iff('{pid}' != \"\", '{pid}', '{id}');\nlet x = trim_end(@\"[^+]+\", '{id}');\nlet moduleid = substring(x,0, strlen(x)-1);\nlet targetSplit = split(endp, '::');\nlet sourceSplit = split(moduleid, '::');\nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_sent_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device  == '{SelectedDevice}'\n| extend targetInput = (dimensions.to_route_input)\n| extend target = trim_start(@\"[^/]+/\", extractjson(\"$.to\", tostring(dimensions), typeof(string)))\n| extend source = iff(tostring(dimensions.from) contains '{SelectedDevice}', trim_start(@\"[^/]+/\", tostring(dimensions.from)), tostring(dimensions.from))\n| extend sourceOutput = (dimensions.from_route_output)\n| where target == tostring(targetSplit[0])\n| where targetInput == tostring(targetSplit[1])\n| where source == tostring(sourceSplit[0])\n| where sourceOutput == tostring(sourceSplit[1])\n| extend messages = toint(Val)\n| order by TimeGenerated\n| serialize | extend nextCount = next(messages, 1) \n| extend diff = iff((messages - nextCount) >= 0, messages - nextCount, iff(TimeGenerated - startTime > 2*minPeriod, messages, 0))\n| project TimeGenerated, messages=diff\n| make-series Count=sum(messages) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m",
-                                "size": 1,
-                                "title": "Messages delivered from {ep} to {pid}",
-                                "timeContext": {
-                                  "durationMs": 7200000
-                                },
-                                "timeContextFromParameter": "timeRange",
-                                "timeBrushParameterName": "timeRange",
-                                "timeBrushExportOnlyWhenBrushed": true,
-                                "queryType": 0,
-                                "resourceType": "{ResourceType}",
-                                "crossComponentResources": [
-                                  "{IoTResources}"
-                                ],
-                                "visualization": "barchart",
+                                "visualization": "linechart",
                                 "tileSettings": {
                                   "showBorder": false
                                 },
@@ -1185,6 +1303,9 @@
                             "value": "graph"
                           }
                         ],
+                        "styleSettings": {
+                          "padding": "0px 12px"
+                        },
                         "name": "messaging-routing"
                       },
                       {
@@ -1194,10 +1315,25 @@
                           "groupType": "editable",
                           "items": [
                             {
+                              "type": 1,
+                              "content": {
+                                "json": "The graph below displays the trend of clients connected to EdgeHub."
+                              },
+                              "styleSettings": {
+                                "margin": "0px 0px 10px 0px"
+                              },
+                              "conditionalVisibility": {
+                                "parameterName": "ShowTips",
+                                "comparison": "isEqualTo",
+                                "value": "true"
+                              },
+                              "name": "text - connected client trends"
+                            },
+                            {
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet connectedClients = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_connected_clients\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| make-series Count=min(value) default=0 on TimeGenerated from (startTime - 5m) to endTime step 5m\n};\nconnectedClients()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet connectedClients = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_connected_clients\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| make-series Count=min(value) default=0 on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod\n};\nconnectedClients()",
                                 "size": 1,
                                 "aggregation": 5,
                                 "title": "Connected clients count",
@@ -1225,19 +1361,6 @@
                                     },
                                     "customWidth": "25",
                                     "name": "connected-clients-group-spacer"
-                                  },
-                                  {
-                                    "type": 1,
-                                    "content": {
-                                      "json": "<br>\n\n💡 **Select a row on the left to further drill-in**"
-                                    },
-                                    "customWidth": "75",
-                                    "conditionalVisibility": {
-                                      "parameterName": "messaging-view",
-                                      "comparison": "isEqualTo",
-                                      "value": "routing"
-                                    },
-                                    "name": "tip - select row to drill in"
                                   }
                                 ]
                               },
@@ -1278,7 +1401,7 @@
                   },
                   "name": "message-details-right-pane",
                   "styleSettings": {
-                    "margin": "-40px 0px 0px 0px"
+                    "margin": "-20px 0px 0px 0px"
                   }
                 },
                 {
@@ -1879,7 +2002,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet totalOfflineCount = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_offline_count_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance), value - nextValue, 0)\n| project TimeGenerated, diff\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m\n};\ntotalOfflineCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet totalOfflineCount = () {\nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_offline_count_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance), value - nextValue, 0)\n| project TimeGenerated, diff\n| make-series Count=sum(diff) on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod\n};\ntotalOfflineCount()",
                                 "size": 1,
                                 "showAnnotations": true,
                                 "title": "Offline transitions",
@@ -2037,7 +2160,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| where target == '{RetryTarget}' and op == '{RetryOp}'\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n//| where diff > 0\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m\n//| project TimeGenerated, Count=diff\n};\ntotalRetryOperationsCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet totalRetryOperationsCount = () { \nInsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_operation_retry_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend instance = tostring(dimensions.instance_number)\n| extend target = tostring(dimensions.id)\n| extend op = tostring(dimensions.operation)\n| where target == '{RetryTarget}' and op == '{RetryOp}'\n| extend value = toint(Val)\n| order by instance, target, op, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextTarget = next(target, 1)\n| extend nextOp = next(op, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and op == nextOp and target == nextTarget), value - nextValue, 0)\n//| where diff > 0\n| make-series Count=sum(diff) on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod\n//| project TimeGenerated, Count=diff\n};\ntotalRetryOperationsCount()",
                                 "size": 1,
                                 "title": "{RetryOp} targeting {RetryTarget}",
                                 "timeBrushParameterName": "timeRange",
@@ -2140,7 +2263,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output)) \n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| make-series sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m by origin\n//| summarize sum(diff) by TimeGenerated, origin\n};\ntotalDroppedMessagesCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output)) \n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| make-series sum(diff) on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod by origin\n//| summarize sum(diff) by TimeGenerated, origin\n};\ntotalDroppedMessagesCount()",
                                 "size": 1,
                                 "title": "Dropped messages (all origins)",
                                 "timeBrushParameterName": "timeRange",
@@ -2163,7 +2286,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output))\n| where moduleOutput == '{MessageOrigin}'\n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| make-series Count=sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m\n//| summarize Count=sum(diff) by TimeGenerated\n};\ntotalDroppedMessagesCount()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet totalDroppedMessagesCount = () { \nInsightsMetrics\n| where Tags contains deviceid\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgehub_messages_dropped_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| extend instance = tostring(dimensions.instance_number)\n| extend moduleOutput = strcat(tostring(dimensions.from), '::',  tostring(dimensions.from_route_output))\n| where moduleOutput == '{MessageOrigin}'\n| extend value = toint(Val)\n| order by instance, moduleOutput, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextModuleOutput = next(moduleOutput, 1)\n| extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and moduleOutput == nextModuleOutput), value - nextValue, 0)\n| project TimeGenerated, device, instance, origin=moduleOutput, value, diff\n| make-series Count=sum(diff) on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod\n//| summarize Count=sum(diff) by TimeGenerated\n};\ntotalDroppedMessagesCount()",
                                 "size": 1,
                                 "title": "Dropped messages from {MessageOrigin}",
                                 "timeBrushParameterName": "timeRange",
@@ -2266,7 +2389,7 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet totalDisconnectedClients = () { \n    InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_client_disconnect_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend instance = tostring(dimensions.instance_number)\n    | extend id = strcat(extract(\"DeviceId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)), '::', extract(\"ModuleId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)))\n    | extend value = toint(Val)\n    | order by instance, id, TimeGenerated\n    | serialize\n    | extend nextValue = next(value, 1)\n    | extend nextInstance = next(instance, 1)\n    | extend nextId = next(id, 1)\n    | extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and id == nextId), value - nextValue, 0)\n    | project TimeGenerated, device, instance, id, value, diff\n    | make-series sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m by id\n};\ntotalDisconnectedClients()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet totalDisconnectedClients = () { \n    InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_client_disconnect_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend instance = tostring(dimensions.instance_number)\n    | extend id = strcat(extract(\"DeviceId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)), '::', extract(\"ModuleId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)))\n    | extend value = toint(Val)\n    | order by instance, id, TimeGenerated\n    | serialize\n    | extend nextValue = next(value, 1)\n    | extend nextInstance = next(instance, 1)\n    | extend nextId = next(id, 1)\n    | extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and id == nextId), value - nextValue, 0)\n    | project TimeGenerated, device, instance, id, value, diff\n    | make-series sum(diff) on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod by id\n};\ntotalDisconnectedClients()",
                                 "size": 1,
                                 "title": "Client disconnects (all clients)",
                                 "timeBrushParameterName": "timeRange",
@@ -2289,14 +2412,10 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let deviceid = '{SelectedDevice}';\nlet selectedId = '{SelId}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet totalDisconnectedClients = () { \n    InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_client_disconnect_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend instance = tostring(dimensions.instance_number)\n    | extend id = strcat(extract(\"DeviceId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)), '/', extract(\"ModuleId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)))\n    | where id == selectedId\n    | extend value = toint(Val)\n    | order by instance, id, TimeGenerated\n    | serialize\n    | extend nextValue = next(value, 1)\n    | extend nextInstance = next(instance, 1)\n    | extend nextId = next(id, 1)\n    | extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and id == nextId), value - nextValue, 0)\n    | project TimeGenerated, device, instance, id, value, diff\n    | make-series sum(diff) on TimeGenerated from (startTime - 5m) to endTime step 5m by id\n};\ntotalDisconnectedClients()",
+                                "query": "let deviceid = '{SelectedDevice}';\nlet selectedId = '{SelId}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time('{samplingFrequency}');\nlet totalDisconnectedClients = () { \n    InsightsMetrics\n    | where TimeGenerated > startTime and TimeGenerated < endTime\n    | where Name == \"edgehub_client_disconnect_total\"\n    | extend dimensions=parse_json(Tags)\n    | extend device = tostring(dimensions.edge_device)\n    | where device == deviceid\n    | extend instance = tostring(dimensions.instance_number)\n    | extend id = strcat(extract(\"DeviceId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)), '/', extract(\"ModuleId: (\\\\S*)\", 1, tostring(dimensions.id), typeof(string)))\n    | where id == selectedId\n    | extend value = toint(Val)\n    | order by instance, id, TimeGenerated\n    | serialize\n    | extend nextValue = next(value, 1)\n    | extend nextInstance = next(instance, 1)\n    | extend nextId = next(id, 1)\n    | extend diff = iff(((value - nextValue) >= 0 and instance == nextInstance and id == nextId), value - nextValue, 0)\n    | project TimeGenerated, device, instance, id, value, diff\n    | make-series sum(diff) on TimeGenerated from (startTime - minPeriod) to endTime step minPeriod by id\n};\ntotalDisconnectedClients()",
                                 "size": 1,
                                 "showAnnotations": true,
                                 "title": "Disconnects by {SelId}",
-                                "timeContext": {
-                                  "durationMs": 7200000
-                                },
-                                "timeContextFromParameter": "timeRange",
                                 "timeBrushParameterName": "timeRange",
                                 "timeBrushExportOnlyWhenBrushed": true,
                                 "queryType": 0,
@@ -2529,16 +2648,13 @@
                     "comparison": "isEqualTo",
                     "value": "modules"
                   },
-                  "name": "tabs-modules",
-                  "styleSettings": {
-                    "margin": "0px 22px"
-                  }
+                  "name": "tabs-modules"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet deviceid = '{SelectedDevice}';\nlet actual = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize actualUptime=max(Val) by module;\nlet expected = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_total_time_expected_running_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize expectedUptime=max(Val) by module;\nlet availability = expected\n| join actual on module\n| extend uptime=(actualUptime / expectedUptime) * 100\n| project module, uptime, expectedUptime, actualUptime;\nlet modulerestarts = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_module_start_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n| extend mversion = tostring(dimensions.module_version)\n| where mversion == \"1.0\" or module == \"edgeHub\"\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by module, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextmodule = next(module, 1)\n| project TimeGenerated, device, instance, nextInstance, module, nextmodule, value, nextValue\n| extend diff = iff((instance != nextInstance and module == nextmodule), 1, iff((instance == nextInstance and module == nextmodule), (value - nextValue), 0))\n| summarize sum(diff) by module\n| join kind=rightouter availability on module\n| project module=module1, uptime, expectedUptime, actualUptime, restarts=sum_diff\n| extend restartText = case(isnull(restarts), \"No restarts\",\n                            restarts == 0, \"No restarts\",\n                            restarts == 1, \"1 restart\",  \n                            strcat(restarts, \" restarts\"));\nmodulerestarts\n\n\n\n",
+                    "query": "let startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet deviceid = '{SelectedDevice}';\nlet actual = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_total_time_running_correctly_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize actualUptime=max(Val) by module;\nlet expected = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_total_time_expected_running_seconds\"\n   and Val > 0\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n// todo - account for agent restarts\n| summarize expectedUptime=max(Val) by module;\nlet availability = expected\n| join actual on module\n| extend uptime=(actualUptime / expectedUptime) * 100\n| project module, uptime, expectedUptime, actualUptime;\nlet modulerestarts = InsightsMetrics\n| where TimeGenerated > startTime and TimeGenerated < endTime\n| where Name == \"edgeAgent_module_start_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n| extend mversion = tostring(dimensions.module_version)\n| where mversion == \"1.0\" or module == \"edgeHub\"\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by module, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextmodule = next(module, 1)\n| project TimeGenerated, device, instance, nextInstance, module, nextmodule, value, nextValue\n| extend diff = iff((instance != nextInstance and module == nextmodule), 1, iff((instance == nextInstance and module == nextmodule), (value - nextValue), 0))\n| summarize sum(diff) by module\n| join kind=rightouter availability on module\n| project module=module1, uptime, expectedUptime, actualUptime, restarts=sum_diff\n| extend restartText = case(isnull(restarts), \"No restarts\",\n                            restarts == 0, \"No restarts\",\n                            restarts == 1, \"1 restart\",  \n                            strcat(restarts, \" restarts\"));\nmodulerestarts\n\n\n\n",
                     "size": 0,
                     "timeContext": {
                       "durationMs": 0
@@ -2630,15 +2746,11 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start} and TimeGenerated < {timeRange:end}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module == '{moduleName}'\n| extend value = todouble(Val)\n| project value, TimeGenerated",
+                          "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod) .. endTime)\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"0.9\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module == '{moduleName}'\n| extend value = todouble(Val)\n| make-series CPU=max(value) on TimeGenerated from startTime to endTime step minPeriod;",
                           "size": 1,
                           "aggregation": 5,
                           "showAnnotations": true,
                           "title": "CPU usage by {moduleName}",
-                          "timeContext": {
-                            "durationMs": 7200000
-                          },
-                          "timeContextFromParameter": "timeRange",
                           "timeBrushParameterName": "timeRange",
                           "timeBrushExportOnlyWhenBrushed": true,
                           "queryType": 0,
@@ -2677,15 +2789,11 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start} and TimeGenerated < {timeRange:end}\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains '{moduleName}' and Tags contains '{SelectedDevice}'\n| extend value = tolong(Val)\n| project value, TimeGenerated",
+                          "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod) .. endTime)\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains '{moduleName}' and Tags contains '{SelectedDevice}'\n| extend value = tolong(Val)\n| make-series Memory=max(value) on TimeGenerated from startTime to endTime step minPeriod;",
                           "size": 1,
                           "aggregation": 5,
                           "showAnnotations": true,
                           "title": "Memory consumed by {moduleName}",
-                          "timeContext": {
-                            "durationMs": 7200000
-                          },
-                          "timeContextFromParameter": "timeRange",
                           "timeBrushParameterName": "timeRange",
                           "timeBrushExportOnlyWhenBrushed": true,
                           "queryType": 0,
@@ -2741,13 +2849,9 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nInsightsMetrics\n| where TimeGenerated between ((startTime - 10m) .. endTime)\n| where Name == \"edgeAgent_module_start_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n| extend mversion = tostring(dimensions.module_version)\n| where mversion == \"1.0\" or module == \"edgeHub\"\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by module, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextmodule = next(module, 1)\n| project TimeGenerated, device, instance, nextInstance, module, nextmodule, value, nextValue\n| extend diff = iff((instance != nextInstance and module == nextmodule), 1, iff((instance == nextInstance and module == nextmodule), (value - nextValue), 0))\n| make-series Count=sum(diff) on TimeGenerated in range(startTime, endTime, 10m) by module\n\n",
+                          "query": "let deviceid = '{SelectedDevice}';\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nlet minPeriod = time(\"{samplingFrequency}\");\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod) .. endTime)\n| where Name == \"edgeAgent_module_start_total\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == deviceid\n| extend module = tostring(dimensions.module_name)\n| extend mversion = tostring(dimensions.module_version)\n| where mversion == \"1.0\" or module == \"edgeHub\"\n| extend instance = tostring(dimensions.instance_number)\n| extend value = toint(Val)\n| order by module, TimeGenerated\n| serialize\n| extend nextValue = next(value, 1)\n| extend nextInstance = next(instance, 1)\n| extend nextmodule = next(module, 1)\n| project TimeGenerated, device, instance, nextInstance, module, nextmodule, value, nextValue\n| extend diff = iff((instance != nextInstance and module == nextmodule), 1, iff((instance == nextInstance and module == nextmodule), (value - nextValue), 0))\n| make-series Count=sum(diff) on TimeGenerated in range(startTime, endTime, minPeriod) by module\n\n",
                           "size": 1,
                           "title": "Module restart timeline",
-                          "timeContext": {
-                            "durationMs": 7200000
-                          },
-                          "timeContextFromParameter": "timeRange",
                           "timeBrushParameterName": "timeRange",
                           "timeBrushExportOnlyWhenBrushed": true,
                           "exportFieldName": "module",
@@ -2888,14 +2992,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\"\n| extend dimensions=parse_json(Tags)\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == \"0.9\"\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module != \"host\"  \n| extend value = todouble(Val)\n| order by TimeGenerated, module, value\n| project TimeGenerated, module, value",
+                    "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod) .. endTime)\n| where Name == \"edgeAgent_used_cpu_percent\"\n| extend dimensions=parse_json(Tags)\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == \"0.9\"\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module != \"host\"  \n| extend value = todouble(Val)\n| order by TimeGenerated, module, value\n| make-series CPU=max(value) on TimeGenerated from startTime to endTime step minPeriod by module;",
                     "size": 1,
                     "aggregation": 5,
                     "title": "CPU usage (P90, system level)",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "timeRange",
                     "timeBrushParameterName": "timeRange",
                     "timeBrushExportOnlyWhenBrushed": true,
                     "exportFieldName": "module",
@@ -2973,14 +3073,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_memory_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module != \"host\"  \n| extend value = tolong(Val)\n| order by TimeGenerated, module, value\n| project TimeGenerated, module, value",
+                    "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start};\nlet endTime = {timeRange:end};\nInsightsMetrics\n| where TimeGenerated between ((startTime - minPeriod) .. endTime)\n| where Name == \"edgeAgent_used_memory_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend module = tostring(dimensions.module_name)\n| where module != \"host\"  \n| extend value = tolong(Val)\n| order by TimeGenerated, module, value\n| make-series Memory=max(value) on TimeGenerated from startTime to endTime step minPeriod by module;",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Memory usage",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "timeRange",
                     "timeBrushParameterName": "timeRange",
                     "timeBrushExportOnlyWhenBrushed": true,
                     "exportFieldName": "module",
@@ -3214,14 +3310,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let startTime = ago(9h);\nInsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_iotedged_uptime_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| project TimeGenerated, Val, Name=\"IoT Edge daemon\"\n| union (\n     InsightsMetrics \n     | where TimeGenerated > startTime\n     | where Name == \"edgeAgent_host_uptime_seconds\"\n     | extend dimensions=parse_json(Tags)\n     | extend device = tostring(dimensions.edge_device)\n     | where device == '{SelectedDevice}'\n     | project TimeGenerated, Val, Name=\"Host\")\n| summarize arg_max(TimeGenerated, Val) by Name\n",
+                    "query": "let startTime = startofday({timeRange:start});\nInsightsMetrics\n| where TimeGenerated > startTime\n| where Name == \"edgeAgent_iotedged_uptime_seconds\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| project TimeGenerated, Val, Name=\"IoT Edge daemon\"\n| union (\n     InsightsMetrics \n     | where TimeGenerated > startTime\n     | where Name == \"edgeAgent_host_uptime_seconds\"\n     | extend dimensions=parse_json(Tags)\n     | extend device = tostring(dimensions.edge_device)\n     | where device == '{SelectedDevice}'\n     | project TimeGenerated, Val, Name=\"Host\")\n| summarize arg_max(TimeGenerated, Val) by Name\n",
                     "size": 1,
                     "aggregation": 2,
                     "title": "Uptime",
-                    "timeContext": {
-                      "durationMs": 7200000
-                    },
-                    "timeContextFromParameter": "timeRange",
                     "queryType": 0,
                     "resourceType": "{ResourceType}",
                     "crossComponentResources": [
@@ -3288,14 +3380,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == \"0.9\"\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = round(toint(Val),2)\n| project value, TimeGenerated",
+                    "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start} - minPeriod;\nlet endTime = {timeRange:end} + minPeriod;\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgeAgent_used_cpu_percent\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend quantile = tostring(dimensions.quantile)\n| where quantile == \"0.9\"\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = round(toint(Val),2)\n| make-series CPU=max(value) on TimeGenerated from startTime to endTime step minPeriod;",
                     "size": 1,
                     "aggregation": 3,
                     "title": "CPU utilization (P90)",
-                    "timeContext": {
-                      "durationMs": 7200000
-                    },
-                    "timeContextFromParameter": "timeRange",
                     "timeBrushParameterName": "timeRange",
                     "timeBrushExportOnlyWhenBrushed": true,
                     "queryType": 0,
@@ -3347,14 +3435,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_available_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| extend diskfs = tostring(dimensions.disk_filesystem)\n| where diskfs != \"overlay\"\n| project diskname, value, TimeGenerated\n",
+                    "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start} - minPeriod;\nlet endTime = {timeRange:end} + minPeriod;\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgeAgent_available_disk_space_bytes\" or Name == \"edgeAgent_total_disk_space_bytes\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = tolong(Val)\n| extend diskname = tostring(dimensions.disk_name)\n| extend diskfs = tostring(dimensions.disk_filesystem)\n| where diskfs != \"overlay\"\n| order by TimeGenerated, diskname, Name asc\n| summarize values = make_list(value) by TimeGenerated, diskname\n| extend value = (toreal(values[1]) - toreal(values[0])) / toreal(values[1]) * 100.0\n| make-series Disk=max(value) on TimeGenerated from startTime to endTime step minPeriod by diskname;",
                     "size": 1,
                     "aggregation": 5,
-                    "title": "Available disk space",
-                    "timeContext": {
-                      "durationMs": 7200000
-                    },
-                    "timeContextFromParameter": "timeRange",
+                    "title": "Disk space usage (%)",
                     "timeBrushParameterName": "timeRange",
                     "timeBrushExportOnlyWhenBrushed": true,
                     "queryType": 0,
@@ -3362,25 +3446,26 @@
                     "crossComponentResources": [
                       "{IoTResources}"
                     ],
-                    "visualization": "areachart",
+                    "visualization": "linechart",
                     "chartSettings": {
                       "xAxis": "TimeGenerated",
                       "seriesLabelSettings": [
                         {
                           "seriesName": "value",
-                          "label": "CPU %"
+                          "label": "% disk usage"
                         }
                       ],
                       "ySettings": {
                         "numberFormatSettings": {
-                          "unit": 2,
+                          "unit": 1,
                           "options": {
                             "style": "decimal",
                             "useGrouping": true,
                             "maximumFractionDigits": 2
                           }
                         },
-                        "min": 0
+                        "min": 0,
+                        "max": 100
                       }
                     }
                   },
@@ -3399,14 +3484,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "InsightsMetrics\n| where TimeGenerated > {timeRange:start}\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = tolong(Val)\n| project value, TimeGenerated\n",
+                    "query": "let minPeriod = time(\"{samplingFrequency}\");\nlet startTime = {timeRange:start} - minPeriod;\nlet endTime = {timeRange:end} + minPeriod;\nInsightsMetrics\n| where TimeGenerated between (startTime .. endTime)\n| where Name == \"edgeAgent_used_memory_bytes\" and Tags contains \"host\"\n| extend dimensions=parse_json(Tags)\n| extend device = tostring(dimensions.edge_device)\n| where device == '{SelectedDevice}'\n| extend value = tolong(Val)\n| make-series Memory=max(value) on TimeGenerated from startTime to endTime step minPeriod;\n",
                     "size": 1,
                     "aggregation": 2,
                     "title": "Memory usage",
-                    "timeContext": {
-                      "durationMs": 7200000
-                    },
-                    "timeContextFromParameter": "timeRange",
                     "timeBrushParameterName": "timeRange",
                     "timeBrushExportOnlyWhenBrushed": true,
                     "queryType": 0,
