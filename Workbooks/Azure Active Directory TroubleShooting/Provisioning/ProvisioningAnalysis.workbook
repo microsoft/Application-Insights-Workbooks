@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## Provisioning Logs\r\n"
+        "json": "# Provisioning Logs\r\n"
       },
       "name": "text - 2"
     },
@@ -20,7 +20,7 @@
             "type": 4,
             "description": "Time range to filter the data on",
             "value": {
-              "durationMs": 86400000
+              "durationMs": 7776000000
             },
             "typeSettings": {
               "selectableValues": [
@@ -143,7 +143,10 @@
             "timeContextFromParameter": "TimeRange",
             "defaultValue": "value::all",
             "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces"
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "value": [
+              "value::all"
+            ]
           }
         ],
         "style": "pills",
@@ -156,36 +159,69 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "AADProvisioningLogs\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\r\n| where JobId in ({JobId}) or '*' in ({JobId})\r\n| where ResultType in ({Status}) or '*' in ({Status})\r\n| extend SourceIdentity = parse_json(SourceIdentity)\r\n| summarize Objects = dcount(tostring(SourceIdentity.Id)) by tostring(SourceIdentity.identityType)\r\n| order by Objects",
+        "query": "AADProvisioningLogs\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\r\n| where JobId in ({JobId}) or '*' in ({JobId})\r\n| where ResultType in ({Status}) or '*' in ({Status})\r\n| extend SourceIdentity = parse_json(SourceIdentity)\r\n| where tostring(SourceIdentity.identityType) != \"FakeServicePrincipal\"\r\n| summarize Objects = dcount(tostring(SourceIdentity.Id)) by tostring(SourceIdentity.identityType)\r\n| order by Objects",
         "size": 4,
-        "showAnalytics": true,
         "timeContext": {
-          "durationMs": 86400000
+          "durationMs": 7776000000
         },
         "timeContextFromParameter": "TimeRange",
-        "showExportToExcel": true,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "visualization": "tiles",
         "tileSettings": {
           "titleContent": {
             "columnMatch": "SourceIdentity_identityType",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "blue"
-            }
+            "formatter": 1
           },
           "leftContent": {
             "columnMatch": "Objects",
             "formatter": 12,
             "formatOptions": {
-              "palette": "blue"
+              "palette": "auto"
             }
           },
-          "showBorder": false
+          "showBorder": false,
+          "size": "auto"
         }
       },
+      "customWidth": "50",
       "name": "query - 8"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend scenario = case(JobId contains \"AD2AADProvisioning\", \"Active Directory\",\r\n                       JobId contains \"AADToSuccessFactorsWriteback\", \"HR Systems\", \r\n                       JobId contains \"WDAYinAppDelta\", \"HR Systems\", \r\n                       JobId contains \"WDAYdnADDelta\", \"HR Systems\", \r\n                       JobId contains \"WDAYoutAppDelta\", \"HR Systems\", \r\n                       JobId contains \"SuccessFactorsToAADProvisioning\", \"HR Systems\", \r\n                       JobId contains \"SuccessFactorsToADProvisioning\", \"HR Systems\", \r\n                       \"Applications\")\r\n| summarize dcount(JobId) by scenario",
+        "size": 4,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "scenario",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "dcount_JobId",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "style": "decimal",
+                "maximumFractionDigits": 2,
+                "maximumSignificantDigits": 3
+              }
+            }
+          },
+          "showBorder": false,
+          "size": "auto"
+        }
+      },
+      "customWidth": "30",
+      "name": "query - 13"
     },
     {
       "type": 3,
@@ -195,7 +231,7 @@
         "size": 0,
         "title": "Provisioning events per hour",
         "timeContext": {
-          "durationMs": 86400000
+          "durationMs": 7776000000
         },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -226,14 +262,43 @@
       "name": "query - 5"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "# Provisioning activity from my tenant out to other tenants / applications"
+      },
+      "name": "text - 14"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend statusInfo = parse_json(ProvisioningStatusInfo)\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where ResultType != \"Skipped\"\r\n| summarize SuccessRate = 100*countif(ResultType == \"Success\")/(countif(ResultType == \"Failure\")+countif(ResultType == \"Success\")) by tostring(servicePrincipal.Name), tostring(servicePrincipal.Id)\r\n| join kind = fullouter        \r\n    (\r\nAADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend statusInfo = parse_json(ProvisioningStatusInfo)\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where ResultType != \"Skipped\"\r\n| summarize Create = countif(ProvisioningAction == \"create\" and ResultType == \"Success\"), Update = countif(ProvisioningAction == \"update\" and ResultType == \"Success\"), Disable = countif(ProvisioningAction == \"disable\" and ResultType == \"Success\"), Delete = countif(ProvisioningAction == \"delete\" and ResultType == \"Success\"), Failures = countif(ResultType == \"Failure\")  by tostring(servicePrincipal.Id)\r\n    )\r\non $left.servicePrincipal_Id == $right.servicePrincipal_Id\r\n| join kind = fullouter         \r\n    (\r\nAuditLogs\r\n| where TimeGenerated {TimeRange}\r\n| where ActivityDisplayName == \"Quarantine\"\r\n| extend TargetResources = parse_json(TargetResources)\r\n| mvexpand TargetResources\r\n| where TargetResources.id != \"\"\r\n| summarize max(TimeGenerated) by tostring(TargetResources.id), tostring(TargetResources.displayName)\r\n| project TargetResources_id, max_TimeGenerated, TargetResources_displayName\r\n)\r\non $left.servicePrincipal_Id == $right.TargetResources_id\r\n| extend ServicePrincipalId = coalesce(['servicePrincipal_Id'], TargetResources_id)\r\n| extend Name = coalesce(TargetResources_displayName, servicePrincipal_Name)\r\n| project Name, SuccessRate, ['Create'], ['Update'], ['Disable'], ['Delete'], ['Failures'], MostRecentQuarantine = max_TimeGenerated, ServicePrincipalId\r\n| order by SuccessRate",
+        "size": 0,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "SuccessRate",
+              "formatter": 4,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            }
+          ]
+        }
+      },
+      "name": "query - 14"
+    },
+    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
         "query": "AADProvisioningLogs \r\n| where TimeGenerated {TimeRange}\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\r\n| where JobId in ({JobId}) or '*' in ({JobId})\r\n| where ResultType in ({Status}) or '*' in ({Status})\r\n| summarize count () by ResultType",
-        "size": 2,
+        "size": 3,
         "title": "Provisioning success rate",
         "timeContext": {
-          "durationMs": 86400000
+          "durationMs": 7776000000
         },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -267,10 +332,10 @@
       "content": {
         "version": "KqlItem/1.0",
         "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\r\n| where JobId in ({JobId}) or '*' in ({JobId})\r\n| where ResultType in ({Status}) or '*' in ({Status})\r\n| where ResultType == \"Failure\"\r\n| summarize Count=count(), LastSeen=max(TimeGenerated) by ErrorCode = ResultSignature\r\n| order by Count",
-        "size": 1,
-        "title": "Top Provisioning Errors",
+        "size": 3,
+        "title": "Top provisioning errors",
         "timeContext": {
-          "durationMs": 86400000
+          "durationMs": 7776000000
         },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -302,11 +367,11 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "AADProvisioningLogs \n| where TimeGenerated {TimeRange}\n| extend servicePrincipal = parse_json(ServicePrincipal)\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\n| where JobId in ({JobId}) or '*' in ({JobId})\n| where ResultType in ({Status}) or '*' in ({Status})\n| extend servicePrincipal = parse_json(ServicePrincipal)\n|summarize Count = count() by App = tostring(servicePrincipal.Name) , Action\n| order by Count\n\n",
-        "size": 1,
-        "title": "Provisioning activity by app",
+        "query": "AADProvisioningLogs \r\n| where TimeGenerated {TimeRange}\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\r\n| where JobId in ({JobId}) or '*' in ({JobId})\r\n| where ResultType in ({Status}) or '*' in ({Status})\r\n| summarize Count = count(), CycleTime=max(TimeGenerated) by CycleId , Action\r\n| project CycleTime, Action, Count, CycleId\r\n| order by CycleTime\r\n",
+        "size": 0,
+        "title": "Provisioning events per cycle",
         "timeContext": {
-          "durationMs": 86400000
+          "durationMs": 7776000000
         },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
@@ -320,35 +385,6 @@
                 "palette": "blue"
               }
             },
-            {
-              "columnMatch": "count_",
-              "formatter": 4,
-              "formatOptions": {
-                "palette": "blue"
-              }
-            }
-          ]
-        },
-        "sortBy": []
-      },
-      "customWidth": "50",
-      "name": "query - 2"
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "AADProvisioningLogs \r\n| where TimeGenerated {TimeRange}\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where servicePrincipal.Name in ({App}) or '*' in ({App})\r\n| where JobId in ({JobId}) or '*' in ({JobId})\r\n| where ResultType in ({Status}) or '*' in ({Status})\r\n| summarize Count = count(), CycleTime=max(TimeGenerated) by CycleId , Action\r\n| project CycleTime, Action, Count, CycleId\r\n| order by CycleTime\r\n",
-        "size": 0,
-        "title": "Provisioning events per cycle",
-        "timeContext": {
-          "durationMs": 86400000
-        },
-        "timeContextFromParameter": "TimeRange",
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces",
-        "gridSettings": {
-          "formatters": [
             {
               "columnMatch": "count_",
               "formatter": 4,
@@ -375,6 +411,77 @@
       "name": "query - 4"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "# What are all the tenants and applications a user has been created, updated, or disabled in?"
+      },
+      "name": "text - 15"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "930a9c80-334f-43a0-af56-b6e04cd338b6",
+            "version": "KqlParameterItem/1.0",
+            "name": "ID",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend sourceIdentity = parse_json(SourceIdentity)\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| distinct tostring(sourceIdentity.Id)",
+            "value": [],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "UPN",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend sourceIdentity = parse_json(SourceIdentity)\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| distinct tostring(sourceIdentity.details.UserPrincipalName)",
+            "value": [],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "id": "50bb0a6f-7472-4edd-a794-a342e476f6bb"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - 4"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| where ResultType == \"Success\"\r\n| extend sourceIdentity = parse_json(SourceIdentity)\r\n| extend targetIdentity = parse_json(TargetIdentity)\r\n| extend servicePrincipal = parse_json(ServicePrincipal)\r\n| where sourceIdentity.identityType == \"User\"\r\n| where tostring(sourceIdentity.details.UserPrincipalName) == {UPN} or tostring(targetIdentity.details.UserPrincipalName) == {UPN} or tostring(sourceIdentity.Id) == {ID} or tostring(targetIdentity.Id) == {ID} \r\n| distinct tostring(sourceIdentity.Name), tostring(sourceIdentity.details.UserPrincipalName), tostring(sourceIdentity.Id), tostring(servicePrincipal.Name), TimeGenerated\r\n| project Name = sourceIdentity_Name, UserPrincipalName = sourceIdentity_details_UserPrincipalName, ID = sourceIdentity_Id, ServicePrincipalName = servicePrincipal_Name",
+        "size": 1,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "query - 2"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "# Provisioning event explorer"
+      },
+      "name": "text - 14"
+    },
+    {
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
@@ -387,27 +494,38 @@
             "description": "Display name of the user in the source system",
             "timeContext": {
               "durationMs": 86400000
-            }
+            },
+            "value": "A"
           },
           {
             "id": "9ebd9331-1c2a-43a2-90ac-1f84a946cfc0",
             "version": "KqlParameterItem/1.0",
             "name": "SourceIdentityId",
-            "type": 1,
+            "type": 2,
             "description": "Id of the user in the source system (e.g. objectID)",
-            "timeContext": {
-              "durationMs": 86400000
-            }
+            "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend sourceIdentity = parse_json(SourceIdentity)\r\n| distinct tostring(sourceIdentity.Id)",
+            "value": null,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
           },
           {
             "id": "88f1b311-91cf-411a-9d70-193ce0f04f2d",
             "version": "KqlParameterItem/1.0",
             "name": "SourceIdentityType",
-            "type": 1,
+            "type": 2,
             "description": "Identity type (e.g. user or group)",
-            "timeContext": {
-              "durationMs": 86400000
-            }
+            "query": "AADProvisioningLogs\r\n| where TimeGenerated {TimeRange}\r\n| extend sourceIdentity = parse_json(SourceIdentity)\r\n| distinct tostring(sourceIdentity.identityType)",
+            "value": "User",
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
           },
           {
             "id": "38e00281-0391-4603-8ee0-03f4c2243532",
@@ -460,7 +578,7 @@
               "allowCustom": false
             },
             "value": {
-              "durationMs": 259200000
+              "durationMs": 2419200000
             }
           },
           {
@@ -483,7 +601,8 @@
             "version": "KqlParameterItem/1.0",
             "name": "CycleId",
             "type": 1,
-            "description": "Identifies the cycle during which the events occurred"
+            "description": "Identifies the cycle during which the events occurred",
+            "value": ""
           },
           {
             "id": "13db71f0-e435-458f-b7cf-635159d4d0d2",
@@ -510,13 +629,6 @@
       "name": "parameters - 7"
     },
     {
-      "type": 1,
-      "content": {
-        "json": "### Provisioning event explorer"
-      },
-      "name": "text - 14"
-    },
-    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
@@ -524,7 +636,7 @@
         "size": 0,
         "showAnalytics": true,
         "timeContext": {
-          "durationMs": 259200000
+          "durationMs": 2419200000
         },
         "timeContextFromParameter": "TimeRange",
         "showExportToExcel": true,
@@ -551,31 +663,7 @@
     {
       "type": 1,
       "content": {
-        "json": "### Audit Events"
-      },
-      "name": "text - 12"
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "AuditLogs\r\n| where TimeGenerated {TimeRange}\r\n| where ActivityDisplayName == \"User Provisioning\"\r\n| extend TargetResources = parse_json(TargetResources)\r\n| extend InitiatedBy = parse_json(InitiatedBy)\r\n| project TimeGenerated, ResultDescription, CorrelationId, Identity, ResultReason, TargetResources, InitiatedBy, AdditionalDetails ",
-        "size": 0,
-        "showAnalytics": true,
-        "timeContext": {
-          "durationMs": 259200000
-        },
-        "timeContextFromParameter": "TimeRange",
-        "showExportToExcel": true,
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces"
-      },
-      "name": "query - 9"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### Quarantine history"
+        "json": "# Quarantine history"
       },
       "name": "text - 11"
     },
@@ -583,18 +671,30 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "AuditLogs\r\n| where ActivityDisplayName == \"Quarantine\"\r\n| extend TargetResources = parse_json(TargetResources)\r\n| project TimeGenerated, QuarantineReason = ResultDescription,TargetResources, CorrelationId, AdditionalDetails, Id, InitiatedBy, LoggedByService, Result, ResultReason, Identity",
+        "query": "AuditLogs\r\n| where TimeGenerated {TimeRange}\r\n| where ActivityDisplayName == \"Quarantine\"\r\n| parse ResultDescription with * \"Error:\" QuarantineReason \r\n| extend TargetResources = parse_json(TargetResources)\r\n| mv-expand TargetResources\r\n| where tostring(TargetResources.id) != \"\"\r\n| distinct  QuarantineReason, TimeGenerated, tostring(TargetResources.displayName), tostring(TargetResources.id), CorrelationId\r\n| project QuarantineReason, TimeGenerated, ServicePrincipalDisplayName = TargetResources_displayName, ServicePrincipalId = TargetResources_id, CorrelationId",
         "size": 0,
         "showAnalytics": true,
-        "timeContext": {
-          "durationMs": 86400000
-        },
         "showExportToExcel": true,
         "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces"
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "sortBy": [
+            {
+              "itemKey": "TimeGenerated",
+              "sortOrder": 2
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "TimeGenerated",
+            "sortOrder": 2
+          }
+        ]
       },
       "name": "query - 10"
     }
   ],
+  "fromTemplateId": "community-Workbooks/Azure Active Directory TroubleShooting/Provisioning",
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
