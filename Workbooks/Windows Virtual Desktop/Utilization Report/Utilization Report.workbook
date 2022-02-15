@@ -142,7 +142,7 @@
             "version": "KqlParameterItem/1.0",
             "name": "poolla",
             "type": 5,
-            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/{HostPool}/providers/microsoft.insights/diagnosticSettings?api-version=2017-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value\",\"columns\":[{\"path\":\"$.properties.workspaceId\",\"columnid\":\"id\"},{\"path\":\"$.id\",\"columnid\":\"selected\"}]}}]}",
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/{HostPool}/providers/microsoft.insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value\",\"columns\":[{\"path\":\"$.properties.workspaceId\",\"columnid\":\"id\"},{\"path\":\"$.id\",\"columnid\":\"selected\"}]}}]}",
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [],
@@ -229,19 +229,8 @@
             "type": 9,
             "content": {
               "version": "KqlParameterItem/1.0",
-              "parameters": [],
-              "style": "pills",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces"
-            },
-            "name": "parameters - 2"
-          },
-          {
-            "type": 9,
-            "content": {
-              "version": "KqlParameterItem/1.0",
               "crossComponentResources": [
-                "{Subscription}"
+                "{poolla}"
               ],
               "parameters": [
                 {
@@ -274,7 +263,7 @@
                   "type": 1,
                   "query": "Resources \r\n| where type =~ 'Microsoft.Compute/virtualMachines'  \r\n| where name in( {MachineName})\r\n| extend sku = tostring(properties.hardwareProfile.vmSize)\r\n| project cores = extract(\"_[[:alpha:]]+([0-9]+)\",1, sku)\r\n| top 1 by cores asc",
                   "crossComponentResources": [
-                    "{Subscription}"
+                    "value::all"
                   ],
                   "isHiddenWhenLocked": true,
                   "timeContext": {
@@ -322,7 +311,6 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "VSessionLimit",
                   "type": 1,
-                  "value": "32",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -344,14 +332,77 @@
                       }
                     }
                   ]
+                },
+                {
+                  "id": "20897f5e-b453-41e4-bf68-93f88061e0e1",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HasAgentHealthTable",
+                  "type": 1,
+                  "isRequired": true,
+                  "query": "union isfuzzy=true ( table(\"WVDAgentHealthStatus\")| where _ResourceId =~ \"{HostPool}\" | take 1| count as Count ), (print Count=0) | summarize Result = sum(Count) \r\n| project Result = tostring(Result)\r\n",
+                  "crossComponentResources": [
+                    "{poolla}"
+                  ],
+                  "isHiddenWhenLocked": true,
+                  "timeContextFromParameter": "TimeRange",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
                 }
               ],
               "style": "pills",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources"
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
             },
             "name": "parameters - 4"
           },
+        {
+          "type": 12,
+          "content": {
+            "version": "NotebookGroup/1.0",
+            "groupType": "editable",
+            "items": [
+            {
+              "type": 1,
+              "content": {
+                "json": "No data was found. Verify if the diagnostic setting is correctly configured for the selected host pool. If you have recently configured the diagnostic setting, there may be a delay before the initial set of data appears.",
+                "style": "warning"
+              },
+              "name": "text - 1"
+            },
+            {
+              "type": 11,
+              "content": {
+                "version": "LinkItem/1.0",
+                "style": "paragraph",
+                "links": [
+                {
+                  "id": "7ea3b667-d3ef-4be8-8cc3-13705a565982",
+                  "cellValue": "community-Workbooks/Windows Virtual Desktop/Check Configuration",
+                  "linkTarget": "WorkbookTemplate",
+                  "linkLabel": "Configuration workbook",
+                  "preText": "See the",
+                  "postText": "to repair the issue.",
+                  "style": "link"
+                }
+                ]
+              },
+              "name": "CheckConfigLinkMissingVms",
+              "styleSettings": {
+                "margin": "5px"
+              }
+            }
+            ]
+          },
+          "conditionalVisibility": {
+            "parameterName": "HasAgentHealthTable",
+            "comparison": "isEqualTo",
+            "value": "0"
+          },
+          "name": "NoAgentHealtStatus",
+          "styleSettings": {
+            "showBorder": true
+          }
+        },
           {
             "type": 12,
             "content": {
@@ -369,13 +420,14 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue-2) by bin(TimeGenerated, 1m), Computer\r\n| summarize Val= sum(Val) by TimeGenerated\r\n| make-series Sessions = max(Val)\r\n      on TimeGenerated step {TimeRange:grain}\r\n| extend series_stats(Sessions)\r\n| project Sessions, TimeGenerated, Average=series_stats_Sessions_avg\r\n| mvexpand Sessions, TimeGenerated\r\n| project Sessions=todouble(Sessions), TimeGenerated= todatetime(TimeGenerated), Average\r\n| summarize arg_max(MaxSessions=Sessions, MaxTime=TimeGenerated), arg_min(MinSessions=Sessions, MinTime=TimeGenerated), Average =any(Average)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max\"]= MaxSessions, MaxTime, [\"Min\"]= MinSessions, MinTime, Average, Metric=\"Sessions\"\r\n\r\n\r\n",
+                          "query": "WVDAgentHealthStatus\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| summarize Sessions= max(toint(ActiveSessions) + toint(InactiveSessions)), InactiveSessions=max(toint(InactiveSessions)) by bin(TimeGenerated, 1m), SessionHostName\r\n| summarize Sessions= sum(Sessions), InactiveSessions = sum(InactiveSessions) by TimeGenerated\r\n| make-series\r\n    Sessions = max(Sessions),[\"Idle Sessions\"] = max(InactiveSessions)\r\n    on TimeGenerated\r\n    step {TimeRange:grain}\r\n| extend series_stats(Sessions)\r\n| project Sessions, TimeGenerated, Average=series_stats_Sessions_avg\r\n| mvexpand Sessions, TimeGenerated\r\n| project Sessions=todouble(Sessions), TimeGenerated= todatetime(TimeGenerated), Average\r\n| summarize arg_max(MaxSessions=Sessions, MaxTime=TimeGenerated), arg_min(MinSessions=Sessions, MinTime=TimeGenerated), Average =any(Average)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max\"]= MaxSessions, MaxTime, [\"Min\"]= MinSessions, MinTime, Average, Metric=\"Sessions\"    \r\n\r\n",
                           "size": 4,
                           "title": "Sessions summary",
+                          "timeContextFromParameter": "TimeRange",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
-                            "{Workspace}"
+                            "{poolla}"
                           ],
                           "gridSettings": {
                             "formatters": [
@@ -466,15 +518,16 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and (CounterName == \"Total Sessions\" or CounterName ==\"Inactive Sessions\")\r\n| summarize Val= max(CounterValue-2) by bin(TimeGenerated, 1m), Computer, CounterName\r\n| summarize Val= sum(Val) by TimeGenerated, CounterName\r\n| make-series Sessions = max(iif(CounterName==\"Total Sessions\",Val,0.0)), [\"Idle Sessions\"] = max(iif(CounterName==\"Inactive Sessions\",Val,0.0))  on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0",
+                          "query": "\r\nWVDAgentHealthStatus\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| summarize Sessions= max(toint(ActiveSessions) + toint(InactiveSessions)), InactiveSessions=max(toint(InactiveSessions)) by bin(TimeGenerated, 1m), SessionHostName\r\n| summarize Sessions= sum(Sessions), InactiveSessions = sum(InactiveSessions) by TimeGenerated\r\n| make-series\r\n    Sessions = max(Sessions),[\"Idle Sessions\"] = max(InactiveSessions)\r\n    on TimeGenerated\r\n    step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0\r\n",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Session history",
+                          "timeContextFromParameter": "TimeRange",
                           "showExportToExcel": true,
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
-                            "{Workspace}"
+                            "{poolla}"
                           ],
                           "visualization": "timechart",
                           "chartSettings": {
@@ -503,15 +556,16 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| summarize Val= max(CounterValue-2) by bin(TimeGenerated, 1m), Computer\r\n| summarize Val= sum(Val) by TimeGenerated\r\n| project Val = ({VSessionLimit}*{SessionHostCount}) - Val, TimeGenerated\r\n| make-series [\"Available Sessions\"] = min(Val) on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0\r\n",
+                          "query": "WVDAgentHealthStatus\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| summarize Sessions= max(toint(ActiveSessions) + toint(InactiveSessions)) by bin(TimeGenerated, 1m), SessionHostName\r\n| summarize Sessions= sum(Sessions) by TimeGenerated\r\n| project Val = ({VSessionLimit}*{SessionHostCount}) - Sessions, TimeGenerated\r\n| make-series [\"Available Sessions\"] = min(Val) on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Available sessions",
+                          "timeContextFromParameter": "TimeRange",
                           "showExportToExcel": true,
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
-                            "{Workspace}"
+                            "{poolla}"
                           ],
                           "visualization": "timechart",
                           "chartSettings": {
@@ -543,13 +597,14 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| make-series [\"Users/cores\"] = max((CounterValue-2)/{Cores}) on TimeGenerated step {TimeRange:grain}\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"]\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n//| summarize Val= max(CounterValue)/{Cores} by TimeGenerated\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n",
+                          "query": "WVDAgentHealthStatus\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| make-series [\"Users/cores\"] = max(Sessions/{Cores}) on TimeGenerated step {TimeRange:grain}\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"]\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average)\r\n| project [\"Host Pool\"]=\"{HostPool:label}\", [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n\r\n",
                           "size": 4,
                           "title": "User per core summary",
+                          "timeContextFromParameter": "TimeRange",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
-                            "{Workspace}"
+                            "{poolla}"
                           ],
                           "gridSettings": {
                             "formatters": [
@@ -648,15 +703,16 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)\r\n| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName startswith \"Terminal Services\" and CounterName == \"Total Sessions\"\r\n| make-series [\"Users/cores\"] = max((CounterValue-2)/{Cores}) on TimeGenerated step {TimeRange:grain}\r\n| where array_length(TimeGenerated) > 0",
+                          "query": "WVDAgentHealthStatus\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| make-series [\"Users/cores\"] = max(Sessions/{Cores}) on TimeGenerated step {TimeRange:grain}\r\n//| where array_length(TimeGenerated) > 0",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Max users per core",
+                          "timeContextFromParameter": "TimeRange",
                           "showExportToExcel": true,
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
-                            "{Workspace}"
+                            "{poolla}"
                           ],
                           "visualization": "timechart",
                           "chartSettings": {
@@ -684,7 +740,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)\r\n| where Computername in (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName == \"Processor Information\" and CounterName == \"% Processor Time\" and InstanceName == \"_Total\"\r\n| extend Computer = trim_end(@'\\..*', Computer)\r\n| make-series [\"CPU Usage\"] = avg(CounterValue) on TimeGenerated step {TimeRange:grain} by Computer",
+                          "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet hostPool = \"{HostPool:label}\";\r\nPerf\r\n| extend Computername = strcat(hostPool, '/', Computer)\r\n| where Computername in~ (WVDHosts)\r\n| where TimeGenerated {TimeRange:query}\r\n| where ObjectName == \"Processor Information\" and CounterName == \"% Processor Time\" and InstanceName == \"_Total\"\r\n| extend Computer = trim_end(@'\\..*', Computer)\r\n| make-series [\"CPU Usage\"] = avg(CounterValue) on TimeGenerated step {TimeRange:grain} by Computer",
                           "size": 0,
                           "aggregation": 3,
                           "title": "CPU usage",
@@ -729,6 +785,11 @@
                 }
               ]
             },
+            "conditionalVisibility": {
+              "parameterName": "HasAgentHealthTable",
+              "comparison": "isEqualTo",
+              "value": "1"
+            },
             "name": "SessionAndCores",
             "styleSettings": {
               "showBorder": true
@@ -744,7 +805,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday(iff({TimeRange:start}+1d <= {TimeRange:end} , {TimeRange:start}+1d, {TimeRange:start})); //adjust # of days displayed\r\nlet EndWin = endofday({TimeRange:end});\r\nlet lookbackWindow = 28d;  // 4 even weeks\r\nlet StartCountDay = StartWin - lookbackWindow;\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)  // chop out hosts not selected by user\r\n| project CorrelationId, State, TimeGenerated, UserName  //chop down rows to just what we need\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin) // if connection not ended yet use lastday\r\n| where EndTime >= StartCountDay  // chop out connections the ended before our window started\r\n| extend StartTime = coalesce(StartTime, StartCountDay)  // if start aged off set at start of lookbackwindow\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)\r\n| project StartTime, EndTime, CorrelationId, UserName  // chop down colms to just what we need\r\n| extend StartTime=max_of(StartTime, StartCountDay), EndTime=min_of(EndTime, EndWin)  // chop connections to window\r\n| extend _bin = bin_at(StartTime, 1d, StartCountDay)  // #1 start of first day connection appears\r\n| extend _endRange = iff(EndTime + lookbackWindow > EndWin, EndWin,\r\n                             iff(EndTime + lookbackWindow - 1d < StartTime, StartTime,\r\n                                    iff(EndTime + lookbackWindow - 1d < _bin, _bin, _bin + lookbackWindow - 1d))) // #2 last day connection will appear\r\n| extend _range = range(_bin, _endRange, 1d) // #3 create a start of day timestamp for every day connection existed and/or day it will be counted\r\n| mv-expand _range to typeof(datetime) // #4 \r\n| summarize Users = dcount(UserName) by Days=bin_at(_range, 1d, StartCountDay) // #5 sum startofday timestamps\r\n| where Days>= StartWin // #6 chop off days we dont want to display\r\n| sort by Days asc\r\n\r\n",
+                    "query": "let StartWin = startofday(iff({TimeRange:start}+1d <= {TimeRange:end} , {TimeRange:start}+1d, {TimeRange:start})); //adjust # of days displayed\r\nlet EndWin = endofday({TimeRange:end});\r\nlet lookbackWindow = 28d;  // 4 even weeks\r\nlet StartCountDay = StartWin - lookbackWindow;\r\nWVDConnections\r\n| where _ResourceId =~ '{HostPool}'\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin) // if connection not ended yet use lastday\r\n| where EndTime >= StartCountDay  // chop out connections the ended before our window started\r\n| extend StartTime = coalesce(StartTime, StartCountDay)  // if start aged off set at start of lookbackwindow\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)\r\n| project StartTime, EndTime, CorrelationId, UserName  // chop down colms to just what we need\r\n| extend StartTime=max_of(StartTime, StartCountDay), EndTime=min_of(EndTime, EndWin)  // chop connections to window\r\n| extend _bin = bin_at(StartTime, 1d, StartCountDay)  // #1 start of first day connection appears\r\n| extend _endRange = iff(EndTime + lookbackWindow > EndWin, EndWin,\r\n                             iff(EndTime + lookbackWindow - 1d < StartTime, StartTime,\r\n                                    iff(EndTime + lookbackWindow - 1d < _bin, _bin, _bin + lookbackWindow - 1d))) // #2 last day connection will appear\r\n| extend _range = range(_bin, _endRange, 1d) // #3 create a start of day timestamp for every day connection existed and/or day it will be counted\r\n| mv-expand _range to typeof(datetime) // #4 \r\n| summarize Users = dcount(UserName) by Days=bin_at(_range, 1d, StartCountDay) // #5 sum startofday timestamps\r\n| where Days>= StartWin // #6 chop off days we dont want to display\r\n| sort by Days asc\r\n\r\n",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Monthly active users (MAU)",
@@ -779,7 +840,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop connections to window\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlot = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime)\r\n| make-series Sessions = dcount(CorrelationId) default=0 on TimeSlot from StartWin to EndWin step 1d by State\r\n| project Days = TimeSlot, Sessions, State, series_stats(Sessions)",
+                    "query": "let StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| where _ResourceId =~ '{HostPool}'\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop connections to window\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlot = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime)\r\n| make-series Sessions = dcount(CorrelationId) default=0 on TimeSlot from StartWin to EndWin step 1d by State\r\n| project Days = TimeSlot, Sessions, State, series_stats(Sessions)",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Daily connections and reconnections",
@@ -943,7 +1004,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop connections to window\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlot = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime)\r\n| extend StartTm = iff(StartTime > TimeSlot, StartTime, TimeSlot)\r\n| extend EndTm = iff(EndTime < TimeSlot + 1d, EndTime, TimeSlot + 1d)\r\n| extend Hours = (EndTm - StartTm) / 1h\r\n| make-series Hours = sum(Hours) default=0 on TimeSlot from StartWin to EndWin step 1d\r\n| project Hours, series_stats(Hours)\r\n",
+                    "query": "let StartWin = startofday({TimeRange:start});    // each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| where _ResourceId =~ '{HostPool}'\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State)\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop connections to window\r\n| extend _bin = bin_at(StartTime, 1d, StartWin) // first bin must be at start of day\r\n| extend TimeSlot = range(_bin, EndTime, 1d)\r\n| mv-expand TimeSlot to typeof(datetime)\r\n| extend StartTm = iff(StartTime > TimeSlot, StartTime, TimeSlot)\r\n| extend EndTm = iff(EndTime < TimeSlot + 1d, EndTime, TimeSlot + 1d)\r\n| extend Hours = (EndTm - StartTm) / 1h\r\n| make-series Hours = sum(Hours) default=0 on TimeSlot from StartWin to EndWin step 1d\r\n| project Hours, series_stats(Hours)\r\n",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Daily connected hours",
@@ -1091,7 +1152,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName\r\n| top 10 by Hours desc nulls last",
+                    "query": "let StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| where _ResourceId =~ '{HostPool}'\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName\r\n| top 10 by Hours desc nulls last",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Top 10 users by connection time",
@@ -1227,7 +1288,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nlet StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| extend Computername = strcat(\"{HostPool:label}\",\"/\", SessionHostName)\r\n| where Computername in (WVDHosts)\r\n| project CorrelationId, State, TimeGenerated, UserName, SessionHostName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, SessionHostName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by Computer = trim_end(@'\\..*', SessionHostName)\r\n| top 10 by Hours desc nulls last",
+                    "query": "let StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| where _ResourceId =~ '{HostPool}'\r\n| project CorrelationId, State, TimeGenerated, UserName, SessionHostName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, SessionHostName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by Computer = trim_end(@'\\..*', SessionHostName)\r\n| top 10 by Hours desc nulls last",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Top 10 hosts by connection time",
