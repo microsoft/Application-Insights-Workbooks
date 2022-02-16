@@ -301,7 +301,7 @@ function checkProperty(obj, name, file) {
 }
 
 function validateGalleryFileNames(files) {
-    const galleryFileNameRegex = new RegExp("[\\w\\-\\s]+.json");
+    const galleryFileNameRegex = new RegExp("[a-z0-9\\-\\s]+.json");
     files.forEach(file => {
         const fileName = file.split("/").pop();
         const matchesRegex = galleryFileNameRegex.test(fileName);
