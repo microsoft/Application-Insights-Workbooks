@@ -32,7 +32,7 @@ Other repos you might be looking for:
   
     - If you are *not* a Microsoft employee, the quickest way is to [create a new issue][new-issue] and ask for contributor access.  Please include all the relevant information about what you are trying to do and why, so we can direct your request to the appropriate teams.
 
-- To contribute your own examples, clone the repo, [create a new branch](#topic-branch), make your changes or additions, and then [submit a pull request](https://help.github.com/articles/about-pull-requests/). 
+- To contribute your own examples, clone the repo, [create a new branch][topic-branch], make your changes or additions, and then [submit a pull request](https://help.github.com/articles/about-pull-requests/). 
 
 - If you submit a pull request with new or significant changes, and you are not an employee of Microsoft, we'll add a comment to the pull request asking you to submit an online [CLA](https://cla.microsoft.com) (Contribution License Agreement). We'll need you to complete the online form before we can accept your pull request.
 
@@ -58,4 +58,4 @@ See [Deployment](Documentation/Deployment.md) page for details on build and depl
 [new-issue]: https://github.com/microsoft/Application-Insights-Workbooks/issues/new
 [issue-search]: https://github.com/microsoft/Application-Insights-Workbooks/issues
 [white-house-api-guidelines]: https://github.com/WhiteHouse/api-standards/blob/master/README.md
-[topic-branch]: http://www.git-scm.com/book/en/v2/Git-Branching-Branching-Workflows#Topic-Branches
+[topic-branch]: https://www.git-scm.com/book/en/v2/Git-Branching-Branching-Workflows#Topic-Branches
