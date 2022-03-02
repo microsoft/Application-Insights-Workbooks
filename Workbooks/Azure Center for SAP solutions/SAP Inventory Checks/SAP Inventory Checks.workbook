@@ -5,6 +5,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
         "parameters": [
           {
             "id": "7ef499bd-fea4-4db0-9924-fe3544b300f3",
@@ -48,10 +51,28 @@
             }
           },
           {
+            "id": "9cb47356-497d-4270-9b92-0369546d4ca4",
+            "version": "KqlParameterItem/1.0",
+            "name": "current_vis",
+            "label": "VIS",
+            "type": 5,
+            "isRequired": true,
+            "isGlobal": true,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.workloads/sapvirtualinstances": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false,
+              "componentIdOnly": true
+            }
+          },
+          {
             "id": "4ffc3bd5-bf6d-41da-98c1-50b0d04e25f4",
             "version": "KqlParameterItem/1.0",
             "name": "system_SID",
             "type": 5,
+            "isRequired": true,
             "isGlobal": true,
             "multiSelect": true,
             "quote": "'",
@@ -63,7 +84,6 @@
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [
-                "value::1",
                 "value::all"
               ],
               "showDefault": false
@@ -94,26 +114,57 @@
             "queryType": 8
           },
           {
-            "id": "9cb47356-497d-4270-9b92-0369546d4ca4",
+            "id": "250c97c2-b81e-480f-8907-6c718e62957f",
             "version": "KqlParameterItem/1.0",
-            "name": "current_vis",
-            "label": "VIS",
+            "name": "vmList",
             "type": 5,
-            "isRequired": true,
             "isGlobal": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tostring(properties_vmDetails.virtualMachineId)\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tostring(properties.virtualMachineId))",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "isHiddenWhenLocked": true,
             "typeSettings": {
-              "resourceTypeFilter": {
-                "microsoft.workloads/sapvirtualinstances": true
-              },
-              "additionalResourceOptions": [],
-              "showDefault": false,
-              "componentIdOnly": true
-            }
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "7d53b1a5-671a-4663-a9dc-1dd0358925ce",
+            "version": "KqlParameterItem/1.0",
+            "name": "vmNICs",
+            "type": 5,
+            "isGlobal": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources \r\n| where type =~ 'microsoft.network/networkinterfaces'\r\n| extend nicId = id \r\n| join ( \r\n    resources\r\n    | where type =~ \"microsoft.compute/virtualMachines\"\r\n    | where id in~ ({vmList})\r\n    | extend nics=array_length(properties.networkProfile.networkInterfaces) \r\n    | mv-expand nic=properties.networkProfile.networkInterfaces \r\n    | project nicId = tostring(nic.id)\r\n) on nicId\r\n| project nicId",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "pills",
-        "queryType": 0,
-        "resourceType": "microsoft.workloads/sapvirtualinstances"
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
       },
       "customWidth": "65",
       "name": "Overview of Inventory checks"
@@ -640,7 +691,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| extend vmState = tostring(properties.extended.instanceView.powerState.displayStatus)\r\n| extend vmState = iif(isempty(vmState), \"VM State Unknown\", (vmState))\r\n| summarize count() by vmState",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| extend vmState = tostring(properties.extended.instanceView.powerState.displayStatus)\r\n| extend vmState = iif(isempty(vmState), \"VM State Unknown\", (vmState))\r\n| summarize count() by vmState",
                     "size": 3,
                     "title": "Azure Compute Summary ",
                     "exportMultipleValues": true,
@@ -740,7 +791,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| project id, vmName = name, powerstate = tostring(properties.extended.instanceView.powerState.displayStatus), vmsize = tostring(properties.hardwareProfile.vmSize), \r\n os_type = tostring(properties.storageProfile.osDisk.osType),publisher= tostring(properties.storageProfile.imageReference.publisher), version= tostring(properties.storageProfile.imageReference.version), imagesku= tostring(properties.storageProfile.imageReference.sku) ,offer= tostring(properties.storageProfile.imageReference.offer),\r\n  location, bootDiagnostics =tostring(properties.diagnosticsProfile.bootDiagnostics.enabled) ,avSet= tostring(split(properties.availabilitySet.id,\"/\",8)[0])\r\n, ppg = tostring(split(properties.proximityPlacementGroup.id,\"/\",8)[0]), avZone = tostring(zones), resourceGroup, tags=tostring(tags)\r\n",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| project id, vmName = name, powerstate = tostring(properties.extended.instanceView.powerState.displayStatus), vmsize = tostring(properties.hardwareProfile.vmSize), \r\n os_type = tostring(properties.storageProfile.osDisk.osType),publisher= tostring(properties.storageProfile.imageReference.publisher), version= tostring(properties.storageProfile.imageReference.version), imagesku= tostring(properties.storageProfile.imageReference.sku) ,offer= tostring(properties.storageProfile.imageReference.offer),\r\n  location, bootDiagnostics =tostring(properties.diagnosticsProfile.bootDiagnostics.enabled) ,avSet= tostring(split(properties.availabilitySet.id,\"/\",8)[0])\r\n, ppg = tostring(split(properties.proximityPlacementGroup.id,\"/\",8)[0]), avZone = tostring(zones), resourceGroup, tags=tostring(tags)\r\n",
                     "size": 2,
                     "title": "Compute List",
                     "showExportToExcel": true,
@@ -1031,6 +1082,14 @@
                         "cellValue": "computeextension",
                         "linkTarget": "parameter",
                         "linkLabel": "VM Extensions Status",
+                        "subTarget": "listextension",
+                        "style": "link"
+                      },
+                      {
+                        "id": "d9f1a7c3-09a4-4dcc-93b8-08a5c1ff5af0",
+                        "cellValue": "computeextension",
+                        "linkTarget": "parameter",
+                        "linkLabel": "Failed VM Extensions",
                         "subTarget": "failedextension",
                         "style": "link"
                       }
@@ -1054,7 +1113,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| extend\r\n    JoinID = toupper(id),\r\n    OSName = tostring(properties.osProfile.computerName),\r\n    OSType = tostring(properties.storageProfile.osDisk.osType),\r\n    VMSize = tostring(properties.hardwareProfile.vmSize)\r\n| join kind=leftouter(\r\n    Resources\r\n    | where type == 'microsoft.compute/virtualmachines/extensions'\r\n    | extend\r\n        VMId = toupper(substring(id, 0, indexof(id, '/extensions'))),\r\n        ExtensionName = name\r\n    ) on $left.JoinID == $right.VMId\r\n| summarize Extensions = make_list(ExtensionName) by id, VMSize, OSType, resourceGroup, location",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| extend\r\n    JoinID = toupper(id),\r\n    OSName = tostring(properties.osProfile.computerName),\r\n    OSType = tostring(properties.storageProfile.osDisk.osType),\r\n    VMSize = tostring(properties.hardwareProfile.vmSize)\r\n| join kind=leftouter(\r\n    Resources\r\n    | where type == 'microsoft.compute/virtualmachines/extensions'\r\n    | extend\r\n        VMId = toupper(substring(id, 0, indexof(id, '/extensions'))),\r\n        ExtensionName = name\r\n    ) on $left.JoinID == $right.VMId\r\n| summarize Extensions = make_list(ExtensionName) by id, VMSize, OSType, resourceGroup, location",
                     "size": 2,
                     "title": "Compute Extension",
                     "noDataMessage": "Something went wrong!",
@@ -1145,11 +1204,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| extend\r\n    JoinID = toupper(id),\r\n    OSName = tostring(properties.osProfile.computerName),\r\n    OSType = tostring(properties.storageProfile.osDisk.osType),\r\n    VMSize = tostring(properties.hardwareProfile.vmSize)\r\n| join kind=leftouter(\r\n    Resources\r\n    | where type == 'microsoft.compute/virtualmachines/extensions'\r\n    | extend\r\n        VMId = toupper(substring(id, 0, indexof(id, '/extensions')))\r\n        ,ExtensionName = name\r\n    , provisioningState = tostring(properties.provisioningState), autoUpgradeMinorVersion= tostring(properties.autoUpgradeMinorVersion), typeHandlerVersion= tostring(properties.typeHandlerVersion)\r\n) on $left.JoinID == $right.VMId\r\n| summarize Extensions = make_list(ExtensionName) by id, VMSize, OSType, provisioningState, autoUpgradeMinorVersion, typeHandlerVersion",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| extend\r\n    JoinID = toupper(id),\r\n    OSName = tostring(properties.osProfile.computerName),\r\n    OSType = tostring(properties.storageProfile.osDisk.osType),\r\n    VMSize = tostring(properties.hardwareProfile.vmSize)\r\n| join kind=leftouter(\r\n    Resources\r\n    | where type == 'microsoft.compute/virtualmachines/extensions'\r\n    | extend\r\n        VMId = toupper(substring(id, 0, indexof(id, '/extensions')))\r\n        ,ExtensionName = name\r\n    , provisioningState = tostring(properties.provisioningState), autoUpgradeMinorVersion= tostring(properties.autoUpgradeMinorVersion), typeHandlerVersion= tostring(properties.typeHandlerVersion)\r\n) on $left.JoinID == $right.VMId\r\n| summarize Extensions = make_list(ExtensionName) by id, VMSize, OSType, provisioningState, autoUpgradeMinorVersion, typeHandlerVersion",
                     "size": 0,
                     "title": "VM Extensions Status",
                     "noDataMessage": "No VM Extensions",
-                    "showExportToExcel": true,
                     "exportToExcelOptions": "all",
                     "queryType": 1,
                     "resourceType": "microsoft.resourcegraph/resources",
@@ -1189,7 +1247,7 @@
                               {
                                 "operator": "Default",
                                 "thresholdValue": null,
-                                "representation": "success",
+                                "representation": "Blank",
                                 "text": "{0}{1}"
                               }
                             ]
@@ -1216,7 +1274,7 @@
                               {
                                 "operator": "Default",
                                 "thresholdValue": null,
-                                "representation": "success",
+                                "representation": "Blank",
                                 "text": "{0}{1}"
                               }
                             ]
@@ -1271,7 +1329,7 @@
                     {
                       "parameterName": "computeextension",
                       "comparison": "isEqualTo",
-                      "value": "failedextension"
+                      "value": "listextension"
                     }
                   ],
                   "name": "query -  Failed VM Extension "
@@ -1280,7 +1338,46 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| project id, vmName = name, vmSize=tostring(properties.hardwareProfile.vmSize), osDisk = tostring(properties.storageProfile.osDisk.name), ppg = tostring(split(properties.proximityPlacementGroup.id,\"/\",8)[0]), caching= tostring(properties.storageProfile.osDisk.caching)\r\n, createOption=tostring(properties.storageProfile.osDisk.createOption), osType=tostring(properties.storageProfile.osDisk.osType), avSet= tostring(split(properties.availabilitySet.id,\"/\",8)[0])\r\n| join ( \r\nresources\r\n| where type == \"microsoft.compute/disks\"\r\n| project id1=id, diskname=name, osDisk=tostring(split(id,\"/\",8)[0]), vmName=tostring(split(managedBy,\"/\",8)[0]), sku.name, disk_tier = tostring(properties.tier), disk_size_GB = tostring(properties.diskSizeGB), \r\n diskbandwidthMBps = tostring(properties.diskMBpsReadWrite), disk_iops = tostring(properties.diskIOPSReadWrite),  managedBy, location, resourceGroup\r\n)\r\non vmName, osDisk\r\n| project id, vmName, vmSize, osType, id1, diskname, caching,disk_tier, disk_size_GB,diskbandwidthMBps, disk_iops, createOption, location, resourceGroup , ppg , avSet",
+                    "query": "Resources\r\n| where type == \"microsoft.compute/virtualmachines/extensions\"\r\n| where properties['provisioningState'] == \"Failed\"\r\n| extend VMId = toupper(substring(id, 0, indexof(id, '/extensions')))\r\n| where VMId in~ ({vmList})\r\n| project name = tostring(properties.type), properties.typeHandlerVersion\r\n| summarize count() by name",
+                    "size": 0,
+                    "title": "Failed extensions in the selected VIS",
+                    "noDataMessage": "No failed VM extension",
+                    "showExportToExcel": true,
+                    "exportToExcelOptions": "all",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{Subscriptions}"
+                    ],
+                    "visualization": "barchart"
+                  },
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "SelectedTab",
+                      "comparison": "isEqualTo",
+                      "value": "compute"
+                    },
+                    {
+                      "parameterName": "compute",
+                      "comparison": "isEqualTo",
+                      "value": "computeextension"
+                    },
+                    {
+                      "parameterName": "computeextension",
+                      "comparison": "isEqualTo",
+                      "value": "failedextension"
+                    }
+                  ],
+                  "name": "query - List of Extensions",
+                  "styleSettings": {
+                    "showBorder": true
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| project id, vmName = name, vmSize=tostring(properties.hardwareProfile.vmSize), osDisk = tostring(properties.storageProfile.osDisk.name), ppg = tostring(split(properties.proximityPlacementGroup.id,\"/\",8)[0]), caching= tostring(properties.storageProfile.osDisk.caching)\r\n, createOption=tostring(properties.storageProfile.osDisk.createOption), osType=tostring(properties.storageProfile.osDisk.osType), avSet= tostring(split(properties.availabilitySet.id,\"/\",8)[0])\r\n| join ( \r\nresources\r\n| where type == \"microsoft.compute/disks\"\r\n| project id1=id, diskname=name, osDisk=tostring(split(id,\"/\",8)[0]), vmName=tostring(split(managedBy,\"/\",8)[0]), sku.name, disk_tier = tostring(properties.tier), disk_size_GB = tostring(properties.diskSizeGB), \r\n diskbandwidthMBps = tostring(properties.diskMBpsReadWrite), disk_iops = tostring(properties.diskIOPSReadWrite),  managedBy, location, resourceGroup\r\n)\r\non vmName, osDisk\r\n| project id, vmName, vmSize, osType, id1, diskname, caching,disk_tier, disk_size_GB,diskbandwidthMBps, disk_iops, createOption, location, resourceGroup , ppg , avSet",
                     "size": 2,
                     "showAnalytics": true,
                     "title": "Compute + OS Disk",
@@ -1524,7 +1621,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| mv-expand datadisks = properties.storageProfile.dataDisks\r\n| project id, vmName = name, \r\n vmSize= tostring(properties.hardwareProfile.vmSize), os_type = tostring(properties.storageProfile.osDisk.osType),\r\n datadisk_lun = toint(datadisks.lun),  datadisk_name = tostring(datadisks.name), datadisksize = tostring(datadisks.diskSizeGB), \r\n datadisk_cache = tostring(datadisks.caching), datadisk_wa = tostring(datadisks.writeAcceleratorEnabled)\r\n//| summarize by vmName,  location, powerstate, avZone, avSet, ppg, vmSize, osname, vmgen, datadisklun, datadiskname, datadisksize, datadiskcache, datadiskwa\r\n| join kind = leftouter  ( \r\nresources\r\n| where type == \"microsoft.compute/disks\"\r\n| parse managedBy with * \"/virtualMachines/\" vmName\r\n| parse id with * \"/disks/\" datadisk_name \r\n| project id1=id, sku.name, disk_tier = tostring(properties.tier), disk_size_GB = tostring(properties.diskSizeGB), \r\n diskbandwidthMBps = tostring(properties.diskMBpsReadWrite), disk_iops = tostring(properties.diskIOPSReadWrite),  datadisk_name, vmName, managedBy, location, resourceGroup\r\n)\r\non vmName, datadisk_name\r\n| project-away datadisk_name, datadisk_name1, vmName1,  managedBy\r\n| sort by vmName asc , datadisk_lun asc\r\n//| distinct datadisk_name",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| mv-expand datadisks = properties.storageProfile.dataDisks\r\n| project id, vmName = name, \r\n vmSize= tostring(properties.hardwareProfile.vmSize), os_type = tostring(properties.storageProfile.osDisk.osType),\r\n datadisk_lun = toint(datadisks.lun),  datadisk_name = tostring(datadisks.name), datadisksize = tostring(datadisks.diskSizeGB), \r\n datadisk_cache = tostring(datadisks.caching), datadisk_wa = tostring(datadisks.writeAcceleratorEnabled)\r\n//| summarize by vmName,  location, powerstate, avZone, avSet, ppg, vmSize, osname, vmgen, datadisklun, datadiskname, datadisksize, datadiskcache, datadiskwa\r\n| join kind = leftouter  ( \r\nresources\r\n| where type == \"microsoft.compute/disks\"\r\n| parse managedBy with * \"/virtualMachines/\" vmName\r\n| parse id with * \"/disks/\" datadisk_name \r\n| project id1=id, sku.name, disk_tier = tostring(properties.tier), disk_size_GB = tostring(properties.diskSizeGB), \r\n diskbandwidthMBps = tostring(properties.diskMBpsReadWrite), disk_iops = tostring(properties.diskIOPSReadWrite),  datadisk_name, vmName, managedBy, location, resourceGroup\r\n)\r\non vmName, datadisk_name\r\n| project-away datadisk_name, datadisk_name1, vmName1,  managedBy\r\n| sort by vmName asc , datadisk_lun asc\r\n//| distinct datadisk_name",
                     "size": 2,
                     "showAnalytics": true,
                     "title": "Compute + Data disks",
@@ -1726,171 +1823,6 @@
                   ],
                   "showPin": true,
                   "name": "query - Compute+Data",
-                  "styleSettings": {
-                    "showBorder": true
-                  }
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "Resources\r\n| where type == \"microsoft.compute/virtualmachines/extensions\"\r\n| where properties['provisioningState'] == \"Failed\"\r\n| project name = tostring(properties.type), properties.typeHandlerVersion\r\n| summarize count() by name",
-                    "size": 0,
-                    "title": "Extensions in the selected subscription",
-                    "showExportToExcel": true,
-                    "exportToExcelOptions": "all",
-                    "queryType": 1,
-                    "resourceType": "microsoft.resourcegraph/resources",
-                    "crossComponentResources": [
-                      "{Subscriptions}"
-                    ],
-                    "visualization": "barchart"
-                  },
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "selectedTab",
-                      "comparison": "isEqualTo",
-                      "value": "compute"
-                    },
-                    {
-                      "parameterName": "compute",
-                      "comparison": "isEqualTo",
-                      "value": "computeextension"
-                    },
-                    {
-                      "parameterName": "computeextension",
-                      "comparison": "isEqualTo",
-                      "value": "listextension"
-                    }
-                  ],
-                  "name": "query - List of Extensions",
-                  "styleSettings": {
-                    "showBorder": true
-                  }
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type == \"microsoft.hanaonazure/hanainstances\"\r\n| mv-expand hanasid=properties.storageProfile.hanaSids\r\n| mv-expand ntwork=properties.networkProfile.networkInterfaces\r\n| project id, name, ipaddress=tostring(ntwork.ipAddress), SID=tostring(hanasid.sid), HLI=tostring(properties.hardwareProfile.hanaInstanceSize), memory=tostring(hanasid.memoryAllocation),HLR_Revision=tostring(properties.hwRevision),OS= tostring(properties.osProfile.osType), state=tostring(properties.powerState),resourceGroup, location",
-                    "size": 2,
-                    "title": "HANA Large Instance Overview",
-                    "noDataMessage": "No HLI nodes found!",
-                    "showExportToExcel": true,
-                    "exportToExcelOptions": "all",
-                    "queryType": 1,
-                    "resourceType": "microsoft.resourcegraph/resources",
-                    "crossComponentResources": [
-                      "{Subscriptions}"
-                    ],
-                    "visualization": "table",
-                    "gridSettings": {
-                      "formatters": [
-                        {
-                          "columnMatch": "id",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "20ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "name",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "ipaddress",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "15ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "HLI",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "10ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "memory",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "10ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "HLR_Revision",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "15ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "state",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "12ch"
-                          }
-                        }
-                      ],
-                      "labelSettings": [
-                        {
-                          "columnId": "id",
-                          "label": "Name"
-                        },
-                        {
-                          "columnId": "ipaddress",
-                          "label": "IP Address"
-                        },
-                        {
-                          "columnId": "HLI",
-                          "label": "HLI SKU"
-                        },
-                        {
-                          "columnId": "memory",
-                          "label": "Memory"
-                        },
-                        {
-                          "columnId": "HLR_Revision",
-                          "label": "HLI Revision"
-                        },
-                        {
-                          "columnId": "OS",
-                          "label": "OS Type"
-                        },
-                        {
-                          "columnId": "state",
-                          "label": "Power State"
-                        },
-                        {
-                          "columnId": "resourceGroup",
-                          "label": "Resource Group"
-                        },
-                        {
-                          "columnId": "location",
-                          "label": "Azure Region"
-                        }
-                      ]
-                    }
-                  },
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "SelectedTab",
-                      "comparison": "isEqualTo",
-                      "value": "compute"
-                    },
-                    {
-                      "parameterName": "Report_check",
-                      "comparison": "isEqualTo",
-                      "value": "No"
-                    },
-                    {
-                      "parameterName": "compute",
-                      "comparison": "isEqualTo",
-                      "value": "computehli"
-                    }
-                  ],
-                  "name": "query - HLI Overview",
                   "styleSettings": {
                     "showBorder": true
                   }
@@ -3372,7 +3304,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| extend nics=array_length(properties.networkProfile.networkInterfaces) \r\n| mv-expand nic=properties.networkProfile.networkInterfaces \r\n//| where nics == 1 or nic.properties.primary =~ 'true' or isempty(nic) \r\n| project id, vmName = name, az = tostring(zones), vmSize = tostring(properties.hardwareProfile.vmSize), AvSet= tostring(split(properties.availabilitySet.id,\"/\",8)[0]), ppg = tostring(split(properties.proximityPlacementGroup.id,\"/\",8)[0]),  nicId = tostring(nic.id) \r\n| join kind=leftouter ( \r\n  Resources \r\n  | where type =~ 'microsoft.network/networkinterfaces' \r\n  | extend ipConfigsCount=array_length(properties.ipConfigurations) \r\n  | mv-expand ipconfig=properties.ipConfigurations \r\n  //| where ipconfig.properties.primary =~ 'true' \r\n  | project nicId = id, ipaddress = tostring(ipconfig.properties.privateIPAddress), AcceleratedNetworkingOn = tostring(properties.enableAcceleratedNetworking)) on nicId \r\n| summarize by id, nicId, vmName,vmSize,AcceleratedNetworkingOn,ipaddress, AvSet, ppg,  az   ",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| extend nics=array_length(properties.networkProfile.networkInterfaces) \r\n| mv-expand nic=properties.networkProfile.networkInterfaces \r\n//| where nics == 1 or nic.properties.primary =~ 'true' or isempty(nic) \r\n| project id, vmName = name, az = tostring(zones), vmSize = tostring(properties.hardwareProfile.vmSize), AvSet= tostring(split(properties.availabilitySet.id,\"/\",8)[0]), ppg = tostring(split(properties.proximityPlacementGroup.id,\"/\",8)[0]),  nicId = tostring(nic.id) \r\n| join kind=leftouter ( \r\n  Resources \r\n  | where type =~ 'microsoft.network/networkinterfaces' \r\n  | extend ipConfigsCount=array_length(properties.ipConfigurations) \r\n  | mv-expand ipconfig=properties.ipConfigurations \r\n  //| where ipconfig.properties.primary =~ 'true' \r\n  | project nicId = id, ipaddress = tostring(ipconfig.properties.privateIPAddress), AcceleratedNetworkingOn = tostring(properties.enableAcceleratedNetworking)) on nicId \r\n| summarize by id, nicId, vmName,vmSize,AcceleratedNetworkingOn,ipaddress, AvSet, ppg,  az   ",
                     "size": 0,
                     "showAnalytics": true,
                     "title": "Check for Accelerated Networking",
@@ -3564,7 +3496,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "Resources\r\n    | where type =~ 'microsoft.network/publicipaddresses' and isnotempty(properties.ipAddress)",
+                    "query": "Resources\r\n| where type =~ 'microsoft.network/publicipaddresses'\r\n| join (\r\n    resources \r\n    | where type =~ 'microsoft.network/networkinterfaces'\r\n    | where id in~ ({vmNICs})\r\n    | extend ipConfigsCount=array_length(properties.ipConfigurations) \r\n    | mv-expand ipconfig=properties.ipConfigurations \r\n    //| where ipconfig.properties.primary =~ 'true' \r\n    | extend publicIpId = ipconfig.properties.publicIPAddress.id\r\n    | where publicIpId != \"\"\r\n    | project tostring(publicIpId)\r\n) on $left.id==$right.publicIpId\r\n| where isnotempty(properties.ipAddress)",
                     "size": 0,
                     "title": "Azure resources with Public IP",
                     "showExportToExcel": true,
@@ -3572,7 +3504,7 @@
                     "queryType": 1,
                     "resourceType": "microsoft.resourcegraph/resources",
                     "crossComponentResources": [
-                      "{current_vis}"
+                      "{Subscriptions}"
                     ],
                     "gridSettings": {
                       "formatters": [
@@ -3685,7 +3617,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| extend id = tolower(id)\r\n| join (\r\n    resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| where id contains '{current_vis:id}'\r\n| mv-expand  properties.vmDetails\r\n| project vmID = tolower(tostring(properties_vmDetails.virtualMachineId))\r\n| union (\r\n    resources\r\n        | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n        | where id contains '{current_vis:id}'\r\n        | project vmID = tolower(tostring(properties.virtualMachineId)))) on $left.id == $right.vmID\r\n| extend resourceId=tolower(id) \r\n| join kind = leftouter ( RecoveryServicesResources\r\n| where type == \"microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems\"\r\n| where properties.backupManagementType == \"AzureIaasVM\"\r\n| project resourceId = tolower(tostring(properties.sourceResourceId)), backupItemid = id, isBackedUp = isnotempty(id) ) on resourceId \r\n| extend isProtected = isnotempty(backupItemid)\r\n| where (isProtected == (0))\r\n| project id,name,resourceGroup,location,tags",
+                    "query": "resources\r\n| where type =~ \"microsoft.compute/virtualMachines\"\r\n| where id in~ ({vmList})\r\n| extend resourceId=tolower(id) \r\n| join kind = leftouter ( RecoveryServicesResources\r\n| where type == \"microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems\"\r\n| where properties.backupManagementType == \"AzureIaasVM\"\r\n| project resourceId = tolower(tostring(properties.sourceResourceId)), backupItemid = id, isBackedUp = isnotempty(id) ) on resourceId \r\n| extend isProtected = isnotempty(backupItemid)\r\n| where (isProtected == (0))\r\n| project id,name,resourceGroup,location,tags",
                     "size": 0,
                     "title": "VM's with no Azure backup",
                     "noDataMessage": "Well done! All VM's are configured with backup.",
@@ -5601,7 +5533,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type == \"microsoft.network/loadbalancers\"\r\n| extend sku = tostring(sku.name)\r\n| mv-expand lbrules = properties.loadBalancingRules\r\n| mv-expand feip = properties.frontendIPConfigurations\r\n| mv-expand probes = properties.probes\r\n| project subscriptionId\r\n, id\r\n, resourceGroup\r\n, lbName=name\r\n, sku\r\n, location\r\n, rulename=tostring(lbrules.name)\r\n, frontendIP=tostring(feip.properties.privateIPAddress)\r\n, probeport=tostring(probes.properties.port)\r\n, HA_Ports= tostring(lbrules.properties.protocol)\r\n, rule_idleTimeoutMinutes=tostring(lbrules.properties.idleTimeoutInMinutes)\r\n, rule_isFloatingIPEnabled = tostring(lbrules.properties.enableFloatingIP)\r\n, rule_isTCP_ResetEnabled = tostring(lbrules.properties.enableTcpReset)\r\n, rule_loadDistribution = tostring(lbrules.properties.loadDistribution)\r\n| summarize by subscriptionId\r\n, id\r\n, lbName\r\n, resourceGroup\r\n, location\r\n, sku\r\n, rulename\r\n, frontendIP\r\n, probeport\r\n, HA_Ports\r\n, rule_idleTimeoutMinutes\r\n, rule_isFloatingIPEnabled\r\n, rule_isTCP_ResetEnabled\r\n, rule_loadDistribution",
+                    "query": "resources\r\n| where type == \"microsoft.network/loadbalancers\"\r\n| join (\r\n    resources \r\n    | where type =~ 'microsoft.network/networkinterfaces'\r\n    | where id in~ ({vmNICs})\r\n    | extend ipConfigsCount=array_length(properties.ipConfigurations) \r\n    | mv-expand ipconfig=properties.ipConfigurations\r\n    | extend backendPool = ipconfig.properties.loadBalancerBackendAddressPools\r\n    | mv-expand backendPool\r\n    | extend backendPoolId = backendPool.id\r\n    | where backendPoolId != \"\"\r\n    | extend loadBalanderId = substring(backendPoolId, 0, indexof(backendPoolId, '/', 0, -1, 9)) \r\n    | distinct loadBalanderId\r\n) on $left.id == $right.loadBalanderId\r\n| extend sku = tostring(sku.name)\r\n| mv-expand lbrules = properties.loadBalancingRules\r\n| mv-expand feip = properties.frontendIPConfigurations\r\n| mv-expand probes = properties.probes\r\n| project subscriptionId\r\n, id\r\n, resourceGroup\r\n, lbName=name\r\n, sku\r\n, location\r\n, rulename=tostring(lbrules.name)\r\n, frontendIP=tostring(feip.properties.privateIPAddress)\r\n, probeport=tostring(probes.properties.port)\r\n, HA_Ports= tostring(lbrules.properties.protocol)\r\n, rule_idleTimeoutMinutes=tostring(lbrules.properties.idleTimeoutInMinutes)\r\n, rule_isFloatingIPEnabled = tostring(lbrules.properties.enableFloatingIP)\r\n, rule_isTCP_ResetEnabled = tostring(lbrules.properties.enableTcpReset)\r\n, rule_loadDistribution = tostring(lbrules.properties.loadDistribution)\r\n| summarize by subscriptionId\r\n, id\r\n, lbName\r\n, resourceGroup\r\n, location\r\n, sku\r\n, rulename\r\n, frontendIP\r\n, probeport\r\n, HA_Ports\r\n, rule_idleTimeoutMinutes\r\n, rule_isFloatingIPEnabled\r\n, rule_isTCP_ResetEnabled\r\n, rule_loadDistribution",
                     "size": 2,
                     "title": "Standard Load Balancer Overview",
                     "showExportToExcel": true,
@@ -5741,61 +5673,7 @@
                         }
                       ],
                       "rowLimit": 10000,
-                      "filter": true,
-                      "labelSettings": [
-                        {
-                          "columnId": "subscriptionId",
-                          "label": "Subscription Name"
-                        },
-                        {
-                          "columnId": "id",
-                          "label": "LB Name"
-                        },
-                        {
-                          "columnId": "resourceGroup",
-                          "label": "Resource Group"
-                        },
-                        {
-                          "columnId": "location",
-                          "label": "Azure Region"
-                        },
-                        {
-                          "columnId": "sku",
-                          "label": "LB SKU"
-                        },
-                        {
-                          "columnId": "rulename",
-                          "label": "LB Rule name"
-                        },
-                        {
-                          "columnId": "frontendIP",
-                          "label": "LB FrontEnd IP"
-                        },
-                        {
-                          "columnId": "probeport",
-                          "label": "LB Probe Port"
-                        },
-                        {
-                          "columnId": "HA_Ports",
-                          "label": "HA Ports"
-                        },
-                        {
-                          "columnId": "rule_idleTimeoutMinutes",
-                          "label": "LB Idle Timeout"
-                        },
-                        {
-                          "columnId": "rule_isFloatingIPEnabled",
-                          "label": "LB Floating IP"
-                        },
-                        {
-                          "columnId": "rule_isTCP_ResetEnabled",
-                          "label": "LB TCP Reset"
-                        },
-                        {
-                          "columnId": "rule_loadDistribution",
-                          "label": "LB Load Distribution"
-                        }
-                      ]
+                      "filter": true
                     }
                   },
                   "conditionalVisibilities": [
@@ -5823,7 +5701,7 @@
                   "content": {
                     "version": "KqlParameterItem/1.0",
                     "crossComponentResources": [
-                      "{Subscriptions}"
+                      "{Resources}"
                     ],
                     "parameters": [
                       {
@@ -5836,13 +5714,12 @@
                         "multiSelect": true,
                         "quote": "'",
                         "delimiter": ",",
-                        "query": "resources\r\n| where type == \"microsoft.network/loadbalancers\"\r\n| order by name asc\r\n| extend Rank = row_number()\r\n| project value = id, label = id, selected = Rank <= 5",
+                        "query": "resources\r\n| where type == \"microsoft.network/loadbalancers\"\r\n| join (\r\n    resources \r\n    | where type =~ 'microsoft.network/networkinterfaces'\r\n    | where id in~ ({vmNICs})\r\n    | extend ipConfigsCount=array_length(properties.ipConfigurations) \r\n    | mv-expand ipconfig=properties.ipConfigurations\r\n    | extend backendPool = ipconfig.properties.loadBalancerBackendAddressPools\r\n    | mv-expand backendPool\r\n    | extend backendPoolId = backendPool.id\r\n    | where backendPoolId != \"\"\r\n    | extend loadBalanderId = substring(backendPoolId, 0, indexof(backendPoolId, '/', 0, -1, 9)) \r\n    | distinct loadBalanderId\r\n) on $left.id == $right.loadBalanderId\r\n| order by name asc\r\n| extend Rank = row_number()\r\n| project value = id, label = id, selected = Rank <= 5",
                         "crossComponentResources": [
                           "{Subscriptions}"
                         ],
                         "typeSettings": {
                           "additionalResourceOptions": [
-                            "value::5",
                             "value::all"
                           ],
                           "showDefault": false
@@ -5850,7 +5727,6 @@
                         "timeContext": {
                           "durationMs": 86400000
                         },
-                        "defaultValue": "value::5",
                         "queryType": 1,
                         "resourceType": "microsoft.resourcegraph/resources"
                       },
@@ -5921,7 +5797,7 @@
                         "version": "KqlParameterItem/1.0",
                         "name": "Message",
                         "type": 1,
-                        "query": "where type == \"microsoft.network/loadbalancers\"\r\n| summarize Selected = countif(id in ({Resources:value})), Total = count()\r\n| extend Selected = iff(Selected > 200, 200, Selected)\r\n| project Message = strcat('# ', Selected, ' / ', Total)",
+                        "query": "resources\r\n| where type == \"microsoft.network/loadbalancers\"\r\n| join (\r\n    resources \r\n    | where type =~ 'microsoft.network/networkinterfaces'\r\n    | where id in~ ({vmNICs})\r\n    | extend ipConfigsCount=array_length(properties.ipConfigurations) \r\n    | mv-expand ipconfig=properties.ipConfigurations\r\n    | extend backendPool = ipconfig.properties.loadBalancerBackendAddressPools\r\n    | mv-expand backendPool\r\n    | extend backendPoolId = backendPool.id\r\n    | where backendPoolId != \"\"\r\n    | extend loadBalanderId = substring(backendPoolId, 0, indexof(backendPoolId, '/', 0, -1, 9)) \r\n    | distinct loadBalanderId\r\n) on $left.id == $right.loadBalanderId\r\n| summarize Selected = countif(id in ({Resources:value})), Total = count()\r\n| extend Selected = iff(Selected > 200, 200, Selected)\r\n| project Message = strcat('# ', Selected, ' / ', Total)",
                         "crossComponentResources": [
                           "{Resources}"
                         ],
@@ -6015,7 +5891,7 @@
                     ],
                     "timeContextFromParameter": "TimeRange",
                     "timeContext": {
-                      "durationMs": 900000
+                      "durationMs": 0
                     },
                     "metrics": [
                       {
@@ -6052,6 +5928,7 @@
                           "formatter": 13,
                           "formatOptions": {
                             "linkTarget": "Resource",
+                            "linkIsContextBlade": false,
                             "showIcon": true
                           }
                         },
@@ -6061,11 +5938,10 @@
                         },
                         {
                           "columnMatch": "Name",
-                          "formatter": 13,
+                          "formatter": 5,
                           "formatOptions": {
                             "linkTarget": "Resource",
-                            "linkIsContextBlade": true,
-                            "showIcon": true
+                            "linkIsContextBlade": true
                           }
                         },
                         {
@@ -6151,7 +6027,8 @@
                         "groupBy": [
                           "Subscription"
                         ],
-                        "expandTopLevel": true
+                        "expandTopLevel": true,
+                        "finalBy": "Name"
                       },
                       "sortBy": [
                         {
