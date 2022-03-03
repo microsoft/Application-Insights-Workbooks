@@ -1,11 +1,11 @@
 # Deprecated Troubleshooting Guides Retrieval
 
-Troubleshooting guides are deprecated. The "Troubleshooting Guides" menu item is going away, but You'll continue to have access to them via the Workbooks browse blade. If you want to move your workbooks from the Troubleshooting Guide gallery to the Workbook gallery, we've added a function to allow users to change workbook types to any of the possible types.
+Troubleshooting guides are now deprecated. The "Troubleshooting Guides" menu item is going away, but you'll continue to have access to them via the workbooks browse blade. If you want to move your workbooks from the Troubleshooting Guide gallery to the Workbook gallery, you can use the 'Change Type' feature to change workbook types to have show up in your desired gallery.
 
 # Change Workbook Type Methods
     
 ## Inside the workbook
-1. open up a workbook and enter edit mode (if not already in edit mode) by clicking the 'Edit' button in the toolbar. Then click the 'More editing options' button to find the new 'Change Type' button.
+1. Open up a workbook and enter edit mode (if not already in edit mode) by clicking the 'Edit' button in the toolbar. Then click the 'More editing options' button to find the new 'Change Type' button.
 ![changeType1-0](../Images/ChangeType1-0.png)
 ![changetype1-1](../Images/ChangeType1-1.png)
 2. A window will pop up with a dropdown with a list of possible workbook types to change to. Select the type and click 'OK'. Notice that the dropdown has the current workbook type pre-selected.
