@@ -26,6 +26,6 @@ Troubleshooting guides are now deprecated. The "Troubleshooting Guides" menu ite
 1. Navigate to the gallery contianing the workbook that you'd like to change the type for. Click the "..." button on the gallery card item and click the "Change Type" button in the resulting menu.
 ![changeType3-1](../Images/ChangeType3-1.png)
 # Accessing/finding a workbook
-The Workbooks Browse blade does not care about type and will show you a list of all your workbooks.
+The Workbooks Browse blade will show you a list of all your workbooks regardless of workbook type.
 ![changeType2-1](../Images/ChangeType2-1.png)
 
