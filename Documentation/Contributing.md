@@ -55,7 +55,7 @@ Each category folder contains a list of templates folders that contain templates
 
 Avoid using special characters (like `/\&?`) in your folder names. An optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
 
-Each template folder should contain a **.workbook file**. You can create a template file from Workbooks in the Azure portal. See the ["How to create a .workbook file"](#How-to-create-a-.workbook-file) section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
+Each template folder should contain a **.workbook file**. You can create a template file from Workbooks in the Azure portal. See the ["How to create a .workbook file"](#how-to-create-a-workbook-file) section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
 
 ## How to create a .workbook file
 There are three ways of creating a template. 
@@ -64,7 +64,7 @@ There are three ways of creating a template.
 * From the existing report. You can modify or enhance the existing report.
 
 ## Create from the default template
-1. Go to http://portal.azure.com 
+1. Go to https://portal.azure.com 
 2. Select an Application Insights resource or go to Azure Monitor from the navigation bar
 3. Select "Workbooks"
 4. Select the Empty template under Quick Start section.
@@ -80,7 +80,7 @@ There are three ways of creating a template.
     ![advanced editor](./Images/AdvancedEditor.png)
 
 ## Create from an existing template
-1. Go to http://portal.azure.com 
+1. Go to https://portal.azure.com 
 2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Select a template you are interested.
@@ -89,7 +89,7 @@ There are three ways of creating a template.
    Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 	
 ## Create from an existing report
-1. Go to http://portal.azure.com 
+1. Go to https://portal.azure.com 
 2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Click on Open icon from the menu.
@@ -148,7 +148,7 @@ There are three ways of creating a template.
 
         * `isPreview`: Optional. Flag to mark the template as preview. See [Testing Preview Workbook Templates](#testing-preview-workbook-templates) for more details
 
-For more details on the schema of the gallery file, view the [Gallery JSON schema](./schema/gallery.json).
+For more details on the schema of the gallery file, view the [Gallery JSON schema](../schema/gallery.json).
 
 ## How to create and name a gallery file
 Gallery files are created under the `\gallery` folder. A gallery subfolder should be created for each Workbook type. The gallery file should live under the corresponding Workbook type subfolder. The gallery file name is the ARM resource type where slashes in the resource type are replaced with `'-'`.
