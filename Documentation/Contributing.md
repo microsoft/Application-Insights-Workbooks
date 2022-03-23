@@ -162,6 +162,9 @@ Note: Workbook types are known types, are not arbitrary, and controlled by the W
 - A template should only appear once in a category
 - A category should only appear once in a gallery
 
+## All Resource Gallery
+There is a special case gallery for templates that can be associated with all Azure Resources. You can find this gallery [here](../gallery/all-resource-types/all.json). Templates specified here will be merged with the standard resource type gallery associated with that resource. If you plan to add any templates to this gallery, please test them thoroughly by following the [testing documentation](./Testing.md).
+
 # How to make changes (add, modify templates)
 
 1. Clone the repo, if you haven't already. If you have already, `git checkout master` and `git pull` to make sure you are up to date
