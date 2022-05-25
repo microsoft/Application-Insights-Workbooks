@@ -183,6 +183,22 @@
             "timeContextFromParameter": "TimeRange",
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "c6d8e696-51fd-4306-95b7-e7be2e6acec0",
+            "version": "KqlParameterItem/1.0",
+            "name": "wvdworkspace",
+            "type": 7,
+            "query": "resources\r\n| where type == \"microsoft.desktopvirtualization/applicationgroups\"\r\n| project id, workspace= properties.workspaceArmPath, hp=properties.hostPoolArmPath\r\n| where isnotnull(workspace)\r\n| where hp =~ \"{HostPool}\"\r\n| project workspace, label=workspace,selected=1",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "pills",
@@ -786,7 +802,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "WVDConnections\r\n| where _ResourceId =~ '{HostPool}' and UserName == \"{UserName}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State == \"Connected\"\r\n    | project ConnectedTime=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n| join kind = leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | evaluate bag_unpack(Parameters)   \r\n    | project CorrelationId, ConnectionBackground=case(LoadBalanceOutcome == \"NewSession\", \"New session\", LoadBalanceOutcome in (\"Active\", \"Disconnected\", \"Pending\"), \"Existing session\", LoadBalanceOutcome)\r\n) on CorrelationId\r\n| extend ConnectionBackground=coalesce(ConnectionBackground, \"Session context not reported\")\r\n| make-series Median=percentile(ConnectionTime, 50) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ConnectionBackground",
+                    "query": "WVDConnections\r\n| where _ResourceId =~ \"{HostPool}\" and UserName == \"{UserName}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name =~ \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | project CorrelationId, ConnectionBackground=case(LoadBalanceOutcome == \"NewSession\", \"New session\", LoadBalanceOutcome in (\"Active\", \"Disconnected\", \"Pending\"), \"Existing session\", LoadBalanceOutcome)\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or (Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project TimeNewSessions=TimeGenerated, CorrelationId\r\n    | summarize TimeNewSessions=min(TimeNewSessions) by CorrelationId\r\n\r\n) on CorrelationId\r\n| join kind = inner ( \r\n        ConnectionData // existent Sessions\r\n        | where State == \"Connected\"\r\n        | project TimeConnected=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ProductiveTime = iff(ConnectionBackground==\"New session\",TimeNewSessions, TimeConnected)\r\n| join kind = leftouter\r\n(  \r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS   \r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| make-series Median=percentile(ProductiveTime, 50) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ConnectionBackground\r\n\r\n",
                     "size": 0,
                     "aggregation": 5,
                     "title": "Time to connect",
