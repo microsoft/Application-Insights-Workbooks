@@ -14,12 +14,11 @@ Workbooks support these data sources:
 * [JSON](#json)
 * [Custom Endpoint](#custom-endpoint)
 * Custom Provider
-
-Deprecated (Previously available):
-* [Alerts](#alerts-preview)
-* [Workload Health](#workload-health)
+* [Azure RBAC](#azure-rbac)
 
 You can also use the [Merge](#merge-data-from-different-sources) option in the query control to combine data from different data sources. 
+
+Note: Each visualization and data source may have its own [limits](Limits.md).
 
 ## Logs
 Workbooks support querying logs data using the [Kusto Query Language (KQL)](https://docs.microsoft.com/en-us/azure/kusto/query/). Examples of logs include app requests, exceptions, dependencies, traces, etc. in App Insights, or VM perf logs in Log Analytics. Workbooks allow authors to get analytics data using KQL queries and present the insights to users in a visual form.
@@ -147,20 +146,28 @@ To avoid automatically making calls to un-trusted hosts when using templates, th
 
 This provider supports [JSON Path](../Transformations/JSONPath.md).
 
-# Deprecated Data Sources
-The following previously preview data sources have been deprecated.  They may continue to restore/work in workbooks for some amount of time while services and resource provides may still be available. Usage of these providers in templates is not recommended, as they will stop functioning at some point.
+## Azure RBAC
+The Azure RBAC provider allows you to check permissions on resources. It is most commonly used in parameter to check if the correct RBAC are setup. A use case would be to create a parameter to check deployment permission and then notify the user if they don't have deployment permission. Simple JSON arrays or objects will automatically be converted into grid rows and columns or text with a 'hasPermission' column with either true or false. The permission is checked on each resource and then either 'or' or 'and' to get the result. The [operations or actions](https://docs.microsoft.com/en-us/azure/role-based-access-control/resource-provider-operations) can be a string or an array.
 
-## Alerts (preview)
+**String:**
+```
+"Microsoft.Resources/deployments/validate/action"
+```
+
+**Array:**
+```
+["Microsoft.Resources/deployments/read","Microsoft.Resources/deployments/write","Microsoft.Resources/deployments/validate/action","Microsoft.Resources/operations/read"]
+```
+
+# Deprecated Data Sources
+The following previously preview data sources have been deprecated and removed.
+
+## Alerts
 > **Note:** The suggested way to query for Azure Alert information is by using the [Azure Resource Graph](#azure-resource-graph) data source, by querying the `AlertsManagementResources` table. 
 >
 > See [Azure Resource Graph table reference Azure Docs](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources), or the [Alerts template](../../Workbooks/Azure%20Resources/Alerts/Alerts.workbook) for examples. 
 >
-> The Alerts data source will remain available for a period of time while authors transition to using ARG. Use of this data source in templates is discouraged. 
-
-Workbooks allow users to visualize the active alerts related to their resources. 
-Limitations: the alerts data source requires read access to the Subscription in order to query resources, and may not show newer kinds of alerts. 
-
-To make a query control use this data source, use the _Data source_ drop down to choose _Alerts (preview)_ and select the subscriptions, resource groups or resources to target. Use the alert filter drop downs to select an interesting subset of alerts for your analytic needs.
+> The alerts data source is no longer available. Use Azure Resource Graph instead.
 
 ## Workload Health
 > **Note:** The suggested way to query for Workload information is by using the [Azure Resource Graph](#azure-resource-graph) data source, by querying the `WorkloadMonitorResources` table. 
@@ -172,10 +179,4 @@ To make a query control use this data source, use the _Data source_ drop down to
 >
 > See [Azure Resource Graph table reference Azure Docs](https://docs.microsoft.com/en-us/azure/governance/resource-graph/reference/supported-tables-resources) 
 >
-> The Workload health data source will remain available for a period of time while authors transition to using ARG. Use of this data source in templates is discouraged. 
-
-Azure Monitor has functionality that proactively monitors the availability and performance of Windows or Linux guest OSes with a model that represent key components and their relationships, criteria that specifies how to measure the health of those components, and which can alert you when an unhealthy condition is detected. Workbooks allow users to use this information to create rich reports.
-
-To make a query control use this data source, use the _Data source_ drop down to choose _Workload Health_ and select subscription, resource group or VM resources to target. Use the health filter drop downs to select an interesting subset of health incidents for your analytic needs.
-
-![A image of a workbook with workload health data](../Images/WorkloadHealthDataSource.png)
+> The Workload health data source is no longer available. Use Azure Resource Graph instead.
