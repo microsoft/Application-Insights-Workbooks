@@ -5,7 +5,51 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{mappedWorkspace}"
+        ],
         "parameters": [
+          {
+            "id": "7a2bb320-fa9c-45c8-bbf6-942c8b3a4b0e",
+            "version": "KqlParameterItem/1.0",
+            "name": "mappedSubscription",
+            "label": "subscription",
+            "type": 6,
+            "isRequired": true,
+            "value": "",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "includeAll": true,
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "01c6d66e-3f87-4e8a-8be6-0accbe4f4036",
+            "version": "KqlParameterItem/1.0",
+            "name": "mappedWorkspace",
+            "label": "workspace",
+            "type": 5,
+            "isRequired": true,
+            "query": "resources\r\n| where type == \"microsoft.operationalinsights/workspaces\"\r\n| where \"{mappedSubscription:subscriptionId}\" == subscriptionId\r\n| project id",
+            "crossComponentResources": [
+              "{mappedSubscription}"
+            ],
+            "value": "",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
           {
             "id": "03761a72-d969-426b-ba54-d1e709610b2d",
             "version": "KqlParameterItem/1.0",
@@ -14,13 +58,19 @@
             "type": 1,
             "description": "Whether workbook is opened standalone or as part of the Hub.",
             "isRequired": true,
-            "query": "print(\"Focused\")",
             "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "Focused"
+                }
+              }
+            ],
             "timeContext": {
               "durationMs": 86400000
-            },
-            "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces"
+            }
           },
           {
             "id": "f503a201-a9bd-4085-8862-22e2c0735ed4",
@@ -31,6 +81,9 @@
             "description": "Time indicating the latest snapshot",
             "isRequired": true,
             "query": "UCClient\r\n| where TimeGenerated >= ago(7d)\r\n| summarize max(TimeGenerated)",
+            "crossComponentResources": [
+              "{mappedWorkspace}"
+            ],
             "isHiddenWhenLocked": true,
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces"
@@ -47,16 +100,19 @@
       "content": {
         "json": "## Update Compliance: Quality Updates\n\n\nWelcome to Quality Update! Quality updates deliver both security and non-security fixes.Quality updates are cumulative, so installing the latest quality update is sufficient to get all the available fixes for a specific feature update, including any out-of-band security fixes and any servicing stack updates that might have been released previously. "
       },
-      "name": "text - 2"
+      "name": "IntroQualityUpdate"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\"\r\n| extend DevicesTakingSecurityUpdate = \"Devices Taking Security Update\"\r\n| extend DevicesCount = \"Devices Count\"\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId\r\n| summarize TotalDevices=count() by DevicesTakingSecurityUpdate, DevicesCount\r\n",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| join kind=innerunique UCClient on AzureADDeviceId\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and UpdateClassification == \"Security\"\r\n| extend DevicesTakingSecurityUpdate = \"Devices Taking Security Update\"\r\n| extend DevicesCount = \"Devices Count\"\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId\r\n| summarize TotalDevices=count() by DevicesTakingSecurityUpdate, DevicesCount\r\n",
         "size": 3,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{mappedWorkspace}"
+        ],
         "visualization": "tiles",
         "gridSettings": {
           "formatters": [
@@ -106,10 +162,13 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| join kind=innerunique UCClient on AzureADDeviceId\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and OSSecurityUpdateStatus == \"Latest\" and ClientState == \"Installed\"\r\n| extend Compliant = \"Compliant\"\r\n| extend Title = \"Latest Security Update\"\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId\r\n| summarize count() by OSSecurityUpdateStatus, Compliant, Title\r\n",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet TakingUpdate = (UCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and UpdateClassification == \"Security\"\r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId);\r\nlet Device = (UCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| where OSSecurityUpdateStatus == \"Latest\"\r\n| summarize by AzureADDeviceId, OSSecurityUpdateStatus);\r\nDevice\r\n| join kind=innerunique TakingUpdate on AzureADDeviceId\r\n| extend Compliant = \"Compliant\"\r\n| extend Title = \"Latest Security Update\"\r\n| summarize count() by Compliant, Title\r\n",
         "size": 3,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{mappedWorkspace}"
+        ],
         "visualization": "tiles",
         "gridSettings": {
           "sortBy": [
@@ -172,11 +231,14 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| join kind=innerunique UCClient on AzureADDeviceId\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and OSSecurityUpdateStatus == \"MultipleSecurityUpdatesMissing\" \r\n| extend Title = \"Security Update Status\"\r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId\r\n| summarize SecurityUpdateStatus=count() by OSSecurityUpdateStatus, Title\r\n//| top 1 by SecurityUpdateStatus\r\n\r\n",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet TakingUpdate = (UCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and UpdateClassification == \"Security\"\r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId);\r\nlet Device = (UCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| where OSSecurityUpdateStatus == \"MultipleSecurityUpdatesMissing\"\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId\r\n| summarize by AzureADDeviceId, OSSecurityUpdateStatus);\r\nDevice\r\n| join kind=innerunique TakingUpdate on AzureADDeviceId\r\n| extend Title = \"Security Update Status\"\r\n| summarize SecurityUpdateStatus=count() by Title, OSSecurityUpdateStatus\r\n\r\n\r\n",
         "size": 3,
         "noDataMessageStyle": 5,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{mappedWorkspace}"
+        ],
         "visualization": "tiles",
         "gridSettings": {
           "formatters": [
@@ -241,10 +303,13 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsQualityUpdate\"\r\n| where TargetBuild != \"\" and TargetBuild != \"10.0.0.0\"\r\n| extend Title=\"Total Alerts\"\r\n| summarize count() by AlertStatus, Title",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsQualityUpdate\"\r\n| extend Title=\"Total Alerts\"\r\n| summarize count() by AlertStatus, Title",
         "size": 3,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{mappedWorkspace}"
+        ],
         "visualization": "tiles",
         "gridSettings": {
           "formatters": [
@@ -315,6 +380,9 @@
         },
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{mappedWorkspace}"
+        ],
         "visualization": "tiles",
         "tileSettings": {
           "titleContent": {
@@ -394,21 +462,37 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\"\r\n| summarize count() by ClientState",
+              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and UpdateClassification == \"Security\"\r\n| summarize count() by ClientState",
               "size": 3,
               "title": "Update states for all security releases",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "piechart",
               "chartSettings": {
+                "createOtherGroup": null,
                 "seriesLabelSettings": [
-                  {
-                    "seriesName": "Cancelling",
-                    "label": "Unknown"
-                  },
                   {
                     "seriesName": "",
                     "label": "Unknown"
+                  },
+                  {
+                    "seriesName": "Installed",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Installing",
+                    "color": "turquoise"
+                  },
+                  {
+                    "seriesName": "Offering",
+                    "color": "blueDarkDark"
+                  },
+                  {
+                    "seriesName": "Cancelled",
+                    "color": "red"
                   }
                 ],
                 "ySettings": {
@@ -424,17 +508,21 @@
               }
             },
             "customWidth": "33",
+            "showPin": false,
             "name": "UpdateStatesAllSecurityReleases"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| join kind=innerunique UCClient on AzureADDeviceId\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and UpdateClassification== \"Security\"\r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId\r\n| summarize count() by ClientState",
+              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" and UpdateClassification== \"Security\" \r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId\r\n| summarize count() by ClientState",
               "size": 3,
               "title": "Update states for latest security releases",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "piechart",
               "chartSettings": {
                 "yAxis": [
@@ -448,6 +536,22 @@
                   {
                     "seriesName": "",
                     "label": "Unknown"
+                  },
+                  {
+                    "seriesName": "Installed",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Installing",
+                    "color": "turquoise"
+                  },
+                  {
+                    "seriesName": "Cancelled",
+                    "color": "red"
+                  },
+                  {
+                    "seriesName": "Offering",
+                    "color": "blueDarkDark"
                   }
                 ],
                 "ySettings": {
@@ -470,21 +574,28 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert \r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsQualityUpdate\"\r\n| where TargetBuild != \"\" and TargetBuild != \"10.0.0.0\"\r\n| summarize count() by AlertClassification\r\n",
+              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert \r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsQualityUpdate\"  and UpdateClassification == \"Security\"\r\n| summarize count() by AlertClassification\r\n",
               "size": 3,
-              "title": "Update for all security releases",
+              "title": "Update alerts for all security releases",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "piechart",
               "chartSettings": {
                 "seriesLabelSettings": [
                   {
-                    "seriesName": "Cancelling",
+                    "seriesName": "",
                     "label": "Unknown"
                   },
                   {
-                    "seriesName": "",
-                    "label": "Unknown"
+                    "seriesName": "Error",
+                    "color": "red"
+                  },
+                  {
+                    "seriesName": "Warning",
+                    "color": "orange"
                   }
                 ],
                 "ySettings": {
@@ -507,7 +618,7 @@
             "content": {
               "json": "### Update Deployment Status"
             },
-            "name": "text - 5",
+            "name": "UpdateDeploymentStatusText",
             "styleSettings": {
               "margin": "0px 0px -20px 0px"
             }
@@ -516,6 +627,9 @@
             "type": 9,
             "content": {
               "version": "KqlParameterItem/1.0",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "parameters": [
                 {
                   "id": "5cd36655-0307-49d5-9b09-3e7a37514a9f",
@@ -529,8 +643,8 @@
                   "quote": "'",
                   "delimiter": ",",
                   "query": "UCClientUpdateStatus\r\n| where TimeGenerated >= datetime({_SnapshotTime})\r\n| where UpdateCategory == \"WindowsQualityUpdate\"\r\n| summarize by TargetVersion",
-                  "value": [
-                    "value::all"
+                  "crossComponentResources": [
+                    "{mappedWorkspace}"
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
@@ -541,7 +655,10 @@
                   },
                   "defaultValue": "value::all",
                   "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
+                  "resourceType": "microsoft.operationalinsights/workspaces",
+                  "value": [
+                    "value::all"
+                  ]
                 },
                 {
                   "id": "f4cceee2-5a06-4535-b220-543f818f0b3f",
@@ -555,8 +672,8 @@
                   "quote": "'",
                   "delimiter": ",",
                   "query": "\r\nlet _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| where TimeGenerated >= _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\"\r\n| summarize by UpdateClassification",
-                  "value": [
-                    "value::all"
+                  "crossComponentResources": [
+                    "{mappedWorkspace}"
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
@@ -567,20 +684,23 @@
                   },
                   "defaultValue": "value::all",
                   "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
+                  "resourceType": "microsoft.operationalinsights/workspaces",
+                  "value": [
+                    "value::all"
+                  ]
                 }
               ],
               "style": "pills",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
-            "name": "parameters - 5"
+            "name": "Filters"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet KBLink = \"https://support.microsoft.com/help/\";\r\nlet _TargetVersion =\"{_TargetVersion}\";\r\nlet _UpdateClassification =\"{_UpdateClassification}\";\r\nlet DevicesInfo = (UCClientUpdateStatus \r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" \r\n| where iff(_TargetVersion has \"ALL\", true, _TargetVersion has tostring(TargetVersion))\r\n| where iff(_UpdateClassification has \"ALL\", true, _UpdateClassification has tostring(UpdateClassification))\r\n| summarize \r\n    TotalDevices=count(),\r\n    InstalledCount=dcountif(AzureADDeviceId, ClientState == \"Installed\") by TargetVersion, TargetBuild, DeploymentId, TargetKBNumber, UpdateReleaseTime\r\n| extend TotalProgress=round((InstalledCount * 1.0/ TotalDevices) * 100, 1));\r\nlet Alerts = (UCUpdateAlert\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsQualityUpdate\"\r\n| summarize Alerts=count() by TargetBuild);\r\nDevicesInfo\r\n| join kind=leftouter (Alerts) on TargetBuild\r\n| extend KBNumberLink = substring(TargetKBNumber, 2,8)\r\n| extend KBLinkText = iff(TargetKBNumber != \"\",strcat(KBLink, KBNumberLink), \"\")\r\n| extend ReleasedOn = format_datetime(UpdateReleaseTime, 'yyyy-M-dd')\r\n| project TargetVersion, TargetBuild, ReleasedOn, TotalProgress, Alerts, TotalDevices, DeploymentId, TargetKBNumber, KBLinkText\r\n| project-reorder TargetVersion, TargetBuild, ReleasedOn, TotalProgress, Alerts, DeploymentId, KBLinkText, TotalDevices\r\n| project-away TargetKBNumber\r\n//| summarize sum(Alerts), sum(TotalDevices)\r\n\r\n",
+              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet KBLink = \"https://support.microsoft.com/help/\";\r\nlet _TargetVersion =\"{_TargetVersion}\";\r\nlet _UpdateClassification =\"{_UpdateClassification}\";\r\nlet DevicesInfo = (UCClientUpdateStatus \r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsQualityUpdate\" \r\n| where iff(_TargetVersion has \"ALL\", true, _TargetVersion has tostring(TargetVersion))\r\n| where iff(_UpdateClassification has \"ALL\", true, _UpdateClassification has tostring(UpdateClassification))\r\n| summarize \r\n    TotalDevices=count(),\r\n    InstalledCount=dcountif(AzureADDeviceId, ClientState == \"Installed\") by TargetVersion, TargetBuild, TargetKBNumber, UpdateReleaseTime\r\n| extend TotalProgress=round((InstalledCount * 1.0/ TotalDevices) * 100, 1));\r\nlet Alerts = (UCUpdateAlert\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsQualityUpdate\"\r\n| summarize Alerts=dcount(AlertSubtype) by TargetBuild);\r\nDevicesInfo\r\n| join kind=leftouter (Alerts) on TargetBuild\r\n| extend KBNumberLink = substring(TargetKBNumber, 2,8)\r\n| extend KBLinkText = iff(isnotempty(TargetKBNumber),strcat(KBLink, KBNumberLink), \"\")\r\n| extend ReleasedOn = format_datetime(UpdateReleaseTime, 'yyyy-M-dd')\r\n| summarize by TargetVersion, TargetBuild, ReleasedOn, UpdateReleaseTime, TotalProgress, Alerts, TotalDevices,  KBNumberLink, KBLinkText\r\n| project-reorder TargetVersion, TargetBuild, ReleasedOn, TotalProgress, Alerts,  KBNumberLink, KBLinkText, TotalDevices\r\n//| summarize sum(Alerts), sum(TotalDevices)\r\n\r\n",
               "size": 2,
               "showAnalytics": true,
               "exportedParameters": [
@@ -602,6 +722,9 @@
               "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "table",
               "gridSettings": {
                 "formatters": [
@@ -631,6 +754,7 @@
                     "formatter": 18,
                     "formatOptions": {
                       "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": false,
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
                         {
@@ -656,7 +780,7 @@
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "workbook",
                         "templateIdSource": "static",
-                        "templateId": "community-workbooks/UpdateCompliance/AlertsTargetBuild/Alerts for Target build",
+                        "templateId": "community-workbooks/UpdateCompliance/Alerts for Target build",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default",
@@ -689,31 +813,19 @@
                     }
                   },
                   {
-                    "columnMatch": "DeploymentId",
-                    "formatter": 18,
+                    "columnMatch": "KBNumberLink",
+                    "formatter": 1,
                     "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "is Empty",
-                          "representation": "Blank",
-                          "text": "N/A"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ],
-                      "customColumnWidthSetting": "200px"
+                      "linkColumn": "KBLinkText",
+                      "linkTarget": "Url"
                     }
                   },
                   {
                     "columnMatch": "KBLinkText",
-                    "formatter": 1,
+                    "formatter": 5,
                     "formatOptions": {
-                      "linkTarget": "Url"
+                      "linkTarget": "Url",
+                      "linkIsContextBlade": false
                     }
                   },
                   {
@@ -726,7 +838,7 @@
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "workbook",
                         "templateIdSource": "static",
-                        "templateId": "community-workbooks/UpdateCompliance/TargetBuildList/Update compliance _ Target build",
+                        "templateId": "community-workbooks/UpdateCompliance/Update compliance _ Target build",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default",
@@ -756,10 +868,14 @@
                             "name": "_DeploymentId",
                             "source": "column",
                             "value": "DeploymentId"
+                          },
+                          {
+                            "name": "_ReleasedOn",
+                            "source": "column",
+                            "value": "UpdateReleaseTime"
                           }
                         ]
-                      }
-          
+                      },
                     },
                     "numberFormat": {
                       "unit": 0,
@@ -768,6 +884,35 @@
                         "useGrouping": true
                       }
                     }
+                  },
+                  {
+                    "columnMatch": "UpdateReleaseTime",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "DeploymentId",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "is Empty",
+                          "representation": "Blank",
+                          "text": "N/A"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ],
+                      "customColumnWidthSetting": "150px"
+                    }
+                  },
+                  {
+                    "columnMatch": "UpdateClassification",
+                    "formatter": 5
                   },
                   {
                     "columnMatch": "Devices",
@@ -791,6 +936,12 @@
                   {
                     "itemKey": "ReleasedOn",
                     "sortOrder": 2
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "KBNumberLink",
+                    "label": "KB Number"
                   }
                 ]
               },
@@ -861,6 +1012,9 @@
               "title": "OS  build number",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "piechart",
               "chartSettings": {
                 "yAxis": [
@@ -899,6 +1053,9 @@
               "title": "Target version",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "piechart",
               "chartSettings": {
                 "seriesLabelSettings": [
@@ -931,6 +1088,9 @@
               "title": "Update connectivity",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "visualization": "piechart",
               "chartSettings": {
                 "yAxis": [
@@ -961,13 +1121,16 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet DeviceInfo = (UCClientUpdateStatus\r\n    | join kind=innerunique UCClient on AzureADDeviceId\r\n    | where TimeGenerated == _SnapshotTime\r\n    | project\r\n        AzureADDeviceId,\r\n        DeviceName,\r\n        OSVersion,\r\n        OSBuild,\r\n        TargetVersion,\r\n        TargetBuild,\r\n        ClientState,\r\n        ClientSubstate);\r\nlet UpdateAlerts = (UCUpdateAlert\r\n    | where TimeGenerated == _SnapshotTime\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\nlet DeviceAlerts = (UCDeviceAlert\r\n    | where TimeGenerated == _SnapshotTime\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\nlet Alerts = (UpdateAlerts\r\n| join DeviceAlerts on AzureADDeviceId\r\n| extend TotalAlerts = Alerts + Alerts1\r\n| summarize by AzureADDeviceId, TotalAlerts);\r\nAlerts\r\n| join (DeviceInfo) on AzureADDeviceId\r\n| extend Name =  iff(isempty(DeviceName), \"NONAME\", tostring(DeviceName))\r\n| project\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    OSBuild,\r\n    TargetVersion,\r\n    TargetBuild,\r\n    ClientState,\r\n    TotalAlerts\r\n| project-reorder\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    OSBuild,\r\n    TargetVersion,\r\n    TargetBuild,\r\n    ClientState,\r\n    TotalAlerts\r\n| take 250\r\n\r\n",
+              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet DeviceInfo = (UCClientUpdateStatus\r\n    | join kind=innerunique UCClient on AzureADDeviceId\r\n    | where UpdateCategory == \"WindowsQualityUpdate\"\r\n    | where TimeGenerated == _SnapshotTime\r\n    | project\r\n        AzureADDeviceId,\r\n        DeviceName,\r\n        OSVersion,\r\n        OSBuild,\r\n        TargetBuild,\r\n        ClientState,\r\n        ClientSubstate);\r\nlet UpdateAlerts = (UCUpdateAlert\r\n    | where TimeGenerated == _SnapshotTime\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\nlet DeviceAlerts = (UCDeviceAlert\r\n    | where TimeGenerated == _SnapshotTime\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\nlet Alerts = (UpdateAlerts\r\n| join DeviceAlerts on AzureADDeviceId\r\n| extend TotalAlerts = Alerts + Alerts1\r\n| summarize by AzureADDeviceId, TotalAlerts);\r\nAlerts\r\n| join (DeviceInfo) on AzureADDeviceId\r\n| extend Name =  iff(isempty(DeviceName), \"---\", tostring(DeviceName))\r\n| project\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    OSBuild,\r\n    TargetBuild,\r\n    ClientState,\r\n    TotalAlerts\r\n| project-reorder\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    OSBuild,\r\n    TargetBuild,\r\n    ClientState,\r\n    TotalAlerts\r\n| take 250\r\n\r\n",
               "size": 2,
               "showAnalytics": true,
               "title": "Device Compliance Status",
               "showExportToExcel": true,
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{mappedWorkspace}"
+              ],
               "gridSettings": {
                 "formatters": [
                   {
@@ -980,7 +1143,7 @@
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "workbook",
                         "templateIdSource": "static",
-                        "templateId": "community-workbooks/UpdateCompliance/DeviceInfo/Device information",
+                        "templateId": "community-workbooks/UpdateCompliance/Device information",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default",
@@ -1005,7 +1168,32 @@
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "workbook",
                         "templateIdSource": "static",
-                        "templateId": "community-workbooks/UpdateCompliance/DeviceAlerts/Device Alerts",
+                        "templateId": "community-workbooks/UpdateCompliance/Device Alerts",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "default",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "_AzureADDeviceId",
+                            "source": "column",
+                            "value": "AzureADDeviceId"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "DeviceName",
+                    "formatter": 1,
+                    "formatOptions": {
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "workbook",
+                        "templateIdSource": "static",
+                        "templateId": "community-workbooks/UpdateCompliance/Device information",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default",
@@ -1036,5 +1224,6 @@
       "name": "DeviceStatus"
     }
   ],
+
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
