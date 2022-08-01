@@ -15,9 +15,6 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "value": [
-              "/subscriptions/783fd652-64f3-4680-81e9-0b978c542005"
-            ],
             "typeSettings": {
               "additionalResourceOptions": [],
               "includeAll": false,
@@ -25,7 +22,8 @@
             },
             "timeContext": {
               "durationMs": 86400000
-            }
+            },
+            "value": []
           },
           {
             "id": "05578175-fbe8-4dd2-9c6a-dec2f503d6cf",
@@ -116,7 +114,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources \r\n| where location in ({Location})\r\n| summarize\r\nazureLinux = countif(type =~ \"microsoft.compute/virtualmachines\" and  properties.storageProfile.osDisk.osType =~ \"Linux\"),\r\narcLinux = countif(type =~ \"microsoft.hybridcompute/machines\" and properties.osName =~ \"Linux\"),\r\nazureWindows = countif(type =~ \"microsoft.compute/virtualmachines\" and  properties.storageProfile.osDisk.osType =~ \"Windows\"),\r\narcWindows = countif(type =~ \"microsoft.hybridcompute/machines\" and properties.osName =~ \"Windows\")\r\n| project machinePack = pack(\"Azure virtual machines-Linux\", azureLinux, \"Arc enabled servers-Linux\", arcLinux, \"Azure virtual machines-Windows\", azureWindows, \"Arc enabled servers-Windows\", arcWindows)\r\n| mv-expand machinePack\r\n| extend machine = tostring(bag_keys(machinePack)[0])\r\n| extend count_ = tolong(machinePack[machine])\r\n| project machine, count_ ",
+              "query": "resources \r\n| where location in ({Location})\r\n| extend osType = coalesce(tostring(properties.osName), tostring(properties.osType), tostring(properties.storageProfile.osDisk.osType))\r\n| summarize\r\nazureLinux = countif(type =~ \"microsoft.compute/virtualmachines\" and  osType =~ \"Linux\"),\r\narcLinux = countif(type =~ \"microsoft.hybridcompute/machines\" and osType =~ \"Linux\"),\r\nazureWindows = countif(type =~ \"microsoft.compute/virtualmachines\" and  osType =~ \"Windows\"),\r\narcWindows = countif(type =~ \"microsoft.hybridcompute/machines\" and osType =~ \"Windows\")\r\n| project machinePack = pack(\"Azure virtual machines-Linux\", azureLinux, \"Arc enabled servers-Linux\", arcLinux, \"Azure virtual machines-Windows\", azureWindows, \"Arc enabled servers-Windows\", arcWindows)\r\n| mv-expand machinePack\r\n| extend machine = tostring(bag_keys(machinePack)[0])\r\n| extend count_ = tolong(machinePack[machine])\r\n| project machine, count_ ",
               "size": 2,
               "title": "Total machines across subscriptions",
               "queryType": 1,
@@ -291,7 +289,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "\r\n(resources //join of virtual machines, you can play with params as you see fit.\r\n| where type in~ ({ResourceType})\r\n| where location in ({Location})\r\n| extend os = iff(type =~ \"microsoft.compute/virtualmachines\", tolower(tostring(properties.storageProfile.osDisk.osType)), tolower(tostring(properties.osName)))\r\n| extend id=tolower(id)\r\n| extend status=iff(type =~ \"microsoft.compute/virtualmachines\", properties.extended.instanceView.powerState.displayStatus, properties.status)\r\n| project id, name, os, status, resourceProperties=properties)\r\n| join kind=leftouter //finally, making a left outer join to fetch updates details from patchassessment\r\n((patchassessmentresources\r\n| where type in~ (\"microsoft.compute/virtualmachines/patchassessmentresults\", \"microsoft.hybridcompute/machines/patchassessmentresults\")\r\n| where location in ({Location})\r\n| where properties.status == \"Succeeded\"\r\n| parse id with resourceId \"/patchAssessmentResults\" *\r\n| extend resourceId=tolower(resourceId)\r\n| project resourceId, assessProperties=properties))\r\non $left.id == $right.resourceId //join on resources id & patchassessment id that is parsed.\r\n| summarize\r\ntotal = countif(1 == 1),\r\nnodata = countif(isnull(assessProperties) == true),\r\npendingReboot = countif(isnotnull(assessProperties) and assessProperties.rebootPending == \"true\"),\r\n//pendingUpdates - when any classification has > 0 updates\r\npendingUpdatesWindows = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Windows\" and (assessProperties.availablePatchCountByClassification.critical>0 or assessProperties.availablePatchCountByClassification.security>0 or assessProperties.availablePatchCountByClassification.updateRollup>0 or assessProperties.availablePatchCountByClassification.featurePack>0 or assessProperties.availablePatchCountByClassification.servicePack>0 or assessProperties.availablePatchCountByClassification.definition>0 or assessProperties.availablePatchCountByClassification.tools>0 or assessProperties.availablePatchCountByClassification.updates>0)),\r\npendingUpdatesLinux = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Linux\" and (assessProperties.availablePatchCountByClassification.security>0 or assessProperties.availablePatchCountByClassification.other>0)),\r\n//noPendingUpdates - when all classifications has 0 updates\r\nnoPendingUpdatesWindows = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Windows\" and (assessProperties.availablePatchCountByClassification.critical==0 and assessProperties.availablePatchCountByClassification.security==0 and assessProperties.availablePatchCountByClassification.updateRollup==0 and assessProperties.availablePatchCountByClassification.featurePack==0 and assessProperties.availablePatchCountByClassification.servicePack==0 and assessProperties.availablePatchCountByClassification.definition==0 and assessProperties.availablePatchCountByClassification.tools==0 and assessProperties.availablePatchCountByClassification.updates==0)),\r\nnoPendingUpdatesLinux = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Linux\" and (assessProperties.availablePatchCountByClassification.security==0 and assessProperties.availablePatchCountByClassification.other==0))\r\n| project machinePack = pack(\"No updates available - Linux\", noPendingUpdatesLinux,  \"No updates available - Windows\", noPendingUpdatesWindows,  \"Updates available - Linux\", pendingUpdatesLinux,  \"Updates available - Windows\", pendingUpdatesWindows, \"Reboot required\", pendingReboot,  \"No updates data\", nodata, \"Total machines\", total)\r\n| mv-expand machinePack\r\n| extend machine = tostring(bag_keys(machinePack)[0])\r\n| extend count_ = tolong(machinePack[machine])\r\n| project machine, count_ \r\n",
+              "query": "\r\n(resources //join of virtual machines, you can play with params as you see fit.\r\n| where type in~ ({ResourceType})\r\n| where location in ({Location})\r\n| extend os = iff(type =~ \"microsoft.compute/virtualmachines\", tolower(tostring(properties.storageProfile.osDisk.osType)), tolower(coalesce(tostring(properties.osName), tostring(properties.osType))))\r\n| extend id=tolower(id)\r\n| extend status=iff(type =~ \"microsoft.compute/virtualmachines\", properties.extended.instanceView.powerState.displayStatus, properties.status)\r\n| project id, name, os, status, resourceProperties=properties)\r\n| join kind=leftouter //finally, making a left outer join to fetch updates details from patchassessment\r\n((patchassessmentresources\r\n| where type in~ (\"microsoft.compute/virtualmachines/patchassessmentresults\", \"microsoft.hybridcompute/machines/patchassessmentresults\")\r\n| where location in ({Location})\r\n| where properties.status == \"Succeeded\"\r\n| parse id with resourceId \"/patchAssessmentResults\" *\r\n| extend resourceId=tolower(resourceId)\r\n| project resourceId, assessProperties=properties))\r\non $left.id == $right.resourceId //join on resources id & patchassessment id that is parsed.\r\n| summarize\r\ntotal = countif(1 == 1),\r\nnodata = countif(isnull(assessProperties) == true),\r\npendingReboot = countif(isnotnull(assessProperties) and assessProperties.rebootPending == \"true\"),\r\n//pendingUpdates - when any classification has > 0 updates\r\npendingUpdatesWindows = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Windows\" and (assessProperties.availablePatchCountByClassification.critical>0 or assessProperties.availablePatchCountByClassification.security>0 or assessProperties.availablePatchCountByClassification.updateRollup>0 or assessProperties.availablePatchCountByClassification.featurePack>0 or assessProperties.availablePatchCountByClassification.servicePack>0 or assessProperties.availablePatchCountByClassification.definition>0 or assessProperties.availablePatchCountByClassification.tools>0 or assessProperties.availablePatchCountByClassification.updates>0)),\r\npendingUpdatesLinux = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Linux\" and (assessProperties.availablePatchCountByClassification.security>0 or assessProperties.availablePatchCountByClassification.other>0)),\r\n//noPendingUpdates - when all classifications has 0 updates\r\nnoPendingUpdatesWindows = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Windows\" and (assessProperties.availablePatchCountByClassification.critical==0 and assessProperties.availablePatchCountByClassification.security==0 and assessProperties.availablePatchCountByClassification.updateRollup==0 and assessProperties.availablePatchCountByClassification.featurePack==0 and assessProperties.availablePatchCountByClassification.servicePack==0 and assessProperties.availablePatchCountByClassification.definition==0 and assessProperties.availablePatchCountByClassification.tools==0 and assessProperties.availablePatchCountByClassification.updates==0)),\r\nnoPendingUpdatesLinux = countif(isnotnull(assessProperties) and assessProperties.osType =~ \"Linux\" and (assessProperties.availablePatchCountByClassification.security==0 and assessProperties.availablePatchCountByClassification.other==0))\r\n| project machinePack = pack(\"No updates available - Linux\", noPendingUpdatesLinux,  \"No updates available - Windows\", noPendingUpdatesWindows,  \"Updates available - Linux\", pendingUpdatesLinux,  \"Updates available - Windows\", pendingUpdatesWindows, \"Reboot required\", pendingReboot,  \"No updates data\", nodata, \"Total machines\", total)\r\n| mv-expand machinePack\r\n| extend machine = tostring(bag_keys(machinePack)[0])\r\n| extend count_ = tolong(machinePack[machine])\r\n| project machine, count_ \r\n",
               "size": 4,
               "title": "Updates status of machines",
               "queryType": 1,
@@ -614,7 +612,6 @@
         "groupType": "editable",
         "title": "Schedules/Maintenance configurations",
         "expandable": true,
-        "expanded": true,
         "items": [
           {
             "type": 1,
@@ -813,7 +810,7 @@
                 }
               }
             },
-            "name": "query - 2"
+            "name": "installationRunStatus"
           },
           {
             "type": 3,
@@ -874,7 +871,7 @@
                 ]
               }
             },
-            "name": "query - 5"
+            "name": "historyByMaintenance"
           },
           {
             "type": 3,
@@ -939,7 +936,7 @@
                 ]
               }
             },
-            "name": "query - 2"
+            "name": "HistoryByRuns"
           }
         ]
       },
@@ -948,9 +945,6 @@
         "showBorder": true
       }
     }
-  ],
-  "fallbackResourceIds": [
-    "azure monitor"
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
