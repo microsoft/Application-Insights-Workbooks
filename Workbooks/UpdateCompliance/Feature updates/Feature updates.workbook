@@ -80,13 +80,14 @@
             "type": 1,
             "description": "Time indicating the latest snapshot",
             "isRequired": true,
-            "query": "UCClient\r\n| where TimeGenerated >= ago(7d)\r\n| summarize max(TimeGenerated)",
+            "query": "UCClient\r\n| where TimeGenerated >= ago(7d)\r\n| where TimeGenerated < ago(1d)\r\n| summarize max(TimeGenerated)",
             "crossComponentResources": [
               "{mappedWorkspace}"
             ],
             "isHiddenWhenLocked": true,
             "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces"
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "value": ""
           }
         ],
         "style": "above",
@@ -106,7 +107,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsFeatureUpdate\"\r\n| extend DevicesTakingFeatureUpdate = \"Devices taking feature update\"\r\n| extend DevicesCount = \"Devices Count\"\r\n| summarize arg_max(TimeGenerated, *) by AzureADDeviceId\r\n| summarize TotalDevices=count() by DevicesTakingFeatureUpdate, DevicesCount\r\n",
+        "query": "// intialitze filters\r\nlet _SnapshotTime = datetime({_SnapshotTime});\r\n// Prepare the subtables\r\nlet UCClientUpdateStatus_Info = UCClientUpdateStatus | where TimeGenerated == _SnapshotTime;                               \r\nlet UCClient_Info = UCClient | where TimeGenerated == _SnapshotTime;\r\n\r\nUCClientUpdateStatus\r\n| join kind=innerunique UCClient_Info on AzureADDeviceId\r\n| where UpdateCategory == \"WindowsFeatureUpdate\"\r\n| extend DevicesTakingFeatureUpdate = \"Devices taking feature update\"\r\n| extend DevicesCount = \"Devices count\"\r\n| summarize TotalDevices=count() by DevicesTakingFeatureUpdate, DevicesCount\r\n\r\n",
         "size": 3,
         "title": "Devices count",
         "noDataMessage": "No devices",
@@ -164,7 +165,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet TakingUpdate = (UCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsFeatureUpdate\"  \r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId);\r\nlet Device = (UCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| where OSFeatureUpdateStatus == \"InService\"\r\n| summarize by AzureADDeviceId, OSFeatureUpdateStatus);\r\nDevice\r\n| join kind=innerunique TakingUpdate on AzureADDeviceId\r\n| extend Compliant = \"InService\"\r\n| extend Title = \"Feature Update Status\"\r\n| summarize count() by Compliant, Title\r\n",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| where OSFeatureUpdateStatus == \"InService\"\r\n| summarize by AzureADDeviceId, OSFeatureUpdateStatus\r\n| extend Compliant = \"InService\"\r\n| extend Title = \"Feature Update Status\"\r\n| summarize count() by Compliant, Title;\r\n",
         "size": 3,
         "title": "Feature update status",
         "noDataMessage": "No feature updates",
@@ -235,7 +236,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet TakingUpdate = (UCClientUpdateStatus\r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsFeatureUpdate\"\r\n| summarize arg_max(UpdateReleaseTime, *) by AzureADDeviceId);\r\nlet Device = (UCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| where OSFeatureUpdateStatus == \"EndOfService\"\r\n| summarize by AzureADDeviceId, OSFeatureUpdateStatus);\r\nDevice\r\n| join kind=innerunique TakingUpdate on AzureADDeviceId\r\n| extend Compliant = \"Non Supported OS\"\r\n| extend Title = \"End Of Service\"\r\n| summarize Devices=count() by Compliant, Title\r\n",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| where OSFeatureUpdateStatus == \"EndOfService\"\r\n| summarize by AzureADDeviceId, OSFeatureUpdateStatus\r\n| extend Compliant = \"Non Supported OS\"\r\n| extend Title = \"End Of Service\"\r\n| summarize Devices=count() by Compliant, Title;\r\n",
         "size": 3,
         "title": "End of Service",
         "noDataMessage": "No devices that are out of service",
@@ -309,7 +310,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let maxTimeGenerated = UCClient | where TimeGenerated >= ago(30d)| summarize max(TimeGenerated);\r\nlet warningBarrier = 18;\r\nlet today = now();\r\nUCClient\r\n| where TimeGenerated in(maxTimeGenerated)\r\n| extend Status=iff(OSFeatureUpdateStatus has 'InService', iff(OSFeatureUpdateStatus has 'EndOfService', 'Unknown', 'InService'), iff(OSFeatureUpdateStatus has 'EndOfService', 'Unknown', 'InService'))\r\n| where Status != \"Unknown\" and OSVersion  != \"Windows Insider Program\"\r\n| extend diff = datetime_diff('month', OSFeatureUpdateEOSTime, today)\r\n| where diff <= warningBarrier and diff > 0\r\n| extend Title = \"Nearing EOS\"\r\n| extend Subtitle = \"Near to end of support\"\r\n| summarize Devices = count() by Title, Subtitle\r\n",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet maxTimeGenerated = UCClient | where _SnapshotTime >= ago(30d)| summarize max(_SnapshotTime);\r\nlet warningBarrier = 6;\r\nlet today = now();\r\nUCClient\r\n| where TimeGenerated == _SnapshotTime\r\n| extend Status=iff(OSFeatureUpdateStatus has 'InService', iff(OSFeatureUpdateStatus has 'EndOfService', 'Unknown', 'InService'), iff(OSFeatureUpdateStatus has 'EndOfService', 'Unknown', 'InService'))\r\n| where Status != \"Unknown\" and OSVersion  != \"Windows Insider Program\"\r\n| extend diff = datetime_diff('month', OSFeatureUpdateEOSTime, today)\r\n| where diff <= warningBarrier and diff > 0\r\n| extend Compliant = \"Nearing EOS\"\r\n| extend Title = \"Near to end of support\"\r\n| extend Subtitle = \"Ending support within 6 months\"\r\n| summarize Devices=count() by Compliant, Title, Subtitle;\r\n",
         "size": 3,
         "title": "Nearing EOS",
         "noDataMessage": "No devices ending service soon",
@@ -383,7 +384,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsFeatureUpdate\"\r\n| extend Title=\"Active alerts\", Subtitle = \"Devices taking alerts\"\r\n| summarize count() by AlertStatus, Title, Subtitle",
+        "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsFeatureUpdate\"\r\n| extend Title=\"Active alerts\", Subtitle = \"Devices having alerts\"\r\n| summarize count() by AlertStatus, Title, Subtitle",
         "size": 3,
         "title": "Active alerts",
         "noDataMessage": "No alerts",
@@ -601,7 +602,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert \r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsFeatureUpdate\"  and TargetVersion != \"Windows Insider Program\" and (TargetVersion has \"21H2\" or TargetVersion has \"21H1\" or TargetVersion has \"20H2\")\r\n| summarize count() by AlertClassification\r\n",
+              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nUCUpdateAlert \r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsFeatureUpdate\"  and TargetVersion != \"Windows Insider Program\"\r\n| summarize count() by AlertClassification\r\n",
               "size": 3,
               "title": "Update alerts",
               "noDataMessage": "No alerts",
@@ -670,9 +671,12 @@
                   "multiSelect": true,
                   "quote": "'",
                   "delimiter": ",",
-                  "query": "UCClientUpdateStatus\r\n| where TimeGenerated >= datetime({_SnapshotTime})\r\n| where UpdateCategory == \"WindowsFeatureUpdate\" and isnotempty(TargetKBNumber) and TargetVersion != \"Windows Insider Program\" and (TargetVersion has \"21H2\" or TargetVersion has \"21H1\" or TargetVersion has \"20H2\")\r\n| summarize by TargetVersion",
+                  "query": "UCClientUpdateStatus\r\n| where TimeGenerated >= datetime({_SnapshotTime})\r\n| where UpdateCategory == \"WindowsFeatureUpdate\" and isnotempty(TargetKBNumber) and TargetVersion != \"Windows Insider Program\"\r\n| summarize by TargetVersion",
                   "crossComponentResources": [
                     "{mappedWorkspace}"
+                  ],
+                  "value": [
+                    "value::all"
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
@@ -683,10 +687,7 @@
                   },
                   "defaultValue": "value::all",
                   "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces",
-                  "value": [
-                    "value::all"
-                  ]
+                  "resourceType": "microsoft.operationalinsights/workspaces"
                 }
               ],
               "style": "pills",
@@ -699,7 +700,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet KBLink = \"https://support.microsoft.com/help/\";\r\nlet _TargetVersion =\"{_TargetVersion}\";\r\nlet DevicesInfo = (UCClientUpdateStatus \r\n| where TimeGenerated == _SnapshotTime\r\n| where UpdateCategory == \"WindowsFeatureUpdate\" and UpdateClassification == \"Upgrade\"  and isnotempty(TargetKBNumber) and TargetVersion != \"Windows Insider Program\"\r\n| where iff(_TargetVersion has \"ALL\", true, _TargetVersion has tostring(TargetVersion))\r\n| summarize \r\n    TotalDevices=count(),\r\n    InstalledCount=dcountif(AzureADDeviceId, ClientState == \"Installed\") by TargetVersion, UpdateClassification, UpdateCategory\r\n| extend TotalProgress=round((InstalledCount * 1.0/ TotalDevices) * 100, 1));\r\nlet Alerts = (UCUpdateAlert\r\n| join kind=leftouter UCClientUpdateStatus on AzureADDeviceId\r\n| where TimeGenerated == _SnapshotTime\r\n| where AlertStatus == \"Active\" and UpdateCategory==\"WindowsFeatureUpdate\"\r\n| summarize Alerts=dcount(ErrorCode) by  TargetVersion);\r\nDevicesInfo\r\n| join kind=leftouter (Alerts) on TargetVersion\r\n//| extend KBNumberLink = substring(TargetKBNumber, 2,8)\r\n//| extend KBLinkText = iff(isnotempty(TargetKBNumber),strcat(KBLink, KBNumberLink), \"\")\r\n//| extend ReleasedOn = format_datetime(UpdateReleaseTime, 'yyyy-M-dd')\r\n| summarize by TargetVersion,  TotalProgress, Alerts, TotalDevices, UpdateClassification, UpdateCategory\r\n| project-reorder TargetVersion, TotalProgress, Alerts, TotalDevices\r\n\r\n//| summarize sum(Alerts), sum(TotalDevices)\r\n\r\n",
+              "query": "// intialitze filters\r\nlet _SnapshotTime = datetime({_SnapshotTime});\r\nlet _TargetVersion =\"{_TargetVersion}\";\r\n// declare constants\r\nlet KBLink = \"https://support.microsoft.com/help/\";\r\n// Prepare the subtables\r\nlet UCClientUpdateStatus_Info = UCClientUpdateStatus | where TimeGenerated == _SnapshotTime;                               \r\nlet UCUpdateAlert_Info = UCUpdateAlert | where TimeGenerated == _SnapshotTime;\r\n// Business logic _ResourceId\r\n// Filter the windows feature updates reatil builds\r\nlet AggregateDeviceCounts = UCClientUpdateStatus_Info \r\n| where UpdateCategory == \"WindowsFeatureUpdate\" and TargetVersion != \"Windows Insider Program\"\r\n| where iff(_TargetVersion has \"ALL\", true, _TargetVersion has tostring(TargetVersion))\r\n| summarize \r\n    TotalDevices=count(),\r\n    InstalledCount=dcountif(AzureADDeviceId, ClientState == \"Installed\") by TargetVersion, UpdateClassification\r\n| extend TotalProgress=round((InstalledCount * 1.0/ TotalDevices) * 100, 1);\r\n// prepate alert number for each target version aggreagre by error code\r\nlet AggregateAlertSubTypeCount = UCUpdateAlert_Info \r\n| where  UpdateCategory == \"WindowsFeatureUpdate\" and AlertStatus == \"Active\"\r\n| summarize Alerts=dcount(ErrorCode) by  TargetVersion, UpdateCategory, UpdateClassification;\r\n// join for final output\r\nAggregateDeviceCounts\r\n| join kind=leftouter (AggregateAlertSubTypeCount) on TargetVersion\r\n| summarize by TargetVersion,  TotalProgress, Alerts, TotalDevices, UpdateCategory, UpdateClassification\r\n| project-reorder TargetVersion, TotalProgress, Alerts, TotalDevices\r\n",
               "size": 0,
               "showAnalytics": true,
               "noDataMessage": "No devices",
@@ -847,7 +848,7 @@
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "workbook",
                         "templateIdSource": "static",
-                        "templateId": "community-workbooks/UpdateCompliance/Target build",
+                        "templateId": "community-workbooks/UpdateCompliance/Target version",
                         "typeSource": "workbook",
                         "gallerySource": "workbook",
                         "locationSource": "default",
@@ -1097,7 +1098,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let _SnapshotTime = datetime({_SnapshotTime});\r\nlet DeviceInfo = (UCClientUpdateStatus\r\n    | join kind=innerunique UCClient on AzureADDeviceId\r\n    | where UpdateCategory == \"WindowsFeatureUpdate\" and isnotempty(TargetKBNumber) and TargetVersion != \"Windows Insider Program\" and (TargetVersion has \"21H2\" or TargetVersion has \"21H1\" or TargetVersion has \"20H2\")\r\n    | where TimeGenerated == _SnapshotTime\r\n    | project\r\n        AzureADDeviceId,\r\n        DeviceName,\r\n        OSVersion,\r\n        TargetVersion, \r\n        ClientState,\r\n        UpdateCategory);\r\nlet UpdateAlerts = (UCUpdateAlert\r\n    | where TimeGenerated == _SnapshotTime\r\n    | where UpdateCategory == \"WindowsFeatureUpdate\" and TargetVersion != \"Windows Insider Program\" and (TargetVersion has \"21H2\" or TargetVersion has \"21H1\" or TargetVersion has \"20H2\")\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\nlet DeviceAlerts = (UCDeviceAlert\r\n    | where TimeGenerated == _SnapshotTime\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\nlet Alerts = (UpdateAlerts\r\n| join DeviceAlerts on AzureADDeviceId\r\n| extend TotalAlerts = Alerts + Alerts1\r\n| summarize by AzureADDeviceId, TotalAlerts);\r\nDeviceInfo\r\n| join kind = leftouter (Alerts) on AzureADDeviceId\r\n| extend Name =  iff(isempty(DeviceName), \"---\", tostring(DeviceName))\r\n| sort by TotalAlerts desc\r\n| distinct\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    TargetVersion,\r\n    ClientState,\r\n    TotalAlerts,\r\n    UpdateCategory\r\n| project-reorder\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    TargetVersion,\r\n    ClientState,\r\n    TotalAlerts\r\n| take 250\r\n\r\n",
+              "query": "// intialitze constants\r\nlet _SnapshotTime = datetime({_SnapshotTime});\r\n// Prepare the subtables\r\nlet UCClientUpdateStatus_Info = UCClientUpdateStatus | where TimeGenerated == _SnapshotTime;   \r\nlet UCUpdateAlert_Info = UCUpdateAlert | where TimeGenerated == _SnapshotTime | where AlertStatus == \"Active\";   \r\nlet UCDeviceAlert_Info = UCDeviceAlert | where TimeGenerated == _SnapshotTime | where AlertStatus == \"Active\";\r\nlet UCClient_Info = UCClient | where TimeGenerated == _SnapshotTime;\r\n//\r\nlet FeatureUpdateInfo = UCClientUpdateStatus_Info | where UpdateCategory == \"WindowsFeatureUpdate\" and TargetVersion != \"Windows Insider Program\" ;\r\n\r\nlet DeviceFeatureUpdateInfo = (FeatureUpdateInfo\r\n    | join kind=leftouter UCClient_Info on AzureADDeviceId\r\n    | project\r\n        AzureADDeviceId,\r\n        DeviceName,\r\n        UpdateCategory,\r\n        OSVersion,\r\n        OSBuild,\r\n        TargetVersion,\r\n        ClientState,\r\n        ClientSubstate);\r\n\r\nlet UpdateAlerts = (UCUpdateAlert_Info\r\n    | where UpdateCategory == \"WindowsFeatureUpdate\" and TargetVersion != \"Windows Insider Program\" \r\n    | summarize Alerts=count() by AzureADDeviceId);\r\n\r\nlet DeviceAlerts = (UCDeviceAlert_Info\r\n    | summarize Alerts=count() by AzureADDeviceId);\r\n\r\nlet Alerts = (UpdateAlerts\r\n| join kind=fullouter DeviceAlerts on AzureADDeviceId\r\n| extend TotalAlerts = iff(isempty(Alerts), 0, Alerts) + iff(isempty(Alerts1), 0, Alerts1)\r\n| summarize by AzureADDeviceId, TotalAlerts);\r\n\r\nDeviceFeatureUpdateInfo\r\n| join kind = leftouter (Alerts) on AzureADDeviceId\r\n| extend Name =  iff(isempty(DeviceName), \"---\", tostring(DeviceName))\r\n| sort by TotalAlerts desc\r\n| distinct\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    TargetVersion,\r\n    ClientState,\r\n    TotalAlerts,\r\n    UpdateCategory\r\n| project-reorder\r\n    Name,\r\n    AzureADDeviceId,\r\n    OSVersion,\r\n    TargetVersion,\r\n    ClientState,\r\n    TotalAlerts\r\n",
               "size": 0,
               "showAnalytics": true,
               "title": "Device compliance status",
