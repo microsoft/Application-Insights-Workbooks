@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-graph-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Graph Visualization
 
 Workbooks supports visualizing arbitrary graphs based on data from logs to show the relationships between monitoring entities. 

@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-text
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Text Parameters
 
 Textbox parameters provide a simple way to collect text input from workbook users. They are used when it is not practical to use a drop down to collect the input (e.g. an arbitrary threshold or generic filters). Workbooks allow authors to get the default value of the textbox from a query. This allows interesting scenarios like setting the default threshold based on the p95 of the metric.

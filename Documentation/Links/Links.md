@@ -1,3 +1,7 @@
+> Note: This documentation is now out of date, but exists to preserve any existing links. 
+>
+> For the up to date docs, see: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-create-workbook#add-links
+
 # Using Links Steps
 
 Authors can use the `Links` step to create links to other views, to other workbooks, to other steps inside a workbook, or to create tabbed views within a workbook. Much of the configuration for links is very similar to [using links inside of grids/other visualizations](../Visualizations/Grid.md#link-actions). The links can be styled as hyperlinks, buttons, and tabs.  
