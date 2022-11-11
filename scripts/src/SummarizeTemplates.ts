@@ -1,20 +1,8 @@
-/*
-import * as fs from 'fs';
-import * as path from 'path';
-import * as process from 'process';
-import * as BestPractices from "./BestPracticesAnalyzer";
-*/
-
-import { BestPracticeResults, BestPracticeSummaryResult } from "./BestPracticesAnalyzer";
+import { BestPracticeResults, BestPracticeSummaryResult } from "./Interfaces";
 import { forEachKey, getDirectoriesRecursive, logError, logMessage, readTemplateFile, testPath } from "./Utils";
 
 const fs = require('fs');
-const path = require('path');
-const { exit } = require('process');
 const BestPractices = require('./BestPracticesAnalyzer');
-
-
-const Encoding = 'utf8';
 
 function usage() {
     console.log("usage: summarizetemplates folder_path ")

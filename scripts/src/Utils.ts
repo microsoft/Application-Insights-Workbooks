@@ -66,3 +66,16 @@ export function forEachKey(x: any, func: (key, value) => void, sort?: (a: { [key
 export function flattenString(s: string) : String {
     return s ? s.replace( /\s+/ig, " ") : "";
 }
+
+
+export function isEmpty(v: any) {
+    return v === undefined || v === null || Array.isArray(v) && v.length === 0 || v === "";
+}
+
+export function notNullOrUndefined<T>(v: T) : boolean {
+    return v !== undefined && v !== null;
+}
+
+export function isNullOrWhitespace(v: any) : boolean {
+    return isEmpty(v) || typeof(v) === "string" && v.trim().length === 0;
+}

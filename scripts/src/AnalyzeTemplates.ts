@@ -1,17 +1,9 @@
-/*
-import * as fs from 'fs';
-import * as path from 'path';
-import * as process from 'process';
-import * as BestPractices from "./BestPracticesAnalyzer";
-*/
-
 import { exit } from "process";
-import { BestPracticeResults, BestPracticeSummaryResult, SeverityLevel } from "./BestPracticesAnalyzer";
-import { flattenString, getDirectoriesRecursive, logError, logMessage, readTemplateFile, testPath } from "./Utils";
+import { BestPracticeResults, SeverityLevel } from "./Interfaces";
+import { flattenString, getDirectoriesRecursive, logMessage, readTemplateFile, testPath } from "./Utils";
 
 const fs = require('fs');
 const BestPractices = require('./BestPracticesAnalyzer');
-
 
 function usage(message: string) {
     console.log("usage: analyzetemplates --severity:value [one or more files/folders]")
@@ -26,7 +18,6 @@ function usage(message: string) {
  * SCRIPT MAIN
  * ============================================================
  */
-
 if (process.argv.length < 3) { 
     usage("invalid command line arguments");
 }
