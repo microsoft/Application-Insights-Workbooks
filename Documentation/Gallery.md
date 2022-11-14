@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview#the-gallery.
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 ## New Gallery for Workbooks
 
 Here is the new gallery for the workbooks.

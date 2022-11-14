@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-configurations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Workbook Settings
 
 In the workbooks settings context pane, there are a couple of tabs which can be configured for the workbook.

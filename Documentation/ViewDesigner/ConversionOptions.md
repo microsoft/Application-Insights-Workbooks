@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-view-designer-conversion-overview
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # <strong>Conversion Options</strong>
 
 View Designer has a fixed static style of representation, while Workbooks enables freedom to include and modify how the data is represented, below depicts a few examples of how one might transform the views within Workbooks.
