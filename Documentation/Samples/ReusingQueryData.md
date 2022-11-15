@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-commonly-used-components#reuse-query-data-in-different-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Reusing query data in different visualizations
 
 There are times where you want to visualize the underlying data set in different ways without having to pay the cost of the query each time. This sample shows you how to do so using the `Merge` option in the query control.

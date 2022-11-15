@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-commonly-used-components#traffic-light-icons
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Showing traffic lights status in workbooks
 
 It is often desirable to summarize status using a simpler domain instead presenting the full range of values. For example, you may want to categorize your computers by CPU utilization as Cold/Warm/Hot OR user by the performance experienced as Satisfied/Tolerating/Frustrated. This can be as simple as showing an indicator or icon which represents the status next to the underlying metric. 
