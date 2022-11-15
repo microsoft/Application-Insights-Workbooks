@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-retrieve-legacy-workbooks
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Private Workbooks Deprecation
 Workbooks were available in two modes – private and shared. Private workbooks were accessible only to the author and was the default save mode.  
 

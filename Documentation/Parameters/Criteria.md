@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-criteria
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Text Parameter Criteria
 
 When a query depends on many parameters, then the query will be stalled until each of it's parameters have been resolved. Sometimes a parameter could have a simple query that concatenates a string or performs a conditional evaluation. However these queries still make network calls to services that perform these basic operations and that increases the time it takes for a parameter to resolve a value. This results in long load times for complex workbooks.
