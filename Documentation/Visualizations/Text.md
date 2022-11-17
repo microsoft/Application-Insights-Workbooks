@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-create-workbook#add-text
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Text Steps
 
 Workbooks allow authors to include text blocks in their workbooks. The text can be human analysis of the telemetry, information to help users interpret the data, section headings, etc. 

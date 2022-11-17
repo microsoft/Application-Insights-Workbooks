@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-chart-visualizations#metric-charts
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Metric Charts
 
 Most Azure resources emit metric data about state and health (e.g. CPU utilization, storage availability, count of database transactions, failing app requests, etc). Workbooks allow the visualization of this data as time-series charts. 

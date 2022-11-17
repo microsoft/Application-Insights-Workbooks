@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-configurations#time-brushing
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Using Time Brushing
 
 When query or metrics steps are displaying time based data, additional options become available in the Advanced settings:
