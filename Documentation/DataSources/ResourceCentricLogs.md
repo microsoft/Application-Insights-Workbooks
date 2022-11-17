@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Tutorial - resource centric logs queries in workbooks
 This video shows you how to use resource level logs queries in Azure Workbooks. It also has tips and tricks on how to enable advanced scenarios and improve performance.
 

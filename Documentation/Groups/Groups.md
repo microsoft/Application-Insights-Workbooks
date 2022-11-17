@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-create-workbook#add-groups.
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Using Groups
 
 A group item in a workbook allows you to logically group a set of steps in a workbook. In reading mode, the group itself has no "chrome", only showing the items that are inside the group:
