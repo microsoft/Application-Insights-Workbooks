@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-options-group
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Options Group Parameters
 
 An options group parameter allows the user to select one values from a known set (e.g. select one of your app’s requests). When there are a small number of values, an options group can be a better choice than a [Drop down](./DropDown.md) parameter, as the user can see all the possible values, and see which one is selected. Options groups are commonly used for yes|no or on|off style choices. When there are large number of possible values, using a drop down is a better choice. Note that unlike drop down parameters, an options group *always* only allows one selected value.

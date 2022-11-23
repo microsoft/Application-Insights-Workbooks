@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-automate
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Programmatically Manage Workbooks
 
 Resource owners have the option to create and manage their workbooks programmatically via ARM templates. 
@@ -15,6 +19,7 @@ There are two types of workbook resources that can be managed programmatically:
 ## Deploying a workbook template
 1. Open a workbook whose content you want to deploy programmatically.
 2. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
+
 3. Open the _Advanced Editor_ using the _</>_ button on the toolbar.
 4. Ensure you are on the `Gallery Template` tab
 5. Copy the JSON payload to the clipboard for use in the ARM template later.
