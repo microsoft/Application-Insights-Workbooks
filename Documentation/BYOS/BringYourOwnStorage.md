@@ -1,6 +1,8 @@
-> [!NOTE]
-> Customer-facing documentation for Azure workbooks is now located on docs.microsoft.com at: https://docs.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview. Please **do not** edit this file. All up-to-date information is in the new location and documenation should only be updated there.
-> 
+
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-bring-your-own-storage.
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Bring your own storage to save Workbooks
 
 There are times when you may have a query or some business logic that you want to secure. Workbooks provides an option to secure the workbook by saving the workbook content to your storage. The storage account can then be encrypted with Microsoft-managed keys or you can manage the encryption by supplying your own keys. [See Azure documentation on Storage Service Encryption.](https://docs.microsoft.com/en-us/azure/storage/common/storage-service-encryption)
