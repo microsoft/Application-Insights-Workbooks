@@ -12,12 +12,13 @@
             "name": "Subscription",
             "type": 6,
             "isRequired": true,
-            "query": "summarize Count = count() by subscriptionId\r\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId, Selected = Count >= 0",
+            "query": "where type startswith 'Microsoft.DesktopVirtualization/'\r\n    | summarize Count = count() by subscriptionId\r\n    | order by Count desc\r\n    | extend Rank = row_number()\r\n    | project value = subscriptionId, label = subscriptionId, selected = Rank == 1\r\n",
             "crossComponentResources": [
-              "value::selected"
+              "value::all"
             ],
             "typeSettings": {
-              "additionalResourceOptions": []
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
@@ -68,9 +69,6 @@
             "quote": "'",
             "delimiter": ",",
             "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/subscriptions/{Subscription:id}/resourcegroups/{ResourceGroup}/providers/Microsoft.DesktopVirtualization/hostpools/{HostPool:label}/sessionhosts?api-version=2019-01-23-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value\",\"columns\":[{\"path\":\"$.name\",\"columnid\":\"Name\"}]}}]}",
-            "value": [
-              "value::all"
-            ],
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::all"
@@ -130,7 +128,7 @@
               "allowCustom": true
             },
             "value": {
-              "durationMs": 604800000
+              "durationMs": 172800000
             },
             "label": "Time range"
           },
@@ -139,13 +137,12 @@
             "version": "KqlParameterItem/1.0",
             "name": "poolla",
             "type": 5,
-            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/{HostPool}/providers/microsoft.insights/diagnosticSettings?api-version=2017-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value\",\"columns\":[{\"path\":\"$.properties.workspaceId\",\"columnid\":\"id\"},{\"path\":\"$.id\",\"columnid\":\"selected\"}]}}]}",
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/{HostPool}/providers/microsoft.insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value\",\"columns\":[{\"path\":\"$.properties.workspaceId\",\"columnid\":\"id\"},{\"path\":\"$.id\",\"columnid\":\"selected\"}]}}]}",
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
             },
-            "timeContextFromParameter": "TimeRange",
             "queryType": 12
           },
           {
@@ -187,8 +184,7 @@
           }
         ],
         "style": "pills",
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces"
+        "queryType": 12
       },
       "name": "parameters_general"
     },
@@ -211,23 +207,22 @@
                     "version": "KqlParameterItem/1.0",
                     "parameters": [
                       {
-                        "id": "eb4111b9-9875-4b9b-8355-692cd6088d63",
+                        "id": "c37c1466-6b26-4168-9a6d-92e2fa5927eb",
                         "version": "KqlParameterItem/1.0",
-                        "name": "TimeToConnectSessionState",
-                        "label": "Session state",
+                        "name": "NewSessions",
+                        "label": "Session State",
                         "type": 2,
-                        "description": "Select the state of the session for users establishing a connection. New Sessions tend to take longer to connect than Existing Sessions since existing sessions are already logged in to a host in the pool. Time to connect measures the time from when a user launches a Windows Virtual Desktop resource to when they begin seeing the remote resources, including the time a user takes to enter credentials.",
                         "isRequired": true,
-                        "query": "{\"version\":\"1.0.0\",\"content\":\"[\\r\\n\\t{\\r\\n\\t\\t\\\"value\\\": \\\"('NewSession')\\\",\\r\\n\\t\\t\\\"label\\\": \\\"New sessions\\\",\\r\\n\\t\\t\\\"selected\\\": \\\"true\\\"\\r\\n\\t},\\r\\n\\t{\\r\\n\\t\\t\\\"value\\\": \\\"('Disconnected', 'Active')\\\",\\r\\n\\t\\t\\\"label\\\": \\\"Existing sessions\\\"\\r\\n\\t}\\r\\n]\",\"transformers\":null}",
                         "typeSettings": {
                           "additionalResourceOptions": [],
                           "showDefault": false
                         },
-                        "queryType": 8
+                        "jsonData": "[\r\n\t{\r\n\t\t\"value\": \"true\",\r\n\t\t\"label\": \"New sessions\",\r\n\t\t\"selected\": true\r\n\t},\r\n\t{\r\n\t\t\"value\": \"false\",\r\n\t\t\"label\": \"Existing sessions\"\r\n\t}\r\n]"
                       }
                     ],
                     "style": "pills",
-                    "queryType": 8
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
                   },
                   "name": "ConnectionPerformanceQueryParameters"
                 },
@@ -235,13 +230,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in (WVDHosts)\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=parse_json(Parameters).LoadBalanceOutcome\r\n    | where LoadBalanceOutcome in {TimeToConnectSessionState}\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State == \"Connected\"\r\n    | project ConnectedTime=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n| summarize Median=percentile(ConnectionTime, 50), p95=percentile(ConnectionTime, 95), Connections=dcount(CorrelationId) by JoinKey=1\r\n| as SummarizedData\r\n| project-away JoinKey\r\n| evaluate narrow()\r\n| project Title=\"Time to connect E2E\", Metric=Column, Value, JoinKey=1\r\n| where Metric != \"Connections\" and Value != \"##(null)\" // narrow returns this value when the input is an empty rowset\r\n| join kind=inner SummarizedData on JoinKey\r\n| project Title=\"Time to connect E2E\", Metric, Value, Subtitle=strcat(\"Connections: \", Connections)\r\n| sort by Metric asc",
-                    "size": 4,
+                    "query": "let newSessions = {NewSessions};\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where newSessions\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or\r\n    ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\" or Name=~\"RdpShellAppExecuted\")\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n    | union ( \r\n        ConnectionData // existent Sessions\r\n        | where not(newSessions)\r\n        | where State == \"Connected\"\r\n        | project ProductiveTime=TimeGenerated, CorrelationId\r\n        )\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| where ProductiveTime > 0\r\n|  summarize Metrics = pack(\"Median\",percentile(ProductiveTime, 50), \"p95\",percentile(ProductiveTime, 95)), Connections=dcount(CorrelationId)\r\n| mv-expand Metrics\r\n| extend Metric=tostring(bag_keys(Metrics)[0])\r\n| project Metric, Value = Metrics[Metric], Title=\"Time to connect E2E\", Subtitle=strcat(\"Connections: \", Connections)\r\n| sort by Metric asc\r\n",
+                    "size": 1,
                     "aggregation": 3,
                     "noDataMessage": "No connections found for the selected scope",
-                    "timeContext": {
-                            "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -291,136 +283,20 @@
                       }
                     }
                   },
+                  "customWidth": "15",
                   "name": "TimeToConnectSummary"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in (WVDHosts)\r\n| as ConnectionData\r\n| where State in (\"Started\")\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=parse_json(Parameters).LoadBalanceOutcome  \r\n    | where LoadBalanceOutcome in {TimeToConnectSessionState}\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State in (\"Connected\")\r\n    | project ConnectedTime=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n| summarize Connections=dcount(CorrelationId), Hosts=dcount(SessionHostName), (Median, p95)=percentiles(ConnectionTime, 50, 95), Average=avg(ConnectionTime) by UserName\r\n| project UserName, Connections, Hosts, Median, Average, p95\r\n| top 10 by Median desc",
-                    "size": 0,
-                    "aggregation": 3,
-                    "title": "Top 10 users with highest median time to connect",
-                    "noDataMessage": "No connections found for the selected scope",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "TimeRange",
-                    "showExportToExcel": true,
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
-                    "crossComponentResources": [
-                      "{poolla}"
-                    ],
-                    "visualization": "table",
-                    "gridSettings": {
-                      "formatters": [
-                        {
-                          "columnMatch": "UserName",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "100fr"
-                          }
-                        },
-                        {
-                          "columnMatch": "Connections",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "blue",
-                            "customColumnWidthSetting": "17ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "Hosts",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "magenta",
-                            "customColumnWidthSetting": "13ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "Median|p95",
-                          "formatter": 8,
-                          "formatOptions": {
-                            "min": 30,
-                            "max": 60,
-                            "palette": "greenRed",
-                            "customColumnWidthSetting": "12ch"
-                          },
-                          "numberFormat": {
-                            "unit": 24,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false,
-                              "maximumSignificantDigits": 2
-                            }
-                          }
-                        },
-                        {
-                          "columnMatch": "Average",
-                          "formatter": 5
-                        }
-                      ],
-                      "labelSettings": [
-                        {
-                          "columnId": "UserName",
-                          "label": "User name"
-                        },
-                        {
-                          "columnId": "Connections"
-                        },
-                        {
-                          "columnId": "Hosts"
-                        },
-                        {
-                          "columnId": "Median"
-                        },
-                        {
-                          "columnId": "Average"
-                        },
-                        {
-                          "columnId": "p95"
-                        }
-                      ]
-                    },
-                    "graphSettings": {
-                      "type": 0
-                    },
-                    "chartSettings": {
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 24,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true,
-                            "maximumSignificantDigits": 3
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "customWidth": "40",
-                  "name": "TopUsersByMedianTimeToConnect",
-                  "styleSettings": {
-                    "margin": "10px",
-                    "padding": "10px"
-                  }
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in (WVDHosts)\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=parse_json(Parameters).LoadBalanceOutcome\r\n    | where LoadBalanceOutcome in {TimeToConnectSessionState}\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State == \"Connected\"\r\n    | project ConnectedTime=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n| make-series Median=percentile(ConnectionTime, 50), p95=percentile(ConnectionTime, 95) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n\r\n",
+                    "query": "let newSessions = {NewSessions};\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name =~ \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind=leftsemi // remove connections that do not have LogonDelay as we cannot show details\r\n(    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"  and Name =~ \"LogonDelay\"\r\n    | extend LogonType = tostring(Parameters.LogonType)\r\n    | where (newSessions and LogonType == \"DirectSession\") or (not(newSessions) and LogonType ==\"TemporarySession\")\r\n    | project LogonDelay= TimeGenerated, CorrelationId\r\n) on CorrelationId \r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where newSessions\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or (Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n    | union ( \r\n        ConnectionData // existent Sessions\r\n        | where not(newSessions)\r\n        | where State == \"Connected\"\r\n        | project ProductiveTime=TimeGenerated, CorrelationId\r\n        )\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS   \r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| where ProductiveTime > 0\r\n| make-series Median=percentile(ProductiveTime, 50), p95=percentile(ProductiveTime, 95) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n\r\n",
                     "size": 0,
                     "aggregation": 5,
                     "title": "Time to connect and sign in, end-to-end",
                     "noDataMessage": "No connections found for the selected scope",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
+                    "timeBrushParameterName": "timedrilldown",
                     "showExportToExcel": true,
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -447,7 +323,7 @@
                       }
                     }
                   },
-                  "customWidth": "60",
+                  "customWidth": "85",
                   "name": "TimeToConnectOverall",
                   "styleSettings": {
                     "margin": "10px",
@@ -455,115 +331,541 @@
                   }
                 },
                 {
-                  "type": 3,
+                  "type": 12,
                   "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in (WVDHosts)\r\n| as ConnectionData\r\n| where State in (\"Started\")\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=parse_json(Parameters).LoadBalanceOutcome\r\n    | where LoadBalanceOutcome in {TimeToConnectSessionState}\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State in (\"Connected\")\r\n    | project ConnectedTime=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n| summarize Connections=dcount(CorrelationId), Users=dcount(UserName), (Median, p95)=percentiles(ConnectionTime, 50, 95), Average=avg(ConnectionTime) by Host=trim_end(@\"\\..*\", SessionHostName)\r\n| project Host, Connections, Users, Median, Average, p95\r\n| top 10 by Median desc",
-                    "size": 0,
-                    "aggregation": 3,
-                    "title": "Top 10 hosts with highest median time to connect",
-                    "noDataMessage": "No connections found for the selected scope",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
-                    "timeContextFromParameter": "TimeRange",
-                    "showExportToExcel": true,
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
-                    "crossComponentResources": [
-                      "{poolla}"
-                    ],
-                    "visualization": "table",
-                    "gridSettings": {
-                      "formatters": [
-                        {
-                          "columnMatch": "Host",
-                          "formatter": 0,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "100fr"
-                          }
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "parameters": [
+                            {
+                              "id": "6709ee11-cf64-4a29-9ed8-76b18aca604c",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "logonStageMap",
+                              "type": 1,
+                              "isRequired": true,
+                              "value": "let renameStage = (stage:string) { \r\n case( stage =~ \"frxsvc\", \"Fslogix\",\r\n\t stage =~ \"GPClient\", \"Group policy\",\r\n\t stage =~ \"WinLogon_StartShell\", \"Shell\",\r\n\t stage =~ \"AuthenticateUser\", \"User Auth.\",\r\n       \"Others\")\r\n};",
+                              "isHiddenWhenLocked": true,
+                              "typeSettings": {
+                                "multiLineText": true,
+                                "editorLanguage": "text"
+                              },
+                              "timeContext": {
+                                "durationMs": 86400000
+                              }
+                            }
+                          ],
+                          "style": "pills",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces"
                         },
-                        {
-                          "columnMatch": "Connections",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "blue",
-                            "customColumnWidthSetting": "17ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "Users",
-                          "formatter": 4,
-                          "formatOptions": {
-                            "min": 0,
-                            "palette": "turquoise",
-                            "customColumnWidthSetting": "13ch"
-                          }
-                        },
-                        {
-                          "columnMatch": "Median|p95",
-                          "formatter": 8,
-                          "formatOptions": {
-                            "min": 30,
-                            "max": 60,
-                            "palette": "greenRed",
-                            "compositeBarSettings": {
-                              "labelText": "",
-                              "columnSettings": []
-                            },
-                            "customColumnWidthSetting": "12ch"
+                        "name": "parameters_logonMaps"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let newSessions = {NewSessions};\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| where TimeGenerated {timedrilldown}\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind=leftsemi // remove connections that do not have LogonDelay as we cannot show details\r\n(    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"  and Name == \"LogonDelay\"\r\n    | extend LogonType = tostring(Parameters.LogonType)\r\n    | where (newSessions and LogonType == \"DirectSession\") or (not(newSessions) and LogonType ==\"TemporarySession\")\r\n    | project LogonDelay= TimeGenerated, CorrelationId\r\n) on CorrelationId \r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where newSessions\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or\r\n    ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\" or Name=~\"RdpShellAppExecuted\")\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n    | union ( \r\n        ConnectionData // existent Sessions\r\n        | where not(newSessions)\r\n        | where State == \"Connected\"\r\n        | project ProductiveTime=TimeGenerated, CorrelationId\r\n        )\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| where ProductiveTime >= 0\r\n| summarize Connections=dcount(CorrelationId), Users=dcount(UserName), (Median, p95)=percentiles(ProductiveTime, 50, 95), Average=avg(ProductiveTime) by Host=trim_end(@\"\\..*\", SessionHostName)\r\n| project Host, Connections, Users, Median, Average, p95\r\n| top 10 by Median desc",
+                          "size": 0,
+                          "aggregation": 3,
+                          "title": "Top 10 hosts with highest median time to connect",
+                          "noDataMessage": "No connections found for the selected scope",
+                          "timeContextFromParameter": "TimeRange",
+                          "exportFieldName": "Host",
+                          "exportParameterName": "SelectedHost",
+                          "exportDefaultValue": "no_host_selected",
+                          "showExportToExcel": true,
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "crossComponentResources": [
+                            "{poolla}"
+                          ],
+                          "visualization": "table",
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "Host",
+                                "formatter": 0,
+                                "formatOptions": {
+                                  "customColumnWidthSetting": "100fr"
+                                }
+                              },
+                              {
+                                "columnMatch": "Connections",
+                                "formatter": 4,
+                                "formatOptions": {
+                                  "min": 0,
+                                  "palette": "blue",
+                                  "customColumnWidthSetting": "17ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "Users",
+                                "formatter": 4,
+                                "formatOptions": {
+                                  "min": 0,
+                                  "palette": "turquoise",
+                                  "customColumnWidthSetting": "13ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "Median|p95",
+                                "formatter": 8,
+                                "formatOptions": {
+                                  "min": 30,
+                                  "max": 60,
+                                  "palette": "greenRed",
+                                  "compositeBarSettings": {
+                                    "labelText": "",
+                                    "columnSettings": []
+                                  },
+                                  "customColumnWidthSetting": "12ch"
+                                },
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal",
+                                    "useGrouping": false,
+                                    "maximumSignificantDigits": 2
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "Average",
+                                "formatter": 5
+                              }
+                            ],
+                            "sortBy": [
+                              {
+                                "itemKey": "$gen_heatmap_Median|p95_5",
+                                "sortOrder": 2
+                              }
+                            ]
                           },
-                          "numberFormat": {
-                            "unit": 24,
-                            "options": {
-                              "style": "decimal",
-                              "useGrouping": false,
-                              "maximumSignificantDigits": 2
+                          "sortBy": [
+                            {
+                              "itemKey": "$gen_heatmap_Median|p95_5",
+                              "sortOrder": 2
+                            }
+                          ],
+                          "graphSettings": {
+                            "type": 0
+                          },
+                          "chartSettings": {
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 24,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 3
+                                }
+                              }
                             }
                           }
                         },
-                        {
-                          "columnMatch": "Average",
-                          "formatter": 5
+                        "customWidth": "40",
+                        "name": "TopHostsByMedianTimeToConnect",
+                        "styleSettings": {
+                          "margin": "10px",
+                          "padding": "10px"
                         }
-                      ]
-                    },
-                    "graphSettings": {
-                      "type": 0
-                    },
-                    "chartSettings": {
-                      "ySettings": {
-                        "numberFormatSettings": {
-                          "unit": 24,
-                          "options": {
-                            "style": "decimal",
-                            "useGrouping": true,
-                            "maximumSignificantDigits": 3
-                          }
+                      },
+                      {
+                        "type": 12,
+                        "content": {
+                          "version": "NotebookGroup/1.0",
+                          "groupType": "editable",
+                          "items": [
+                            {
+                              "type": 9,
+                              "content": {
+                                "version": "KqlParameterItem/1.0",
+                                "parameters": [
+                                  {
+                                    "id": "c714f248-8dd0-49e9-bfff-4a3a6d246c7c",
+                                    "version": "KqlParameterItem/1.0",
+                                    "name": "HostnameText",
+                                    "type": 1,
+                                    "isRequired": true,
+                                    "isHiddenWhenLocked": true,
+                                    "criteriaData": [
+                                      {
+                                        "criteriaContext": {
+                                          "leftOperand": "SelectedHost",
+                                          "operator": "!=",
+                                          "rightValType": "static",
+                                          "rightVal": "no_host_selected",
+                                          "resultValType": "static",
+                                          "resultVal": "{SelectedHost}"
+                                        }
+                                      },
+                                      {
+                                        "criteriaContext": {
+                                          "operator": "Default",
+                                          "resultValType": "static",
+                                          "resultVal": " All hosts"
+                                        }
+                                      }
+                                    ],
+                                    "timeContext": {
+                                      "durationMs": 86400000
+                                    }
+                                  }
+                                ],
+                                "style": "pills",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces"
+                              },
+                              "customWidth": "0",
+                              "name": "parameters_hostsText"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "let newSessions = {NewSessions};\r\nlet checkpoints =  WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | summarize arg_min(TimeGenerated, *) by CorrelationId, Name;\r\nlet Checkpoints = (name: string) {\r\n    checkpoints\r\n    | where Name == name \r\n    | project CorrelationId, bag = pack(name, TimeGenerated)\r\n    | evaluate bag_unpack(bag)\r\n};\r\nlet ChartInfo = datatable (Stage: string, label: string, stageOrder: int) [\r\n    \"UserRoute\", \"User Route\", 1,\r\n    \"TransportConnected\", \"Stack Connected\", 3,\r\n    \"OnCredentialsAcquisitionCompleted\", \"creds\", 4,\r\n    \"RdpStackConnectionEstablished\", \"Stack Connected\", 5,\r\n    \"LogonDelay\", \"Logon\", 6,\r\n    \"ShellStart\", \"Shell Start\", 7,\r\n    \"ProductiveTime\", \"Shell Ready\", 8\r\n];\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| where TimeGenerated {timedrilldown}\r\n| where (\"{SelectedHost}\" == \"no_host_selected\" or trim_end(\"[.].*\",SessionHostName)==\"{SelectedHost}\")\r\n| distinct TimeGenerated, CorrelationId\r\n| join kind = leftsemi\r\n    (\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    checkpoints\r\n    | where Source == \"RDStack\"\r\n        and Name == \"RdpStackConnectionEstablished\"\r\n    )\r\n    on CorrelationId\r\n| project CorrelationId, TimeGenerated\r\n| join kind = inner // UserRoute\r\n    (\r\n    checkpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n    | project CorrelationId, UserRoute=TimeGenerated\r\n    | distinct CorrelationId, UserRoute\r\n    )\r\n    on CorrelationId\r\n| project-away CorrelationId1\r\n| join kind=innerunique Checkpoints(\"RdpStackConnectionEstablished\") on CorrelationId\r\n| project-away CorrelationId1\r\n| join kind=leftouter \r\n    (\r\n    checkpoints\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = tolong(Parameters.DurationMS)\r\n    )\r\n    on CorrelationId\r\n| project-away CorrelationId1\r\n| join kind=leftouter //SSO token\r\n    (\r\n    checkpoints\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotoken = tolong(Parameters.DurationMS)\r\n    )\r\n    on CorrelationId\r\n| project-away CorrelationId1\r\n| join kind=innerunique // Logon Delay\r\n    (checkpoints\r\n    | where Name == \"LogonDelay\"\r\n    | extend LogonType = tostring(Parameters.LogonType)\r\n    | where (newSessions and LogonType == \"DirectSession\") or (not(newSessions) and LogonType == \"TemporarySession\")\r\n    | project LogonDelay=TimeGenerated, CorrelationId\r\n    )\r\n    on CorrelationId\r\n| project-away CorrelationId1\r\n| join kind=leftouter Checkpoints(\"ShellStart\") on CorrelationId\r\n| project-away CorrelationId1\r\n| join kind = leftouter\r\n    (\r\n    checkpoints // new session\r\n    | where newSessions\r\n    | where Name =~ \"ShellReady\" or\r\n        (Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\" or Name =~ \"RdpShellAppExecuted\")\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    )\r\n    on CorrelationId\r\n| project-away CorrelationId1\r\n| where not(newSessions) or isnotnull(ProductiveTime)\r\n| where (datetime_diff(\"millisecond\", UserRoute, TimeGenerated) - coalesce(ssotoken, 0)) >= 0\r\n| project CorrelationId, TimeGenerated, credaquire, ssotoken, bag=pack_all()\r\n| mv-expand bag\r\n| project\r\n    CorrelationId, \r\n    TimeGenerated,\r\n    credaquire,\r\n    ssotoken,\r\n    Stage= tostring(bag_keys(bag)[0]),\r\n    Value=bag[tostring(bag_keys(bag)[0])]\r\n| where Stage != \"CorrelationId\"\r\n| where isnotnull(Value)\r\n| project \r\n    CorrelationId,\r\n    TimeGenerated,\r\n    credaquire,\r\n    ssotoken,\r\n    Stage,\r\n    Value=todatetime(Value)\r\n| order by CorrelationId, Value asc \r\n| extend prev=prev(Value)\r\n| project\r\n    Stage,\r\n    Value = datetime_diff(\"Second\", Value, prev) - iif(Stage == \"RdpStackConnectionEstablished\", coalesce(credaquire / 1000, 0), 0) - iif(Stage == \"UserRoute\", coalesce(ssotoken / 1000, 0), 0)\r\n| where Stage != \"TimeGenerated\"\r\n    and Stage != \"OnCredentialsAcquisitionCompleted\"\r\n    and Stage != \"ssotoken\"\r\n| summarize (Median, p95) = percentiles(Value, 50, 95) by Stage\r\n| join kind=inner ChartInfo on Stage\r\n| order by stageOrder asc\r\n| project label, Median, p95",
+                                "size": 0,
+                                "showAnalytics": true,
+                                "title": "Connection stages: {HostnameText}",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "crossComponentResources": [
+                                  "{poolla}"
+                                ],
+                                "visualization": "unstackedbar",
+                                "sortBy": [],
+                                "chartSettings": {
+                                  "xAxis": "label",
+                                  "group": null,
+                                  "createOtherGroup": 0,
+                                  "seriesLabelSettings": [
+                                    {
+                                      "seriesName": "UserRoute",
+                                      "label": "User Route"
+                                    }
+                                  ],
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 24,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true,
+                                        "maximumFractionDigits": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "name": "ConnectStagesAll"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "let newSessions = {NewSessions};\r\n{logonStageMap}\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| where State == \"Connected\"\r\n| where TimeGenerated {timedrilldown}\r\n| where (\"{SelectedHost}\" == \"no_host_selected\" or trim_end(\"[.].*\",SessionHostName)==\"{SelectedHost}\")\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n) on CorrelationId\r\n| project TimeGenerated, CorrelationId, UserName, SessionHostName\r\n| join kind=inner \r\n    (\r\n        WVDCheckpoints\r\n        | where Name == \"LogonDelay\"\r\n    )\r\n    on CorrelationId\r\n| extend Type = tostring(Parameters.LogonType), Parameters = bag_remove_keys(Parameters, dynamic([\"LogonType\", \"WinLogonPid\"]))\r\n| mv-expand bagexpansion=array Parameters\r\n| extend Stage = tostring(Parameters[0]), Time = toreal(Parameters[1])/1000\r\n| where Stage != \"WinLogon_Total\" and Stage != \"WinLogon_Logon\"\r\n| extend Stage = renameStage(trim_start(\"WinLogon_Logon_\", Stage))\r\n| summarize Time=sum(Time),TimeGenerated=min(TimeGenerated) by Stage, UserName, SessionHostName, _ResourceId\r\n| summarize (Median,p95) = percentiles(Time, 50,95) by Stage\r\n\r\n",
+                                "size": 0,
+                                "showAnalytics": true,
+                                "title": "Winlogon stages: {HostnameText}",
+                                "timeContextFromParameter": "TimeRange",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "crossComponentResources": [
+                                  "{poolla}"
+                                ],
+                                "visualization": "unstackedbar",
+                                "chartSettings": {
+                                  "xAxis": "Stage",
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 24,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true,
+                                        "maximumFractionDigits": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "conditionalVisibility": {
+                                "parameterName": "NewSessions",
+                                "comparison": "isEqualTo",
+                                "value": "true"
+                              },
+                              "name": "LogonStagesAll"
+                            }
+                          ]
+                        },
+                        "customWidth": "60",
+                        "name": "StageCharts"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let newSessions = {NewSessions};\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| where TimeGenerated {timedrilldown}\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind=leftsemi // remove connections that do not have LogonDelay as we cannot show details\r\n(    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"  and Name == \"LogonDelay\"\r\n    | extend LogonType = tostring(Parameters.LogonType)\r\n    | where (newSessions and LogonType == \"DirectSession\") or (not(newSessions) and LogonType ==\"TemporarySession\")\r\n    | project LogonDelay= TimeGenerated, CorrelationId\r\n) on CorrelationId \r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where newSessions\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or\r\n    ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\" or Name=~\"RdpShellAppExecuted\")\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n    | union ( \r\n        ConnectionData // existent Sessions\r\n        | where not(newSessions)\r\n        | where State == \"Connected\"\r\n        | project ProductiveTime=TimeGenerated, CorrelationId\r\n        )\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| where ProductiveTime > 0\r\n| project UserName, TimeGenerated, Hostname = trim_end(\"[.].*\", SessionHostName), ProductiveTime, CorrelationId\r\n| top 20 by ProductiveTime desc\r\n",
+                          "size": 0,
+                          "title": "Top 20 instances of highest time to connect",
+                          "timeContextFromParameter": "TimeRange",
+                          "exportFieldName": "CorrelationId",
+                          "exportParameterName": "SelectedCorrelationId",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "crossComponentResources": [
+                            "{poolla}"
+                          ],
+                          "visualization": "table",
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "UserName",
+                                "formatter": 1,
+                                "formatOptions": {
+                                  "workbookContext": {
+                                    "componentIdSource": "workbook",
+                                    "resourceIdsSource": "default",
+                                    "templateIdSource": "static",
+                                    "templateId": "community-Workbooks/Windows Virtual Desktop/shared/Connection Details",
+                                    "typeSource": "workbook",
+                                    "gallerySource": "workbook",
+                                    "locationSource": "default",
+                                    "passSpecificParams": true,
+                                    "templateParameters": [
+                                      {
+                                        "name": "CorrelationId",
+                                        "source": "column",
+                                        "value": "CorrelationId"
+                                      },
+                                      {
+                                        "name": "TimeRange",
+                                        "source": "parameter",
+                                        "value": "TimeRange"
+                                      },
+                                      {
+                                        "name": "HostPoolText",
+                                        "source": "parameter",
+                                        "value": "HostPool"
+                                      }
+                                    ]
+                                  },
+                                  "customColumnWidthSetting": "32ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "TimeGenerated",
+                                "formatter": 6,
+                                "formatOptions": {
+                                  "customColumnWidthSetting": "25ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "Hostname",
+                                "formatter": 0,
+                                "formatOptions": {
+                                  "customColumnWidthSetting": "20ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "ProductiveTime",
+                                "formatter": 8,
+                                "formatOptions": {
+                                  "min": 30,
+                                  "max": 60,
+                                  "palette": "greenRed",
+                                  "customColumnWidthSetting": "11.7143ch"
+                                },
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal",
+                                    "maximumFractionDigits": 1
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "CorrelationId",
+                                "formatter": 7,
+                                "formatOptions": {
+                                  "linkTarget": "WorkbookTemplate",
+                                  "linkLabel": "🔎︎",
+                                  "linkIsContextBlade": true,
+                                  "workbookContext": {
+                                    "componentIdSource": "workbook",
+                                    "resourceIdsSource": "workbook",
+                                    "templateIdSource": "static",
+                                    "templateId": "community-Workbooks/Windows Virtual Desktop/shared/Connection Details",
+                                    "typeSource": "workbook",
+                                    "gallerySource": "workbook",
+                                    "locationSource": "default",
+                                    "passSpecificParams": true,
+                                    "templateParameters": [
+                                      {
+                                        "name": "CorrelationId",
+                                        "source": "column",
+                                        "value": "CorrelationId"
+                                      },
+                                      {
+                                        "name": "TimeRange",
+                                        "source": "parameter",
+                                        "value": "TimeRange"
+                                      },
+                                      {
+                                        "name": "HostPoolText",
+                                        "source": "parameter",
+                                        "value": "HostPool"
+                                      }
+                                    ]
+                                  },
+                                  "customColumnWidthSetting": "11ch"
+                                }
+                              }
+                            ],
+                            "labelSettings": [
+                              {
+                                "columnId": "UserName",
+                                "label": "User Name"
+                              },
+                              {
+                                "columnId": "TimeGenerated",
+                                "label": "Start Time"
+                              },
+                              {
+                                "columnId": "Hostname",
+                                "label": "Host name"
+                              },
+                              {
+                                "columnId": "ProductiveTime",
+                                "label": "Time"
+                              },
+                              {
+                                "columnId": "CorrelationId",
+                                "label": "Details"
+                              }
+                            ]
+                          },
+                          "sortBy": []
+                        },
+                        "customWidth": "50",
+                        "name": "LongerConnections"
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "Please select a connection to display connection stages.",
+                          "style": "info"
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "SelectedCorrelationId",
+                          "comparison": "isEqualTo"
+                        },
+                        "name": "text - 5"
+                      },
+                      {
+                        "type": 12,
+                        "content": {
+                          "version": "NotebookGroup/1.0",
+                          "groupType": "editable",
+                          "items": [
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "let newSessions = {NewSessions};\r\nlet checkpoints =  WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | summarize arg_min(TimeGenerated, *) by CorrelationId, Name;\r\nlet Checkpoints = (name:string) {\r\n    checkpoints\r\n    |where Name == name \r\n    | project CorrelationId, bag = pack(name, TimeGenerated)\r\n    | evaluate bag_unpack(bag)\r\n};\r\nlet ChartInfo = datatable (Stage:string, label:string, stageOrder:int)\r\n    [\"UserRoute\",\"User Route\", 1,\r\n     \"ssotoken\",\"SSO Token\", 2,\r\n     \"TransportConnected\", \"Stack Connected\", 3,\r\n     \"OnCredentialsAcquisitionCompleted\",\"creds\", 4,\r\n     \"RdpStackConnectionEstablished\",\"Stack Connected\", 5,\r\n     \"LogonDelay\", \"Logon\", 6,\r\n     \"ShellStart\", \"Shell Start\", 7,\r\n     \"ProductiveTime\", \"Shell Ready\", 8];\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| where CorrelationId == \"{SelectedCorrelationId}\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    checkpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n) on CorrelationId | project CorrelationId, TimeGenerated\r\n| join kind = inner // UserRoute\r\n(\r\n    checkpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n    | project CorrelationId, UserRoute=TimeGenerated\r\n) on CorrelationId | project-away CorrelationId1\r\n| join kind=inner Checkpoints(\"RdpStackConnectionEstablished\") on CorrelationId  | project-away CorrelationId1\r\n| join kind=leftouter \r\n(\r\n    checkpoints\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n) on CorrelationId  | project-away CorrelationId1\r\n| join kind=leftouter //SSO token\r\n(\r\n    checkpoints\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotoken = tolong(Parameters.DurationMS)\r\n) on CorrelationId  | project-away CorrelationId1\r\n| join kind=inner\r\n(   checkpoints\r\n    | where Name == \"LogonDelay\"\r\n    | extend LogonType = tostring(Parameters.LogonType)\r\n    | where (newSessions and LogonType == \"DirectSession\") or (not(newSessions) and LogonType ==\"TemporarySession\")\r\n    | project LogonDelay= TimeGenerated, CorrelationId\r\n) on CorrelationId | project-away CorrelationId1\r\n| join kind=leftouter Checkpoints(\"ShellStart\") on CorrelationId | project-away CorrelationId1\r\n| join kind = leftouter\r\n(\r\n    checkpoints // new session\r\n    | where newSessions\r\n    | where Name =~ \"ShellReady\" or ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n) on CorrelationId | project-away CorrelationId1\r\n| where not(newSessions) or isnotnull(ProductiveTime)\r\n| project  CorrelationId,TimeGenerated, credaquire, ssotoken, bag=pack_all()\r\n| mv-expand  bag\r\n| project\r\n    CorrelationId, \r\n    TimeGenerated,\r\n    credaquire,\r\n    ssotoken,\r\n    Stage= tostring(bag_keys(bag)[0]),\r\n    Value=bag[tostring(bag_keys(bag)[0])]\r\n| where Stage != \"CorrelationId\"\r\n| where isnotnull(Value)\r\n| project CorrelationId, TimeGenerated, credaquire, ssotoken, Stage, Value=todatetime(Value)\r\n| order by CorrelationId, Value asc \r\n| extend prev=prev(Value)\r\n| project Stage, Value = datetime_diff(\"Second\", Value, prev) -iif(Stage==\"RdpStackConnectionEstablished\",coalesce(credaquire / 1000,0), 0) - iif(Stage == \"UserRoute\", coalesce(ssotoken / 1000, 0), 0)\r\n| where Stage  != \"TimeGenerated\" and Stage != \"OnCredentialsAcquisitionCompleted\" and Stage != \"ssotoken\"\r\n| join kind=inner ChartInfo on Stage\r\n| order by stageOrder asc\r\n| project label, Value",
+                                "size": 0,
+                                "title": "Connection stages",
+                                "timeContextFromParameter": "TimeRange",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "crossComponentResources": [
+                                  "{poolla}"
+                                ],
+                                "visualization": "piechart",
+                                "chartSettings": {
+                                  "xAxis": "Stage",
+                                  "yAxis": [
+                                    "Value"
+                                  ],
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 24,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true,
+                                        "maximumFractionDigits": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "name": "ConnectionStagesUser"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "let newSessions = {NewSessions};\r\n{logonStageMap}\r\nWVDConnections\r\n| where CorrelationId == \"{SelectedCorrelationId}\"\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| where State == \"Connected\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n) on CorrelationId\r\n| project TimeGenerated, CorrelationId, UserName, SessionHostName\r\n| join kind=inner \r\n    (\r\n    WVDCheckpoints\r\n    | where Name == \"LogonDelay\"// or Name == \"ShellStart\"\r\n    )\r\n    on CorrelationId\r\n| extend Type = tostring(Parameters.LogonType), Parameters = bag_remove_keys(Parameters, dynamic([\"LogonType\", \"WinLogonPid\"]))\r\n| mv-expand bagexpansion=array Parameters\r\n| extend Stage = tostring(Parameters[0]), Time = toreal(Parameters[1])/1000\r\n| where Stage != \"WinLogon_Total\" and Stage != \"WinLogon_Logon\"\r\n| extend Stage = renameStage(trim_start(\"WinLogon_Logon_\", Stage))\r\n| summarize Time=sum(Time),TimeGenerated=min(TimeGenerated) by Stage\r\n| project Stage, Time\r\n| order by Stage\r\n\r\n\r\n",
+                                "size": 0,
+                                "title": "Winlogon stages",
+                                "timeContextFromParameter": "TimeRange",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "crossComponentResources": [
+                                  "{poolla}"
+                                ],
+                                "visualization": "piechart",
+                                "chartSettings": {
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 24,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true,
+                                        "maximumFractionDigits": 1
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "conditionalVisibility": {
+                                "parameterName": "NewSessions",
+                                "comparison": "isEqualTo",
+                                "value": "true"
+                              },
+                              "name": "LogonStageUser",
+                              "styleSettings": {
+                                "padding": "5px"
+                              }
+                            }
+                          ]
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "SelectedCorrelationId",
+                          "comparison": "isNotEqualTo"
+                        },
+                        "name": "StagesChartsUser",
+                        "styleSettings": {
+                          "padding": "5px"
                         }
                       }
-                    }
+                    ]
                   },
-                  "customWidth": "40",
-                  "name": "TopHostsByMedianTimeToConnect",
-                  "styleSettings": {
-                    "margin": "10px",
-                    "padding": "10px"
-                  }
+                  "name": "LogonTables"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, SessionHostName)\r\n| where ComputerName in (WVDHosts)\r\n| where State in (\"Started\")\r\n| project StartTime=TimeGenerated, CorrelationId, UserName, State\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=parse_json(Parameters).LoadBalanceOutcome\r\n    | where LoadBalanceOutcome in {TimeToConnectSessionState}\r\n    | summarize ConnectedTime=min(TimeGenerated) by CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - StartTime)/1ms\r\n| make-series Median=percentile(ConnectionTime, 50), p95=percentile(ConnectionTime, 95) on StartTime from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}",
+                    "query": "let newSessions = {NewSessions};\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nWVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| where State in (\"Started\")\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| project StartTime=TimeGenerated, CorrelationId, UserName, State\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where (newSessions and LoadBalanceOutcome == \"NewSession\") or (not(newSessions) and LoadBalanceOutcome in ('Disconnected', 'Active'))\r\n    | summarize ConnectedTime=min(TimeGenerated) by CorrelationId\r\n) on CorrelationId  | project-away CorrelationId1\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId | project-away CorrelationId1\r\n| extend ConnectionTime = (ConnectedTime - StartTime)/1ms - coalesce(ssotokeretrieval,0)\r\n| where ConnectionTime > 0\r\n| make-series Median=percentile(ConnectionTime, 50), p95=percentile(ConnectionTime, 95) on StartTime from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}",
                     "size": 0,
                     "aggregation": 5,
                     "title": "Time for service to route user to a host",
                     "noDataMessage": "No connections found for the selected scope",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "showExportToExcel": true,
                     "queryType": 0,
@@ -588,7 +890,6 @@
                       }
                     }
                   },
-                  "customWidth": "60",
                   "name": "ServiceConnectionRoutingLatency",
                   "styleSettings": {
                     "margin": "10px",
@@ -621,13 +922,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n//| where ObjectName == \"RemoteFX Graphics\"\r\n// CounterName in (\"Frames Skipped/Second - Insufficient Server Resources\" \"Frames Skipped/Second - Insufficient Client Resources\")\r\n| where ObjectName == \"RemoteFX Network\" and CounterName in (\"Current TCP RTT\")//, \"Current UDP RTT\")\r\n| where CounterValue > 0\r\n| project TimeGenerated, Computer, _ResourceId, ObjectName, CounterName, InstanceName, CounterValue=toint(bin(CounterValue, 10))\r\n| summarize Samples=count(), (Median, p95)=percentiles(CounterValue, 50, 95), StdDev=sqrt(variance(CounterValue)), (Peak, PeakTime)=arg_max(CounterValue, TimeGenerated), Average=avg(CounterValue) by Host=_ResourceId, Computer=trim_end(@\"\\..*\", Computer)\r\n| project Host, Computer, Samples, Median, Average, p95, StdDev, Peak, PeakTime",
+                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts)\r\n//| where ObjectName == \"RemoteFX Graphics\"\r\n// CounterName in (\"Frames Skipped/Second - Insufficient Server Resources\" \"Frames Skipped/Second - Insufficient Client Resources\")\r\n| where ObjectName == \"RemoteFX Network\" and CounterName in (\"Current TCP RTT\")//, \"Current UDP RTT\")\r\n| where CounterValue > 0\r\n| project TimeGenerated, Computer, _ResourceId, ObjectName, CounterName, InstanceName, CounterValue=toint(bin(CounterValue, 10))\r\n| summarize Samples=count(), (Median, p95)=percentiles(CounterValue, 50, 95), StdDev=sqrt(variance(CounterValue)), (Peak, PeakTime)=arg_max(CounterValue, TimeGenerated), Average=avg(CounterValue) by Host=_ResourceId, Computer=trim_end(@\"\\..*\", Computer)\r\n| project Host, Computer, Samples, Median, Average, p95, StdDev, Peak, PeakTime",
                     "size": 0,
                     "aggregation": 3,
                     "title": "RTT by host",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "exportedParameters": [
                       {
@@ -739,29 +1037,8 @@
                       "rowLimit": 25,
                       "labelSettings": [
                         {
-                          "columnId": "Host"
-                        },
-                        {
-                          "columnId": "Computer"
-                        },
-                        {
-                          "columnId": "Samples"
-                        },
-                        {
-                          "columnId": "Median"
-                        },
-                        {
-                          "columnId": "Average"
-                        },
-                        {
-                          "columnId": "p95"
-                        },
-                        {
                           "columnId": "StdDev",
                           "label": "Std dev"
-                        },
-                        {
-                          "columnId": "Peak"
                         },
                         {
                           "columnId": "PeakTime",
@@ -832,13 +1109,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{RttHost}\" == \"*\" or _ResourceId == \"{RttHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in (WVDHosts)\r\n//| where ObjectName == \"RemoteFX Graphics\"\r\n// CounterName in (\"Frames Skipped/Second - Insufficient Server Resources\" \"Frames Skipped/Second - Insufficient Client Resources\")\r\n| where ObjectName == \"RemoteFX Network\" and CounterName in (\"Current TCP RTT\") //, \"Current UDP RTT\")\r\n| where CounterValue > 0 //and CounterValue != 2366 //InstanceName endswith \" 43\"\r\n| project TimeGenerated, Computer, _ResourceId, ObjectName, CounterName, InstanceName, CounterValue=toint(bin(CounterValue, 10))\r\n| make-series Median=percentile(CounterValue, 50), p95=percentile(CounterValue, 95) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Host=_ResourceId\r\n",
+                    "query": "//aligning to this: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| where \"{RttHost}\" == \"*\" or _ResourceId == \"{RttHost}\"\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts)\r\n//| where ObjectName == \"RemoteFX Graphics\"\r\n// CounterName in (\"Frames Skipped/Second - Insufficient Server Resources\" \"Frames Skipped/Second - Insufficient Client Resources\")\r\n| where ObjectName == \"RemoteFX Network\" and CounterName in (\"Current TCP RTT\") //, \"Current UDP RTT\")\r\n| where CounterValue > 0 //and CounterValue != 2366 //InstanceName endswith \" 43\"\r\n| project TimeGenerated, Computer, _ResourceId, ObjectName, CounterName, InstanceName, CounterValue=toint(bin(CounterValue, 10))\r\n| make-series Median=percentile(CounterValue, 50), p95=percentile(CounterValue, 95) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Host=_ResourceId\r\n",
                     "size": 0,
                     "aggregation": 3,
                     "title": "RTT median and 95th percentile for {RttComputer}",
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "showExportToExcel": true,
                     "queryType": 0,

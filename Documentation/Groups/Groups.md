@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-create-workbook#add-groups.
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Using Groups
 
 A group item in a workbook allows you to logically group a set of steps in a workbook. In reading mode, the group itself has no "chrome", only showing the items that are inside the group:
@@ -56,7 +60,7 @@ There are several different ways that the content of a group may be loaded. As t
 ## Using templates inside a group
 When a group is configured to load from a template, that content will be loaded "lazily" by default, in that it will only load when the group is visible.
 
-When a template is loaded into a group, the workbook attempts to "merge" any parameters declared in the template being loaded with parameters already existing in the group. Any parameters that already exist in the workbook with identical names will be "merged out" of the template being loaded (and if all parameters in a parameters step are merged out, the entire paramters step will disappear)
+When a template is loaded into a group, the workbook attempts to "merge" any parameters declared in the template being loaded with parameters already existing in the group. Any parameters that already exist in the workbook with identical names will be "merged out" of the template being loaded (and if all parameters in a parameters step are merged out, the entire parameters step will disappear)
 
 The syntax for the template Id is the same as for [links to workbooks/templates](../Links/LinkActions.md/#Workbook-template-link-settings): If this is a community template from the gallery (the most common case), prefix the path to the template with `Community-`, like `Community-Workbooks/Performance/Apdex` for the `Workbooks/Performance/Apdex` template. If this is a link to a saved workbook/template, it is the full Azure resource id of that item.
  

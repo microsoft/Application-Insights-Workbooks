@@ -9,9 +9,9 @@ Once content is checked into master, the template content is packaged into an np
 
 3. Every weekday @ 3pm (pacific), a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
 
-4. Every weekday @ ~4pm (pacific), a daily deployment deploys the extension to a pre-production environment (PPE)
+4. Every weekday @ ~4pm (pacific), [a daily deployment of the AppInsightsExtension occcurs](https://eng.ms/docs/cloud-ai-platform/azure/aep-platform-infrastructure/observability/application-insights/portal/operations/deployment#deployment-pipeline), which deploys the extension to a pre-production environment ([PPE](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=ppe))
 
-5. Every weekday @ ~noon (pacific), the previous day's build moves up a stage, from PPE to another internal environment (MPAC), and other non-public cloud test environments.
+5. Every weekday @ ~noon (pacific), the previous day's build moves up a stage, from PPE to another internal environment ([MPAC](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=mpac)), and other non-public cloud test environments.
 
 6. Every weekday @ ~noon (pacific), the previous previous day's build moves up a stage and starts a rolling deployment to production Azure environments, including other non-public clouds. The production rollouts take several hours as they deploy region by region.
 
