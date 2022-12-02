@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-chart-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Chart Visualization
 
 Workbooks allow monitoring data to be presented as charts. Supported chart types include line, bar, bar categorical, area, scatter plots, pie and time. Authors can choose to customize the height, width, color palette, legend, titles, no-data message, etc. of the chart, and customize axis types and series colors using chart settings.
