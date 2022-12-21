@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-commonly-used-components#use-azure-resource-manager-to-retrieve-alerts-in-a-subscription
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Using Azure Resource Manager provider to retrieve alerts in a subscription
 
 This sample shows you how to use the Azure Resource Manager (preview) query control to list all existing alerts in a subscription. This guide will also use JSON Path transformations to format the results.
