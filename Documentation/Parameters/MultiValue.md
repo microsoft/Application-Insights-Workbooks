@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-multi-value
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Multi-value Parameters
 
 A multi-value parameter allows the user to set one or more arbitrary text values. Multi-value parameters are commonly used for filtering, oftentimes when a drop down control may contain too many values to be useful.

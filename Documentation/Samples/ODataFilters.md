@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-overview
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Parameter transformation to get OData filters
 
 A common use case in workbooks is to capture user input via drop downs and use the selection in your queries. For instance, you may have a drop down to accept a set of virtual machines and then filter your KQL to include just the selected machines. In most cases, it is as simple as including the parameter's value in the query: 

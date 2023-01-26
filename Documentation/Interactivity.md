@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-configurations#interactivity
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Interactive Workbooks
 
 Workbooks allow authors to create interactive reports and experiences for their consumers. Interactivity is supported in a number of ways.

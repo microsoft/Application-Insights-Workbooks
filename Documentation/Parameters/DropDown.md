@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-dropdowns
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Drop Down Parameters
 
 Drop downs allow user to collect one or more input values from a known set (e.g. select one of your app’s requests). Drop downs provide user-friendly way to collect arbitrary inputs from users. Drop downs are especially useful in enabling filtering in your interactive reports. 
