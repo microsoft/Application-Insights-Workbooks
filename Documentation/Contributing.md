@@ -27,13 +27,12 @@ Root
 ## Gallery folder
 ```
 Root
- |
- |- gallery folder
-    | Workbook type A
-        |- galleryA.json
-        |- galleryB.json 
-    | Workbook type B
-        |- galleryA.json
+ |- gallery
+    | workbooks (workbook type)
+        |- Azure Monitor.json (GalleryResourceType)
+        |- microsoft.provider-resourcetype.json 
+    | insights (etc,other workbook types. not common, verify with workbooks team!)
+        |- microsoft.provider-resourcetype.json
         |- galleryB.json
         
 ...       
@@ -41,21 +40,24 @@ Root
 Each template can live in one or more galleries. The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
 ![Image of category view](./Images/CategoryView.png)
 
-## Template folder
-Each category folder contains a list of templates folders that contain templates.
-```
-|- Category A
+## Folder structure
+Within the workbooks folder, there is usually a top level folder owned by individual teams or functional areas that contain collections of templates. The exact hierarchy inside each folder is not strictly required, but this is the general practice: each folder has a single workbook inside. The *folder path* to that template becomes its "identifier" inside gallery files
+
+```text
+Root
+ |- workbooks
+    |- AnAreaOfTemplates
         |- Template A
             |- TemplateA.workbook
-            |- icon.svg
         |- Template B
             |- TemplateB.workbook
-            |- icon.svg
 ```
 
-Avoid using special characters (like `/\&?`) in your folder names. An optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
+so in the above example, there would be template ids of `Commmunity-workbooks/AnAreaOfTemplates/Template A` and `Commmunity-workbooks/AnAreaOfTemplates/Template B` 
 
-Each template folder should contain a **.workbook file**. You can create a template file from Workbooks in the Azure portal. See the ["How to create a .workbook file"](#how-to-create-a-workbook-file) section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
+Avoid using special characters (like `/\&?`) in your folder names. 
+
+Each template folder should contain a single **.workbook file**. You can create a template file from Workbooks in the Azure portal. See the ["How to create a .workbook file"](#how-to-create-a-workbook-file) section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name. Any other files are ignored.
 
 ## How to create a .workbook file
 There are three ways of creating a template. 
@@ -218,3 +220,66 @@ Here is an example:
 
 Once you have add marked your template as `isPreview`, you can see this workbook by adding `feature.includePreviewTemplates` in your Azure Portal Url. So your URL looks something like [https://portal.azure.com/?feature.includePreviewTemplates=true](https://portal.azure.com/?feature.includePreviewTemplates=true).
 
+# Troubleshooting
+
+If you open the workbooks blade for your type, and the gallery only shows the "Empty" item, or templates/categories you expect to see are missing, there are several things to check:
+ 
+1. Check for gallery id mismatches
+
+   The "Gallery" id used to find templates to display is defined by the combination of:
+workbook type (from the `Type` parameter when opening the workbooks blade, defaulting to "workbook" if unspecified, the most common case)
+resource type (from the `GalleryResourceType` parameter, defaulting to the resource type of the `ComponentId` resource id input parameter above, if unspecified)
+
+   The gallery file for your template in the github repo use the same 2 values in the path of the gallery, as `gallery\{type}\{gallery resource type}`
+
+    Case is insensitive for these comparisons, but ensure that the `type` field in your gallery entry matches the `Type` field in your blade inputs, and `resourceType` matches your `GalleryResourceType`, or the resource type of the `ComponentId` resource you are passing in.
+ 
+   to check the inputs to the workbooks blade, in the portal, while looking at the empty gallery, press `ctrl+alt+d`.  yellow debug info should appear.  Click on the link for the workbooks blade, and look in your browser's debug console window (you may need to adjust the filtering level to "all", by default Chrome will hide "verbose" output), expand the info so you can see the `inputs` field.  you'll see the values that were passed to the blade. and you should see something like this:
+
+   ```
+    Extension > AppInsightsExtension > Blade > UsageNotebookBlade
+    > {composition...
+        composition: {...}
+        definition: { ...}
+        inputs: 
+            ComponentId: "{your component id value here}"
+            ...
+            GalleryResourceType: "{your gallery resource type here}"
+            ...
+            Type: "{your workbook type here, should be workbook or a specific value agreed on with the workbooks team}
+    ```
+
+    Ensure the Type, GalleryResourceType, and ComponentId values are what you expect.
+ 
+2. Check for isPreview
+
+    Check if your settings.json file declares that your templates are "preview only", by having `"isPreview": true` in the gallery file.  If this is set, ensure your portal url also includes the feature flag:
+    `feature.includePreviewTemplates=true`
+ 
+3. Double-check all of your spelling and info
+
+    Make sure that resource types are spelled correctly, and that they are (generally) plural, like `microsoft.compute/virtualmachines`, not `microsoft.compute/virtualmachine`.  Also verify that your gallery filename is correctly spelled.  We've seen cases where the file was spelled `someresourcettype.json` (2 t's), and it took a long time to notice.
+ 
+4. Test your changes locally
+
+    this should hypothetically be step 0.  see the ["How to test your changes"](Testing.md) instructions.  depending on your change, there are options of how to test it locally by redirecting just a branch, or by redirecting the gallery entirely to another site or blob storage location.
+ 
+5. Ensure that your changes to your templates have actually been merged to master, built and deployed
+
+    Make sure your PR has been successfully completed.  The workbooks team does not complete PRs for other teams, so make sure your PR is actually *completed(), not just *approved*.
+
+    (if you are looking at git history, also be careful that the *commits* in the PR may have happened well earlier than the PR was actually merged, and so if you are looking at the wrong place, it can *look like* a commit has been in master for some time, when in fact the PR containg that commit was only completed today).
+
+    A daily build of templates occurs at noon PST. 
+    
+    After a successful build, a deployment will create an NPM package of the template content.
+    
+    Weekdays at 3pm, a merge+build of the application insights extension will take place, which will pick up the npm package of templates available at that time.  At ~4pm that build will be deployed to PPE environments. That build will roll out to MPAC and Production environments. See the [deployment](Deployment.md)  for full details.  It also contains links to test in the other environments to verify if your templates are on their way to production.
+ 
+    If a build fails or deployment fails, our team will get notifications and we'll look into it.
+ 
+6. If you got this far, and you still don't see your templates...
+
+    Start a conversation in the teams channel or ping someone from the workbooks team if your templates aren't appearing, it is possible that there's a larger issue going on, or deployments have been held up.
+
+    During holidays or other special events (elections, the Super Bowl, World Cup, etc), pay attention to the Workbooks team Announcements channel, as there are often Azure-wide deployment freezes that prevent teams from deploying new builds.
