@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-parameters#parameter-formatting-options
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Parameter options
 
 The following parameter options are applicable to all parameter types except Time range picker.

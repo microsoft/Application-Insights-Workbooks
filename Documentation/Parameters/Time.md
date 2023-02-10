@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-time
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Time Parameters
 
 Time parameters allow users to set the time context of analysis and is used by almost all reports. It is relatively simple to setup and use - allowing authors to specify the time ranges to show in the drop down, including the option for custom time ranges. 

@@ -428,6 +428,15 @@
                           "formatter": 5
                         },
                         {
+                          "columnMatch": "Name",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "insights",
+                            "showIcon": true
+                          }
+                        },
+                        {
                           "columnMatch": "LastUpdated",
                           "formatter": 6,
                           "dateFormat": {
@@ -649,6 +658,7 @@
                           "formatter": 13,
                           "formatOptions": {
                             "linkTarget": "Resource",
+                            "subTarget": "insights",
                             "linkIsContextBlade": false,
                             "showIcon": true
                           }
@@ -1025,7 +1035,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| summarize arg_max(TimeGenerated,*) by ClusterName\r\n| mv-expand volumes_information\r\n| project ClusterName, Status = toint(volumes_information.m_StatusCategory)\r\n| extend VolumeHealthy = iif(Status == 0, 1, 0)\r\n| extend VolumeWarning = iif(Status == 1, 1, 0)\r\n| extend VolumeCritical = iif(Status == 2, 1, 0)\r\n| extend VolumeUnknown = iif(Status == 255, 1, 0)\r\n| summarize Total = count(), Healthy = sum(VolumeHealthy), Warning = sum(VolumeWarning), Critical = sum(VolumeCritical), Other = sum(VolumeUnknown)\r\n| evaluate narrow()\r\n| extend Column = iff(Column == \"Total\", \"Total volumes\", Column)\r\n| project Column, tolong(Value)",
+                          "query": "let Health = Event\r\n| where EventLog =~ \"Microsoft-Windows-Health/Operational\"\r\n| extend description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(description.CorrelationId)\r\n| where CorrelationId in~ ({lastCorrelationId})\r\n| where tostring(description.Fault.ObjectType) == 'Microsoft.Health.EntityType.Volume'\r\n| extend ObjectId = tolower(tostring(description.Fault.ObjectId))\r\n| extend VolumeId = extract(\"volume{([^}]+)}\", 1, ObjectId)\r\n| extend Severity = toint(description.Fault.Severity)\r\n| extend Severity = iff(Severity > 2, -1, Severity)\r\n| summarize Status = max(Severity) by VolumeId;\r\n\r\nEvent\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| summarize arg_max(TimeGenerated,*) by ClusterName\r\n| mv-expand volumes_information\r\n| extend VolumeId = tostring(volumes_information.m_Id)\r\n| join kind=leftouter Health on VolumeId\r\n| project ClusterName, Status\r\n| extend VolumeHealthy = iif(Status == 0, 1, 0)\r\n| extend VolumeWarning = iif(Status == 1, 1, 0)\r\n| extend VolumeCritical = iif(Status == 2, 1, 0)\r\n| extend VolumeUnknown = iif(Status == -1, 1, 0)\r\n| summarize Total = count(), Healthy = sum(VolumeHealthy), Warning = sum(VolumeWarning), Critical = sum(VolumeCritical), Other = sum(VolumeUnknown)\r\n| evaluate narrow()\r\n| extend Column = iff(Column == \"Total\", \"Total volumes\", Column)\r\n| project Column, tolong(Value)",
                           "size": 3,
                           "showAnalytics": true,
                           "timeContextFromParameter": "timeRange",
@@ -1097,7 +1107,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| extend number_of_volumes = array_length(volumes_information)\r\n| summarize arg_max(TimeGenerated,*) by ClusterName\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend Status = toint(volumes_information.m_StatusCategory)\r\n| extend HealthText = case(Status == 1, \"Warning\", Status == 2, \"Critical\", Status == 255, \"Other\", \"Healthy\")\r\n| extend TotalSize = todouble(volumes_information.m_Size)\r\n| extend UsedSizeInPercentage = round(todouble(volumes_information.m_SizeUsed)/todouble(TotalSize)*100, 2)\r\n| extend Iops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| extend Throughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| extend Name = tostring(volumes_information.m_Label)\r\n| extend ParentId = ClusterArmId, Id = strcat(ClusterArmId, \"/\", Name)\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend TotalIops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| make-series TotalIopsTrend = sum(TotalIops) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId, Volume\r\n) on ClusterArmId, Volume\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend TotalThroughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| make-series TotalThroughputTrend = sum(TotalThroughput) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId, Volume\r\n) on ClusterArmId, Volume\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| make-series AverageLatencyTrend = avg(AverageLatency) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId, Volume\r\n) on ClusterArmId, Volume\r\n| order by tolower(Volume) asc\r\n| union (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| summarize arg_max(TimeGenerated,*) by ClusterArmId\r\n| mv-expand volumes_information\r\n| extend Iops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| extend Throughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| extend HealthStatus = toint(volumes_information.m_StatusCategory)\r\n| summarize Status = max(HealthStatus), TotalDrives = count(), TotalWarning = countif(HealthStatus == 1), TotalCritical = countif(HealthStatus == 2), TotalUnknown = countif(HealthStatus == 255), TotalUsed = sum(todouble(volumes_information.m_SizeUsed)), TotalSize = sum(todouble(volumes_information.m_Size)), Iops = sum(Iops), Throughput = sum(Throughput), AverageLatency = max(AverageLatency), ClusterName = any(ClusterName), TimeGenerated = max(TimeGenerated) by ClusterArmId\r\n| extend HealthText = \"\"\r\n| extend HealthText = iff(TotalCritical > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalCritical), \" Critical\"), HealthText)\r\n| extend HealthText = iff(TotalWarning > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalWarning), \" Warning\"), HealthText)\r\n| extend HealthText = iff(TotalUnknown > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalUnknown), \" Other\"), HealthText)\r\n| extend TotalHealthy = TotalDrives - (TotalCritical + TotalWarning + TotalUnknown)\r\n| extend HealthText = iff(TotalHealthy > 0, strcat(HealthText, iff(HealthText == \"\", \"\", \", \"), tostring(TotalHealthy), \" \", \"Healthy\"), HealthText)\r\n| extend ParentId = '', Name = ClusterArmId, Id = ClusterArmId, UsedSizeInPercentage = round(TotalUsed/TotalSize*100, 2)\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend TotalIops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| make-series TotalIopsTrend = sum(TotalIops) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId\r\n) on ClusterArmId\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend TotalThroughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| make-series TotalThroughputTrend = sum(TotalThroughput) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId\r\n) on ClusterArmId\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| make-series AverageLatencyTrend = avg(AverageLatency) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId\r\n) on ClusterArmId\r\n| order by tolower(ClusterName) asc)\r\n| project ParentId, Id, Name, Volume, LastUpdated = TimeGenerated, Status, HealthText, volumes_information.m_Status[0], TotalSize, UsedSizeInPercentage, Iops, TotalIopsTrend, Throughput, TotalThroughputTrend, AverageLatency, AverageLatencyTrend",
+                          "query": "let Health = Event\r\n| where EventLog =~ \"Microsoft-Windows-Health/Operational\"\r\n| extend description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(description.CorrelationId)\r\n| where CorrelationId in~ ({lastCorrelationId})\r\n| where tostring(description.Fault.ObjectType) == 'Microsoft.Health.EntityType.Volume'\r\n| extend ObjectId = tolower(tostring(description.Fault.ObjectId))\r\n| extend VolumeId = extract(\"volume{([^}]+)}\", 1, ObjectId)\r\n| extend Severity = toint(description.Fault.Severity)\r\n| extend Severity = iff(Severity > 2, -1, Severity)\r\n| summarize Status = max(Severity) by VolumeId;\r\n\r\nEvent\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| extend number_of_volumes = array_length(volumes_information)\r\n| summarize arg_max(TimeGenerated,*) by ClusterName\r\n| mv-expand volumes_information\r\n| extend VolumeId = tostring(volumes_information.m_Id)\r\n| join kind=leftouter Health on VolumeId\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend HealthText = case(Status == 1, \"Warning\", Status == 2, \"Critical\", Status == -1, \"Other\", \"Healthy\")\r\n| extend TotalSize = todouble(volumes_information.m_Size)\r\n| extend UsedSizeInPercentage = round(todouble(volumes_information.m_SizeUsed)/todouble(TotalSize)*100, 2)\r\n| extend Iops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| extend Throughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| extend Name = tostring(volumes_information.m_Label)\r\n| extend ParentId = ClusterArmId, Id = strcat(ClusterArmId, \"/\", Name)\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend TotalIops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| make-series TotalIopsTrend = sum(TotalIops) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId, Volume\r\n) on ClusterArmId, Volume\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend TotalThroughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| make-series TotalThroughputTrend = sum(TotalThroughput) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId, Volume\r\n) on ClusterArmId, Volume\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend Volume = tostring(volumes_information.m_Label)\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| make-series AverageLatencyTrend = avg(AverageLatency) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId, Volume\r\n) on ClusterArmId, Volume\r\n| order by tolower(Volume) asc\r\n| union (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| summarize arg_max(TimeGenerated,*) by ClusterArmId\r\n| mv-expand volumes_information\r\n| extend VolumeId = tostring(volumes_information.m_Id)\r\n| join kind=leftouter Health on VolumeId\r\n| extend Iops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| extend Throughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| summarize Status = max(Status), TotalDrives = count(), TotalWarning = countif(Status == 1), TotalCritical = countif(Status == 2), TotalUnknown = countif(Status == -1), TotalUsed = sum(todouble(volumes_information.m_SizeUsed)), TotalSize = sum(todouble(volumes_information.m_Size)), Iops = sum(Iops), Throughput = sum(Throughput), AverageLatency = max(AverageLatency), ClusterName = any(ClusterName), TimeGenerated = max(TimeGenerated) by ClusterArmId\r\n| extend HealthText = \"\"\r\n| extend HealthText = iff(TotalCritical > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalCritical), \" Critical\"), HealthText)\r\n| extend HealthText = iff(TotalWarning > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalWarning), \" Warning\"), HealthText)\r\n| extend HealthText = iff(TotalUnknown > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalUnknown), \" Other\"), HealthText)\r\n| extend TotalHealthy = TotalDrives - (TotalCritical + TotalWarning + TotalUnknown)\r\n| extend HealthText = iff(TotalHealthy > 0, strcat(HealthText, iff(HealthText == \"\", \"\", \", \"), tostring(TotalHealthy), \" \", \"Healthy\"), HealthText)\r\n| extend ParentId = '', Name = ClusterArmId, Id = ClusterArmId, UsedSizeInPercentage = round(TotalUsed/TotalSize*100, 2)\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend TotalIops = iif(todouble(volumes_information.m_TotalIops) < 0, todouble(0), todouble(volumes_information.m_TotalIops))\r\n| make-series TotalIopsTrend = sum(TotalIops) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId\r\n) on ClusterArmId\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend TotalThroughput = iif(todouble(volumes_information.m_TotalThroughput) < 0, todouble(0), todouble(volumes_information.m_TotalThroughput))\r\n| make-series TotalThroughputTrend = sum(TotalThroughput) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId\r\n) on ClusterArmId\r\n| join (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3002\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend volumes_information = parse_json(RenderedDescription).VolumeList\r\n| mv-expand volumes_information\r\n| extend AverageLatency = iif(todouble(volumes_information.m_AverageLatency) < 0, todouble(0), todouble(volumes_information.m_AverageLatency))\r\n| make-series AverageLatencyTrend = avg(AverageLatency) default = 0 on TimeGenerated from {timeRange:start} to {timeRange:end} step 1h by ClusterArmId\r\n) on ClusterArmId\r\n| order by tolower(ClusterName) asc)\r\n| project ParentId, Id, Name, Volume, LastUpdated = TimeGenerated, Status, HealthText, volumes_information.m_Status[0], TotalSize, UsedSizeInPercentage, Iops, TotalIopsTrend, Throughput, TotalThroughputTrend, AverageLatency, AverageLatencyTrend",
                           "size": 3,
                           "showAnalytics": true,
                           "timeContextFromParameter": "timeRange",
@@ -1124,6 +1134,7 @@
                                 "formatter": 13,
                                 "formatOptions": {
                                   "linkTarget": "Resource",
+                                  "subTarget": "insights",
                                   "linkIsContextBlade": false,
                                   "showIcon": true
                                 }
@@ -1501,6 +1512,285 @@
                     ]
                   },
                   "name": "Volume Group"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "Drives in the selected clusters",
+                    "expandable": true,
+                    "expanded": true,
+                    "items": [
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "crossComponentResources": [
+                            "{subscription}"
+                          ],
+                          "parameters": [
+                            {
+                              "id": "41001970-0db6-4610-bfcc-a87aa8ffa664",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "correlationId",
+                              "type": 2,
+                              "multiSelect": true,
+                              "quote": "'",
+                              "delimiter": ",",
+                              "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\" \r\n| where TimeGenerated {timeRange:query}\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| where tostring(Description.m_isLastElement) == \"true\"\r\n| extend CorrelationId = tostring(Description.m_correlationId)\r\n| summarize arg_max(TimeGenerated, CorrelationId) by ClusterArmId\r\n| project CorrelationId;",
+                              "crossComponentResources": [
+                                "{subscription}"
+                              ],
+                              "isHiddenWhenLocked": true,
+                              "typeSettings": {
+                                "additionalResourceOptions": [
+                                  "value::all"
+                                ],
+                                "showDefault": false
+                              },
+                              "timeContext": {
+                                "durationMs": 0
+                              },
+                              "timeContextFromParameter": "timeRange",
+                              "defaultValue": "value::all",
+                              "queryType": 0,
+                              "resourceType": "microsoft.resources/subscriptions"
+                            },
+                            {
+                              "id": "41af6bbc-6bd5-45b7-80dd-64f555766a8a",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "totalDrives",
+                              "type": 1,
+                              "isRequired": true,
+                              "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\"\r\n| extend ClsuterData = parse_xml(EventData)\r\n| extend ClusterName = tostring(ClsuterData.DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(ClsuterData.DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(Description.m_correlationId)\r\n| where CorrelationId in~ ({correlationId})\r\n| extend drives_information = Description.m_drives\r\n| where array_length(drives_information) > 0\r\n| mv-expand drives_information\r\n| summarize Total = count()",
+                              "crossComponentResources": [
+                                "{subscription}"
+                              ],
+                              "isHiddenWhenLocked": true,
+                              "timeContext": {
+                                "durationMs": 0
+                              },
+                              "timeContextFromParameter": "timeRange",
+                              "queryType": 0,
+                              "resourceType": "microsoft.resources/subscriptions"
+                            }
+                          ],
+                          "style": "pills",
+                          "queryType": 0,
+                          "resourceType": "microsoft.resources/subscriptions"
+                        },
+                        "name": "Drive Parameters"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-Health/Operational\"\r\n| extend description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(description.CorrelationId)\r\n| where CorrelationId in~ ({lastCorrelationId})\r\n| where tostring(description.Fault.RootObjectType) == 'Microsoft.Health.EntityType.PhysicalDisk'\r\n| extend DriveId = tostring(description.Fault.RootObjectId)\r\n| extend Severity = toint(description.Fault.Severity)\r\n| summarize Total = {totalDrives}, Critical = countif(Severity == 2), Warning = countif(Severity == 1), Other = countif(Severity == 255)\r\n| project Total, Healthy = Total - (Critical + Warning + Other), Warning, Critical, Other\r\n| evaluate narrow()",
+                          "size": 3,
+                          "showAnalytics": true,
+                          "timeContextFromParameter": "timeRange",
+                          "showRefreshButton": true,
+                          "queryType": 0,
+                          "resourceType": "microsoft.resources/subscriptions",
+                          "crossComponentResources": [
+                            "{subscription}"
+                          ],
+                          "visualization": "tiles",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Column",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "Value",
+                              "formatter": 12,
+                              "formatOptions": {
+                                "palette": "none"
+                              }
+                            },
+                            "rightContent": {
+                              "columnMatch": "Column",
+                              "formatter": 18,
+                              "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                  {
+                                    "operator": "==",
+                                    "thresholdValue": "Healthy",
+                                    "representation": "success",
+                                    "text": ""
+                                  },
+                                  {
+                                    "operator": "==",
+                                    "thresholdValue": "Critical",
+                                    "representation": "critical",
+                                    "text": ""
+                                  },
+                                  {
+                                    "operator": "==",
+                                    "thresholdValue": "Warning",
+                                    "representation": "2",
+                                    "text": ""
+                                  },
+                                  {
+                                    "operator": "==",
+                                    "thresholdValue": "Other",
+                                    "representation": "Unknown",
+                                    "text": ""
+                                  },
+                                  {
+                                    "operator": "Default",
+                                    "thresholdValue": null,
+                                    "representation": "Blank",
+                                    "text": ""
+                                  }
+                                ]
+                              }
+                            },
+                            "showBorder": false,
+                            "size": "auto"
+                          }
+                        },
+                        "name": "Drive Tile"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let Health = Event\r\n| where EventLog =~ \"Microsoft-Windows-Health/Operational\"\r\n| extend description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(description.CorrelationId)\r\n| where CorrelationId in~ ({lastCorrelationId})\r\n| where tostring(description.Fault.RootObjectType) == 'Microsoft.Health.EntityType.PhysicalDisk'\r\n| extend DriveId = tostring(description.Fault.RootObjectId)\r\n| extend Severity = toint(description.Fault.Severity)\r\n| extend Severity = iff(Severity > 2, -1, Severity)\r\n| summarize Status = max(Severity) by DriveId;\r\n\r\nEvent\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\"\r\n| extend ClsuterData = parse_xml(EventData)\r\n| extend ClusterName = tostring(ClsuterData.DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(ClsuterData.DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(Description.m_correlationId)\r\n| where CorrelationId in~ ({correlationId})\r\n| extend drives_information = Description.m_drives\r\n| where array_length(drives_information) > 0\r\n| mv-expand drives_information\r\n| extend DriveId = tostring(drives_information.m_uniqueId)\r\n| join kind=leftouter Health on DriveId\r\n| extend HealthText = case(Status == 1, \"Warning\", Status == 2, \"Critical\", Status == -1, \"Other\", \"Healthy\")\r\n| extend TotalCapacity = tolong(drives_information.m_sizeInBytes)\r\n| extend AvailableCapacity = TotalCapacity - tolong(drives_information.m_sizeUsedInBytes)\r\n| extend Name = DriveId\r\n| extend ParentId = ClusterArmId, Id = strcat(ClusterArmId, \"/\", DriveId)\r\n| union (Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3001\"\r\n| extend ClsuterData = parse_xml(EventData)\r\n| extend ClusterName = tostring(ClsuterData.DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend ClusterArmId = tostring(ClsuterData.DataItem.UserData.EventData[\"ArmId\"])\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend Description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(Description.m_correlationId)\r\n| where CorrelationId in~ ({correlationId})\r\n| extend drives_information = Description.m_drives\r\n| where array_length(drives_information) > 0\r\n| mv-expand drives_information\r\n| extend DriveId = tostring(drives_information.m_uniqueId)\r\n| join kind=leftouter Health on DriveId\r\n| extend TotalCapacity = tolong(drives_information.m_sizeInBytes)\r\n| extend AvailableCapacity = TotalCapacity - tolong(drives_information.m_sizeUsedInBytes)\r\n| summarize Status = max(Status), TotalDrives = count(), TotalWarning = countif(Status == 1), TotalCritical = countif(Status == 2), TotalUnknown = countif(Status == -1), TotalCapacity = sum(TotalCapacity), AvailableCapacity = sum(AvailableCapacity), ClusterName = any(ClusterName), TimeGenerated = max(TimeGenerated) by ClusterArmId\r\n| extend HealthText = \"\"\r\n| extend HealthText = iff(TotalCritical > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalCritical), \" Critical\"), HealthText)\r\n| extend HealthText = iff(TotalWarning > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalWarning), \" Warning\"), HealthText)\r\n| extend HealthText = iff(TotalUnknown > 0, strcat(HealthText, iff(isempty(HealthText), \", \", \"\"), tostring(TotalUnknown), \" Other\"), HealthText)\r\n| extend TotalHealthy = TotalDrives - (TotalCritical + TotalWarning + TotalUnknown)\r\n| extend HealthText = iff(TotalHealthy > 0, strcat(HealthText, iff(HealthText == \"\", \"\", \", \"), tostring(TotalHealthy), \" \", \"Healthy\"), HealthText)\r\n| extend ParentId = '', Name = ClusterArmId, Id = ClusterArmId\r\n| order by tolower(ClusterName) asc)\r\n| project ParentId, Id, Name, LastUpdated = TimeGenerated, HealthText, Status, AvailableCapacity, TotalCapacity, CanPool = iff(tobool(drives_information.m_canPool), \"Yes\", \"No\")",
+                          "size": 3,
+                          "showAnalytics": true,
+                          "timeContextFromParameter": "timeRange",
+                          "showRefreshButton": true,
+                          "showExportToExcel": true,
+                          "exportToExcelOptions": "all",
+                          "queryType": 0,
+                          "resourceType": "microsoft.resources/subscriptions",
+                          "crossComponentResources": [
+                            "{subscription}"
+                          ],
+                          "visualization": "table",
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "ParentId",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "Id",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "Name",
+                                "formatter": 13,
+                                "formatOptions": {
+                                  "linkTarget": "Resource",
+                                  "subTarget": "insights",
+                                  "linkIsContextBlade": false,
+                                  "showIcon": true
+                                }
+                              },
+                              {
+                                "columnMatch": "LastUpdated",
+                                "formatter": 6
+                              },
+                              {
+                                "columnMatch": "HealthText",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "Status",
+                                "formatter": 18,
+                                "formatOptions": {
+                                  "thresholdsOptions": "icons",
+                                  "thresholdsGrid": [
+                                    {
+                                      "operator": "==",
+                                      "thresholdValue": "0",
+                                      "representation": "success",
+                                      "text": "[\"HealthText\"]"
+                                    },
+                                    {
+                                      "operator": "==",
+                                      "thresholdValue": "1",
+                                      "representation": "2",
+                                      "text": "[\"HealthText\"]"
+                                    },
+                                    {
+                                      "operator": "==",
+                                      "thresholdValue": "2",
+                                      "representation": "4",
+                                      "text": "[\"HealthText\"]"
+                                    },
+                                    {
+                                      "operator": "Default",
+                                      "thresholdValue": null,
+                                      "representation": "unknown",
+                                      "text": "[\"HealthText\"]"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "columnMatch": "AvailableCapacity",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 2,
+                                  "options": {
+                                    "style": "decimal",
+                                    "maximumFractionDigits": 2
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "TotalCapacity",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 2,
+                                  "options": {
+                                    "style": "decimal",
+                                    "maximumFractionDigits": 2
+                                  }
+                                }
+                              }
+                            ],
+                            "filter": true,
+                            "hierarchySettings": {
+                              "idColumn": "Id",
+                              "parentColumn": "ParentId",
+                              "treeType": 0,
+                              "expanderColumn": "Name"
+                            },
+                            "labelSettings": [
+                              {
+                                "columnId": "Name",
+                                "label": "Cluster > Drive"
+                              },
+                              {
+                                "columnId": "LastUpdated",
+                                "label": "Last updated"
+                              },
+                              {
+                                "columnId": "AvailableCapacity",
+                                "label": "Available capacity"
+                              },
+                              {
+                                "columnId": "TotalCapacity",
+                                "label": "Total capacity"
+                              },
+                              {
+                                "columnId": "CanPool",
+                                "label": "Can pool"
+                              }
+                            ]
+                          }
+                        },
+                        "name": "Drive Query"
+                      }
+                    ]
+                  },
+                  "name": "Drive Group"
                 }
               ]
             },
@@ -1561,6 +1851,7 @@
                           "formatter": 13,
                           "formatOptions": {
                             "linkTarget": "Resource",
+                            "subTarget": "insights",
                             "linkIsContextBlade": false,
                             "showIcon": true
                           }
@@ -1762,6 +2053,17 @@
                     "visualization": "table",
                     "gridSettings": {
                       "formatters": [
+                        {
+                          "columnMatch": "ClusterArmId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkColumn": "ClusterArmId",
+                            "linkTarget": "Resource",
+                            "subTarget": "insights",
+                            "linkIsContextBlade": false,
+                            "showIcon": true
+                          }
+                        },
                         {
                           "columnMatch": "Status",
                           "formatter": 18,
