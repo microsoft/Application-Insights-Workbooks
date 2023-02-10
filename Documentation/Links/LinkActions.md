@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-link-actions
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Link Actions
 Link actions can be accessed through Workbook [link steps](./Links.md#link-actions), or through column settings of [grids](../Visualizations/Grid.md#link-actions), tiles, or graphs.
 

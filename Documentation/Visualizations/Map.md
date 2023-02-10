@@ -1,3 +1,8 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-map-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
+
 # Map Visualization
 
 Map allows visualizing region specific data, hence aiding in pin-pointing issues with specific regions. This also aids in high level aggregated view of the monitoring data by providing capability to aggregate all the data mapped to each location/country/region.

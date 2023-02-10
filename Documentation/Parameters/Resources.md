@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-resources
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Resource Parameters
 
 Resource parameters allow picking of resources in workbooks. This is useful in setting the scope from which to get the data from. An example is allowing users to select the set of VMs which the charts later will use when presenting the data.

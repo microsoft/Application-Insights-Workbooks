@@ -183,6 +183,22 @@
             "timeContextFromParameter": "TimeRange",
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "c6d8e696-51fd-4306-95b7-e7be2e6acec0",
+            "version": "KqlParameterItem/1.0",
+            "name": "wvdworkspace",
+            "type": 7,
+            "query": "resources\r\n| where type == \"microsoft.desktopvirtualization/applicationgroups\"\r\n| project id, workspace= properties.workspaceArmPath, hp=properties.hostPoolArmPath\r\n| where isnotnull(workspace)\r\n| where hp =~ \"{HostPool}\"\r\n| project workspace, label=workspace,selected=1",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "pills",
@@ -624,7 +640,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "WVDConnections\r\n| where UserName == '{UserName}' and _ResourceId =~ '{HostPool}'\r\n| as Connections\r\n| where State == \"Connected\" and TimeGenerated <= {TimeRange:end}\r\n| join kind=inner\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LaunchExecutable\"\r\n    | extend Parameters=parse_json(Parameters)\r\n    | where tostring(Parameters.connectionStage) == \"RdpShellAppExecuted\" // or RdpShellAppExecution, depending what you need\r\n    | project CorrelationId, Parameters=tostring(Parameters.filename)\r\n    | extend Parameters=trim('\"', Parameters) // remove quotes for paths with spaces in them\r\n    | extend Parameters=replace(@\"^(.*[\\\\\\/])\", \"\", tolower(Parameters)) // remove binary path to only keep file name\r\n    | extend Parameters=replace(@\"microsoft.windows(.+)_8wekyb3d8bbwe!app\", @\"\\1\", Parameters) //inbox apps to readable format\r\n) on CorrelationId\r\n| summarize TotalLaunches=dcount(CorrelationId), DaysLaunched=dcount(bin(TimeGenerated, 1d)), Clients=dcount(ClientType) by Parameters\r\n| extend Subtitle=\"Launches / Days with usage\", Clients=strcat(\"Used on \", Clients, iif(Clients > 1, \" different \", \" \"), \"client\", iif(Clients > 1, \"s\", \"\"))\r\n| sort by TotalLaunches desc",
+                    "query": "WVDConnections\r\n| where UserName == '{UserName}' and _ResourceId =~ '{HostPool}'\r\n| as Connections\r\n| where State == \"Connected\" and TimeGenerated <= {TimeRange:end}\r\n| join kind=inner\r\n(\r\n    WVDCheckpoints\r\n    | where (Name == \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name==\"RdpShellAppExecuted\"\r\n    | project CorrelationId, Parameters=tostring(Parameters.filename)\r\n    | extend Parameters=trim('\"', Parameters) // remove quotes for paths with spaces in them\r\n    | extend Parameters=replace(@\"^(.*[\\\\\\/])\", \"\", tolower(Parameters)) // remove binary path to only keep file name\r\n    | extend Parameters=replace(@\"microsoft.windows(.+)_8wekyb3d8bbwe!app\", @\"\\1\", Parameters) //inbox apps to readable format\r\n) on CorrelationId\r\n| summarize TotalLaunches=dcount(CorrelationId), DaysLaunched=dcount(bin(TimeGenerated, 1d)), Clients=dcount(ClientType) by Parameters\r\n| extend Subtitle=\"Launches / Days with usage\", Clients=strcat(\"Used on \", Clients, iif(Clients > 1, \" different \", \" \"), \"client\", iif(Clients > 1, \"s\", \"\"))\r\n| sort by TotalLaunches desc",
                     "size": 1,
                     "title": "Remote apps used",
                     "queryType": 0,
@@ -709,7 +725,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let GetDaysInTimeRange = (Period:timespan) {\r\n    // Get the number of days in the period, note the period MUST be longer than 1 day, and in full days\r\n    max_of(toint(round(Period/1d, 0)), 1);\r\n};\r\nlet GetTimespanAverage = (Time:timespan, Period:timespan) {\r\n    // Get the number of days in the period, note the period MUST be longer than 1 day, and in full days\r\n    let Days = GetDaysInTimeRange(Period);\r\n    // Total hours is the number of days*24, plus the hours\r\n    let TotalHours = toint(format_timespan(Time, \"d\")) * 24 + toint(format_timespan(Time, \"H\"));\r\n    // Calculate the average hours\r\n    let AvgHours = TotalHours / Days;\r\n    // We're rounding down for the average, figure out fractional hours left \r\n    let MinuteResidue = toint(((1.0*TotalHours/Days) - AvgHours) * 60);\r\n    // Total minutes is the number of minutes plus the residue from above\r\n    let TotalMinutes = toint(format_timespan(Time, \"m\")) + MinuteResidue;\r\n    // Calculate average minutes\r\n    let AvgMinutes =  toint(round(todouble(TotalMinutes) / Days));\r\n    // Pad with zero if necessary\r\n    let MinuteStr = iif(AvgMinutes < 10, strcat(\"0\", AvgMinutes), tostring(AvgMinutes));\r\n    let Result = strcat(\"~ \", AvgHours, \":\", MinuteStr, \" h\");\r\n    iif(Time/1s > 0, Result, '');\r\n};\r\nlet ProbeRange = range ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d | extend JoinKey=1;\r\nWVDConnections\r\n| where UserName == \"{UserName}\" and _ResourceId =~ '{HostPool}'\r\n| as UserConnections\r\n| where State == \"Started\" and TimeGenerated <= {TimeRange:end}\r\n| extend StartTime = TimeGenerated\r\n| join kind=rightouter\r\n(\r\n    UserConnections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n) on CorrelationId\r\n| extend StartTime = min_of(coalesce(StartTime, {TimeRange:start}), EndTime) // If the start time has fallen out of retention, it should not be set to after the EndTime\r\n| where StartTime between ({TimeRange:start} .. {TimeRange:end}) or // Connections starting in our date range\r\n        EndTime   between ({TimeRange:start} .. {TimeRange:end}) or // Connections ending in our date range\r\n        (StartTime <= {TimeRange:start} and EndTime >= {TimeRange:end}) // Connections that started before and ended after the range\r\n| extend EndTime=min_of(EndTime, {TimeRange:end})-1s, StartTime=max_of(StartTime,{TimeRange:start})+1s // Crop connections to within the report boundary\r\n| extend Duration = EndTime-StartTime\r\n| sort by ClientType asc // Sort for Clients string to be homogenous\r\n| as UserUsage\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LaunchExecutable\"\r\n    | extend Parameters=parse_json(Parameters)\r\n    | where tostring(Parameters.connectionStage) == \"RdpShellAppExecuted\"\r\n    | project CorrelationId, Parameters=tostring(Parameters.filename)\r\n) on CorrelationId\r\n| summarize AppsToStartConnection=dcount(ResourceAlias),\r\n            AppsUsed=dcount(Parameters),\r\n            Connections=dcount(CorrelationId),\r\n            Time=sum(Duration),\r\n            ClientCount=dcount(ClientType)\r\n            by UserName\r\n| join kind=leftouter \r\n(\r\n    // Count days with usage\r\n    UserUsage\r\n    | extend JoinKey = 1\r\n    | join kind=fullouter ProbeRange on JoinKey\r\n    | make-series ConnectedToday=dcountif(CorrelationId, bin(ProbeDay, 1d) == bin(StartTime, 1d) or \r\n                                                bin(ProbeDay, 1d) == bin(EndTime, 1d) or \r\n                                                bin(ProbeDay, 1d) between (bin(StartTime, 1d)..bin(EndTime, 1d)))\r\n                on ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d by UserName\r\n    | mv-expand ProbeDay to typeof(datetime), ConnectedToday to typeof(int)\r\n    | summarize Days=countif(ConnectedToday > 0) by UserName\r\n) on UserName\r\n| project\r\n    ['Days in time range']=GetDaysInTimeRange({TimeRange:end} - {TimeRange:start}),\r\n    ['Days with usage']=coalesce(Days, 0),\r\n    ['Apps to start connection']=coalesce(AppsToStartConnection, 0),\r\n    ['Apps used']=coalesce(AppsUsed, 0),\r\n    ['Connection count']=coalesce(Connections, 0),\r\n    ['Connection time']=strcat(\"~ \", toint(format_timespan(Time, 'd'))*24+toint(format_timespan(Time, 'H')), \":\", format_timespan(Time, 'mm'), \" h\"),\r\n    ['Average daily time']=GetTimespanAverage(Time,{TimeRange:end} - {TimeRange:start}),\r\n    ['Client count']=coalesce(ClientCount, 0)\r\n| evaluate narrow()\r\n| project Metric=replace(@\"\\[|'|\\]\", \"\", Column), Value",
+                    "query": "let GetDaysInTimeRange = (Period:timespan) {\r\n    // Get the number of days in the period, note the period MUST be longer than 1 day, and in full days\r\n    max_of(toint(round(Period/1d, 0)), 1);\r\n};\r\nlet GetTimespanAverage = (Time:timespan, Period:timespan) {\r\n    // Get the number of days in the period, note the period MUST be longer than 1 day, and in full days\r\n    let Days = GetDaysInTimeRange(Period);\r\n    // Total hours is the number of days*24, plus the hours\r\n    let TotalHours = toint(format_timespan(Time, \"d\")) * 24 + toint(format_timespan(Time, \"H\"));\r\n    // Calculate the average hours\r\n    let AvgHours = TotalHours / Days;\r\n    // We're rounding down for the average, figure out fractional hours left \r\n    let MinuteResidue = toint(((1.0*TotalHours/Days) - AvgHours) * 60);\r\n    // Total minutes is the number of minutes plus the residue from above\r\n    let TotalMinutes = toint(format_timespan(Time, \"m\")) + MinuteResidue;\r\n    // Calculate average minutes\r\n    let AvgMinutes =  toint(round(todouble(TotalMinutes) / Days));\r\n    // Pad with zero if necessary\r\n    let MinuteStr = iif(AvgMinutes < 10, strcat(\"0\", AvgMinutes), tostring(AvgMinutes));\r\n    let Result = strcat(\"~ \", AvgHours, \":\", MinuteStr, \" h\");\r\n    iif(Time/1s > 0, Result, '');\r\n};\r\nlet ProbeRange = range ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d | extend JoinKey=1;\r\nWVDConnections\r\n| where UserName == \"{UserName}\" and _ResourceId =~ '{HostPool}'\r\n| as UserConnections\r\n| where State == \"Started\" and TimeGenerated <= {TimeRange:end}\r\n| extend StartTime = TimeGenerated\r\n| join kind=rightouter\r\n(\r\n    UserConnections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n) on CorrelationId\r\n| extend StartTime = min_of(coalesce(StartTime, {TimeRange:start}), EndTime) // If the start time has fallen out of retention, it should not be set to after the EndTime\r\n| where StartTime between ({TimeRange:start} .. {TimeRange:end}) or // Connections starting in our date range\r\n        EndTime   between ({TimeRange:start} .. {TimeRange:end}) or // Connections ending in our date range\r\n        (StartTime <= {TimeRange:start} and EndTime >= {TimeRange:end}) // Connections that started before and ended after the range\r\n| extend EndTime=min_of(EndTime, {TimeRange:end})-1s, StartTime=max_of(StartTime,{TimeRange:start})+1s // Crop connections to within the report boundary\r\n| extend Duration = EndTime-StartTime\r\n| sort by ClientType asc // Sort for Clients string to be homogenous\r\n| as UserUsage\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where (Name == \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name==\"RdpShellAppExecuted\"\r\n    | project CorrelationId, Parameters=tostring(Parameters.filename)\r\n) on CorrelationId\r\n| summarize AppsToStartConnection=dcount(ResourceAlias),\r\n            AppsUsed=dcount(Parameters),\r\n            Connections=dcount(CorrelationId),\r\n            Time=sum(Duration),\r\n            ClientCount=dcount(ClientType)\r\n            by UserName\r\n| join kind=leftouter \r\n(\r\n    // Count days with usage\r\n    UserUsage\r\n    | extend JoinKey = 1\r\n    | join kind=fullouter ProbeRange on JoinKey\r\n    | make-series ConnectedToday=dcountif(CorrelationId, bin(ProbeDay, 1d) == bin(StartTime, 1d) or \r\n                                                bin(ProbeDay, 1d) == bin(EndTime, 1d) or \r\n                                                bin(ProbeDay, 1d) between (bin(StartTime, 1d)..bin(EndTime, 1d)))\r\n                on ProbeDay from {TimeRange:start} to {TimeRange:end} step 1d by UserName\r\n    | mv-expand ProbeDay to typeof(datetime), ConnectedToday to typeof(int)\r\n    | summarize Days=countif(ConnectedToday > 0) by UserName\r\n) on UserName\r\n| project\r\n    ['Days in time range']=GetDaysInTimeRange({TimeRange:end} - {TimeRange:start}),\r\n    ['Days with usage']=coalesce(Days, 0),\r\n    ['Apps to start connection']=coalesce(AppsToStartConnection, 0),\r\n    ['Apps used']=coalesce(AppsUsed, 0),\r\n    ['Connection count']=coalesce(Connections, 0),\r\n    ['Connection time']=strcat(\"~ \", toint(format_timespan(Time, 'd'))*24+toint(format_timespan(Time, 'H')), \":\", format_timespan(Time, 'mm'), \" h\"),\r\n    ['Average daily time']=GetTimespanAverage(Time,{TimeRange:end} - {TimeRange:start}),\r\n    ['Client count']=coalesce(ClientCount, 0)\r\n| evaluate narrow()\r\n| project Metric=replace(@\"\\[|'|\\]\", \"\", Column), Value",
                     "size": 1,
                     "title": "Key usage numbers",
                     "queryType": 0,
@@ -786,7 +802,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "WVDConnections\r\n| where _ResourceId =~ '{HostPool}' and UserName == \"{UserName}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    ConnectionData\r\n    | where State == \"Connected\"\r\n    | project ConnectedTime=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ConnectionTime = (ConnectedTime - TimeGenerated) / 1s\r\n| join kind = leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | evaluate bag_unpack(Parameters)   \r\n    | project CorrelationId, ConnectionBackground=case(LoadBalanceOutcome == \"NewSession\", \"New session\", LoadBalanceOutcome in (\"Active\", \"Disconnected\", \"Pending\"), \"Existing session\", LoadBalanceOutcome)\r\n) on CorrelationId\r\n| extend ConnectionBackground=coalesce(ConnectionBackground, \"Session context not reported\")\r\n| make-series Median=percentile(ConnectionTime, 50) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ConnectionBackground",
+                    "query": "WVDConnections\r\n| where _ResourceId =~ \"{HostPool}\" and UserName == \"{UserName}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name =~ \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | project CorrelationId, ConnectionBackground=case(LoadBalanceOutcome == \"NewSession\", \"New session\", LoadBalanceOutcome in (\"Active\", \"Disconnected\", \"Pending\"), \"Existing session\", LoadBalanceOutcome)\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or (Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project TimeNewSessions=TimeGenerated, CorrelationId\r\n    | summarize TimeNewSessions=min(TimeNewSessions) by CorrelationId\r\n\r\n) on CorrelationId\r\n| join kind = inner ( \r\n        ConnectionData // existent Sessions\r\n        | where State == \"Connected\"\r\n        | project TimeConnected=TimeGenerated, CorrelationId\r\n) on CorrelationId\r\n| extend ProductiveTime = iff(ConnectionBackground==\"New session\",TimeNewSessions, TimeConnected)\r\n| join kind = leftouter\r\n(  \r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS   \r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| make-series Median=percentile(ProductiveTime, 50) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by ConnectionBackground\r\n\r\n",
                     "size": 0,
                     "aggregation": 5,
                     "title": "Time to connect",
@@ -944,30 +960,12 @@
                             ],
                             "labelSettings": [
                               {
-                                "columnId": "HostName"
-                              },
-                              {
-                                "columnId": "SessionId"
-                              },
-                              {
-                                "columnId": "Attempts"
-                              },
-                              {
-                                "columnId": "Errors"
-                              },
-                              {
                                 "columnId": "Client",
                                 "label": "Connections by client and host"
                               },
                               {
-                                "columnId": "Duration"
-                              },
-                              {
                                 "columnId": "InitialConnection",
                                 "label": "Initial connection"
-                              },
-                              {
-                                "columnId": "CorrelationId"
                               }
                             ]
                           },
@@ -1074,18 +1072,6 @@
                                     {
                                       "columnId": "CorrelationId",
                                       "label": "Attempt and timestamp"
-                                    },
-                                    {
-                                      "columnId": "TimeGenerated"
-                                    },
-                                    {
-                                      "columnId": "Kind"
-                                    },
-                                    {
-                                      "columnId": "Parameters"
-                                    },
-                                    {
-                                      "columnId": "CorrelationId1"
                                     }
                                   ]
                                 },
@@ -1284,15 +1270,6 @@
                               }
                             ],
                             "labelSettings": [
-                              {
-                                "columnId": "Kind"
-                              },
-                              {
-                                "columnId": "Source"
-                              },
-                              {
-                                "columnId": "Error"
-                              },
                               {
                                 "columnId": "MessageSample",
                                 "label": "Message sample"
