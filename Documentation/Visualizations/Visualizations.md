@@ -1,3 +1,8 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
+
 # Visualizations in Workbooks
 
 Workbooks provide a rich set of capabilities for visualizing Azure Monitor data. The exact set of capability depends on the data source and result set, but authors can expect them to converge over time. These controls allow authors to present their analysis in rich, interactive reports. 
