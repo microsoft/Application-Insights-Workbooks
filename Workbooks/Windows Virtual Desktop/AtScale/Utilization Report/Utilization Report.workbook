@@ -490,8 +490,9 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "WVDAgentHealthStatus\r\n| where ( \"{selectedHP}\"== \"not_selected\" or _ResourceId == \"{selectedHP}\")\r\n| make-series [\"Session host\"] = dcount(SessionHostName) on TimeGenerated step {TimeRange:grain}",
+                          "query": "WVDAgentHealthStatus\r\n| where ( \"{selectedHP}\"== \"not_selected\" or _ResourceId == \"{selectedHP}\")\r\n| extend idle = iif( (toint(ActiveSessions) + toint(InactiveSessions)) == 0, 1, 0)\r\n| summarize idle = max(idle) by bin(TimeGenerated, 1m), SessionHostName\r\n| summarize idle = countif(idle > 0) , SessionHosts = dcount(SessionHostName) by TimeGenerated\r\n| make-series [\"Session host\"] = round(avg(SessionHosts)), [\"Idle host\"] = round(avg(idle)) on TimeGenerated step {TimeRange:grain}",
                           "size": 0,
+                          "aggregation": 3,
                           "title": "Session host count",
                           "timeContextFromParameter": "TimeRange",
                           "queryType": 0,
@@ -499,7 +500,12 @@
                           "crossComponentResources": [
                             "{HostPools}"
                           ],
-                          "visualization": "timechart"
+                          "visualization": "timechart",
+                          "chartSettings": {
+                            "ySettings": {
+                              "min": 0
+                            }
+                          }
                         },
                         "name": "SessionHostCount"
                       }
@@ -1095,6 +1101,90 @@
                   "styleSettings": {
                     "showBorder": true
                   }
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "title": "Connection time for all users",
+                    "expandable": true,
+                    "items": [
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName,_ResourceId\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, _ResourceId\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName, _ResourceId\r\n| sort by Hours desc nulls last",
+                          "size": 1,
+                          "aggregation": 5,
+                          "showAnalytics": true,
+                          "title": "All users usage",
+                          "noDataMessage": "No connections found",
+                          "showExportToExcel": true,
+                          "queryType": 0,
+                          "resourceType": "microsoft.desktopvirtualization/hostpools",
+                          "crossComponentResources": [
+                            "{HostPools}"
+                          ],
+                          "visualization": "table",
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "Hours",
+                                "formatter": 0,
+                                "formatOptions": {
+                                  "aggregation": "Sum"
+                                },
+                                "numberFormat": {
+                                  "unit": 0,
+                                  "options": {
+                                    "style": "decimal",
+                                    "minimumIntegerDigits": 1,
+                                    "minimumFractionDigits": 1
+                                  }
+                                }
+                              }
+                            ],
+                            "rowLimit": 10000,
+                            "hierarchySettings": {
+                              "treeType": 1,
+                              "groupBy": [
+                                "UserName"
+                              ]
+                            }
+                          },
+                          "chartSettings": {
+                            "xAxis": "UserName",
+                            "yAxis": [
+                              "Hours"
+                            ],
+                            "createOtherGroup": 10,
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 26,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true,
+                                  "maximumSignificantDigits": 2
+                                }
+                              },
+                              "min": 0
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "showPin": true,
+                        "name": "AllUserUsageDistibution",
+                        "styleSettings": {
+                          "showBorder": true
+                        }
+                      }
+                    ]
+                  },
+                  "name": "AllusersUsageGroup",
+                  "styleSettings": {
+                    "padding": "10px"
+                  }
                 }
               ]
             },
@@ -1136,7 +1226,7 @@
                     "version": "KqlItem/1.0",
                     "query": "WVDConnections\r\n| where State == \"Completed\" and GatewayRegion !=  \"<>\"\r\n| summarize Sessions = count() by GatewayRegion\r\n",
                     "size": 0,
-                    "title": "Geteway regions",
+                    "title": "Gateway regions",
                     "timeContextFromParameter": "TimeRange",
                     "exportFieldName": "GatewayRegion",
                     "exportParameterName": "selectedGW",

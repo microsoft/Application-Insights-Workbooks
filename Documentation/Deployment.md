@@ -3,9 +3,9 @@
 ## Template deployment via Safe Deploy process
 Once content is checked into master, the template content is packaged into an npm package, and the release pipeline will publish that npm package to our internal team packaging feed where other dependencies live. That npm package of templates will be picked up by the AppInsights extension's daily build, and deployed via the extension's daily release train.
 
-1. After a PR is completed to the `master` branch, an [official build is queued](https://github-private.visualstudio.com/microsoft/_build?definitionId=48) (you might not have access to this), which packages all the processed templates into a versioned NPM package
+1. An [official build is queued](https://github-private.visualstudio.com/microsoft/_build?definitionId=474) (you might not have access to this) @ noon (pacific) daily which packages all the processed templates into a versioned NPM package.
 
-2. After the official build completes, [a release pipeline](https://github-private.visualstudio.com/microsoft/_release?_a=releases&definitionId=1) (again, you might not have access to this), uploads the built NPM package to an Azure Devops package feed.
+2. After the official build completes, [a release pipeline](https://github-private.visualstudio.com/microsoft/_release?_a=releases&view=mine&definitionId=65) (again, you might not have access to this), uploads the built NPM package to an Azure Devops package feed.
 
 3. Every weekday @ 3pm (pacific), a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
 
