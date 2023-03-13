@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-parameters#format-parameters-by-using-jsonpath
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # JSON Path
 
 Workbooks is able to query data from many sources. Some endpoints, such as Azure Resource Manager or custom endpoint, can return results in JSON. If the JSON data returned by the queried endpoint is not configured in a format that you desire, JSONPath can be used to transform the results.
