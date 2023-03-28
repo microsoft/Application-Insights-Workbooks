@@ -1,0 +1,2369 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Autovacuum Blockers & Wraparound Identification\r\n\r\n\r\n<h6>*In this workbook we will try to identify blockers preventing autovacuum from removing dead tuples and fixes to mitigate the issue.The workbook also gives details if the databases on the server are closer to triggering emergency autovaccum  or if the databases are closer to transactionID wraparound problem. *</h6>\r\n\r\nStep | Observations\r\n--- | ---\r\n**Emergency Autovaccum and Transaction ID Wraparound Issue Identification** | Step 1: Analyze the metric to understand how close the databases on the server are to trigger a emergency autovaccum or transaction ID wraparound protection. The section also provides resolutions around it.\r\n**Autovaccum Blockers** | Step 2: Workbook would identify if any autovacuum blockers - long running transactions, inactive replication slots or orphaned prepared transactions exist on the server and shares the blocker details along with mitigation steps. If there are no blockers then autovacuum blockers section would indicate no blockers found.\r\n\r\n"
+            },
+            "name": "text - 0"
+          }
+        ],
+        "exportParameters": true
+      },
+      "name": "WorkbookTop"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Start by setting the following parameters for the incident server: "
+      },
+      "name": "text - 1"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "parameters": [
+          {
+            "id": "7ae37963-6568-4c00-a0f8-4631dace6c56",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "type": 6,
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "includeAll": true,
+              "showDefault": false
+            },
+            "value": null
+          },
+          {
+            "id": "ec920dd9-5820-4adf-9b81-96152c91ff7c",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "type": 5,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.dbforpostgresql/flexibleservers": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false,
+              "componentIdOnly": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "38363c8a-5314-46ed-bb25-dea7706762df",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "TimeRange (Local Time)",
+            "type": 4,
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2419200000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": {
+              "durationMs": 3600000
+            }
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "MIN_TIME_WINDOW_SEC",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "3600"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "id": "4979cc54-822f-4dbc-b9d3-1ffd9006c8bd"
+          },
+          {
+            "id": "cf67da78-8be2-46df-95df-e7c70030c2c1",
+            "version": "KqlParameterItem/1.0",
+            "name": "THRESHOLD_AV",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "100"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "893caf1f-93e8-4180-b357-0942c0705344",
+            "version": "KqlParameterItem/1.0",
+            "name": "THRESHOLD_REPLICATION",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "10"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "e17f3a6a-4d78-4620-ab88-58ee4b596af5",
+            "version": "KqlParameterItem/1.0",
+            "name": "THRESHOLD_WRAPAROUND",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "40"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "1822ba33-ebb0-4a09-bab6-816a22c0d20e",
+            "version": "KqlParameterItem/1.0",
+            "name": "MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "7200000"
+                }
+              }
+            ]
+          },
+          {
+            "id": "1976f5b7-18d3-4ace-8fe8-146e4825a758",
+            "version": "KqlParameterItem/1.0",
+            "name": "MAX_TXID_MXID_LEFT_WARNING",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "1073741823"
+                }
+              }
+            ]
+          },
+          {
+            "id": "e5ed8a91-2a12-445e-8522-8e6fea9354e5",
+            "version": "KqlParameterItem/1.0",
+            "name": "MAX_XACTS",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "2147483647"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "20e11538-1418-4333-b3bd-e012503a8676",
+            "version": "KqlParameterItem/1.0",
+            "name": "TXID_REMIAN_RESERVED",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "3000000"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "above",
+        "queryType": 1,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "name": "parameters - 2",
+      "styleSettings": {
+        "margin": "5px"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "27e5d51b-cdd2-489c-9281-d84827b14567",
+            "version": "KqlParameterItem/1.0",
+            "name": "GlobalEndTime",
+            "type": 1,
+            "query": "// GlobalEndTime will always equal TimeRange:end\r\n// In the case which selected interval is less than an hour, \r\n// we set GlobalStartTime to be an hour before GlobalEndTime\r\n// in order to avoid showing data \"in the future\".\r\n//print iff(true, totimespan({TimeRange:end}), totimespan({TimeRange:end}))\r\n\r\nlet dt = {TimeRange:end};\r\nprint iff(dt<now(), dt, now())\r\n\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "c882b634-1637-4bc4-b520-a8e269f9059c",
+            "version": "KqlParameterItem/1.0",
+            "name": "GlobalStartTime",
+            "type": 1,
+            "query": "// GlobalEndTime will always equal TimeRange:end\r\n// In the case which selected interval is less than an hour, \r\n// we set GlobalStartTime to be an hour before GlobalEndTime\r\n// in order to avoid showing data \"in the future\".\r\n//print iff(true, totimespan({TimeRange:end}), totimespan({TimeRange:end}))\r\nprint iff (datetime_diff('second',{TimeRange:end},{TimeRange:start})<={MIN_TIME_WINDOW_SEC},todatetime('{GlobalEndTime}')-{MIN_TIME_WINDOW_SEC}s,{TimeRange:start})",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "6ce0a8c0-19e4-475a-8eee-bdf788ec8d40",
+            "version": "KqlParameterItem/1.0",
+            "name": "existsFrequentBackendXminnum",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n|where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n|where Category ==\"PostgreSQLFlexSessions\"\r\n| where Backend_xmin_d != ''\r\n|  top-hitters 1 of Backend_xmin_d| project Backend_xmin_d\r\n| count\r\n| extend frequentBackendXmin = iff((Count) >= 1 , \"Yes\", \"No\")\r\n| project frequentBackendXmin",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "0ffd3929-9e81-4cb7-b287-d6a92f2e2494",
+            "version": "KqlParameterItem/1.0",
+            "name": "existsPidThatisBlocking",
+            "type": 1,
+            "query": "\r\n//existsPidThatisBlocking\r\nlet Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nlet frequentBackendXmin=\r\nAzureDiagnostics\r\n|where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n|where Category ==\"PostgreSQLFlexSessions\"\r\n| where Backend_xmin_d != ''\r\n|  top-hitters 1 of Backend_xmin_d| project Backend_xmin_d;\r\n\r\nAzureDiagnostics\r\n|where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n|where Category ==\"PostgreSQLFlexSessions\"\r\n| where Backend_xid_d in (frequentBackendXmin)  \r\n| distinct Pid_d,Backend_start_t\r\n| count\r\n| extend frequentBackendXmin = iff((Count) >= 1 , \"Yes\", \"No\")\r\n| project frequentBackendXmin\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "00785e88-1369-48ad-bab6-dfb262d8f39b",
+            "version": "KqlParameterItem/1.0",
+            "name": "pidThatisBlocking",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nlet frequentBackendXmin=\r\nAzureDiagnostics\r\n|where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n|where Category ==\"PostgreSQLFlexSessions\"\r\n| where Backend_xmin_d != ''\r\n| top-hitters 1 of Backend_xmin_d| project Backend_xmin_d;\r\nAzureDiagnostics\r\n|where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n|where Category ==\"PostgreSQLFlexSessions\"\r\n| where Backend_xid_d in (frequentBackendXmin)  \r\n| distinct Pid_d,Backend_start_t",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "56b02e54-1a1d-42f8-a28b-f15880f68523",
+            "version": "KqlParameterItem/1.0",
+            "name": "isTransactionTimeHigh",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| where State_s !='idle'\r\n| extend Transaction_duration_ms=datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t))\r\n| summarize Transaction_duration_ms=max(Transaction_duration_ms)\r\n| limit 5\r\n| where Transaction_duration_ms > toint({MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS}) \r\n    |count\r\n    | extend getquerytime = iff((Count) >= 1 , \"Yes\", \"No\")\r\n| project getquerytime",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "f2b43dbb-4141-45f1-a94c-fa7b87f22d1c",
+            "version": "KqlParameterItem/1.0",
+            "name": "avWrapClosetoThreshold",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n| extend ts=bin(TimeGenerated,5min)\r\n| where DatabaseName_s !in('azure_sys','azure_maintenance')\r\n| summarize arg_max(ts,*) by DatabaseName_s\r\n| extend PercentTowardsWraparoundProtection=round(toreal(Age_DatFrozenxid_d+1000000000)/toreal({MAX_XACTS})*100,2)\r\n| summarize  PercentTowardsWraparoundProtection=max(PercentTowardsWraparoundProtection)\r\n| where PercentTowardsWraparoundProtection >= {THRESHOLD_WRAPAROUND}\r\n|count\r\n| extend avxidcrossedinfo = iff((Count) >= 1 , \"Yes\", \"No\")\r\n| project avxidcrossedinfo\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "3cf1f297-d769-40a8-a700-23fec1cd7753",
+            "version": "KqlParameterItem/1.0",
+            "name": "avWrapCrossedThreshold",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n| extend ts=bin(TimeGenerated,5min)\r\n| where DatabaseName_s !in('azure_sys','azure_maintenance')\r\n| summarize arg_max(ts,*) by DatabaseName_s\r\n| extend PercentTowardsWraparound=round(toreal(3000000+Age_DatFrozenxid_d)/toreal({MAX_XACTS})*100,2)\r\n| summarize  PercentTowardsWraparound=max(PercentTowardsWraparound)\r\n| where PercentTowardsWraparound >= {THRESHOLD_WRAPAROUND}\r\n|count\r\n| extend avxidcrossedinfo = iff((Count) >= 1 , \"Yes\", \"No\")\r\n| project avxidcrossedinfo",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "f6b03be1-72b7-4f0c-8bac-c2c814c2048b",
+            "version": "KqlParameterItem/1.0",
+            "name": "RemainingTXID",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n| extend ts=bin(TimeGenerated,5min)\r\n| where DatabaseName_s !in('azure_sys','azure_maintenance')\r\n| summarize arg_max(ts,*) by DatabaseName_s\r\n| extend RemainTXID={MAX_XACTS}-Age_DatFrozenxid_d\r\n| summarize  RemainTXID=min(RemainTXID-{TXID_REMIAN_RESERVED})\r\n| project tostring(toint(RemainTXID))\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "488bfbc5-b55a-493c-994b-a7fdde2f0016",
+            "version": "KqlParameterItem/1.0",
+            "name": "RemainingMXID",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n| extend ts=bin(TimeGenerated,5min)\r\n| where DatabaseName_s !in('azure_sys','azure_maintenance')\r\n| summarize arg_max(ts,*) by DatabaseName_s\r\n| extend RemainMXID={MAX_XACTS}-Age_DatMinmxid_d\r\n| summarize  RemainMXID=min(RemainMXID-{TXID_REMIAN_RESERVED})\r\n| project tostring(toint(RemainMXID))",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "1268d98c-5305-47bb-826c-a9db1215a697",
+            "version": "KqlParameterItem/1.0",
+            "name": "frequentBackendXminnum",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Backend_xmin_d != ''\r\n|  top-hitters 1 of Backend_xmin_d| project Backend_xmin_d;",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "1a2dabdd-8011-4670-9040-8f2079e81dd5",
+            "version": "KqlParameterItem/1.0",
+            "name": "ChartGrain",
+            "type": 1,
+            "query": "let trange=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nprint case(\r\n    trange<1h, strcat(format_timespan(trange,'m'),' minute(s)'),\r\n    trange>=1h and trange<1d, strcat(format_timespan(trange,'H'),' hour(s)') ,\r\n    strcat(format_timespan(trange,'dd'),' day(s)')\r\n);",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "aa3c9bb5-31cc-4a38-9a7d-2056ac066240",
+            "version": "KqlParameterItem/1.0",
+            "name": "LessThanOneHourInterval",
+            "type": 1,
+            "query": "let interval = 1h;\r\nprint iff({TimeRange:end} - {TimeRange:start} < interval, \"Yes\", \"No\")",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "9cd1d0d3-d046-47a7-a861-bdd353599c69",
+            "version": "KqlParameterItem/1.0",
+            "name": "existsLongRunningTransactionsData",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| where State_s !='idle'\r\n    | extend Connection_duration_sec = datetime_diff('second',todatetime(Collection_time_t),todatetime(Backend_start_t)),Query_duration_ms = datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Query_start_t)), Transaction_duration_ms=datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t))\r\n| summarize Connection_duration_sec=max(Connection_duration_sec), Transaction_duration_ms=max(Transaction_duration_ms),  Query_duration_ms=max(Query_duration_ms) by Pid_d,Backend_start_t, Backend_type_s\r\n|where Transaction_duration_ms >{MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS}\r\n| count\r\n| extend result=iff(Count>0, 'Yes','No')\r\n| project result",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "de657ad0-a68d-46fd-b61e-203c1f94c588",
+            "version": "KqlParameterItem/1.0",
+            "name": "DBDataExists",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n|limit 10\r\n|count\r\n|project dbdataexists = iff(Count > 0,'Yes','No')",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "1e4e3972-6567-4ee7-b3f3-7d4dc30e2b96",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsTxidExhausted",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "RemainingTXID",
+                  "operator": "<",
+                  "rightValType": "param",
+                  "rightVal": "MAX_TXID_MXID_LEFT_WARNING",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "IsMxIdExhausted",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "RemainingMXID",
+                  "operator": "<",
+                  "rightValType": "param",
+                  "rightVal": "MAX_TXID_MXID_LEFT_WARNING",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "id": "de1d6dc2-e50d-4f88-a77a-f374cf5e71f8"
+          },
+          {
+            "id": "b419d39d-9049-4523-810b-38d407cc4aab",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerPrimaryAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..properties..replicationRole\",\"columns\":[]}}]}",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 12
+          },
+          {
+            "id": "0884d96f-c6f5-4b4f-9413-68052d7930fe",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerPrimary",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "IsServerPrimaryAPI",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Primary",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "9476bdf8-55fd-48e1-a99e-8b0b1038d524",
+            "version": "KqlParameterItem/1.0",
+            "name": "AutovacuumAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/autovacuum?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..value\",\"columns\":[]}}]}",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 12
+          },
+          {
+            "id": "aeb460e2-4a12-46c3-9bd6-bd83f26ad741",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsAutovacuumOn",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AutovacuumAPI",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "on",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "isPreparedXactsUsedAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/max_prepared_transactions?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..value\",\"columns\":[]}}]}",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 12,
+            "id": "2387b2a9-fdef-4de9-9152-884e6a296e3f"
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "isPreparedXactsUsed",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "isPreparedXactsUsedAPI",
+                  "operator": ">",
+                  "rightValType": "static",
+                  "rightVal": "0",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "id": "0ef2227d-ba62-4a72-ab47-fe03afca4333"
+          },
+          {
+            "id": "6ab92239-c8de-4ca3-8277-7127a7555352",
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagAPIAllLogs",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..properties..logs[?(@.categoryGroup=='allLogs')].enabled\",\"columns\":[]}}]}",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 12
+          },
+          {
+            "id": "04966781-c26b-4900-bb54-7b38ee8f92b5",
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagDatabaseXactsAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..properties..logs[?(@.category=='PostgreSQLFlexDatabaseXacts')].enabled\",\"columns\":[]}}]}",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 12
+          },
+          {
+            "id": "7a487986-eaf7-48a7-bb09-4cc020d82090",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsDatabaseXactsSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagAPIAllLogs",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "true",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagDatabaseXactsAPI",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "true",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "353a3a22-3667-4c4f-819e-9eef617e3841",
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagAPIPostgreSQLFlexSessions",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..properties..logs[?(@.category=='PostgreSQLFlexSessions')].enabled\",\"columns\":[]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "1a42b7fb-de61-42c8-8ae3-574d771a7b27",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagAPIAllLogs",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "true",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagAPIPostgreSQLFlexSessions",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "true",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerHavingReplicaAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/replicas?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..value[*].name\",\"columns\":[]}}]}",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 12,
+            "id": "a5a64ba5-a4c5-47f6-bdda-487fac367bf4"
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerHavingReplica",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "IsServerHavingReplicaAPI",
+                  "operator": "isNotNull",
+                  "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "id": "09ea1bc4-8dc2-4e62-bed4-fdc783cfca44"
+          },
+          {
+            "id": "7be8162a-9d4b-40bb-9146-4aa22dc4fea1",
+            "version": "KqlParameterItem/1.0",
+            "name": "WorkbookNecessary",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n\r\nlet prep_statements =\r\nprint prepared='{isPreparedXactsUsed}'\r\n| project isneccesary=iff(prepared==\"Yes\", \"Yes\", \"No\")\r\n| project isneccesary;\r\n\r\nlet sessions =\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| where State_s !='idle'\r\n| extend Transaction_duration_ms=datetime_diff('Millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t))\r\n| summarize Transaction_duration_ms=max(Transaction_duration_ms)\r\n| where Transaction_duration_ms > toint({MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS}) \r\n|count\r\n| extend isneccesary = iff((Count) >= 1 , \"Yes\", \"No\")\r\n| project isneccesary;\r\n\r\nlet ReadReplica=print isneccesary='{IsServerHavingReplica}';\r\n\r\n\r\nprep_statements | union sessions,ReadReplica\r\n|where isneccesary =='Yes'\r\n|count\r\n| extend WorkbookNecessary = iff(Count > 0, 'Yes', 'No')\r\n| project WorkbookNecessary",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0
+          },
+          {
+            "id": "f4ed0ed8-8be5-4624-89d9-eac452ac70f7",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerInWraparoundProtection",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "RemainingTXID",
+                  "operator": "<",
+                  "rightValType": "static",
+                  "rightVal": "10",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "RemainingMXID",
+                  "operator": "<",
+                  "rightValType": "static",
+                  "rightVal": "10",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "parameters - 18"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "\r\n### The PostgreSQL server is currently in wraparound protection mode, which means it is preventing any new commands from being accepted to prevent potential data loss due to wraparound.\r\n\r\nThis error message typically occurs in a PostgreSQL database and indicates that the database has reached its maximum transaction ID limit, which can lead to data loss if the database continues to operate in this state. The purpose of the wraparound protection is to prevent data loss by ensuring that old data is not overwritten.\r\n",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerInWraparoundProtection",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "text - 40 - Copy - Copy - Copy - Copy"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The PostgreSQL Sessions logs data is not being transmitted to the log analytics workspace\r\nThe PostgreSQL Sessions logs data is not being sent to the log analytics workspace, which is necessary to use this workbook. To configure the logging settings for category `PostgreSQL Sessions` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+        "comparison": "isEqualTo",
+        "value": "No"
+      },
+      "name": "text - 13"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Autovacuum is currently disabled\r\nAutovacuum is currently disabled. This can lead to the accumulation of dead tuples, index fragmentation, transaction ID wraparound, increased disk space consumption, poor query performance. To prevent these issues, it is strongly recommended to enable autovacuum with appropriate settings and regularly monitor and maintain the database.\r\n\r\nYou can use the Azure Portal to configure server parameters and enable autovacuum. For more information, please follow this link: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-server-parameters-using-portal.",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsAutovacuumOn",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "text - 9"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The PostgreSQL Database Remaining Transactions data is not being transmitted to the log analytics workspace\r\nThe PostgreSQL Table Stats data is not being sent to the log analytics workspace, which is necessary to use this workbook. To configure the logging settings for category `PostgreSQL Database Remaining Transactions` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsDatabaseXactsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "text - 11"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The specified server is not a primary server\r\nChecking transaction ID or MultiXact ID on a replica server in PostgreSQL can lead to inaccurate results. Replica servers are designed to replicate data from the primary server and may not have the most up-to-date information about transactions or multi-version concurrency control (MVCC) information. Checking these IDs on a replica server may provide inconsistent or incorrect results and should be avoided. For accurate results, please check the transaction ID or MultiXact ID on the primary server.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsServerPrimary",
+        "comparison": "isEqualTo",
+        "value": "No"
+      },
+      "name": "text - 12"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Possible Autovacuum/VACUUM Blocker Present. \r\nIt's possible that there could be autovacuum blockers present, To view further details, please navigate to the \"Autovacuum Blockers\" tab.",
+        "style": "warning"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "WorkbookNecessary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "text - 15"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "c6d9697b-b2a9-4ef9-b6fd-05cf397fd20a",
+            "cellValue": "tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Emergency AV and TXID Wraparound",
+            "subTarget": "wraparound",
+            "style": "link"
+          },
+          {
+            "id": "63c1f551-2212-45de-be0b-7b308be38fa4",
+            "cellValue": "tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Autovacuum Blockers",
+            "subTarget": "blocker",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsServerPrimary",
+        "comparison": "isEqualTo",
+        "value": "Yes"
+      },
+      "name": "links - 11"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": " **We have indications that the server is currently utilizing prepared transactions.**\r\n \r\n Kindly investigate the section related to *\"Orphaned Prepared Transactions\"* for further details.",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "isPreparedXactsUsed",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "text - 31"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": " **We have indications that the server is currently utilizing read replicas.**\r\n \r\n Kindly investigate the section related to *\"Replication lag and inactive replication slots\"* & *\"Long running transactions on replica servers with hot_standby_feedback=ON\"* for further details.",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsServerHavingReplica",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "text - 10"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### A Transaction with ID {frequentBackendXminnum} is Impeding Autovacuum from Cleaning up Dead Tuples.\r\nServer is using prepared transactions, this transaction may be associated with an **Orphaned Prepared Transaction** on the Server. Please check the prepared transaction section for more Information on this Issue.\r\n\r\n**OR**\r\n\r\nThis Transaction may be Associated with an **Inactive Replication Slot or high replication lag** on the Server. Please Check the **Inactive Replication Slot and Replicaiton lag** section for more information on this issue.\r\n\r\n**OR**\r\n\r\nThe Transaction ID causing the issue may be associated with a long-running session on the replica server. Please Check the **Long running transactions on replica servers with hot_standby_feedback=ON** section for more information on this issue.",
+              "style": "warning"
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "existsPidThatisBlocking",
+                "comparison": "isEqualTo",
+                "value": "No"
+              },
+              {
+                "parameterName": "existsFrequentBackendXminnum",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "isPreparedXactsUsed",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "IsServerPrimary",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              }
+            ],
+            "name": "Prepare transaction xid warning"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### PID {pidThatisBlocking} is running the Transaction ID {frequentBackendXminnum} preventing the autovacuum to clean up the dead tuples\r\n\r\nTo terminate the process with PID {pidThatisBlocking} that is holding the Transaction ID (txid) {frequentBackendXminnum}, preventing autovacuum from cleaning up dead tuples, you can use the following command in PostgreSQL:\r\n\r\n**SELECT pg_terminate_backend({pidThatisBlocking});**\r\n\r\nThis will terminate the PostgreSQL backend process associated with the specified process ID, which should allow autovacuum to proceed and clean up dead tuples. However, before doing so, it is recommended to investigate the cause of the long-running transaction and the impact of terminating it, as it may result in data inconsistencies or other issues.",
+              "style": "warning"
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "existsFrequentBackendXminnum",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "existsPidThatisBlocking",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "existsLongRunningTransactionsData",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "IsServerPrimary",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              }
+            ],
+            "name": "blocker PID warning"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Long-running transaction found.\r\nA Long-Running PostgreSQL transaction has been detected which has the potential to interfere with vacuum operations. It is recommended to review the Long-Running Sessions Section for more information and take appropriate action.\r\n\r\n",
+              "style": "warning"
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "existsLongRunningTransactionsData",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "IsServerPrimary",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              }
+            ],
+            "name": "Long-running session warning"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "## Autovacuum Blockers\r\nHere are the common Autovacuum blockers:"
+            },
+            "name": "text - 14"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "title": "Long-running transactions",
+              "expandable": true,
+              "expanded": true,
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "- Prevents Autovacuum from reclaiming space in the affected tables\r\n- Can cause bloat in tables and indexes, leading to degraded performance over time\r\n- Best practice is to keep transactions as short as possible",
+                    "style": "info"
+                  },
+                  "name": "text - 9"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "loadType": "explicit",
+                    "loadButtonText": "Show Long running sessions",
+                    "items": [
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "### Server has no Long Running Transactions \r\n\r\nThere is no evidence of any Long Running Transactions on this server during the specified TimeRange. As a result, there is no requirement to investigate this issue further.",
+                          "style": "success"
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "No"
+                        },
+                        "name": "text - 82"
+                      },
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "parameters": [
+                            {
+                              "id": "98d4f3a7-4057-400a-a84f-cbd61df98051",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "TopTransactions",
+                              "label": "Number of Top PIDs",
+                              "type": 2,
+                              "isRequired": true,
+                              "typeSettings": {
+                                "additionalResourceOptions": [],
+                                "showDefault": false
+                              },
+                              "jsonData": "[\r\n { \"value\":\"10\", \"label\":\"10\",\"selected\":true },\r\n  { \"value\":\"20\", \"label\":\"20\" },\r\n    { \"value\":\"30\", \"label\":\"30\" },\r\n     { \"value\":\"40\", \"label\":\"40\" },\r\n  { \"value\":\"50\", \"label\":\"50\" }\r\n]",
+                              "timeContext": {
+                                "durationMs": 86400000
+                              }
+                            }
+                          ],
+                          "style": "pills",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces"
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "parameters - 40"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10 and State_s !='idle'\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n|  distinct TimeGenerated,Pid_d,Backend_start_t,Backend_type_s,State_s,Collection_time_t,Query_start_t,Xact_start_t\r\n| extend Connection_duration_sec = datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Backend_start_t)), Query_duration_ms = datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Query_start_t)),  Transaction_duration_ms=datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t))\r\n   | summarize Connection_duration_sec=max(Connection_duration_sec), Transaction_duration_ms=max(Transaction_duration_ms),  Query_duration_ms=max(Query_duration_ms),arg_max(TimeGenerated,lastState=State_s) by Pid_d,Backend_start_t, Backend_type_s\r\n   | where Transaction_duration_ms> {MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS}\r\n  | order by Transaction_duration_ms desc, Pid_d asc\r\n  | limit {TopTransactions}",
+                          "size": 0,
+                          "aggregation": 2,
+                          "title": "Top {TopTransactions} PIDs by transaction duration. Blue - connection duration; Yellow - query duration; Green - transaction duration. The state shown in the tile is the last state from telemetry snapshot, historically the sate could have changed multiple times",
+                          "noDataMessage": "No PIDs data was found for the selected time range. Select a wider time range",
+                          "queryType": 0,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "crossComponentResources": [
+                            "{Resource}"
+                          ],
+                          "visualization": "tiles",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Pid_d",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 0,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false
+                                }
+                              }
+                            },
+                            "subtitleContent": {
+                              "columnMatch": "lastState"
+                            },
+                            "leftContent": {
+                              "columnMatch": "Connection_duration_sec",
+                              "formatter": 3,
+                              "formatOptions": {
+                                "palette": "blue"
+                              },
+                              "numberFormat": {
+                                "unit": 23,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false,
+                                  "maximumFractionDigits": 2
+                                }
+                              },
+                              "tooltipFormat": {
+                                "tooltip": "{1}"
+                              }
+                            },
+                            "rightContent": {
+                              "columnMatch": "Transaction_duration_ms",
+                              "formatter": 3,
+                              "formatOptions": {
+                                "palette": "green"
+                              },
+                              "numberFormat": {
+                                "unit": 23,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true
+                                },
+                                "emptyValCustomText": "Transaction Duration"
+                              },
+                              "tooltipFormat": {
+                                "tooltip": "Transaction Duration"
+                              }
+                            },
+                            "secondaryContent": {
+                              "columnMatch": "Backend_type_s",
+                              "formatter": 1
+                            },
+                            "showBorder": true,
+                            "sortCriteriaField": "Transaction_duration_ms",
+                            "sortOrderField": 2,
+                            "size": "auto"
+                          },
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "Session_duration",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "showLegend": true,
+                            "xSettings": {
+                              "numberFormatSettings": {
+                                "unit": 0,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true
+                                }
+                              }
+                            },
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 24,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": false
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "query - Long Running Transactions "
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "## Stats on long running transactions\r\n\r\n**Note: In the workbook we consider any transaction which is running for more than {MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS} milliseconds as a long running transaction.**\r\n\r\nConsideration\r\n\r\n* Connection Duration **(blue)** - Duration of session or connection (collection_time-backend_start). You will notice higher value in case if you are using conneciton pool.\r\n\r\n* Transaction Duration **(green)** - Duration of transaction (collection_time-xact_start)\r\n\r\nLong running transactions is based out of pg_stat_activity view in postgresql. If you want to know more about these columns, please visit https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW\r\n ",
+                          "style": "info"
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "text - 30"
+                      },
+                      {
+                        "type": 9,
+                        "content": {
+                          "version": "KqlParameterItem/1.0",
+                          "crossComponentResources": [
+                            "{Resource}"
+                          ],
+                          "parameters": [
+                            {
+                              "id": "e4b37b70-1891-4de7-b916-349a7ad5ae25",
+                              "version": "KqlParameterItem/1.0",
+                              "name": "SessionPid",
+                              "label": "Show Snapshot of PID",
+                              "type": 2,
+                              "isRequired": true,
+                              "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| where State_s !='idle'\r\n    | extend Transaction_duration_ms=datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t))\r\n| summarize Transaction_duration_ms=max(Transaction_duration_ms) by Pid_d,Backend_start_t, Backend_type_s\r\n|where Transaction_duration_ms >{MIN_XACT_TIME_MS_THRESHOLD_FOR_LONG_XACTS}\r\n| summarize arg_max(Transaction_duration_ms,*) by Pid_d\r\n| order by Transaction_duration_ms desc, Pid_d asc\r\n| limit {TopTransactions}\r\n   | extend uniquePidkeys=strcat(toint(Pid_d),'-',Backend_start_t)\r\n   | project uniquePidkeys,toint(Pid_d)\r\n   | serialize Rank = row_number()\r\n   | project value = uniquePidkeys, label = strcat('🌐 ', Pid_d), selected = iff(Rank == 1, true, false)",
+                              "crossComponentResources": [
+                                "{Resource}"
+                              ],
+                              "typeSettings": {
+                                "additionalResourceOptions": [],
+                                "showDefault": false
+                              },
+                              "queryType": 0,
+                              "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                              "value": null
+                            }
+                          ],
+                          "style": "pills",
+                          "queryType": 0,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "parameters - 41"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| distinct TimeGenerated,Pid_d, Collection_time_t, Application_name_s, State_s, Wait_event_type_s , Wait_event_s , Backend_xid_d , Backend_xmin_d,Backend_start_t,State_change_t,Xact_start_t,Query_start_t,Datid_d,Database_name_s,Usesysid_d,Client_addr_s,Backend_type_s\r\n| extend uniquePidkeys=strcat(toint(Pid_d),'-',Backend_start_t)\r\n| where uniquePidkeys =='{SessionPid}'\r\n| extend Connection_Duration=iff(todatetime(Collection_time_t)-todatetime(Backend_start_t)<time(00:00:00.00),0, datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Backend_start_t)))\r\n| extend StateLastChanged_ms=iff(todatetime(Collection_time_t)-todatetime(State_change_t)<time(00:00:00.00),0, datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(State_change_t)))\r\n| extend Xact_duration_ms=iff(todatetime(Collection_time_t)-todatetime(Xact_start_t)<time(00:00:00.00), datetime_diff('millisecond',todatetime(Xact_start_t),todatetime(Collection_time_t)), datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t)))\r\n| extend Query_duration_ms=iff(todatetime(Collection_time_t)-todatetime(Query_start_t)<time(00:00:00.00),datetime_diff('millisecond',todatetime(Xact_start_t),todatetime(Collection_time_t)), datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Query_start_t)))\r\n| extend dummy_row=1\r\n| summarize max(Connection_Duration), max(Query_duration_ms), max(Xact_duration_ms),sum(dummy_row)  by Pid_d,Backend_start_t, Datid_d, Database_name_s, Usesysid_d, Client_addr_s, Backend_type_s\r\n| project Pid_d,Backend_type_s, Datid_d, Database_name_s, Usesysid_d, Client_addr_s,Backend_start_t,TotalConnectionDuration=max_Connection_Duration, LongestTransactionDuration=max_Xact_duration_ms,LongestQueryDuration=max_Query_duration_ms, SampledDatapointsCounter=sum_dummy_row",
+                          "size": 4,
+                          "title": "Summary as Of Time - {GlobalEndTime} UTC",
+                          "noDataMessage": "No PIDs data was found for the selected time range. Select a wider time range",
+                          "queryType": 0,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "crossComponentResources": [
+                            "{Resource}"
+                          ],
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "Backend_start",
+                                "formatter": 6
+                              },
+                              {
+                                "columnMatch": "TotalConnectionDuration",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "LongestTransactionDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "LongestQueryDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "sortBy": [],
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1
+                            },
+                            "subtitleContent": {
+                              "columnMatch": "Backend_start",
+                              "formatter": 6,
+                              "dateFormat": {
+                                "showUtcTime": null,
+                                "formatName": "fullDateTimePattern"
+                              }
+                            },
+                            "leftContent": {
+                              "columnMatch": "Database_name",
+                              "formatter": 1
+                            },
+                            "showBorder": false
+                          },
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "Backend_start",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "query - 44"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| distinct TimeGenerated, Pid_d, Backend_start_t,State_s\r\n| extend uniquePidkeys=strcat(toint(Pid_d),'-',Backend_start_t)\r\n| where uniquePidkeys =='{SessionPid}'\r\n| extend workingState=iff(State_s in ('active','idle','idle in transaction','idle in transaction (aborted)'),State_s,'Other')\r\n| summarize count() by State=workingState",
+                          "size": 4,
+                          "title": "Overall State of the PID for the period. Data is sampled each 5 minutes",
+                          "queryType": 0,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "crossComponentResources": [
+                            "{Resource}"
+                          ],
+                          "visualization": "piechart",
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "Backend_start",
+                                "formatter": 6
+                              },
+                              {
+                                "columnMatch": "TotalConnectionDuration",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "LongestTransactionDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "LongestQueryDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "sortBy": [],
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1
+                            },
+                            "subtitleContent": {
+                              "columnMatch": "Backend_start",
+                              "formatter": 6,
+                              "dateFormat": {
+                                "showUtcTime": null,
+                                "formatName": "fullDateTimePattern"
+                              }
+                            },
+                            "leftContent": {
+                              "columnMatch": "Database_name",
+                              "formatter": 1
+                            },
+                            "showBorder": false
+                          },
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "Backend_start",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "showLegend": true
+                          }
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "query - 44 - Copy"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| distinct TimeGenerated, Pid_d, Backend_start_t,State_s,Wait_event_type_s,Wait_event_s\r\n    | extend uniquePidkeys=strcat(toint(Pid_d),'-',Backend_start_t)\r\n    | where uniquePidkeys =='{SessionPid}'\r\n|  summarize count() by Wait_event_type_s,Wait_event_s\r\n|project iff(isempty(Wait_event_type_s),'No Waits',strcat(Wait_event_type_s,':',Wait_event_s)),count_",
+                          "size": 4,
+                          "title": "Overall wait events of the PID for the period. Data is sampled each 5 minutes",
+                          "queryType": 0,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "crossComponentResources": [
+                            "{Resource}"
+                          ],
+                          "visualization": "piechart",
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "Backend_start",
+                                "formatter": 6
+                              },
+                              {
+                                "columnMatch": "TotalConnectionDuration",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "LongestTransactionDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "LongestQueryDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "sortBy": [],
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1
+                            },
+                            "subtitleContent": {
+                              "columnMatch": "Backend_start",
+                              "formatter": 6,
+                              "dateFormat": {
+                                "showUtcTime": null,
+                                "formatName": "fullDateTimePattern"
+                              }
+                            },
+                            "leftContent": {
+                              "columnMatch": "Database_name",
+                              "formatter": 1
+                            },
+                            "showBorder": false
+                          },
+                          "graphSettings": {
+                            "type": 0,
+                            "topContent": {
+                              "columnMatch": "Backend_start",
+                              "formatter": 1
+                            },
+                            "centerContent": {
+                              "columnMatch": "Pid",
+                              "formatter": 1,
+                              "numberFormat": {
+                                "unit": 17,
+                                "options": {
+                                  "maximumSignificantDigits": 3,
+                                  "maximumFractionDigits": 2
+                                }
+                              }
+                            }
+                          },
+                          "chartSettings": {
+                            "showLegend": true
+                          }
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "query - 44 - Copy - Copy"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexSessions\"\r\n| where Usesysid_d != 10\r\n| where isnotempty(Datid_d) and Database_name_s !in('azure_sys','azure_maintenance')\r\n| distinct TimeGenerated,Pid_d, Collection_time_t, Application_name_s, State_s, Wait_event_type_s , Wait_event_s , Backend_xid_d , Backend_xmin_d,Backend_start_t,State_change_t,Xact_start_t,Query_start_t,Datid_d,Database_name_s,Usesysid_d,Client_addr_s,Backend_type_s\r\n    | extend uniquePidkeys=strcat(toint(Pid_d),'-',Backend_start_t)\r\n    | where uniquePidkeys =='{SessionPid}'\r\n| extend Connection_Duration=iff(todatetime(Collection_time_t)-todatetime(Backend_start_t)<time(00:00:00.00),datetime_diff('second',todatetime(Backend_start_t),todatetime(Collection_time_t)), datetime_diff('second',todatetime(Collection_time_t),todatetime(Backend_start_t)))\r\n| extend StateLastChanged_ms=iff(todatetime(Collection_time_t)-todatetime(State_change_t)<time(00:00:00.00),datetime_diff('millisecond',todatetime(State_change_t),todatetime(Collection_time_t)), datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(State_change_t)))\r\n| extend Xact_duration_ms=iff(todatetime(Collection_time_t)-todatetime(Xact_start_t)<time(00:00:00.00),datetime_diff('millisecond',todatetime(Xact_start_t),todatetime(Collection_time_t)), datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Xact_start_t)))\r\n| extend Query_duration_ms=iff(todatetime(Collection_time_t)-todatetime(Query_start_t)<time(00:00:00.00),datetime_diff('millisecond',todatetime(Query_start_t),todatetime(Collection_time_t)), datetime_diff('millisecond',todatetime(Collection_time_t),todatetime(Query_start_t)))\r\n| project Pid_d, Collection_time_t, Application_name_s , Connection_Duration,Query_duration_ms,Xact_duration_ms,StateLastChanged_ms, State_s, Wait_event_type_s , Wait_event_s , Backend_xid_d , Backend_xmin_d \r\n//| summarize max(Connection_Duration), max(StateLastChanged_ms), max(Query_duration_ms)  by Pid_d,Backend_start_t, Datid_d, Database_name_s, Usesysid_d, Application_name_s, Client_addr_s, State_s, Wait_event_s, Wait_event_type_s, Backend_xid_d, Backend_xmin_d, Backend_type_s\r\n//| project Pid_d, conn\r\n| order by Connection_Duration asc \r\n| serialize \r\n| extend rn=row_number()\r\n| extend prev_Application=(prev(Application_name_s,1))\r\n| extend prev_State=(prev(State_s,1))\r\n| extend prev_Waitevtype=(prev(Wait_event_type_s,1))\r\n| extend prev_Waitev=(prev(Wait_event_s,1))\r\n| extend prev_xid=(prev(Backend_xid_d,1))\r\n| extend prev_xmin=(prev(Backend_xmin_d,1))\r\n| extend isApp_change=iff( rn>1 and Application_name_s != prev_Application,1,0)\r\n| extend isState_change=iff( rn>1 and State_s != prev_State,1,0)\r\n| extend isWaitevtype_change=iff( rn>1 and Wait_event_type_s != prev_Waitevtype,1,0)\r\n| extend isWaitev_change=iff( rn>1 and Wait_event_s != prev_Waitev,1,0)\r\n| extend isxid_change=iff( rn>1 and Backend_xid_d != prev_xid,1,0)\r\n| extend isxmin_change=iff( rn>1 and Backend_xmin_d != prev_xmin,1,0)\r\n| extend breakPoint=iff (isApp_change>0 or isState_change>0 or isWaitevtype_change>0 or isWaitev_change>0 or isxid_change>0 or isxmin_change>0, 0, rn)\r\n| project Collection_time_t,Pid_d,Application_name_s,Connection_Duration, State_s, prev_State, Wait_event_s, prev_Waitev, Wait_event_type_s, prev_Waitevtype, rn, breakPoint,Backend_xid_d , Backend_xmin_d,Xact_duration_ms,StateLastChanged_ms\r\n| scan with_match_id=change_id declare (TheRank: long) with \r\n(\r\n    step buildRank: true => TheRank = iff(isnull(buildRank.TheRank), rn, buildRank.TheRank);\r\n    step endRank output=none: breakPoint==0;\r\n)\r\n| summarize min(Connection_Duration),max(Connection_Duration),min(Collection_time_t),max(Collection_time_t), SampledCounter=count(), max(Xact_duration_ms), avg(Xact_duration_ms), max(StateLastChanged_ms)  by change_id, Application_name_s, State_s,Wait_event_s,Wait_event_type_s,Pid_d, Backend_xid_d , Backend_xmin_d\r\n| extend WaitEvent=iff(isempty(Wait_event_type_s),'No Waits',strcat(Wait_event_type_s,':',Wait_event_s))\r\n| project Pid_d, FromTime=min_Collection_time_t, ToTime=max_Collection_time_t, \r\nFromConnectionStart=min_Connection_Duration,//, EndFromConnectionStart=max_Connection_Duration, \r\nApplication_name_s, State_s,WaitEvent,Backend_xid_d, Backend_xmin_d,MaxTransactionTime=max_Xact_duration_ms,AvgTransactionTime=iff(isnan(avg_Xact_duration_ms ),'',tostring(toint(avg_Xact_duration_ms))),//MaxLastStateChanged=max_StateLastChanged_ms\r\n SampledCounter",
+                          "size": 0,
+                          "title": "Full history of the PID for the selected TimeRange",
+                          "queryType": 0,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "crossComponentResources": [
+                            "{Resource}"
+                          ],
+                          "gridSettings": {
+                            "formatters": [
+                              {
+                                "columnMatch": "FromTime",
+                                "formatter": 6
+                              },
+                              {
+                                "columnMatch": "ToTime",
+                                "formatter": 6
+                              },
+                              {
+                                "columnMatch": "FromConnectionStart",
+                                "formatter": 19,
+                                "formatOptions": {
+                                  "palette": "blue",
+                                  "timelineSettings": {
+                                    "timelineStartColumn": "FromConnectionStart"
+                                  },
+                                  "customColumnWidthSetting": "20%"
+                                },
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "MaxTransactionTime",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "AvgTransactionTime",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 23,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "FromConnectionDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "ToConnectionDuration",
+                                "formatter": 0,
+                                "numberFormat": {
+                                  "unit": 24,
+                                  "options": {
+                                    "style": "decimal"
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "Backend_start",
+                                "formatter": 6
+                              }
+                            ],
+                            "rowLimit": 500,
+                            "sortBy": [
+                              {
+                                "itemKey": "State_s",
+                                "sortOrder": 1
+                              }
+                            ]
+                          },
+                          "sortBy": [
+                            {
+                              "itemKey": "State_s",
+                              "sortOrder": 1
+                            }
+                          ]
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "query - 44 - Copy"
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "**Recommendations**\r\n\r\n* As a long term approach consider tuning queries identified from the above PIDs using explain analyze.\r\nMore information on EXPLAIN command can be found here\r\n\r\n\r\n* As a short term option you can terminate or cancel the sessions by executing below commands:\r\n\r\nFrom the PIDs retrieved above execute the below query on the server to terminate the session:\r\n\r\n\tSELECT pg_terminate_backend(<pid>);\r\n\r\nYou could also cancel the running queries by executing the below query:\r\n\r\n\tSelect pg_cancel_backend(<pid>); \r\n\r\n* It is advised to have server parameters `statement_timeout` or `idle_in_transaction_session_timeout` set on the server to kill the long running transactions.\r\n\r\n\r\n",
+                          "style": "info"
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "existsLongRunningTransactionsData",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "text - 22"
+                      }
+                    ]
+                  },
+                  "name": "Long-running sessions"
+                }
+              ]
+            },
+            "name": "Longrunning transaction"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "title": "Orphaned Prepared transactions",
+              "expandable": true,
+              "expanded": true,
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "- When a transaction is prepared but not committed, it holds a lock on its transaction ID (XID).\r\n- If the client disconnects or crashes before committing the transaction, the lock on the XID is not released, causing the transaction to become orphaned.\r\n- This lock can prevent Autovacuum from vacuuming or analyzing the affected tables, as it needs to acquire an AccessExclusiveLock on the table, which it cannot do if there are any active transactions.",
+                    "style": "info"
+                  },
+                  "name": "text - 10"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "loadType": "explicit",
+                    "loadButtonText": "Show Prepared Transactions",
+                    "items": [
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "## Server has no prepared transactions\r\n\r\n\r\n* This server has no trace of prepared transactions in the selected time range, therefore no need to check this topic. It is highly unlikely to exit orphaned prepared transactions for this given server.",
+                          "style": "success"
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "isPreparedXactsUsed",
+                          "comparison": "isEqualTo",
+                          "value": "No"
+                        },
+                        "name": "text - 32"
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "You can use the following PostgreSQL query to detect orphaned prepared transactions:\r\n\r\n```pgsql\r\n SELECT gid,* FROM pg_prepared_xacts WHERE prepared <= NOW() - INTERVAL '1 hour';\r\n```\r\nThis query selects all prepared transactions that belong to the any database on server then filters out any prepared transactions that have a prepared time of less than one hour ago.\r\n\r\nThe resulting list of GIDs represents orphaned prepared transactions that have not been committed or rolled back within the past hour.\r\n\r\nIn order to rollback or commit a prepared transaction, you must connect to the same database where the transaction was created, and you must have either been the owner who originally executed the transaction, or be a superuser with sufficient privileges. \r\n\r\nTo clean up the orphaned prepared transactions, you can roll back the oldest transaction(s) by using the gid from the previous query (in this case, gid) as the transaction ID:\r\n\r\n```pgsql\r\nROLLBACK PREPARED gid;\r\n```\r\n\r\nAlternatively, if you wish to commit the transaction instead of rolling it back, you can use the following command:\r\n\r\n```pgsql\r\nCOMMIT PREPARED gid;\r\n```"
+                        },
+                        "customWidth": "75",
+                        "conditionalVisibility": {
+                          "parameterName": "isPreparedXactsUsed",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "text - 25"
+                      }
+                    ]
+                  },
+                  "name": "Prepared Transactions"
+                }
+              ]
+            },
+            "name": "Orphaned Prepared transactions"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "title": "Replication lag and inactive replication slots",
+              "expandable": true,
+              "expanded": true,
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "- **Replication lag**\r\n\t- Replication lag occurs when the standby server is behind the primary server in terms of applied changes.\r\n\t- If Autovacuum is configured to run on the primary server, it will not be able to reclaim space or perform maintenance on tables that have changes that have not been applied to the standby server.",
+                    "style": "info"
+                  },
+                  "name": "text - 11"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "loadType": "explicit",
+                    "loadButtonText": "Show Logical & Physical Replication Lag",
+                    "items": [
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "### Absence of Read Replicas: No Further Investigation Required For Physical Replicaiton Lag.\r\n\r\nAs of the current timestamp, there are no available read replicas. However, it's possible that there were read replicas in the past, and there could be replication lag associated with them. Please take this into consideration when analyzing the data.",
+                          "style": "success"
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "IsServerHavingReplica",
+                          "comparison": "isEqualTo",
+                          "value": "No"
+                        },
+                        "name": "text - 82 - Copy"
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "#### Physical replication lag & logical replication lag metrics below gives an indication if there is any lag which might be contributing as a blocker \r\n\r\n\r\n",
+                          "style": "info"
+                        },
+                        "name": "text - 16"
+                      },
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbooke61f9566-60cf-4f0e-9cd7-a9416be00b43",
+                          "version": "MetricsItem/2.0",
+                          "size": 0,
+                          "chartType": 2,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "metricScope": 0,
+                          "resourceParameter": "Resource",
+                          "resourceIds": [
+                            "{Resource}"
+                          ],
+                          "timeContextFromParameter": "TimeRange",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.dbforpostgresql/flexibleservers",
+                              "metric": "microsoft.dbforpostgresql/flexibleservers-Logical Replication (Preview)-logical_replication_delay_in_bytes",
+                              "aggregation": 3,
+                              "splitBy": null,
+                              "columnName": "Logical Replication Lag"
+                            }
+                          ],
+                          "title": "Logical Replication Lag",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "metric - 19"
+                      },
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbookab8a7ca1-713b-4ff6-bbd7-a5952a48bd90",
+                          "version": "MetricsItem/2.0",
+                          "size": 0,
+                          "chartType": 2,
+                          "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+                          "metricScope": 0,
+                          "resourceParameter": "Resource",
+                          "resourceIds": [
+                            "{Resource}"
+                          ],
+                          "timeContextFromParameter": "TimeRange",
+                          "timeContext": {
+                            "durationMs": 0
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.dbforpostgresql/flexibleservers",
+                              "metric": "microsoft.dbforpostgresql/flexibleservers-Replication (Preview)-physical_replication_delay_in_bytes",
+                              "aggregation": 3,
+                              "splitBy": null,
+                              "columnName": "Physical Replication Lag"
+                            }
+                          ],
+                          "title": "Physical Replication Lag",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "customWidth": "50",
+                        "name": "metric - 18"
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "** Recommendations - Logical/physical Replication Lag**\r\n\r\n**NOTE**   \r\n\r\n** Any oldest transaction on replica server will block the vacuum activity on primary with hot_standby_feedback=on. With this setting, replica will keep <br>primary informed about the oldest open transaction and VACUUM operation on primary will not clear dead rows which are required by replica transactions.**\r\n\r\n\r\n**Short Term:**\r\n\r\n* You may have inactive logical/physical replication slots leading to lag.\r\n\r\n* The  xmin column in the pg_replication_slots view has the oldest transaction needed on the replica server.\r\n\r\n**Run the below on primary to get the xmin value for replica server**\r\n\r\n\tSELECT slot_name, slot_type, database, xmin, active\r\n\tFROM pg_replication_slots\r\n\tORDER BY age(xmin) DESC;\r\n\r\n**Run the below on replica server to get xmin value for long-running sessions**\r\n\r\n\tSELECT pid, datname, usename, state, backend_xmin\r\n\tFROM pg_stat_activity\r\n\tWHERE backend_xmin IS NOT NULL\r\n\tORDER BY age(backend_xmin) DESC;\r\n\r\nYou can use pg_cancel_backend() or pg_terminate_backend() function to cancel the active query or terminate the backend connection <br> for long-running sessions that are blocking vacuum activity on primary.\r\n\r\n**Long Term :**\r\n\r\n1. Long running transactions can increase the lag.It is advised to have `statement_timeout` set on the server or splitting a very large transaction into smaller chunks.The idea is to have transactions running lesser amount of time.\r\n\r\n2. Tune the queries and look into table design for optimal query performance.\r\n\r\n3. Move to a higher SKU for better performance.\r\n\r\n4. Make sure primary and secondary servers are on the same SKU.\r\n\r\n5. For logical replicaiton, try to create multiple replication slots and spread the workload to use multiple slots so that replication can catch up with workload. Reference to pglogical extension is: [Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-logical) \r\n\r\n6. For logical replicaiton, Consider tuning server parameters like `max_worker_processes`,`max_replication_slots`,`max_sync_workers_per_subscription`. Please test and evaluate carefully before making the changes.\r\n",
+                          "style": "info"
+                        },
+                        "name": "text - 40"
+                      }
+                    ]
+                  },
+                  "name": "LogicalPhysicalLag"
+                },
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "- **Inactive Replicaiton Slots**\r\n\t- Replication slots are used to keep track of the progress of replication between the primary and standby servers.\r\n\t- If a replication slot is inactive or has not been used for a long time, it can prevent Autovacuum from reclaiming space in the affected tables.\r\n\t- These issues include increased disk usage due to WAL files being retained, reduced replication performance due to excessive replication slots being maintained.",
+                    "style": "info"
+                  },
+                  "name": "text - 11 - Copy"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "loadType": "explicit",
+                    "loadButtonText": "Show Inactive Replication Slots",
+                    "items": [
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "\r\n**Recommendations**\r\n\r\nTo detect inactive and physical replication slots in PostgreSQL, you can use the following query:\r\n\r\n```pgsql \r\nSELECT slot_name, active, restart_lsn FROM pg_replication_slots;\r\n```\r\n\r\nThis query selects all replication slots in the current database, along with their status (active or inactive) and the last restart LSN. You can use this information to identify inactive or unused replication slots that may be causing issues with replication or impacting database performance.\r\n\r\nTo mitigate these issues, you can follow these steps:\r\n\r\nIdentify inactive or unused replication slots using the query above.\r\n\r\nIf a replication slot is inactive or unused, you can either drop it or activate it depending on your requirements. Dropping a replication slot will remove it permanently, while activating it will allow it to be used for replication again.\r\n\r\nIf you have identified any physical replication slots that are not in use, you can remove them by stopping the associated replication slot worker process and dropping the slot using the following \r\n\r\n```pgsql\r\nSELECT pg_drop_replication_slot('slot_name');\r\n```\r\n\r\n\r\n\r\n",
+                          "style": "info"
+                        },
+                        "name": "text - 17"
+                      }
+                    ]
+                  },
+                  "name": "Inactiveslots"
+                }
+              ]
+            },
+            "name": "Replication lag and inactive replication slots"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "title": "Long running transactions on replica servers with hot_standby_feedback=ON",
+              "expandable": true,
+              "expanded": true,
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "- Long running transactions on a replica server can block Autovacuum, as they hold locks on the affected tables and prevent vacuum and analyze operations from proceeding.\r\n- If hot_standby_feedback is turned on, the primary server may prioritize sending WAL records for these long running transactions to the replica server, causing further delays and blocking Autovacuum even more.\r\n",
+                    "style": "info"
+                  },
+                  "name": "text - 12"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "loadType": "explicit",
+                    "loadButtonText": "Show Information for Long running transactions on replica servers",
+                    "items": [
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "### Absence of Read Replicas: No Further Investigation Required\r\nAs there are no read replicas available for the server, there is no need to further investigate this matter.",
+                          "style": "success"
+                        },
+                        "customWidth": "50",
+                        "conditionalVisibility": {
+                          "parameterName": "IsServerHavingReplica",
+                          "comparison": "isEqualTo",
+                          "value": "No"
+                        },
+                        "name": "text - 82 - Copy - Copy"
+                      },
+                      {
+                        "type": 1,
+                        "content": {
+                          "json": "The Transaction ID causing the issue may be associated with a **long-running session on the replica** server. This can occur when a transaction on the replica server holds the xmin horizon, preventing autovacuum from removing dead tuples on the primary server. To verify if the xmin belongs to a replica server transaction, you can execute the following command on the primary server:<br><br>\r\n**SELECT max(age(backend_xmin)) FROM pg_stat_replication;** <br><br>\r\nThis will show you the age of the oldest xmin horizon on the replica server, which can help identify if a long-running transaction is the cause of the issue."
+                        },
+                        "conditionalVisibility": {
+                          "parameterName": "IsServerHavingReplica",
+                          "comparison": "isEqualTo",
+                          "value": "Yes"
+                        },
+                        "name": "text - 0"
+                      }
+                    ]
+                  },
+                  "name": "group - 12"
+                }
+              ]
+            },
+            "name": "Long running transactions on replica servers with hot_standby_feedback=ON"
+          }
+        ],
+        "exportParameters": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tab",
+          "comparison": "isEqualTo",
+          "value": "blocker"
+        },
+        {
+          "parameterName": "IsServerPrimary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "Autovacuum Blockers"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Identification of the Issue with Transaction ID and Multixacts ID Wraparound and Emergency Autovacuum"
+            },
+            "name": "autovacuum"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The server is fast approaching the end of its transaction ID limit and currently has {RemainingTXID} transaction ID remaining before wraparound protection is triggered. It is recommended to investigate any potential AV blockers and carry out more frequent and thorough vacuum operations.\r\n",
+              "style": "warning"
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IsTxidExhausted",
+                "comparison": "isEqualTo",
+                "value": "Yes"
+              },
+              {
+                "parameterName": "IsServerInWraparoundProtection",
+                "comparison": "isEqualTo",
+                "value": "No"
+              }
+            ],
+            "name": "avWrapClosetoThreshold - Copy"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The server is in wraparound protection mode, please see recommendation section to overcome wraparound protection.\r\n",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsServerInWraparoundProtection",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "avWrapClosetoThreshold - Copy - Copy"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "\r\nThe server is left with just {RemainingMXID} multi transaction(s) IDs till wraparound protection.\r\n",
+              "style": "warning"
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsMxIdExhausted",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "avWrapClosetoThreshold"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "#### The selected window does not contain any data in the telemetry. To configure logging and address this issue, please refer to the error message located at the top of the workbook.",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "DBDataExists",
+              "comparison": "isEqualTo",
+              "value": "No"
+            },
+            "name": "text - 14"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "#### In this section, the aim is to evaluate the distance between the present state of the database and the thresholds where urgent autovacuuming becomes necessary or the risk of a wraparound scenario increases.\r\n\r\n#### The purpose is to determine the level of intervention required to ensure the database remains stable and functional.",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "DBDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "text - 34"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nlet max_query = \r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n| extend ts=bin(TimeGenerated,5min)\r\n| summarize max(ts);\r\nAzureDiagnostics\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where Category ==\"PostgreSQLFlexDatabaseXacts\"\r\n| extend ts=bin(TimeGenerated,5min)\r\n| where ts in(max_query)\r\n| where DatabaseName_s !in('azure_sys','azure_maintenance','template1','template0')\r\n|extend PercentTowardsWraparoundProtection=round(toreal(Age_DatFrozenxid_d+{TXID_REMIAN_RESERVED})/toreal({MAX_XACTS})*100,2)\r\n| extend PercentTowardsEmergencyAV=round(toreal(Age_DatFrozenxid_d)/toreal(Autovacuum_freeze_max_age_d)*100,2)\r\n| extend PercentTowardsWraparoundMxid=round(toreal(Age_DatMinmxid_d)/toreal({MAX_XACTS})*100,2)\r\n| extend PercentTowardsEmergencyAVMxid=round(toreal(Age_DatMinmxid_d)/toreal(Autovacuum_multixact_freeze_max_age_d)*100,2)\r\n| distinct \r\nDatabase=DatabaseName_s,PercentTowardsWraparoundProtection,PercentTowardsEmergencyAV,PercentTowardsWraparoundMxid,PercentTowardsEmergencyAVMxid",
+              "size": 0,
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+              "crossComponentResources": [
+                "{Resource}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PercentTowardsWraparoundProtection",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 50,
+                      "palette": "greenRed",
+                      "customColumnWidthSetting": "40ch"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "PercentTowardsEmergencyAV",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 500,
+                      "max": 1000,
+                      "palette": "greenRed"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "PercentTowardsWraparoundMxid",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 99,
+                      "palette": "greenRed"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "PercentTowardsEmergencyAVMxid",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 99,
+                      "palette": "greenRed"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Group",
+                    "formatter": 1
+                  },
+                  {
+                    "columnMatch": "PercentTowardsWraparound",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 300,
+                      "max": 500,
+                      "palette": "greenRed"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  }
+                ],
+                "filter": true
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "DatabaseName",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "PercentTowardsWraparound",
+                  "formatter": 20,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 2,
+                      "maximumSignificantDigits": 3
+                    }
+                  }
+                },
+                "showBorder": false
+              },
+              "graphSettings": {
+                "type": 0,
+                "topContent": {
+                  "columnMatch": "DatabaseName",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "PercentTowardsWraparound",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "chartSettings": {
+                "yAxis": [
+                  "PercentTowardsEmergencyAV",
+                  "PercentTowardsWraparound",
+                  "DatabaseName"
+                ],
+                "showLegend": true,
+                "showDataPoints": true
+              }
+            },
+            "customWidth": "75",
+            "conditionalVisibility": {
+              "parameterName": "DBDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "query - 22",
+            "styleSettings": {
+              "showBorder": true
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "\r\n<h6>*Find the description of each metric below. *</h6>\r\n\r\nParamater | Description\r\n--- | ---\r\n**DatabaseName** | Name of the database.\r\n**PercentTowardsWraparoundProtection** | how much % of the trasaction ID's left before the database server enters into wrap around protection mode (it gets shut down and does not accept any new transactions).\r\n**PercentTowardsEmergencyAV** | how much % of transaction ID's left before the database server runs aggressive autovacuum.\r\n**PercentTowardsWraparoundMxid** | how much % of multi transaction ID's left before the database server goes into wrap-around.\r\n**PercentTowardsEmergencyAVMxid**| how much % of multi transaction ID's left before the database server runs aggressive autovacuum.\r\n"
+            },
+            "customWidth": "75",
+            "conditionalVisibility": {
+              "parameterName": "DBDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "text - 0 - Copy",
+            "styleSettings": {
+              "margin": "75"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "\r\n** When the percentage of wraparound approaches 50%, equivalent to 1 billion Transaction IDs, and the percentage of emergency autovacuum exceeds 500%, it is a concerning situation that requires immediate attention. These indicators may suggest that the database system is at risk of encountering performance issues and potential downtime.**\r\n\r\n\r\nIn case the autovacuum process is ongoing and the percentages of wraparound protection and emergency autovacuum continue to increase, it is essential to investigate the possible causes of autovacuum blockers explained in the \"Autovacuum Blockers\" section and address them promptly to resolve the issue.\r\n",
+              "style": "warning"
+            },
+            "customWidth": "75",
+            "conditionalVisibility": {
+              "parameterName": "DBDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "text - 24"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "#### **Recommendations:**<br> \r\n\r\nWraparound protection is a mechanism in PostgreSQL that prevents the transaction ID (XID) counter from reaching its maximum value and causing a wraparound situation.  This situation can lead to autovacuum to aggresively vacuum tables to freeze transaction IDs. Here are the steps to overcome the wraparound protection situation in PostgreSQL:\r\n\r\n- #### Actions to refrain from:\r\n\t- **Avoid failing over to read replica**: In the wraparound situation it is advised not to \t\tpromote read replica if one exists for the server. The promoted read replica will also get in wraparound situation as soon as promotion is completed.\r\n\t- **Stopping Autovacuum Workers**: When the server is in wraparound protection mode, it is strongly advised not to terminate or kill autovacuum and vacuum operations. Doing so can lead to transaction ID and multixacts ID wraparound protection situation.\r\n\r\n- #### Actions to perform:\r\n\r\n\t- **Make sure there are no autovacuum blockers:** Review the autovacuum blockers section in the workbook to identify any blockers and remove them using recommendations shared.\r\n\t- **Finding the table:** Identify the table or tables causing an issue, you can connect to the relevant database and execute the following SQL query:\r\n```pgsql\r\n\tSELECT c.relnamespace::regnamespace as schema_name,\r\n\t\tc.relname as table_name,\r\n\t\tgreatest(age(c.relfrozenxid), age(t.relfrozenxid)) as txid_age,\r\n\t\t2^31-3000000-greatest(age(c.relfrozenxid), age(t.relfrozenxid)) as txid_remaining,\r\n\t\tgreatest(mxid_age(c.relminmxid ), mxid_age(t.relminmxid)) as multixact_age,\r\n\t\t2^31-3000000-greatest(mxid_age(c.relminmxid), mxid_age(t.relminmxid)) as multixact_remaining\r\n\tFROM pg_class c\r\n\tLEFT JOIN pg_class t ON c.reltoastrelid = t.oid\r\n\tWHERE c.relkind IN ('r', 'm')\r\n\tORDER BY 4;\r\n``` \r\nThis query will return the table name(s) and schema name(s) that are causing the issue. By running this query, you can obtain information about the table's age and the amount of space remaining in the table, which can help you diagnose the problem. Repeat for other tables: If you have identified multiple tables that are affected by the wraparound situation, you should repeat this step for each table.\r\n\r\n\t- **Tune autovacuum:** You can improve the performance of PostgreSQL's autovacuum process by setting the following two flags:\r\n\t\t- Set `autovacuum_vacuum_cost_delay` = 0: This flag disables any disk throttling for vacuuming by PostgreSQL so VACUUM can run at full speed. By default, autovacuum is throttled so it does not use up all disk IO on the slowest servers.\r\n\t\t- Set `autovacuum_work_mem` = 2097151: This flag decreases the number of index cleanup passes. If possible, it should be large enough to store all IDs of dead rows in a table that VACUUM is going to clean up. When setting this value, consider checking available memory on server since this will use by all the autovacuum workers.\r\n<br><br>**Note:** If you modify the `autovacuum_vacuum_cost_delay` and `autovacuum_work_mem` parameters in PostgreSQL, note that the changes won't affect existing running workers. To make sure that the new settings take effect, you may need to terminate the existing autovacuum workers or restart the PostgreSQL server so that new workers will be created with the updated configuration.\r\n\r\n\t- **Vacuum Manually:** If the system has enough resources you can consider manual vacuum of pending tables which are yet to be picked by autovacuum. <br>\r\nExample: To clean a single table foo, and analyze, freeze the table for the optimizer:\r\n```pgsql\r\nvacuum (verbose,freeze,analyze) foo;\r\n```\r\n\t\t- **Other Options:** Avoid vacuuming indexes <br><br>\r\n\t\t\t- `PostgreSQL Version 11`: Consider dropping the indexes before manual vacuum is initiated.In case you want to drop indexes on a table that autovacuum worker has started then you will have to cancel the existing run of autovacuum worker, drop the indexes on the table before the autovacuum worker again picks the table.\r\n\t\t\t- `PostgreSQL Version 12,13`:You could run below command to skip index cleaning <br><br>\r\n```pgsql\r\nVACUUM (INDEX_CLEANUP OFF, TRUNCATE OFF) <tablename>;\r\n```\r\n\t\t\t- `PostgreSQL Version 14`: PostgreSQL takes care of this optimizations on its own when manual vacuum is run.\r\n\r\n\t- **Monitor progress:** The vacuum operation may take some time, depending on the size of the table and the level of fragmentation. To monitor the progress of VACUUM operations in PostgreSQL, you can use the `pg_stat_progress_vacuum` system catalog view. This view displays information about the progress of any active vacuum operations, including the table being vacuumed, the number of pages that have been processed, the total number of pages, the percentage of the table that has been vacuumed. <br>\r\nYou can use the below query to monitor also:\r\n```pgsql\r\n\tSELECT p.pid, now() - a.xact_start AS duration, coalesce(wait_event_type ||'.'|| wait_event,   \t\t'f') AS waiting,  \r\n\tCASE  \r\n\tWHEN a.query ~*'^autovacuum.*to prevent wraparound' THEN 'wraparound'  \r\n\tWHEN a.query ~*'^vacuum' THEN 'user'  \r\n\tELSE 'regular'  \r\n\tEND AS mode,  \r\n\tp.datname AS database,  \r\n\tp.relid::regclass AS table,  \r\n\tp.phase,  \r\n\tpg_size_pretty(p.heap_blks_total * current_setting('block_size')::int) AS table_size,  \r\n\tpg_size_pretty(pg_total_relation_size(relid)) AS total_size,  \r\n\tpg_size_pretty(p.heap_blks_scanned * current_setting('block_size')::int) AS scanned,  \r\n\tpg_size_pretty(p.heap_blks_vacuumed * current_setting('block_size')::int) AS vacuumed,  \r\n\tround(100.0 * p.heap_blks_scanned / p.heap_blks_total, 1) AS scanned_pct,  \r\n\tround(100.0 * p.heap_blks_vacuumed / p.heap_blks_total, 1) AS vacuumed_pct,  \r\n\tp.index_vacuum_count,  \r\n\tround(100.0 * p.num_dead_tuples / p.max_dead_tuples,1) AS dead_pct  \r\n\tFROM pg_stat_progress_vacuum p  \r\n\tJOIN pg_stat_activity a using (pid)  \r\n\tORDER BY now() - a.xact_start DESC;  \r\n```\r\n"
+            },
+            "customWidth": "75",
+            "conditionalVisibility": {
+              "parameterName": "IsDatabaseXactsSentToLogAnalytics",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "text - 18"
+          }
+        ],
+        "exportParameters": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tab",
+          "comparison": "isEqualTo",
+          "value": "wraparound"
+        },
+        {
+          "parameterName": "IsServerPrimary",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "Wraparound"
+    }
+  ],
+  "fallbackResourceIds": [],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
