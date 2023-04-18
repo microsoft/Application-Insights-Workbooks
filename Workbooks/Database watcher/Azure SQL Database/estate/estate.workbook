@@ -284,8 +284,7 @@
                   "isRequired": true,
                   "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show databases\\r\\n| where DatabaseName == @\\\"{adxDatabase}\\\"\\r\\n| project 1\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"\"}",
                   "isHiddenWhenLocked": true,
-                  "queryType": 9,
-                  "value": null
+                  "queryType": 9
                 }
               ],
               "style": "pills",
@@ -462,6 +461,26 @@
             "isHiddenWhenLocked": true,
             "queryType": 9,
             "id": "61e2eb33-89e0-478e-ba46-ff4ff2885fe8",
+            "value": null
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "sqldb_single_database_connectivity",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show tables\\r\\n| where TableName == \\\"sqldb_single_database_connectivity\\\"\\r\\n| project true\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "queryType": 9,
+            "id": "0a7e0b26-cb7c-4bdb-9fe7-8813a9100701",
+            "value": null
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "sqldb_elastic_pool_connectivity",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show tables\\r\\n| where TableName == \\\"sqldb_elastic_pool_connectivity\\\"\\r\\n| project true\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "queryType": 9,
+            "id": "0a2c8768-e31c-44c7-980b-58525031c092",
             "value": null
           }
         ],
@@ -1704,6 +1723,14 @@
             "linkLabel": "Lock waits",
             "subTarget": "Lock waits",
             "style": "link"
+          },
+          {
+            "id": "79867c04-0cb5-40e1-b09e-008b45ab22a8",
+            "cellValue": "databaseHeatmapTabName",
+            "linkTarget": "parameter",
+            "linkLabel": "Connectivity",
+            "subTarget": "Connectivity",
+            "style": "link"
           }
         ]
       },
@@ -2917,6 +2944,172 @@
       "name": "database_blocking_heatmap"
     },
     {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server/database name to target logical server and database names\\r\\nlet connection_server_database_target = materialize (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\n// typical count of probes per logical server and database in selected time range\\r\\nlet expected_probe_count = toscalar(\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize count_samples = dcount(probe_time_utc) by logical_server_name, database_name\\r\\n| summarize percentile(count_samples, 90)\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_single_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name\\r\\n);\\r\\nlet agg_connectivity = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_database_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize count_failed_probes = countif(probe_return_value != 1),\\r\\n            count_successful_probes = countif(probe_return_value == 1),\\r\\n            count_probes = count()\\r\\n            by logical_server_name, database_name\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name\\r\\n{elasticPoolNameFilter}\\r\\n| project logical_server_name, database_name, elastic_pool_name, health_ratio = iif(toreal(count_probes)/expected_probe_count < 0.5, real(null), toreal(count_successful_probes) / toreal(count_probes)), count_failed_probes = iif(count_failed_probes > 0, count_failed_probes, int(null)),\\r\\n          color = case(\\r\\n                      toreal(count_probes)/expected_probe_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all servers\\r\\n                      count_failed_probes > 0, \\\"red\\\",\\r\\n                      count_successful_probes > 0, \\\"green\\\",\\r\\n                      \\\"\\\"\\r\\n                      ),\\r\\n          grouper = case(\\r\\n                        \\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n                        \\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\n                        strcat(logical_server_name, \\\" | \\\", database_name)\\r\\n                        )\\r\\n);\\r\\n// Get the max value across databases in each grouper. This is used to limit to top N databases without tearing groups (logical servers, elastic pools).\\r\\nlet agg_connectivity_grouper = (\\r\\nagg_connectivity\\r\\n| summarize health_ratio = min(health_ratio) by grouper\\r\\n| sort by health_ratio asc\\r\\n| project grouper, health_ratio, grouper_number = row_number()\\r\\n);\\r\\nagg_connectivity\\r\\n| lookup agg_connectivity_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project logical_server_name, database_name, elastic_pool_name, health_ratio, grouper_health_ratio = health_ratio1, count_failed_probes, color, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "database_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Azure SQL database",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "databaseName",
+                    "source": "column",
+                    "value": "database_name"
+                  },
+                  {
+                    "name": "serverName",
+                    "source": "column",
+                    "value": "logical_server_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "haReplica",
+                    "source": "parameter",
+                    "value": "haReplica"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              },
+              "bladeOpenContext": {
+                "bladeParameters": []
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "health_ratio",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 0,
+              "options": {
+                "style": "percent",
+                "minimumFractionDigits": 2
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "The ratio of successful connectivity probes to total connectivity probes, as a percentage. Shows \"N/A\" if the number of probes is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "count_failed_probes",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "tooltipFormat": {
+              "tooltip": "The number of failed connectivity probes in selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "grouper",
+            "formatter": 1
+          },
+          "nodeIdField": "database_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "color",
+            "type": 3,
+            "thresholdsGrid": [
+              {
+                "operator": "==",
+                "thresholdValue": "gray",
+                "representation": "gray"
+              },
+              {
+                "operator": "==",
+                "thresholdValue": "red",
+                "representation": "red"
+              },
+              {
+                "operator": "==",
+                "thresholdValue": "green",
+                "representation": "green"
+              },
+              {
+                "operator": "Default",
+                "thresholdValue": null
+              }
+            ]
+          },
+          "groupByField": "grouper",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "sqldb_single_database_connectivity",
+          "comparison": "isEqualTo",
+          "value": "1"
+        },
+        {
+          "parameterName": "sqldb_single_database_properties",
+          "comparison": "isEqualTo",
+          "value": "1"
+        },
+        {
+          "parameterName": "tabName",
+          "comparison": "isEqualTo",
+          "value": "Database heatmaps"
+        },
+        {
+          "parameterName": "databaseHeatmapTabName",
+          "comparison": "isEqualTo",
+          "value": "Connectivity"
+        }
+      ],
+      "name": "database_connectivity_heatmap"
+    },
+    {
       "type": 1,
       "content": {
         "json": "* On each heatmap, a hexagon represents an elastic pool\r\n* Heatmaps show top resource consuming pools. Use name filters or the `Elastic pools` grid to find other pools.\r\n* Click on the pool name in a hexagon to open a detailed dashboard for that elastic pool\r\n* Elastic pools are grouped by logical server\r\n* Hexagons colors are described below. Eelastic pools with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Instance CPU`, `Data IO`, `Log write`, `Workers`|Each hexagon is colored depending on average elastic pool resource utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of requests for the elastic pool in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as red representing higher rates|\r\n|`Lock waits`|Each hexagon is colored depending on cumulative wait time of lock (`LCK_M_*`) waits for the elastic pool in the selected time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other elastic pool on the same heatmap.|\r\n"
@@ -3004,6 +3197,14 @@
             "linkTarget": "parameter",
             "linkLabel": "Lock waits",
             "subTarget": "Lock waits",
+            "style": "link"
+          },
+          {
+            "id": "d104a67e-3662-4300-810e-74f48b69369b",
+            "cellValue": "poolHeatmapTabName",
+            "linkTarget": "parameter",
+            "linkLabel": "Connectivity",
+            "subTarget": "Connectivity",
             "style": "link"
           }
         ]
@@ -4186,6 +4387,172 @@
         }
       ],
       "name": "pool_blocking_heatmap"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server/database name to target logical server and elastic pool names\\r\\nlet connection_server_pool_target = materialize (\\r\\nsqldb_elastic_pool_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, elastic_pool_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\n// typical count of probes per logical server and elastic pool in selected time range\\r\\nlet expected_probe_count = toscalar(\\r\\nsqldb_elastic_pool_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| summarize count_samples = dcount(probe_time_utc) by logical_server_name, elastic_pool_name\\r\\n| summarize percentile(count_samples, 90)\\r\\n);\\r\\nsqldb_elastic_pool_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_pool_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and elastic_pool_name. Look them up from the most recent successful probe for the same elastic pool.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         elastic_pool_name = iif(isempty(elastic_pool_name), elastic_pool_name1, elastic_pool_name)\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| summarize count_failed_probes = countif(probe_return_value != 1),\\r\\n            count_successful_probes = countif(probe_return_value == 1),\\r\\n            count_probes = count()\\r\\n            by logical_server_name, elastic_pool_name\\r\\n| project logical_server_name, elastic_pool_name, health_ratio = iif(toreal(count_probes)/expected_probe_count < 0.5, real(null), toreal(count_successful_probes) / toreal(count_probes)), count_failed_probes = iif(count_failed_probes > 0, count_failed_probes, int(null)),\\r\\n          color = case(\\r\\n                      toreal(count_probes)/expected_probe_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all servers\\r\\n                      count_failed_probes > 0, \\\"red\\\",\\r\\n                      count_successful_probes > 0, \\\"green\\\",\\r\\n                      \\\"\\\"\\r\\n                      )\\r\\n| top 50 by health_ratio asc\\r\\n| sort by tolower(logical_server_name) asc, tolower(elastic_pool_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "elastic_pool_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Azure SQL database",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "databaseName",
+                    "source": "column",
+                    "value": "database_name"
+                  },
+                  {
+                    "name": "serverName",
+                    "source": "column",
+                    "value": "logical_server_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "haReplica",
+                    "source": "parameter",
+                    "value": "haReplica"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              },
+              "bladeOpenContext": {
+                "bladeParameters": []
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "health_ratio",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 0,
+              "options": {
+                "style": "percent",
+                "minimumFractionDigits": 2
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "The ratio of successful connectivity probes to total connectivity probes, as a percentage. Shows \"N/A\" if the number of probes is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "count_failed_probes",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "tooltipFormat": {
+              "tooltip": "The number of failed connectivity probes in selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "logical_server_name",
+            "formatter": 1
+          },
+          "nodeIdField": "elastic_pool_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "color",
+            "type": 3,
+            "thresholdsGrid": [
+              {
+                "operator": "==",
+                "thresholdValue": "gray",
+                "representation": "gray"
+              },
+              {
+                "operator": "==",
+                "thresholdValue": "red",
+                "representation": "red"
+              },
+              {
+                "operator": "==",
+                "thresholdValue": "green",
+                "representation": "green"
+              },
+              {
+                "operator": "Default",
+                "thresholdValue": null
+              }
+            ]
+          },
+          "groupByField": "logical_server_name",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "sqldb_elastic_pool_connectivity",
+          "comparison": "isEqualTo",
+          "value": "1"
+        },
+        {
+          "parameterName": "sqldb_elastic_pool_properties",
+          "comparison": "isEqualTo",
+          "value": "1"
+        },
+        {
+          "parameterName": "tabName",
+          "comparison": "isEqualTo",
+          "value": "Elastic pool heatmaps"
+        },
+        {
+          "parameterName": "poolHeatmapTabName",
+          "comparison": "isEqualTo",
+          "value": "Connectivity"
+        }
+      ],
+      "name": "pool_connectivity_heatmap"
     },
     {
       "type": 3,
