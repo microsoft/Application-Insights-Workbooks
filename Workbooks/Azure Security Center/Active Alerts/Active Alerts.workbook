@@ -159,6 +159,25 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
+        "query": "resources\r\n  | project id = tolower(id), tags\r\n  | join kind=inner (securityresources\r\n  | where type =~ \"microsoft.security/locations/alerts\"\r\n  | extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n  | extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n  | extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n  | extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n  | extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n  | extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))| project-away resourceNameIndex, splitAffectedResourceId, hostName, isAzure\r\n  | project alertId = id, subscriptionId, alertProperties = properties, affectedResourceId = tolower(affectedResourceId)\r\n    ) on $left.id == $right.affectedResourceId\r\n  | extend id = alertId, subscriptionId, properties = alertProperties\r\n  | where properties.Status in ('Active')\r\n  | where properties.Severity in ('Low', 'Medium', 'High')\r\n  | extend SeverityRank = case(\r\n    properties.Severity == 'High', 3,\r\n    properties.Severity == 'Medium', 2,\r\n    properties.Severity == 'Low', 1,\r\n    0\r\n    )\r\n  | sort by  SeverityRank desc, tostring(properties.SystemAlertId) asc\r\n   | extend Tag = parse_json(tags)\r\n  | mv-expand Tag\r\n | parse Tag with * ':\"' TagValue '\"}'\r\n | project TagValue, alertId\r\n | summarize Count = count() by TagValue",
+        "size": 0,
+        "title": "Tag",
+        "exportFieldName": "TagValue",
+        "exportParameterName": "TagValueFilter",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "piechart"
+      },
+      "customWidth": "30",
+      "name": "query - 12"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
         "query": "datatable(ResourceId: string) [ \"All\"] | union (securityresources\r\n  | where type =~ 'microsoft.security/locations/alerts'\r\n  | extend Prop = parse_json(properties)\r\n  | where Prop.Severity == \"High\"\r\n    | extend ResourceIdentifiers = Prop.[\"ResourceIdentifiers\"]\r\n    | project ResourceIdentifiers\r\n  | mv-expand ResourceIdentifiers\r\n  | extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n  | where isnotempty(ResourceId )\r\n|  summarize Count=count() by tostring(ResourceId)\r\n  | top 5 by Count)",
         "size": 1,
         "title": "Top 5 attacked resources (with High Severity)",
@@ -901,6 +920,29 @@
             "defaultValue": "value::all",
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "378aeb0c-9135-43fa-b46a-86f71baa0137",
+            "version": "KqlParameterItem/1.0",
+            "name": "TagFilter",
+            "label": "Tag",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "securityresources\r\n  | where type =~ \"microsoft.security/locations/alerts\"\r\n    | extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n  | extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n  | extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n  | extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n  | extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n  | extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n  | extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n  | extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n    | mv-expand ResourceIdentifiers\r\n  | extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n  | extend Resource = tolower(tostring(ResourceId))\r\n  | project alertId = id, subscriptionId, alertProperties = properties, affectedResourceId = tolower(affectedResourceId),tostring(Severity), SystemAlertId, AlertDisplayName,IsIncident = iif(IsIncident==\"true\",\"Incident\",\"Alert\"),AlertUri,Status,Tactics,SubscriptionId,ResourceGroup,Location, ResourceIdentifier=Details.[\"ResourceIdentifiers\"],Resource\r\n  | join kind=leftouter (\r\n  resources\r\n  | project id = tolower(id), tags\r\n  ) on $left.affectedResourceId == $right.id\r\n | extend Tag = parse_json(tags)\r\n  | mv-expand Tag\r\n | parse Tag with * ':\"' TagValue '\"}'\r\n | extend TagValue = iif(isempty(TagValue),\" \",TagValue)\r\n  | project TagValue, alertId\r\n | distinct TagValue\r\n ",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "pills",
@@ -918,7 +960,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| project\r\n    alertId = id,\r\n    subscriptionId,\r\n    alertProperties = properties,\r\n    affectedResourceId = tolower(affectedResourceId),\r\n    tostring(Severity),\r\n    SystemAlertId,\r\n    AlertDisplayName,\r\n    IsIncident = iif(IsIncident == \"true\", \"Incident\", \"Alert\"),\r\n    AlertUri,\r\n    Status,\r\n    Tactics,\r\n    SubscriptionId,\r\n    ResourceGroup,\r\n    Location,\r\n    ResourceId,\r\n    ResourceIdentifier=Details.[\"ResourceIdentifiers\"],\r\n    Resource\r\n| extend id = alertId, subscriptionId, properties = alertProperties\r\n| extend ResourceFilter =\" {ResourceFilter}\"\r\n| where Resource in~ ({ResourceFilter})\r\n| where Severity in~ ({SeverityFilter})\r\n| where AlertDisplayName in~ ({AlertNameFilter})\r\n| where Status == \"Active\"\r\n| extend ResourceGroup = iif(isempty(ResourceGroup), \" \", ResourceGroup)\r\n| where ResourceGroup in~ ({ResourceGroupFilter})\r\n| where AlertDisplayName !startswith ('[SAMPLE ALERT]')\r\n| project\r\n    (Severity),\r\n    tostring(SystemAlertId),\r\n    tostring(AlertDisplayName),\r\n    IsIncident = iif(IsIncident == \"true\", \"Incident\", \"Alert\"),\r\n    AlertURI = tostring(AlertUri),\r\n    tostring(Status),\r\n    tostring(Tactics),\r\n    SubscriptionId,\r\n    ResourceGroup,\r\n    Location,\r\n    tostring(ResourceId)\r\n| distinct\r\n    Severity,\r\n    SystemAlertId,\r\n    AlertDisplayName,\r\n    IsIncident,\r\n    AlertURI,\r\n    Status,\r\n    Tactics,\r\n    SubscriptionId,\r\n    ResourceGroup,\r\n    Location,\r\n    ResourceId\r\n| order by Severity asc",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| project\r\n    alertId = id,\r\n    subscriptionId,\r\n    alertProperties = properties,\r\n    affectedResourceId = tolower(affectedResourceId),\r\n    tostring(Severity),\r\n    SystemAlertId,\r\n    AlertDisplayName,\r\n    IsIncident = iif(IsIncident == \"true\", \"Incident\", \"Alert\"),\r\n    AlertUri,\r\n    Status,\r\n    Tactics,\r\n    SubscriptionId,\r\n    ResourceGroup,\r\n    Location,\r\n    ResourceId,\r\n    ResourceIdentifier=Details.[\"ResourceIdentifiers\"],\r\n    Resource\r\n| join kind=leftouter (\r\n    resources\r\n    | project id = tolower(id), tags\r\n    )\r\n    on $left.affectedResourceId == $right.id\r\n| extend id = alertId, subscriptionId, properties = alertProperties\r\n| extend ResourceFilter =\" {ResourceFilter}\"\r\n| where Resource in~ ({ResourceFilter})\r\n| where Severity in~ ({SeverityFilter})\r\n| where AlertDisplayName in~ ({AlertNameFilter})\r\n| where Status == \"Active\"\r\n| extend ResourceGroup = iif(isempty(ResourceGroup), \" \", ResourceGroup)\r\n| where ResourceGroup in~ ({ResourceGroupFilter})\r\n| extend tag = iff(isempty(tags), dynamic({\"tags\": \" \"}), parse_json(tags))\r\n| mv-expand tag\r\n| parse tag with * ':\"' TagValue '\"}'\r\n| extend TagValue = iif(isempty(TagValue), \" \", TagValue)\r\n| where TagValue in ({TagFilter})\r\n| where AlertDisplayName !startswith ('[SAMPLE ALERT]')\r\n| project\r\n    (Severity),\r\n    tostring(SystemAlertId),\r\n    tostring(AlertDisplayName),\r\n    IsIncident = iif(IsIncident == \"true\", \"Incident\", \"Alert\"),\r\n    AlertURI = tostring(AlertUri),\r\n    tostring(Status),\r\n    tostring(Tactics),\r\n    SubscriptionId,\r\n    ResourceGroup,\r\n    Location,\r\n    TagValue,\r\n    tostring(tags),\r\n    tostring(ResourceId)\r\n| distinct\r\n    Severity,\r\n    SystemAlertId,\r\n    AlertDisplayName,\r\n    IsIncident,\r\n    AlertURI,\r\n    Status,\r\n    Tactics,\r\n    SubscriptionId,\r\n    ResourceGroup,\r\n    Location,\r\n    tags,\r\n    ResourceId\r\n| order by Severity asc",
         "size": 0,
         "title": "Active Alerts ",
         "exportedParameters": [
@@ -1185,6 +1227,10 @@
             {
               "columnId": "ResourceGroup",
               "label": "Resource group"
+            },
+            {
+              "columnId": "tags",
+              "label": "Tags"
             },
             {
               "columnId": "ResourceId",
