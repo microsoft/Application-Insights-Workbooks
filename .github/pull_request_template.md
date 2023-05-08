@@ -1,6 +1,7 @@
 ## PR Checklist
 
 * [ ] Explain your changes, so people looking at the PR know *what* and *why*, the code changes are the *how*.
+* [ ] Validate your changes using one or more of the [testing](../Documentation/Testing.md) methods.
 
 ### If adding or updating templates:
 * [ ] post a screenshot of templates and/or gallery changes

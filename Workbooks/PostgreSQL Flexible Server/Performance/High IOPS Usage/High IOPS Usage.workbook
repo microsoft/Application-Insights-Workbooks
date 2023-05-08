@@ -1,0 +1,4338 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Optimizing High IOPS Utilization\r\n\r\nThe aim of this troubleshooting guide is to pinpoint potential reasons for high IOPS usage and suggest solutions to alleviate the issue. \r\n\r\nHigh IOPS utilization may arise from various factors, such as a surge in workload, IO-intensive queries, long running sessions or too frequent checkpoints.\r\n\r\nThe following table outlines the step-by-step approach to investigate server behavior and improve IOPS usage.",
+              "style": "info"
+            },
+            "name": "the aim of the workbook"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Step | Observations\r\n--- | ---\r\n**Select Parameters** | Step 0: Select time interval of interest.\r\n**Understand IOPS usage** | Step 1: Analyze the metrics in the IOPS Usage tab. Any spike in values compared to previous time intervals can be considered unusual which needs further investigation.\r\n**Understand the workload** | Step 2: Analyze workload details tab and check `read` and `write workloads`.\r\n**Do you see long running queries** | Step 3: Analyze session details tab for any read queries, write queries running for long time . Follow mitigation steps suggested in the section and monitor IOPS Usage.\r\n**Identify IO consuming queries** | Step 4: Analyze top IOPS consuming  queries during window of interest from `Top Queries By IOPS`. Follow mitigation steps suggested in the section.\r\n**Identify IO wait events** | Step 5: Analyze `IO` wait events from `IO Wait Events` tab and follow recommendations on IO waits.\r\n**Do you see too frequent checkpoints** | Step 6: Checkpoints happening too frequently can consume IO. Analyze `Checkpoint Details` tab to identify any in the window of interest. Follow mitigation steps suggested in the section.\r\n**Check Storage Utilization** | Step 7: Increasing storage helps when you're adding more IOPS to the server. Check `Storage Usage` tab to understand current storage usage on the server."
+            },
+            "name": "steps in the workbook"
+          }
+        ]
+      },
+      "name": "introduction group"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Start by setting the following parameters:"
+      },
+      "name": "high iops parameter set all"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "6573f642-b4c6-4a56-8bdd-8ef451b7bdf5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "type": 5,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false,
+              "componentIdOnly": true
+            }
+          },
+          {
+            "id": "9ebd8e9a-5e9c-496a-bdb1-e41b9faaf9ad",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "isGlobal": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2419200000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "label": "TimeRange (Local Time)"
+          },
+          {
+            "id": "233ae05f-0f3d-4463-b8ec-579074b35c53",
+            "version": "KqlParameterItem/1.0",
+            "name": "MIN_TIME_WINDOW_SEC",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "3600"
+                }
+              }
+            ]
+          },
+          {
+            "id": "089a8ccf-b6cb-4f68-adff-2bef115928ae",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryStoreTable",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureDiagnostics | where Category =='PostgreSQLFlexQueryStoreRuntime' | project TimeGenerated, Resource, RuntimeStatsEntryId = tolong(     iff(isnotempty(AdditionalFields.Runtime_stats_entry_id), AdditionalFields.Runtime_stats_entry_id,         column_ifexists('Runtime_stats_entry_id_d',             column_ifexists('Runtime_stats_entry_id',                 column_ifexists('Runtime_stats_entry_id_s', \"\")             )         )     ) ), UserId = toint(     iff(isnotempty(AdditionalFields.Userid), AdditionalFields.Userid,         column_ifexists('Userid_d',             column_ifexists('Userid',                 column_ifexists('Userid_s', \"\")             )         )     ) ), DatabaseId = toint(     iff(isnotempty(AdditionalFields.Dbid), AdditionalFields.Dbid,         column_ifexists('Dbid_d',             column_ifexists('Dbid',                 column_ifexists('Dbid_s', \"\")             )         )     ) ), QueryId = tolong(     iff(isnotempty(AdditionalFields.Queryid), AdditionalFields.Queryid,         column_ifexists('Queryid_d',             column_ifexists('Queryid',                 column_ifexists('Queryid_s', \"\")             )         )     ) ), PlanId = tolong(     iff(isnotempty(AdditionalFields.Plan_id), AdditionalFields.Plan_id,         column_ifexists('Plan_id_d',             column_ifexists('Plan_id_s',                 column_ifexists('Plan_id', \"\")             )         )     ) ), StartTime = todatetime(     iff(isnotempty(AdditionalFields.Start_time), AdditionalFields.Start_time,         column_ifexists('Start_time_t',             column_ifexists('Start_time',                 column_ifexists('Start_time_s', \"\")             )         )     ) ), EndTime = todatetime(     iff(isnotempty(AdditionalFields.End_time), AdditionalFields.End_time,         column_ifexists('End_time_t',             column_ifexists('End_time',                 column_ifexists('End_time_s', \"\")             )         )     ) ), Calls = tolong(     iff(isnotempty(AdditionalFields.Calls), AdditionalFields.Calls,         column_ifexists('Calls_d',             column_ifexists('Calls',                 column_ifexists('Calls_s', \"\")             )         )     ) ), TotalExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Total_time), AdditionalFields.Total_time,         column_ifexists('Total_time_d',             column_ifexists('Total_time',                 column_ifexists('Total_time_s', \"\")             )         )     ) ), MinExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Min_time), AdditionalFields.Min_time,         column_ifexists('Min_time_d',             column_ifexists('Min_time',                 column_ifexists('Min_time_s', \"\")             )         )     ) ), MaxExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Max_time), AdditionalFields.Max_time,         column_ifexists('Max_time_d',             column_ifexists('Max_time',                 column_ifexists('Max_time_s', \"\")             )         )     ) ), MeanExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Mean_time), AdditionalFields.Mean_time,         column_ifexists('Mean_time_d',             column_ifexists('Mean_time',                 column_ifexists('Mean_time_s', \"\")             )         )     ) ), StdDevExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Stddev_time), AdditionalFields.Stddev_time,         column_ifexists('Stddev_time_d',             column_ifexists('Stddev_time',                 column_ifexists('Stddev_time_s', \"\")             )         )     ) ), Rows = tolong(     iff(isnotempty(AdditionalFields.Rows), AdditionalFields.Rows,         column_ifexists('Rows_d',             column_ifexists('Rows',                 column_ifexists('Rows_s', \"\")             )         )     ) ), SharedBlksHit = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_hit), AdditionalFields.Shared_blks_hit,         column_ifexists('Shared_blks_hit_d',             column_ifexists('Shared_blks_hit',                 column_ifexists('Shared_blks_hit_s', \"\")             )         )     ) ), SharedBlksRead = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_read), AdditionalFields.Shared_blks_read,         column_ifexists('Shared_blks_read_d',             column_ifexists('Shared_blks_read',                 column_ifexists('Shared_blks_read_s', \"\")             )         )     ) ), SharedBlksDirtied = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_dirtied), AdditionalFields.Shared_blks_dirtied,         column_ifexists('Shared_blks_dirtied_d',             column_ifexists('Shared_blks_dirtied',                 column_ifexists('Shared_blks_dirtied_s', \"\")             )         )     ) ), SharedBlksWritten = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_written), AdditionalFields.Shared_blks_written,         column_ifexists('Shared_blks_written_d',             column_ifexists('Shared_blks_written',                 column_ifexists('Shared_blks_written_s', \"\")             )         )     ) ), LocalBlksHit = tolong(     iff(isnotempty(AdditionalFields.Local_blks_hit), AdditionalFields.Local_blks_hit,         column_ifexists('Local_blks_hit_d',             column_ifexists('Local_blks_hit',                 column_ifexists('Local_blks_hit_s', \"\")             )         )     ) ), LocalBlksRead = tolong(     iff(isnotempty(AdditionalFields.Local_blks_read), AdditionalFields.Local_blks_read,         column_ifexists('Local_blks_read_d',             column_ifexists('Local_blks_read',                 column_ifexists('Local_blks_read_s', \"\")             )         )     ) ), LocalBlksDirtied = tolong(     iff(isnotempty(AdditionalFields.Local_blks_dirtied), AdditionalFields.Local_blks_dirtied,         column_ifexists('Local_blks_dirtied_d',             column_ifexists('Local_blks_dirtied',                 column_ifexists('Local_blks_dirtied_s', \"\")             )         )     ) ), LocalBlksWritten = tolong(     iff(isnotempty(AdditionalFields.Local_blks_written), AdditionalFields.Local_blks_written,         column_ifexists('Local_blks_written_d',             column_ifexists('Local_blks_written',                 column_ifexists('Local_blks_written_s', \"\")             )         )     ) ), TempBlksRead = tolong(     iff(isnotempty(AdditionalFields.Temp_blks_read), AdditionalFields.Temp_blks_read,         column_ifexists('Temp_blks_read_d',             column_ifexists('Temp_blks_read',                 column_ifexists('Temp_blks_read_s', \"\")             )         )     ) ), TempBlksWritten = tolong(     iff(isnotempty(AdditionalFields.Temp_blks_written), AdditionalFields.Temp_blks_written,         column_ifexists('Temp_blks_written_d',             column_ifexists('Temp_blks_written',                 column_ifexists('Temp_blks_written_s', \"\")             )         )     ) ), BlkReadTime = todouble(     iff(isnotempty(AdditionalFields.Blk_read_time), AdditionalFields.Blk_read_time,         column_ifexists('Blk_read_time_d',             column_ifexists('Blk_read_time',                 column_ifexists('Blk_read_time_s', \"\")             )         )     ) ), BlkWriteTime = todouble(     iff(isnotempty(AdditionalFields.Blk_write_time), AdditionalFields.Blk_write_time,         column_ifexists('Blk_write_time_d',             column_ifexists('Blk_write_time',                 column_ifexists('Blk_write_time_s', \"\")             )         )     ) ), IsSystemQuery = tobool(     iff(isnotempty(AdditionalFields.Is_system_query), AdditionalFields.Is_system_query,         column_ifexists('Is_system_query_b',             column_ifexists('Is_system_query',                 column_ifexists('Is_system_query_s', \"\")             )         )     ) ), QueryType = tostring(     iff(isnotempty(AdditionalFields.Query_type), AdditionalFields.Query_type,         column_ifexists('Query_type_s',             column_ifexists('Query_type', \"\")         )     ) )"
+                }
+              }
+            ]
+          },
+          {
+            "id": "e5f4fc66-344a-4a21-b495-f5cc20c3ec1a",
+            "version": "KqlParameterItem/1.0",
+            "name": "SessionsTable",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureDiagnostics | where Category =='PostgreSQLFlexSessions' | project TimeGenerated, Resource, DatabaseId = toint(     iff(isnotempty(AdditionalFields.Datid), AdditionalFields.Datid,         column_ifexists('Datid_d',             column_ifexists('Datid_s',                 column_ifexists('Datid', \"\")             )         )     )     ), DatabaseName = tostring(     iff(isnotempty(AdditionalFields.Database_name), AdditionalFields.Database_name,         column_ifexists('Database_name_s',            column_ifexists('Database_name', \"\")         )     ) ), ProcessId = toint(     iff(isnotempty(AdditionalFields.Pid), AdditionalFields.Pid,         column_ifexists('Pid_d',            column_ifexists('Pid', \"\")         )     ) ), UserId = toint(     iff(isnotempty(AdditionalFields.Usesysid), AdditionalFields.Usesysid,         column_ifexists('Usesysid_d',             column_ifexists('Usesysid_s',                 column_ifexists('Usesysid', \"\")             )         )     )     ), ApplicationName = tostring(     iff(isnotempty(AdditionalFields.Application_name), AdditionalFields.Application_name,         column_ifexists('Application_name_s',            column_ifexists('Application_name', \"\")         )     ) ), ClientIpAddress = tostring(     iff(isnotempty(AdditionalFields.Client_addr), AdditionalFields.Client_addr,         column_ifexists('Client_addr_s',            column_ifexists('Client_addr', \"\")         )     ) ), State = tostring(     iff(isnotempty(AdditionalFields.State), AdditionalFields.State,         column_ifexists('State_s',            column_ifexists('State', \"\")         )     ) ), WaitEventType = tostring(     iff(isnotempty(AdditionalFields.Wait_event_type), AdditionalFields.Wait_event_type,         column_ifexists('Wait_event_type_s',            column_ifexists('Wait_event_type', \"\")         )     ) ), WaitEvent = tostring(     iff(isnotempty(AdditionalFields.Wait_event), AdditionalFields.Wait_event,         column_ifexists('Wait_event_s',            column_ifexists('Wait_event', \"\")         )     ) ), BackendStartTime = todatetime(     iff(isnotempty(AdditionalFields.Backend_start), AdditionalFields.Backend_start,         column_ifexists('Backend_start_t',             column_ifexists('Backend_start',                 column_ifexists('Backend_start_s', \"\")             )         )     ) ), TransactionStartTime = todatetime(     iff(isnotempty(AdditionalFields.Xact_start), AdditionalFields.Xact_start,         column_ifexists('Xact_start_t',             column_ifexists('Xact_start_s',                 column_ifexists('Xact_start', \"\")             )         )     ) ), QueryStartTime = todatetime(     iff(isnotempty(AdditionalFields.Query_start), AdditionalFields.Query_start,         column_ifexists('Query_start_t',             column_ifexists('Query_start_s',                 column_ifexists('Query_start', \"\")             )         )     ) ), StateChangeTime = todatetime(     iff(isnotempty(AdditionalFields.State_change), AdditionalFields.State_change,         column_ifexists('State_change_t',             column_ifexists('State_change_s',                 column_ifexists('State_change', \"\")             )         )     ) ), CollectionTime = todatetime(     iff(isnotempty(AdditionalFields.Collection_time), AdditionalFields.Collection_time,         column_ifexists('Collection_time_t',             column_ifexists('Collection_time_s',                 column_ifexists('Collection_time', \"\")             )         )     ) ), TransactionId = tolong(     iff(isnotempty(AdditionalFields.Backend_xid), AdditionalFields.Backend_xid,         column_ifexists('Backend_xid_d',             column_ifexists('Backend_xid_s',                 column_ifexists('Backend_xid', \"\")             )         )     ) ), OldestTransactionId = tolong(     iff(isnotempty(AdditionalFields.Backend_xmin), AdditionalFields.Backend_xmin,         column_ifexists('Backend_xmin_d',             column_ifexists('Backend_xmin_s',                 column_ifexists('Backend_xmin', \"\")             )         )     ) ), BackendType = tostring(     iff(isnotempty(AdditionalFields.Backend_type), AdditionalFields.Backend_type,         column_ifexists('Backend_type_s',            column_ifexists('Backend_type', \"\")         )     ) )"
+                }
+              }
+            ]
+          },
+          {
+            "id": "50d73c33-57bd-4010-b262-b1b32cf9be16",
+            "version": "KqlParameterItem/1.0",
+            "name": "PGServerLogsTable",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureDiagnostics | where Category =='PostgreSQLLogs' | project TimeGenerated, Resource, Timestamp = todatetime(     iff(isnotempty(AdditionalFields.timestamp), AdditionalFields.timestamp,         column_ifexists('timestamp_s',            column_ifexists('timestamp', \"\")         )     ) ), ProcessId = toint(     iff(isnotempty(AdditionalFields.processId), AdditionalFields.processId,         column_ifexists('processId_d',             column_ifexists('processId_s',                 column_ifexists('processId', \"\")             )         )     ) ), ErrorLevel = tostring(     iff(isnotempty(AdditionalFields.errorLevel), AdditionalFields.errorLevel,         column_ifexists('errorLevel_s',            column_ifexists('errorLevel', \"\")         )     ) ), SqlErrorCode = tostring(     iff(isnotempty(AdditionalFields.sqlerrcode), AdditionalFields.sqlerrcode,         column_ifexists('sqlerrcode_s',            column_ifexists('sqlerrcode', \"\")         )     ) ), Message = tostring(     iff(isnotempty(AdditionalFields.message), AdditionalFields.message,         column_ifexists('Message',            column_ifexists('message_s', \"\")         )     ) ), Detail = tostring(     iff(isnotempty(AdditionalFields.detail), AdditionalFields.detail,         column_ifexists('detail_s',            column_ifexists('detail', \"\")         )     ) ), Hint = tostring(     iff(isnotempty(AdditionalFields.hint), AdditionalFields.hint,         column_ifexists('hint_s',            column_ifexists('hint', \"\")         )     ) ), Query = tostring(     iff(isnotempty(AdditionalFields.query), AdditionalFields.query,         column_ifexists('query_s',            column_ifexists('query', \"\")         )     ) ), Context = tostring(     iff(isnotempty(AdditionalFields.context), AdditionalFields.context,         column_ifexists('context_s',            column_ifexists('context', \"\")         )     ) ), Statement = tostring(     iff(isnotempty(AdditionalFields.statement), AdditionalFields.statement,         column_ifexists('statement_s',            column_ifexists('statement', \"\")         )     ) ), SchemaName = tostring(     iff(isnotempty(AdditionalFields.schema_name), AdditionalFields.schema_name,         column_ifexists('schema_name_s',            column_ifexists('schema_name', \"\")         )     ) ), TableName = tostring(     iff(isnotempty(AdditionalFields.table_name), AdditionalFields.table_name,         column_ifexists('table_name_s',            column_ifexists('table_name', \"\")         )     ) ), ColumnName = tostring(     iff(isnotempty(AdditionalFields.column_name), AdditionalFields.column_name,         column_ifexists('column_name_s',            column_ifexists('column_name', \"\")         )     ) ), DatatypeName = tostring(     iff(isnotempty(AdditionalFields.datatype_name), AdditionalFields.datatype_name,         column_ifexists('datatype_name_s',            column_ifexists('datatype_name', \"\")         )     ) ), ConstraintName = tostring(     iff(isnotempty(AdditionalFields.constraint_name), AdditionalFields.constraint_name,         column_ifexists('constraint_name_s',            column_ifexists('constraint_name', \"\")         )     ) )"
+                }
+              }
+            ]
+          },
+          {
+            "id": "4acaac7e-fc60-46ae-b76a-bf233f28f4d8",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryWaitSamplingTable",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureDiagnostics | where Category =='PostgreSQLFlexQueryStoreWaitStats' | project TimeGenerated, Resource, UserId = toint(     iff(isnotempty(AdditionalFields.Userid), AdditionalFields.Userid,         column_ifexists('Userid_d',             column_ifexists('Userid',                 column_ifexists('Userid_s', \"\")             )         )     ) ), DatabaseId = toint(     iff(isnotempty(AdditionalFields.Dbid), AdditionalFields.Dbid,         column_ifexists('Dbid_d',             column_ifexists('Dbid',                 column_ifexists('Dbid_s', \"\")             )         )     ) ), QueryId = tolong(     iff(isnotempty(AdditionalFields.Queryid), AdditionalFields.Queryid,         column_ifexists('Queryid_d',             column_ifexists('Queryid',                 column_ifexists('Queryid_s', \"\")             )         )     ) ), StartTime = todatetime(     iff(isnotempty(AdditionalFields.Start_time), AdditionalFields.Start_time,         column_ifexists('Start_time_t',             column_ifexists('Start_time',                 column_ifexists('Start_time_s', \"\")             )         )     ) ), EndTime = todatetime(     iff(isnotempty(AdditionalFields.End_time), AdditionalFields.End_time,         column_ifexists('End_time_t',             column_ifexists('End_time',                 column_ifexists('End_time_s', \"\")             )         )     ) ), EventType = tostring(     iff(isnotempty(AdditionalFields.Event_type), AdditionalFields.Event_type,         column_ifexists('Event_type_s',             column_ifexists('Event_type', \"\")         )     ) ), Event = tostring(     iff(isnotempty(AdditionalFields.Event), AdditionalFields.Event,         column_ifexists('Event_s',             column_ifexists('Event', \"\")         )     ) ), Calls = tolong(     iff(isnotempty(AdditionalFields.Calls), AdditionalFields.Calls,         column_ifexists('Calls_d',             column_ifexists('Calls',                 column_ifexists('Calls_s', \"\")             )         )     ) )"
+                }
+              }
+            ]
+          }
+        ],
+        "style": "above",
+        "queryType": 1,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "introduction parameter section"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "f25f8d3a-a6c6-4e4e-928a-48c2848c2377",
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagnosticsGetEnabledGroups",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value[?(@.properties.workspaceId!=null )].properties.logs[?(@.categoryGroup!=null&&@.enabled==true)]\",\"columns\":[{\"path\":\"$.categoryGroup\",\"columnid\":\"CategoryGroup\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagnosticsGetAllEnabledCategories",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value[?(@.properties.workspaceId!=null )].properties.logs[?(@.category!=null&&@.enabled==true)]\",\"columns\":[{\"path\":\"$.category\",\"columnid\":\"Category\"}]}}]}",
+            "queryType": 12,
+            "id": "225caa2f-1c47-49f4-b21a-98c182ddb1fa"
+          },
+          {
+            "id": "bfdc4660-2f41-45fb-b2f2-52df7b9afe9d",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerPrimaryAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..properties..replicationRole\",\"columns\":[]}}]}",
+            "isHiddenWhenLocked": true,
+            "queryType": 12
+          },
+          {
+            "id": "7eebfb68-bca9-4489-a30a-9000d4a3f139",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerPrimaryCheck",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "IsServerPrimaryAPI",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Primary",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "id": "4e5644d9-2c5a-447e-a165-99faeb69771d",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryStoreCheck",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/pg_qs.query_capture_mode?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":true,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$..value\",\"columnid\":\"value\",\"substringRegexMatch\":\"^None|NONE|none$\",\"substringReplace\":\"none\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "be3ddba2-1be1-4612-8b67-ec5d588aae52",
+            "version": "KqlParameterItem/1.0",
+            "name": "isQueryStoreEnabled",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "QueryStoreCheck",
+                  "operator": "!=",
+                  "rightValType": "static",
+                  "rightVal": "none",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "id": "a54fd47c-a961-4d05-bd93-56c2bd1bfb1b",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsMetricsCollectorDatabaseActivityOn",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/metrics.collector_database_activity?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$..value\",\"columnid\":\"value\",\"substringRegexMatch\":\"^ON|on|On$\",\"substringReplace\":\"ON\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "008959b3-85f0-49b7-810b-c1813739baaa",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "allLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "audit",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetAllEnabledCategories",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "PostgreSQLFlexSessions",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "6d2342b4-a239-4458-b7c9-3c04cde9f4be",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsPostgreSQLLogsSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "allLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "audit",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetAllEnabledCategories",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "PostgreSQLLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "b9cb29ff-a3f6-439e-8c89-92078ef449e2",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsQueryStoreRuntimeSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "allLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "audit",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetAllEnabledCategories",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "PostgreSQLFlexQueryStoreRuntime",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "735258d8-9b8e-46ab-a6ee-509e8f63e1f2",
+            "version": "KqlParameterItem/1.0",
+            "name": "isWaitLogsSentToLogAnalytics",
+            "type": 1,
+            "isRequired": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "allLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "audit",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetAllEnabledCategories",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "PostgreSQLFlexQueryStoreWaitStats",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "id": "04724840-018d-4eea-8a4b-880a808465d5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Waitsamplingcheck",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/pgms_wait_sampling.query_capture_mode?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$..value\",\"columnid\":\"value\",\"substringRegexMatch\":\"^None|NONE|none$\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "c9d699d4-5169-4b78-9ba7-86a920deb3f2",
+            "version": "KqlParameterItem/1.0",
+            "name": "isWaitsamplingenabled",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "Waitsamplingcheck",
+                  "operator": "!=",
+                  "rightValType": "static",
+                  "rightVal": "none",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "no"
+                }
+              }
+            ]
+          },
+          {
+            "id": "5329e2bb-eec3-463b-b579-84d263696294",
+            "version": "KqlParameterItem/1.0",
+            "name": "TrackIOTimingCheck",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/track_io_timing?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$..value\",\"columnid\":\"value\",\"substringRegexMatch\":\"^on|ON|On|oN$\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "8383890b-be18-4b29-928a-13870dbb65d1",
+            "version": "KqlParameterItem/1.0",
+            "name": "HaveQueryIds",
+            "type": 1,
+            "query": "let dt = {TimeRange:end};\r\nlet GlobalEndTime = iff(dt<now(), dt, now());\r\nlet GlobalStartTime= iff (datetime_diff('second',{TimeRange:end},{TimeRange:start})<={MIN_TIME_WINDOW_SEC},todatetime(GlobalEndTime)-{MIN_TIME_WINDOW_SEC}s,{TimeRange:start});\r\nlet Start_Time = todatetime(GlobalStartTime);\r\nlet End_Time = todatetime(GlobalEndTime);\r\n{QueryStoreTable}\r\n| where todatetime(EndTime) >= Start_Time and todatetime(EndTime) <= End_Time\r\n| where UserId != 10 // exclude azure super user \r\n //| summarize max(Mean_time_d) by Queryid_d\r\n| count\r\n| extend HaveQueryIds = iff(Count > 0, \"Yes\", \"No\")\r\n| project HaveQueryIds",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "above",
+        "queryType": 12
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "conditional check for initial section to show"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a29ca42a-41f7-4b51-87dc-19819d30297e",
+            "version": "KqlParameterItem/1.0",
+            "name": "GlobalEndTime",
+            "type": 1,
+            "query": "// GlobalEndTime will always equal TimeRange:end\r\n// In the case which selected interval is less than an hour, \r\n// we set GlobalStartTime to be an hour before GlobalEndTime\r\n// in order to avoid showing data \"in the future\".\r\n//print iff(true, totimespan({TimeRange:end}), totimespan({TimeRange:end}))\r\n\r\nlet dt = {TimeRange:end};\r\nprint iff(dt<now(), dt, now())",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "15a0823c-61f6-43f1-99eb-ac6b3b3cc681",
+            "version": "KqlParameterItem/1.0",
+            "name": "GlobalStartTime",
+            "type": 1,
+            "query": "// GlobalEndTime will always equal TimeRange:end\r\n// In the case which selected interval is less than an hour, \r\n// we set GlobalStartTime to be an hour before GlobalEndTime\r\n// in order to avoid showing data \"in the future\".\r\n//print iff(true, totimespan({TimeRange:end}), totimespan({TimeRange:end}))\r\nprint iff (datetime_diff('second',{TimeRange:end},{TimeRange:start})<={MIN_TIME_WINDOW_SEC},todatetime('{GlobalEndTime}')-{MIN_TIME_WINDOW_SEC}s,{TimeRange:start})",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "16b1b1de-8279-4b31-ba27-a72e9f7964a4",
+            "version": "KqlParameterItem/1.0",
+            "name": "MetricsGrain",
+            "type": 1,
+            "query": "let trange=iff({TimeRange:grain}<5m,5m, {TimeRange:grain});\r\nprint case(\r\n    trange<1h, strcat(format_timespan(trange,'m'),' minute(s)'),\r\n    trange>=1h and trange<1d, strcat(format_timespan(trange,'H'),' hour(s)') ,\r\n    strcat(format_timespan(trange,'dd'),' day(s)')\r\n);",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "0b64596b-a867-4921-9d3c-890faf80f1af",
+            "version": "KqlParameterItem/1.0",
+            "name": "LessThanOneHourInterval",
+            "type": 1,
+            "query": "let interval = 1h;\r\nprint iff({TimeRange:end} - {TimeRange:start} < interval, \"Yes\", \"No\")",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "1d46b293-ba1b-49dc-acc1-aff83b1fb622",
+            "version": "KqlParameterItem/1.0",
+            "name": "ChartGrain",
+            "type": 1,
+            "query": "let trange=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nprint case(\r\n    trange<1h, strcat(format_timespan(trange,'m'),' minute(s)'),\r\n    trange>=1h and trange<1d, strcat(format_timespan(trange,'H'),' hour(s)') ,\r\n    strcat(format_timespan(trange,'dd'),' day(s)')\r\n);",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "above",
+        "queryType": 12
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "conditional check to see if warnings can execute"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## IOPS Utilization"
+      },
+      "name": "section introduction for iops utilization"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Enhanced Metrics are currently disabled.\r\nThis troubleshooting guide requires the use of enhanced metrics. To activate these metrics, simply enable the dynamic server parameter `metrics.collector_database_activity`.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+        "comparison": "isNotEqualTo",
+        "value": "ON"
+      },
+      "name": "are enhanced metrics enabled"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Query Store is currently disabled.\r\nThis troubleshooting guide depends on Query Store data. You need to enable it by setting the dynamic server parameter `pg_qs.query_capture_mode` to either ALL or TOP. Refer to this guide for detailed instructions: https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-query-store",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "is the server a primary"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The Query Store data is not being transmitted to the log analytics workspace\r\nThe Query Store data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for Query Store categories(`PostgreSQL Query Store Runtime` ) and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsQueryStoreRuntimeSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "is query store data coming through"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The PostgreSQL server logs data is not being transmitted to the log analytics workspace\r\nThe PostgreSQL server logs data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for category `PostgreSQL Server Logs` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsPostgreSQLLogsSentToLogAnalytics",
+        "comparison": "isEqualTo",
+        "value": "No"
+      },
+      "name": "are server logs data being transmitted to log analytics workspace"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The PostgreSQL Sessions logs data is not being transmitted to the log analytics workspace\r\nThe PostgreSQL Sessions logs data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for category `PostgreSQL Sessions` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+        "comparison": "isEqualTo",
+        "value": "No"
+      },
+      "name": "PGSessionError"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Query Store Wait Sampling is currently disabled\r\nThis troubleshooting guide depends on Query Store wait sampling data. You need to enable it by setting the dynamic server parameter `pgms_wait_sampling.query_capture_mode` to All. Refer to this guide for detailed instructions: https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-query-store",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Waitsamplingcheck",
+          "comparison": "isEqualTo",
+          "value": "none"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "wait sampling is currently disabled"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The Query Store wait sampling data is not being transmitted to the log analytics workspace\r\nThe Query Store wait sampling data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for Query Store categories( `PostgreSQL Query Store Wait Statistics`) and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isWaitLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "query store wait sampling data is not being transmitted"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Server parameter *`track_io_timing`* is currently set to *`off`*. Enable *`track_io_timing`* to view IO consuming queries. ",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "TrackIOTimingCheck",
+          "comparison": "isNotEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "track io timing io queries for io workbook"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "tabStyle": "bigger",
+        "links": [
+          {
+            "id": "561184d2-fedd-44f8-9fe1-5a5bca468465",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "IOPS Usage",
+            "subTarget": "usage",
+            "style": "link"
+          },
+          {
+            "id": "53a4d309-f616-49ac-b3f8-01f9b81c712f",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "Workload Details",
+            "subTarget": "workload",
+            "style": "link"
+          },
+          {
+            "id": "1cb86df9-058f-4ea3-a646-888e89b1fb39",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "Session Details",
+            "subTarget": "long",
+            "style": "link"
+          },
+          {
+            "id": "065516f7-e3d8-4ff6-a120-568403493106",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "Top Queries By IOPS",
+            "subTarget": "queries",
+            "style": "link"
+          },
+          {
+            "id": "c9da01bb-faab-4428-b968-8dfcf6ababbc",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "IO Wait Events",
+            "subTarget": "wait",
+            "style": "link"
+          },
+          {
+            "id": "68f9ff2d-6068-4537-88f0-96c59fe3bb9a",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "Checkpoint Details",
+            "subTarget": "checkpoint",
+            "style": "link"
+          },
+          {
+            "id": "0c59f2dd-2110-4403-8777-a6c3003b898f",
+            "cellValue": "iopstab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage Usage",
+            "subTarget": "storage",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "parent links tab"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookc2b8c71e-bd1e-4c87-8ba6-86bf1b7fd480",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 3,
+        "color": "blue",
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-iops",
+            "aggregation": 3,
+            "splitBy": null
+          }
+        ],
+        "title": "Maximum IOPS",
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "iopstab",
+        "comparison": "isEqualTo",
+        "value": "usage"
+      },
+      "customWidth": "33.3",
+      "name": "width and spacing"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookc2b8c71e-bd1e-4c87-8ba6-86bf1b7fd480",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 3,
+        "color": "blue",
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-disk_bandwidth_consumed_percentage",
+            "aggregation": 3,
+            "splitBy": null
+          }
+        ],
+        "title": "Maximum Disk Bandwidth Consumed Percentage",
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "iopstab",
+        "comparison": "isEqualTo",
+        "value": "usage"
+      },
+      "customWidth": "33.3",
+      "name": "iops tab is usage"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookc2b8c71e-bd1e-4c87-8ba6-86bf1b7fd480",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 3,
+        "color": "blue",
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-disk_iops_consumed_percentage",
+            "aggregation": 3,
+            "splitBy": null
+          }
+        ],
+        "title": "Maximum Disk IO Consumed Percentage",
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "iopstab",
+        "comparison": "isEqualTo",
+        "value": "usage"
+      },
+      "customWidth": "33.3",
+      "name": "metric to render for IO consumed percent"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "** Monitor IOPS utilization, disk bandwidth consumed and disk IO consumed on the server. **  \r\n\r\nMore details about disk bandwidth and disk IO consumed metrics can be reviewed [here](https://learn.microsoft.com/en-us/azure/virtual-machines/disks-metrics). \r\n\r\nMore details IOPS utilization metric can be reviewed [here](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-compute-storage). ",
+        "style": "info"
+      },
+      "conditionalVisibility": {
+        "parameterName": "iopstab",
+        "comparison": "isEqualTo",
+        "value": "usage"
+      },
+      "name": "monitor IOPS utilization and a link"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "a1a65f17-8518-42a5-ab3e-8f5b2cd894fb",
+            "cellValue": "worktab",
+            "linkTarget": "parameter",
+            "linkLabel": "Read Workload",
+            "subTarget": "read",
+            "style": "link"
+          },
+          {
+            "id": "578bb476-54f2-424e-a92e-7a5d86c637ee",
+            "cellValue": "worktab",
+            "linkTarget": "parameter",
+            "linkLabel": "Write Workload",
+            "subTarget": "write",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "read write workload tab"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### The Enhanced Metrics are disabled on server. To obtain additional information, please refer to the error message located at the top of the troubleshooting guide.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isNotEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "read write enhanced metrics"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Write workload details are not available for replica servers.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "write"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        }
+      ],
+      "name": "write workload cannot show for read replica on this server"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Read workload details\r\n\r\n**tup_fetched** and **tup_returned** are two metrics that measure the number of rows read from a table.\r\n\r\n**tup_returned** represents the number of live rows fetched by sequential scans and index entries returned by index scans in this database.\r\n\r\n**tup_fetched** measures the number of live rows fetched by index scans in this database.\r\n\r\nBy monitoring these two metrics, administrators can gain a better understanding of the performance of their PostgreSQL read workloads.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "read"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "description of workload"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookd96d27b2-678f-4a0c-a3a3-95c7bed21c29",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+            "aggregation": 1,
+            "splitBy": null
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+            "aggregation": 1
+          }
+        ],
+        "title": "Read Workload Metrics",
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "2",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched Timeline",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 0,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned Timeline",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 0,
+                "options": null
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "label": "Tuples Fetched (Preview) (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched Timeline",
+              "label": "Tuples Fetched (Preview) Timeline"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "label": "Tuples Returned (Preview) (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned Timeline",
+              "label": "Tuples Returned (Preview) Timeline"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "read"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "tuple state information on the server"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**The read workload metric calculates the total number of tuples fetched and returned, but it does not include databases like `azure_sys` and `azure_maintenance`.**",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "read"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "read workload metric and what it does"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook7a7c3cb2-9d2d-45e7-a9bf-cb0db0f38dc9",
+        "version": "MetricsItem/2.0",
+        "size": 1,
+        "chartType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          }
+        ],
+        "gridFormatType": 2,
+        "resourceLimit": 10000,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 5,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": ".*\\/Tuples Returned (Preview)$",
+              "formatter": 1
+            },
+            {
+              "columnMatch": ".*\\/Tuples Fetched (Preview)$",
+              "formatter": 1
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "label": "Tuples Fetched (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched Timeline",
+              "label": "Tuples Fetched (Sum) [Timeline]"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "label": "Tuples Returned (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned Timeline",
+              "label": "Tuples Returned (Sum) [Timeline]"
+            }
+          ]
+        },
+        "showExportToExcel": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "read"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "information on all types of tuples"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Write workload details \r\nThe number of tuples that have been inserted, updated, or deleted are critical for understanding the overall performance of the database and for identifying potential inefficiencies.\r\n\r\nBy monitoring these metrics, administrators can gain insights into the performance of their PostgreSQL write workloads and make data-driven decisions to optimize the database.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "write"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "information on the write workload metric"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookd96d27b2-678f-4a0c-a3a3-95c7bed21c29",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+            "aggregation": 1,
+            "splitBy": null
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+            "aggregation": 1
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+            "aggregation": 1
+          }
+        ],
+        "title": "Write Workload Metrics",
+        "filters": [
+          {
+            "id": "2",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "write"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "tabular view of the tuples"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**The write workload metric calculates the total number of inserted, updated, and deleted tuples, but it does not include databases like `azure_sys` and `azure_maintenance`.**\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "write"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "description of how write workload calculates the total"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook840cc26a-4a5b-4641-9a39-c0186fc4b983",
+        "version": "MetricsItem/2.0",
+        "size": 1,
+        "chartType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          }
+        ],
+        "title": "Tuples Inserted, Updated & Deleted by Database",
+        "gridFormatType": 2,
+        "resourceLimit": 10000,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+              "label": "Tuples Inserted (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted Timeline",
+              "label": "Tuples Inserted  (Sum) [Timeline]"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+              "label": "Tuples Updated  (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated Timeline",
+              "label": "Tuples Updated  (Sum) [Timeline]"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+              "label": "Tuples Deleted  (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted Timeline",
+              "label": "Tuples Deleted  (Sum) [Timeline]"
+            }
+          ]
+        },
+        "showExportToExcel": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "worktab",
+          "comparison": "isEqualTo",
+          "value": "write"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "chart view for tuple sums"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "d135ed65-b24a-48aa-85bc-0810a3cb8f38",
+            "version": "KqlParameterItem/1.0",
+            "name": "HaveHighIOConsumingQueries",
+            "label": "HaveHighIOQueries",
+            "type": 1,
+            "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where BlkReadTime+BlkWriteTime > 0\r\n| extend Mean_blk_rw_time=(BlkReadTime+BlkWriteTime)/Calls\r\n| where UserId != 10 // exclude azure super user \r\n| summarize max(Mean_blk_rw_time) by QueryId\r\n| count\r\n| extend HaveQueryIds = iff(Count > 0, \"Yes\", \"No\")\r\n| project HaveQueryIds",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "query to show if high io queries exist"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsQueryStoreRuntimeSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled ",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "this is likely a newly created server"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsQueryStoreRuntimeSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "this is likely a newly created server and need to configure logging"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### No IO consuming queries found in the selected TimeRange.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        },
+        {
+          "parameterName": "TrackIOTimingCheck",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "did not find io queries in the selected time range"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### No IO consuming queries found in selected TimeRange. Server parameter `track_io_timing` is disabled. ",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        },
+        {
+          "parameterName": "TrackIOTimingCheck",
+          "comparison": "isNotEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "did not find io queries in the selected time range - Copy"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Query Store is currently disabled.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "server does not have query store enabled"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**NOTE:**  When using query store please make sure to enable server parameter  *`track_io_timing`* . <br>The parameter helps in populating columns *`blk_read_time`*  and *`blk_write_time`* in query store which helps in identifying high IO consuming queries. \r\n\r\n*`blk_read_time`*: Total time the statement spent reading data file blocks, in milliseconds <br>\r\n*`blk_write_time`*: Total time the statement spent writing data file blocks, in milliseconds <br>\r\n\r\nThe metric below identifies the top IO-Consuming queries, ordered by sum of *`blk_read_time`* and *`blk_write_time`* . <br>",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "necessary server parameters for the workbook to function"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "98d4f3a7-4057-400a-a84f-cbd61df98051",
+            "version": "KqlParameterItem/1.0",
+            "name": "TopIOConsumingQueries",
+            "label": "Max Count",
+            "type": 2,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n { \"value\":\"5\", \"label\":\"5\",\"selected\":true },\r\n  { \"value\":\"10\", \"label\":\"10\" },\r\n    { \"value\":\"20\", \"label\":\"20\" }\r\n]",
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "dropdown for number of queries to view"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Selected interval is too small. A one hour capture from the selected end time is being shown.**",
+        "style": "warning"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "LessThanOneHourInterval",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "warning that we cannot show less than one hour of data"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet TopQueryIDs = \r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where BlkReadTime+BlkWriteTime > 0\r\n| extend Mean_blk_rw_time=(BlkReadTime+BlkWriteTime)/Calls\r\n| where UserId != 10 // exclude azure super user \r\n| summarize max(Mean_blk_rw_time) by QueryId\r\n| top {TopIOConsumingQueries} by max_Mean_blk_rw_time desc\r\n| project QueryId;\r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId != 10\r\n| where QueryId in (TopQueryIDs)\r\n| extend Mean_blk_rw_time=(BlkReadTime+BlkWriteTime)/Calls\r\n| extend  EVENT_TIME_GRAPHGRAIN = bin(EndTime, 1m)\r\n| make-series maxiotime=max(Mean_blk_rw_time) default=0 on EVENT_TIME_GRAPHGRAIN from TimeStart to TimeEnd step graphgrain by Queryid=strcat('QueryId ',QueryId)",
+        "size": 0,
+        "aggregation": 2,
+        "title": "Top {TopIOConsumingQueries} IOPS Consuming Queries. Data is plotted at a granularity of {ChartGrain}",
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "areachart",
+        "chartSettings": {
+          "showLegend": true,
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 23,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "top io consuming queries chart"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "98d4f3a7-4057-400a-a84f-cbd61df98051",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryIdsByIO",
+            "label": "QueryId Snapshot",
+            "type": 2,
+            "isRequired": true,
+            "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where UserId != 10\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where BlkReadTime+BlkWriteTime > 0\r\n| extend Mean_blk_rw_time=(BlkReadTime+BlkWriteTime)/Calls\r\n| where UserId != 10 // exclude azure super user \r\n| summarize max(Mean_blk_rw_time) by QueryId\r\n| top {TopIOConsumingQueries} by max_Mean_blk_rw_time desc\r\n| serialize Rank = row_number()\r\n| project label = QueryId, value =  QueryId, selected = iff(Rank == 1, true, false)",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "query id snapshot chart for io consuming"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId != 10 // exclude azure super user \r\n| where QueryId == {QueryIdsByIO}\r\n| distinct MeanExecDurationMs,MaxExecDurationMs,MinExecDurationMs,Calls,QueryId,QueryType,BlkReadTime,BlkWriteTime,RuntimeStatsEntryId\r\n| extend blk_rw_time=BlkReadTime+BlkWriteTime\r\n| extend Mean_blk_rw_time=blk_rw_time/Calls\r\n| summarize MeanIOtime=avg(Mean_blk_rw_time),MeanExecutionTime=avg(MeanExecDurationMs),MaxIOtime=max(blk_rw_time),MaxExecutionTime=max(MaxExecDurationMs),TotalCalls=sum(Calls),MinIOtime=min(blk_rw_time), MinExecutionTime=min(MinExecDurationMs) by QueryId,QueryType\r\n",
+        "size": 4,
+        "title": "QueryId {QueryIdsByIO} Summary in Selected TimeRange",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "MeanIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ],
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "visualize high io consuming queries"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet databasename = \r\n{SessionsTable}\r\n|distinct DatabaseName,DatabaseId;\r\n{QueryStoreTable}\r\n    | where EndTime >= TimeStart and EndTime <= TimeEnd\r\n    | where UserId != 10   \r\n    | where QueryId == {QueryIdsByIO}\r\n    | distinct MeanExecDurationMs,MaxExecDurationMs,MinExecDurationMs,Calls,QueryId,QueryType,Rows,TotalExecDurationMs,StartTime,EndTime,PlanId,DatabaseId,UserId,BlkReadTime,BlkWriteTime,SharedBlksRead,SharedBlksDirtied,RuntimeStatsEntryId\r\n    | extend blk_rw_time=BlkReadTime+BlkWriteTime\r\n    | extend mean_Blk_read_time=BlkReadTime/Calls\r\n    | extend mean_Blk_write_time=BlkWriteTime/Calls\r\n    | extend mean_blk_rw_time=blk_rw_time/Calls\r\n    | extend Mean_data_read_kb=SharedBlksRead*8/Calls, Mean_data_write_kb=SharedBlksDirtied*8/Calls\r\n| summarize WindowStart=min(StartTime), WindowEnd=max(EndTime),MeanIOtime=avg(mean_blk_rw_time),MeanExecutionTime=avg(MeanExecDurationMs), MeanReadIOtime=avg(mean_Blk_read_time),MeanDataRead=avg(Mean_data_read_kb),MeanWriteIOtime=avg(mean_Blk_write_time),MeanDataWrite=avg(Mean_data_write_kb),\r\nMeanRows=sum(Rows)/sum(Calls),MinIOtime=min(mean_blk_rw_time),MinExecutionTime=min(MinExecDurationMs),MaxIOtime=max(mean_blk_rw_time),MaxExecutionTime=max(MaxExecDurationMs),TotalCalls=sum(Calls),TotalExecutionTime=sum(TotalExecDurationMs),TotalRows=sum(Rows),TotalIOtime=sum(blk_rw_time) by bin(todatetime(EndTime), graphgrain), QueryId,PlanId,DatabaseId,UserId\r\n//excluded MeanReadIOtime and MeanWriteIOtime, because most of the time write io time will be less. Writes are on bgwriter \r\n| join kind=leftouter databasename on $left.DatabaseId == $right.DatabaseId\r\n| project QueryId,PlanId,DatabaseName = iff(isempty(DatabaseName),strcat(\"oid::\",DatabaseId), DatabaseName),UserId,WindowStart, WindowEnd, MeanIOtime,MeanExecutionTime,MeanDataRead,MeanDataWrite,MeanRows,TotalCalls,TotalRows,TotalIOtime,TotalExecutionTime,MinIOtime,MinExecutionTime,MaxIOtime,MaxExecutionTime\r\n|order by WindowStart asc\r\n\r\n   \r\n",
+        "size": 0,
+        "title": "QueryId {QueryIdsByIO} Runtime Statistics Split by Time Buckets of {ChartGrain} Each",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "WindowStart",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "WindowEnd",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "MeanIOtime",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanDataRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanDataWrite",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalIOtime",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "filter": true
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "chart for high io consumig queries"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "** Shown above IO time is deducted by the total blk_read_time plus blk_write_time for the given QueryId and TimeRange. **\r\n\r\n**MeanIOtime**: The mean (average) IO time of the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n**MeanExecutionTime**: The mean (average) execution time of the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n**MeanDataRead**: The mean (average) size of the blocks the QueryId read from disk in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n**MeanDataRead**: The mean (average) size of the blocks the QueryId modified in the shared buffers in a single call across the time bucket defined between WindowStart and WindowEnd. The dirtied blocks will be further written to disk by the background process<br>\r\n**MeanRows**: The mean (average) rows retrieved or affected by the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**TotalCalls**: Total calls in the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**MinIOtime**: The minimum IO time of the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n**MinExecutionTime**: The minimum execution time of the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd <br>\r\n\r\n**MaxIOtime**: The maximum IO time of the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n**MaxExecutionTime**: The maximum execution time of the QueryId in a single call across the time bucket defined between WindowStart and WindowEnd <br>\r\n\r\n**TotalRows**: Total rows retrieved or affected by the QueryId for all the calls in the time bucket defined between WindowStart and WindowEnd<br>\r\n**TotalIOtime**: Total IO time of the QueryId for all the calls in the time bucket defined between WindowStart and WindowEnd<br>\r\n**TotalExecutionTime**: The total execution time of the QueryId for all the calls in the time bucket defined between WindowStart and WindowEnd <br>\r\n\r\n\r\nNon performant queries or queries that spent too much IO time may be ones which are contributing to High IO on the server. They are good candidates to  further analyze and tune.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "information on block information being shown above"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**How can you retrieve the Query Text for a specific QueryId?**\r\n\r\nTo retrieve the Query Text for a specific QueryId, you need to follow these steps:\r\n\r\n1. Connect to the server using the **`azure_sys`** database where QueryStore is installed. For example, you can use the following command:\r\n```SQL\r\npsql -h ServerName.postgres.database.azure.com -U AdminUsername -d azure_sys\r\n```\r\n\r\n2. Use the generated GetQueryText column to retrieve the Query Text associated with the QueryId.\r\n\r\nIt is important to note that the Query Store retention period applies when querying the database, and older data gets deleted based on the server parameter `pg_qs.retention_period_in_days`. However, our telemetry has a higher retention period.\r\n\r\n**To retrieve the Query Text for a given QueryId, use the following SQL:**",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "SQL code needed to view the query text"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where BlkReadTime+BlkWriteTime > 0\r\n| extend Mean_blk_rw_time=(BlkReadTime+BlkWriteTime)/Calls\r\n| where UserId != 10 // exclude azure super user \r\n| summarize max(Mean_blk_rw_time) by QueryId\r\n| top {TopIOConsumingQueries} by max_Mean_blk_rw_time desc\r\n| extend SQL= strcat(\"SELECT query_sql_text FROM query_store.query_texts_view WHERE query_text_id=\",tolong(QueryId),\";\")\r\n| project SQL",
+        "size": 1,
+        "title": "Get query_text from QueryId",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "specific query which generates the query ids to get the text"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**General Query Recommendations To Tune High IO Queries** \r\n\r\n**1)** Tune queries identified above using explain analyze. More information on EXPLAIN command [can be found here](https://www.postgresql.org/docs/current/sql-explain.html). \r\n\r\n**2)** High bloat on the tables can also lead to considerable IO usage. As a one off case consider carrying manual vacuum analyze of the tables used in the slow running queries using the below command on the database: \r\n\r\n\tVacuum (analyze,verbose) <Table Name> \r\n\r\n\r\n**3)** Partitioning: If you observe queries on large tables taking high IO consider partitioning the large tables.\r\n\r\n**4)** Indexes & Joins: Consider creating indexes and reduce the joins in the query if applicable.\r\n\r\n**5)** Consider tuning server parameters like `work_mem`, `maintainence_work_mem`. Please make the changes with caution and testing as setting a very high value of both parameters could lead to out of memory issues.\r\n\r\n**6)** Understand the checkpoint timings and follow the recommendations provided below in checkpoint details tab of the troubleshooting guide to tune checkpoint related server parameters.\r\n ",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HaveHighIOConsumingQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "recommendations for tuning queries which cause high io"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "6ecc08b6-475d-4e78-b2d6-6fc300932335",
+            "cellValue": "storage-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage Used Percentage",
+            "subTarget": "storagepct",
+            "style": "link"
+          },
+          {
+            "id": "559e5a96-b09c-4c9c-9d6b-ab15ef257d28",
+            "cellValue": "storage-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage Used & Free Size",
+            "subTarget": "storageused",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "iopstab",
+        "comparison": "isEqualTo",
+        "value": "storage"
+      },
+      "name": "flip between storage used and storage percent"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook20a3930f-e48b-43a6-8739-0906f905d8cc",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 3,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent",
+            "aggregation": 3,
+            "splitBy": null
+          }
+        ],
+        "title": "Maximum Percent of Storage Space Used",
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent Timeline",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 1,
+                "options": null
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent",
+              "label": "Storage percent (Max)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent Timeline",
+              "label": "Storage percent Timeline"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "storage-tab",
+          "comparison": "isEqualTo",
+          "value": "storagepct"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "storage"
+        }
+      ],
+      "name": "Storage Utilization tab in io workbook"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbooka25b2c44-0749-4517-ba9d-63dbec8293ab",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_used",
+            "aggregation": 3,
+            "splitBy": null
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_free",
+            "aggregation": 3
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-txlogs_storage_used",
+            "aggregation": 3
+          }
+        ],
+        "title": "Maximum Storage Space Used, Transaction Logs Storage Used & Storage Space Free Size",
+        "gridFormatType": 2,
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "Name",
+            "formatter": 13
+          },
+          "leftContent": {
+            "columnMatch": "Value",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "Metric",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Aggregation",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Value",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Timeline",
+              "formatter": 9
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_used",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 2,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_free",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 2,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-txlogs_storage_used",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 2,
+                "options": null
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_used",
+              "label": "Storage used (Max)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_used Timeline",
+              "label": "Storage used (Max) Timeline"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_free",
+              "label": "Storage Free (Max)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_free Timeline",
+              "label": "Storage Free (Max) Timeline"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-txlogs_storage_used",
+              "label": "Transaction Log Storage Used (Max)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-txlogs_storage_used Timeline",
+              "label": "Transaction Log Storage Used (Max) Timeline"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "storage-tab",
+          "comparison": "isEqualTo",
+          "value": "storageused"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "storage"
+        }
+      ],
+      "name": "storage information on the given server"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Expanding the storage capacity can be beneficial when incorporating additional IOPS into the server. To learn more about storage and its related IOPS, [Compute and storage options](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-compute-storage).",
+        "style": "info"
+      },
+      "conditionalVisibility": {
+        "parameterName": "iopstab",
+        "comparison": "isEqualTo",
+        "value": "storage"
+      },
+      "name": "expanding the storage benefits"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "6d9b9253-2393-4154-9216-67dfd7ba8c1a",
+            "version": "KqlParameterItem/1.0",
+            "name": "HasSessionData",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n| limit 10\r\n|count\r\n|extend hasdata =iff(Count>0,'Yes','No')\r\n|project hasdata",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "check to see if session data exists"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server. \r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "warning that there is no telemetry available for the selected sectrion"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        }
+      ],
+      "name": "warning that nothing will show because no telemetry"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### No sessions data  found in the selected TimeRange.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "No"
+        }
+      ],
+      "name": "no session data in the selected timerange for this section"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "78753f4c-89f7-4880-8fde-10fdd30eade9",
+            "version": "KqlParameterItem/1.0",
+            "name": "PIDs",
+            "label": "Number Of PIDs",
+            "type": 2,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n { \"value\":\"10\", \"label\":\"10\",\"selected\":true },\r\n  { \"value\":\"20\", \"label\":\"20\" },\r\n    { \"value\":\"30\", \"label\":\"30\" },\r\n     { \"value\":\"40\", \"label\":\"40\" },\r\n  { \"value\":\"50\", \"label\":\"50\" }\r\n]",
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "select the number of pids to show"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n| distinct TimeGenerated,ProcessId,BackendStartTime,BackendType,State,CollectionTime,QueryStartTime,TransactionStartTime\r\n| extend Connection_duration_sec = datetime_diff('millisecond',CollectionTime, BackendStartTime), Query_duration_ms = datetime_diff('millisecond',CollectionTime,QueryStartTime)\r\n| summarize Connection_duration_sec=max(Connection_duration_sec), Query_duration_ms=max(Query_duration_ms),arg_max(TimeGenerated,lastState=State) by ProcessId,BackendStartTime, BackendType\r\n | order by Query_duration_ms desc, ProcessId asc\r\n  | limit {PIDs}",
+        "size": 1,
+        "aggregation": 2,
+        "title": "Top {PIDs} PIDs by Transaction Duration. Blue - connection duration; Yellow - query duration. The state shown in the tile is the last state from telemetry snapshot, historically the sate could have changed multiple times",
+        "noDataMessage": "No PIDs data was found for the selected time range. Select a wider time range",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "ProcessId",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 0,
+              "options": {
+                "style": "decimal",
+                "useGrouping": false
+              }
+            }
+          },
+          "subtitleContent": {
+            "columnMatch": "lastState",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Connection_duration_sec",
+            "formatter": 3,
+            "formatOptions": {
+              "palette": "blue"
+            },
+            "numberFormat": {
+              "unit": 23,
+              "options": {
+                "style": "decimal",
+                "useGrouping": false,
+                "maximumFractionDigits": 2
+              }
+            },
+            "tooltipFormat": {
+              "tooltip": "{1}"
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Query_duration_ms",
+            "formatter": 3,
+            "formatOptions": {
+              "palette": "yellow"
+            },
+            "numberFormat": {
+              "unit": 23,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            },
+            "tooltipFormat": {
+              "tooltip": "Query Duration"
+            }
+          },
+          "secondaryContent": {
+            "columnMatch": "Backend_type_s",
+            "formatter": 1
+          },
+          "showBorder": true,
+          "sortCriteriaField": "Connection_duration_sec",
+          "sortOrderField": 2,
+          "size": "auto",
+          "rowLimit": 100
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "Session_duration",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "Pid",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "chartSettings": {
+          "showLegend": true,
+          "xSettings": {
+            "numberFormatSettings": {
+              "unit": 0,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          },
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 24,
+              "options": {
+                "style": "decimal",
+                "useGrouping": false
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "query - Long Running Transactions chart view"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Stats on long running sessions\r\n\r\nConsideration\r\n\r\n* Connection Duration **(blue)** - Duration of session or connection (collection_time-backend_start). You will notice higher value in case if you are using conneciton pool.\r\n* Query Duration **(yellow)** - Duration of query (collection_time-query_start). This should be in expected range of query execution time.\r\n\r\nLong running sessions are based out of pg_stat_activity view in postgresql. If you want to know more about these columns, please visit https://www.postgresql.org/docs/current/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "information on how to interpret long running sessions"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "ee95378d-6aea-4469-bddf-591a038fad99",
+            "version": "KqlParameterItem/1.0",
+            "name": "SessionPid",
+            "label": "Show Snapshot of PID",
+            "type": 2,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n| extend Connection_duration_sec = datetime_diff('millisecond',CollectionTime, BackendStartTime), Query_duration_ms = datetime_diff('millisecond',CollectionTime,QueryStartTime)\r\n| summarize Connection_duration_sec=max(Connection_duration_sec), Query_duration_ms=max(Query_duration_ms),arg_max(TimeGenerated,lastState=State) by ProcessId,BackendStartTime, BackendType\r\n | order by Query_duration_ms desc, ProcessId asc\r\n  | limit {PIDs}\r\n| extend uniquePidkeys=strcat(ProcessId,'-',BackendStartTime)\r\n| project uniquePidkeys,ProcessId\r\n| serialize Rank = row_number()\r\n| project value = uniquePidkeys, label = strcat('🌐 ', toint(ProcessId)), selected = iff(Rank == 1, true, false)",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "select the id for a specific session to view"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10\r\n| distinct TimeGenerated,ProcessId,BackendStartTime,BackendType,State,CollectionTime,QueryStartTime,TransactionStartTime,StateChangeTime,DatabaseId,DatabaseName,UserId,ClientIpAddress\r\n| extend uniquePidkeys=strcat(toint(ProcessId),'-',BackendStartTime)\r\n| where uniquePidkeys =='{SessionPid}'\r\n| extend Connection_Duration=iff(CollectionTime-BackendStartTime<time(00:00:00.00),0, datetime_diff('millisecond',CollectionTime,BackendStartTime))\r\n| extend StateLastChanged_ms=iff(CollectionTime-StateChangeTime<time(00:00:00.00),0, datetime_diff('millisecond',CollectionTime,StateChangeTime))\r\n| extend Xact_duration_ms=iff(CollectionTime-TransactionStartTime<time(00:00:00.00), datetime_diff('millisecond',TransactionStartTime,CollectionTime), datetime_diff('millisecond',CollectionTime,TransactionStartTime))\r\n| extend Query_duration_ms=iff(CollectionTime-QueryStartTime<time(00:00:00.00),datetime_diff('millisecond',QueryStartTime,CollectionTime), datetime_diff('millisecond',CollectionTime,QueryStartTime))\r\n| extend dummy_row=1\r\n| summarize max(Connection_Duration), max(Query_duration_ms), max(Xact_duration_ms),sum(dummy_row)  by ProcessId,BackendStartTime, DatabaseId, DatabaseName, UserId, ClientIpAddress, BackendType\r\n| project ProcessId,BackendType, DatabaseId, DatabaseName, UserId, ClientIpAddress,BackendStartTime,TotalConnectionDuration=max_Connection_Duration, LongestTransactionDuration=max_Xact_duration_ms,LongestQueryDuration=max_Query_duration_ms, SampledDatapointsCounter=sum_dummy_row",
+        "size": 4,
+        "title": "Summary as Of Time - {GlobalEndTime} UTC",
+        "noDataMessage": "No PIDs data was found for the selected time range. Select a wider time range",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Backend_start",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "TotalConnectionDuration",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "LongestTransactionDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "LongestQueryDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ],
+          "rowLimit": 10000
+        },
+        "sortBy": [],
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Pid",
+            "formatter": 1
+          },
+          "subtitleContent": {
+            "columnMatch": "Backend_start",
+            "formatter": 6,
+            "dateFormat": {
+              "showUtcTime": null,
+              "formatName": "fullDateTimePattern"
+            }
+          },
+          "leftContent": {
+            "columnMatch": "Database_name",
+            "formatter": 1
+          },
+          "showBorder": false
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "Backend_start",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "Pid",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "chart to show the selected session"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n| distinct DatabaseId,DatabaseName,ProcessId,BackendStartTime,State\r\n    | extend uniquePidkeys=strcat(toint(ProcessId),'-',BackendStartTime)\r\n    | where uniquePidkeys =='{SessionPid}'\r\n| extend workingState=iff(State in ('active','idle','idle in transaction','idle in transaction (aborted)'),State,'Other')\r\n| summarize count() by State=workingState",
+        "size": 4,
+        "title": "Overall State of the PID for the Period. Data is sampled each 5 minutes",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Backend_start",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "TotalConnectionDuration",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "LongestTransactionDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "LongestQueryDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ]
+        },
+        "sortBy": [],
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Pid",
+            "formatter": 1
+          },
+          "subtitleContent": {
+            "columnMatch": "Backend_start",
+            "formatter": 6,
+            "dateFormat": {
+              "showUtcTime": null,
+              "formatName": "fullDateTimePattern"
+            }
+          },
+          "leftContent": {
+            "columnMatch": "Database_name",
+            "formatter": 1
+          },
+          "showBorder": false
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "Backend_start",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "Pid",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "chartSettings": {
+          "showLegend": true
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "customWidth": "50",
+      "name": "query which shows the selected session deeper information for analysis"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n| distinct DatabaseId,DatabaseName,ProcessId,BackendStartTime,State,WaitEventType,WaitEvent\r\n    | extend uniquePidkeys=strcat(ProcessId,'-',BackendStartTime)\r\n    | where uniquePidkeys =='{SessionPid}'\r\n|  summarize count() by WaitEventType,WaitEvent\r\n|project iff(isempty(WaitEventType),'No Waits',strcat(WaitEventType,':',WaitEvent)),count_",
+        "size": 4,
+        "title": "Overall Wait Events of the PID for the Period. Data is sampled each 5 minutes",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Backend_start",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "TotalConnectionDuration",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "LongestTransactionDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "LongestQueryDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ]
+        },
+        "sortBy": [],
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Pid",
+            "formatter": 1
+          },
+          "subtitleContent": {
+            "columnMatch": "Backend_start",
+            "formatter": 6,
+            "dateFormat": {
+              "showUtcTime": null,
+              "formatName": "fullDateTimePattern"
+            }
+          },
+          "leftContent": {
+            "columnMatch": "Database_name",
+            "formatter": 1
+          },
+          "showBorder": false
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "Backend_start",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "Pid",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "chartSettings": {
+          "showLegend": true
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "customWidth": "50",
+      "name": "overall wait events"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": " \r\nlet Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n    | extend uniquePidkeys=strcat(toint(ProcessId),'-',BackendStartTime)\r\n    | where uniquePidkeys =='{SessionPid}'\r\n| extend Connection_Duration=iff(CollectionTime-BackendStartTime<time(00:00:00.00),datetime_diff('second',BackendStartTime,CollectionTime), datetime_diff('second',CollectionTime,BackendStartTime))\r\n| extend StateLastChanged_ms=iff(CollectionTime-StateChangeTime<time(00:00:00.00),datetime_diff('millisecond',StateChangeTime,CollectionTime), datetime_diff('millisecond',CollectionTime,StateChangeTime))\r\n| extend Xact_duration_ms=iff(CollectionTime-TransactionStartTime<time(00:00:00.00),datetime_diff('millisecond',TransactionStartTime,CollectionTime), datetime_diff('millisecond',CollectionTime,TransactionStartTime))\r\n| extend Query_duration_ms=iff(CollectionTime-QueryStartTime<time(00:00:00.00),datetime_diff('millisecond',QueryStartTime,CollectionTime), datetime_diff('millisecond',CollectionTime,QueryStartTime))\r\n| distinct ProcessId, CollectionTime, ApplicationName , Connection_Duration,Query_duration_ms,Xact_duration_ms,StateLastChanged_ms, State, WaitEventType , WaitEvent , TransactionId , OldestTransactionId \r\n| order by Connection_Duration asc \r\n| serialize \r\n| extend rn=row_number()\r\n| extend prev_Application=(prev(ApplicationName,1))\r\n| extend prev_State=(prev(State,1))\r\n| extend prev_Waitevtype=(prev(WaitEventType,1))\r\n| extend prev_Waitev=(prev(WaitEvent,1))\r\n| extend prev_xid=(prev(TransactionId,1))\r\n| extend prev_xmin=(prev(OldestTransactionId,1))\r\n| extend isApp_change=iff( rn>1 and ApplicationName != prev_Application,1,0)\r\n| extend isState_change=iff( rn>1 and State != prev_State,1,0)\r\n| extend isWaitevtype_change=iff( rn>1 and WaitEventType != prev_Waitevtype,1,0)\r\n| extend isWaitev_change=iff( rn>1 and WaitEvent != prev_Waitev,1,0)\r\n| extend isxid_change=iff( rn>1 and TransactionId != prev_xid,1,0)\r\n| extend isxmin_change=iff( rn>1 and OldestTransactionId != prev_xmin,1,0)\r\n| extend breakPoint=iff (isApp_change>0 or isState_change>0 or isWaitevtype_change>0 or isWaitev_change>0 or isxid_change>0 or isxmin_change>0, 0, rn)\r\n| project CollectionTime,ProcessId,ApplicationName,Connection_Duration, State, prev_State, WaitEvent, prev_Waitev, WaitEventType, prev_Waitevtype, rn, breakPoint,TransactionId , OldestTransactionId,Xact_duration_ms,StateLastChanged_ms\r\n| scan with_match_id=change_id declare (TheRank: long) with \r\n(\r\n    step buildRank: true => TheRank = iff(isnull(buildRank.TheRank), rn, buildRank.TheRank);\r\n    step endRank output=none: breakPoint==0;\r\n)\r\n| summarize min(Connection_Duration),max(Connection_Duration),min(CollectionTime),max(CollectionTime), SampledCounter=count(), max(Xact_duration_ms), avg(Xact_duration_ms), max(StateLastChanged_ms)  by change_id, ApplicationName, State,WaitEvent,WaitEventType,ProcessId, TransactionId , OldestTransactionId\r\n| extend WaitEvent=iff(isempty(WaitEventType),'No Waits',strcat(WaitEventType,':',WaitEvent))\r\n| project ProcessId, FromTime=min_CollectionTime, ToTime=max_CollectionTime, \r\nFromConnectionStart=min_Connection_Duration,//, EndFromConnectionStart=max_Connection_Duration, \r\nApplicationName, State,WaitEvent,TransactionId, OldestTransactionId,MaxTransactionTime=max_Xact_duration_ms,//AvgTransactionTime=iff(isnan(avg_Xact_duration_ms ),'',tostring(toint(avg_Xact_duration_ms))),//MaxLastStateChanged=max_StateLastChanged_ms\r\n SampledCounter",
+        "size": 0,
+        "title": "Full History of the PID for the Selected TimeRange",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "FromTime",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "ToTime",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "FromConnectionStart",
+              "formatter": 19,
+              "formatOptions": {
+                "palette": "blue",
+                "timelineSettings": {
+                  "timelineStartColumn": "FromConnectionStart"
+                }
+              },
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxTransactionTime",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgTransactionTime",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "FromConnectionDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "ToConnectionDuration",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Backend_start",
+              "formatter": 6
+            }
+          ],
+          "rowLimit": 10000,
+          "filter": true
+        },
+        "sortBy": []
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "query to show the full history for the selected pid"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Recommendations**\r\n\r\n* As a long term approach consider tuning queries identified from the above PIDs using explain analyze.\r\nMore information on EXPLAIN command can be found here https://www.postgresql.org/docs/current/sql-explain.html\r\n\r\n\r\n* As a short term option you can terminate or cancel the sessions by executing below commands:\r\n\r\nFrom the PIDs retrieved above execute the below query on the server to terminate the session:\r\n\r\n\tSELECT pg_terminate_backend(<pid>);\r\n\r\nYou could also cancel the running queries by executing the below query:\r\n\r\n\tSelect pg_cancel_backend(<pid>); \r\n\r\n* It is recommended to configure the server parameters such as `statement_timeout` (in PG14, `idle_session_timeout`) or `idle_in_transaction_session_timeout` to terminate such long running sessions. This will prevent unnecessary consumption of system resources and help maintain server performance.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "long"
+        },
+        {
+          "parameterName": "HasSessionData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "how to interpret and handle pids which are long running in the future"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### The Query Store wait sampling is not enabled on the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "No"
+        }
+      ],
+      "name": "warning that query store wait sampling is not enabled in wait sampling section"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "425a73d4-5fcf-41b2-9aab-c4dc6acb42e9",
+            "version": "KqlParameterItem/1.0",
+            "name": "HasWaitSampleData",
+            "type": 1,
+            "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n | where EventType=='IO'\r\n| count\r\n| extend HaveData = iff(Count > 0, \"Yes\", \"No\")\r\n| project HaveData\r\n\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "query which determins if telemtry is available for the wait sampling section"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isWaitLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "warning that we have no telemtry for the wait sampling section"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isWaitLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "warning that there is no data available in wait sampling sections"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Query Store is currently disabled.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        }
+      ],
+      "name": "final check on query store for last section"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### No wait events found in the selected TimeRange.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "no wait events found in timerange"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "c2575916-cafe-4f40-90b8-914a668084d7",
+            "version": "KqlParameterItem/1.0",
+            "name": "MaxCount",
+            "type": 2,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n { \"value\":\"5\", \"label\":\"5\",\"selected\":true },\r\n  { \"value\":\"10\", \"label\":\"10\" }\r\n]",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "10"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "Waitsamplingcheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "select number of wait events"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "\r\nlet graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\n//let graphgrain=15m;\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet Topwaits = \r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n | where EventType=='IO'\r\n| extend WaitEvent = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| summarize max_calls = max(Calls) by WaitEvent\r\n| where max_calls > 0\r\n| top {MaxCount} by max_calls desc\r\n| project WaitEvent;\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n| where EventType=='IO'\r\n| extend Events = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| where Events in (Topwaits)\r\n| extend  EVENT_TIME_GRAPHGRAIN = bin(todatetime(EndTime),1m)\r\n| make-series max(Calls) default=0 on EVENT_TIME_GRAPHGRAIN from TimeStart to TimeEnd step graphgrain by Events\r\n\r\n",
+        "size": 0,
+        "aggregation": 2,
+        "title": "Top Sampled Wait Events. Data is plotted at a granularity of {ChartGrain}",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "areachart",
+        "tileSettings": {
+          "showBorder": false
+        },
+        "chartSettings": {
+          "showLegend": true
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "query to show data on selected number of wait events"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Recommendations On Common IO Wait Events**\r\n\r\n*IO:DATAFILEREAD* or *IO:DATAFILEWRITE*\r\n\r\n\r\n* High bloat on the tables can also lead to considerable IO usage. As a one-off case consider carrying manual vacuum analyze of the tables using the below command on the database\r\n\r\n        Vacuum (analyze,verbose) <Table Name> \r\n\r\n* Partitioning: If you observe queries on large tables taking high IO consider partitioning the large tables.\r\n\r\n* Indexes & Joins: Consider creating indexes and reducing the joins in the query if applicable.\r\n\r\n* Consider tuning server parameters like work_mem, and maintainence_work_mem. Please make the changes with caution and testing as setting a very high value of both parameters could lead to out-of-memory issues.\r\n\r\n* Understand the checkpoint timings and follow the recommendations below in the troubleshooting guide's checkpoint details tab to tune checkpoint-related server parameters.\r\n\r\n* Consider moving to a higher SKU.\r\n\r\n*IO:WALWRITE*\r\n\r\n* Analyze the checkpoint details tab and follow recommendations around server parameters `max_wal_size`,`checkpoint_completion_target`.\r\n\r\n* Tune queries.\r\n\r\n* Consider moving to a higher SKU.\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "how to interpret wait event information"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "98a0791e-ce61-40d7-a26e-0290fe8cecaf",
+            "version": "KqlParameterItem/1.0",
+            "name": "HasData",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{SessionsTable}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where UserId != 10 and State !='idle'\r\n| where isnotempty(DatabaseId) and DatabaseName !in('azure_sys','azure_maintenance')\r\n| limit 10\r\n|count\r\n|extend hasdata =iff(Count>0,'Yes','No')\r\n|project hasdata\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "check to see if we have information for wait event"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "95b812ef-1160-4692-be0a-a709435803d2",
+            "version": "KqlParameterItem/1.0",
+            "name": "isCheckpoint",
+            "label": "Checkpoint Frequency",
+            "type": 1,
+            "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{PGServerLogsTable}\r\n| where Message contains \"checkpoints are occurring too frequently\"\r\n| where Timestamp >= TimeStart and Timestamp <= TimeEnd\r\n|count\r\n|extend checkpointfrequent = iff(Count >0,'Yes','No')\r\n|project checkpointfrequent\r\n",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "specific listing for the wait event"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsPostgreSQLLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": ""
+        }
+      ],
+      "name": "checkpoint check to see if we have telemtry"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsPostgreSQLLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "No"
+        }
+      ],
+      "name": "checkpoint check to see if we have telemtry and no data"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsPostgreSQLLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "No"
+        }
+      ],
+      "name": "checkpoint check loganalytics is being sent and no data"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsPostgreSQLLogsSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": ""
+        }
+      ],
+      "name": "no available telemtry for checkpoints section"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Checkpoints \r\nCheckpoints are points in the sequence of transactions at which it is guaranteed that the heap and index data files have been updated with all information written before that checkpoint. At checkpoint time, all dirty data pages are flushed to disk and a special checkpoint record is written to the log file. \r\n\r\nThe server's checkpointer process automatically performs a checkpoint every so often. A checkpoint is begun every `checkpoint_timeout` seconds, or if `max_wal_size` is about to be exceeded, whichever comes first. \r\n\r\n`checkpoint_timeout`   \r\nMaximum time between automatic WAL checkpoints. If this value is specified without units, it is taken as seconds. \r\n\r\n`max_wal_size`   \r\nMaximum size to let the WAL grow during automatic checkpoints. If this value is specified without units, it is taken as megabytes.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "how to interpret checkpoints issued vs requested"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Monitor Checkpoint frequency and the checkpoint Time \r\n<table>\r\n\t<tr>\r\n        <td><strong>Checkpoint Timed</strong></td>\r\n        <td> A checkpoint is begun every `checkpoint_timeout` seconds </td>\r\n    </tr>\r\n\t<tr>\r\n        <td><strong>Checkpoint Requested</strong></td>\r\n        <td>A checkpoint is begun if `max_wal_size` is about to be exceeded</td>\r\n    </tr>\r\n</table>",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "the importance of monitoring checkpoints"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "###### Checkpoints requested too frequently in the time interval selected. Along with write workload analyze the below checkpoint metrics to understand the checkpoint frequency and average checkpoint times. Too frequent checkpoints has high IO impact. Follow the recommendations provided and tune parameters `max_wal_size`,`checkpoint_timeout` and `checkpoint_completion_target`.",
+        "style": "warning"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "isCheckpoint",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "warning that checkpoints are occuring too frequently"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{PGServerLogsTable}\r\n| where todatetime(Timestamp) >= TimeStart and todatetime(Timestamp) <= TimeEnd\r\n| where Message contains \"checkpoint starting\" or Message contains \"restartpoint starting\"\r\n|distinct Message,Timestamp\r\n| extend preg_matchall=extract_all(@'(checkpoint|restartpoint) starting: (.+)',Message)\r\n| extend CheckpointFlagsBit=tostring(preg_matchall[0][1])\r\n| extend CheckpointType=preg_matchall[0][0]\r\n| project Timestamp,CheckpointType,CheckpointFlagsBit\r\n| extend ts = bin(todatetime(Timestamp), 1m)\r\n| where CheckpointFlagsBit ==\"time\" or CheckpointFlagsBit==\"wal\"\r\n| make-series NrOfCheckpointsEach30min=count(CheckpointFlagsBit) default=0 on ts  from TimeStart to TimeEnd step graphgrain by CheckpointFlagsBit\r\n\r\n\r\n",
+        "size": 0,
+        "title": "Checkpoint Frequency Every {ChartGrain}",
+        "timeContextFromParameter": "TimeRange",
+        "timeBrushParameterName": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "unstackedbar",
+        "chartSettings": {
+          "yAxis": [
+            "NrOfCheckpointsEach30min"
+          ],
+          "showLegend": true,
+          "seriesLabelSettings": [
+            {
+              "seriesName": "Checkpoint Frequency",
+              "label": "Chkpoint Frequency"
+            },
+            {
+              "seriesName": "immediate force wait",
+              "label": " force wait"
+            },
+            {
+              "seriesName": "immediate force wait flush-all",
+              "label": "force wait flush-all"
+            },
+            {
+              "seriesName": "time",
+              "label": "Checkpt Timed"
+            },
+            {
+              "seriesName": "wal",
+              "label": "Checkpt Requested"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "chart showing checkpoint frequency for requested vs timed"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{PGServerLogsTable}\r\n| where todatetime(Timestamp) >= TimeStart and todatetime(Timestamp) <= TimeEnd\r\n| where Message contains \"checkpoint complete\"\r\n| distinct Message,Timestamp\r\n| extend preg_matchall=extract_all(@'checkpoint complete: (.+)',Message)\r\n|extend CheckpointFlagsBit=extract(\"total=([0-9.]+)\", 1, tostring(preg_matchall[0]), typeof(real))\r\n| project Timestamp,CheckpointFlagsBit,Type=strcat(extract(\"checkpoint\",0,Message),' ',\"Times\")\r\n| extend ts = bin(todatetime(Timestamp), 1m)\r\n| make-series NrOfCheckpointsEach30min=avg(CheckpointFlagsBit) default=0 on ts from  TimeStart to TimeEnd step graphgrain by Type",
+        "size": 0,
+        "aggregation": 3,
+        "title": "Checkpoint Time Every {ChartGrain}",
+        "timeBrushParameterName": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "linechart",
+        "chartSettings": {
+          "showLegend": true,
+          "seriesLabelSettings": [
+            {
+              "seriesName": "checkpoint Times",
+              "label": "ChkpointTime"
+            }
+          ],
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 24,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "details for the checkpoints shown in chart"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "\r\n\r\n#### Tune server parameters\r\n\r\nIf you've observed that the checkpoint is happening too frequently, increase the max_wal_size server parameter until most checkpoints are time driven, instead of requested. Eventually, 90 percent or more should be time  based, and the interval between two  checkpoints should be close to the checkpoint_timeout value that's set on the server. \r\n\r\n**max_wal_size**: Peak business hours are a good time to arrive at a max_wal_size value. To arrive at a value, do the following: \r\n\r\nRun the following query to get the current WAL LSN, and then note the result: \r\n\r\n```\r\nSELECT pg_current_wal_lsn();\r\n```\r\n\r\nWait for a checkpoint_timeout number of seconds. Run the following query to get the current WAL LSN, and then note the result: \r\n\r\n```\r\nSELECT pg_current_wal_lsn();\r\n```\r\n\r\nRun the following query, which uses the two results, to check the difference, in gigabytes (GB): \r\n\r\n```\r\nSELECT round (pg_wal_lsn_diff ('LSN value when run second time', 'LSN value when run first time')/1024/1024/1024,2) WAL_CHANGE_GB; \r\n```\r\n\r\n**checkpoint_completion_target**: A good practice would be to set the value to 0.9. As an example, a value of 0.9 for a checkpoint_timeout of 5 minutes indicates that the target to complete a checkpoint is 270 seconds (0.9*300 seconds). A value of 0.9 provides a fairly consistent I/O load. An aggressive value of checkpoint_completion_target might result in an increased I/O load on the server. \r\n\r\n**checkpoint_timeout**: You can increase the checkpoint_timeout value from the default value that's set on the server. As you're increasing the value, take into consideration that increasing it would also increase the time for crash recovery.\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "checkpoint"
+        },
+        {
+          "parameterName": "HasData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "how to interpret the checkpoints via a text desription"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The Query Store's capabilities are not functioning on the replica server.\r\nAfter analysis, we have determined that this server is a replica server, which means that the query store functionality is not available.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        }
+      ],
+      "name": "replica issues regarding query store"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The Query Store's capabilities are not functioning on the replica server.\r\n#### After analysis, we have determined that this server is a replica server, which means that the query store functionality is not available. However, there are alternative methods you can use to monitor long-running sessions on the replica server.\r\n- To help pinpoint possible performance issues, a recommended solution is to adjust the `log_min_duration_statement` parameter to the desired threshold and properly configure `log_line_prefix` to include the relevant details such as **%t-%c user=%u,db=%d,app=%a,client=%h**. This will enable the logging of slow queries in the PostgreSQL logs. By doing so, you can easily access the top queries and review the slow queries that may require optimization.\r\n- Another option is to configure `pg_stat_statements`, which allows you to view information about your query performance on the replica server. However, Please keep in mind that you need to execute the `CREATE EXTENSION pg_stat_statements` command on the primary server database. For more informaiton, please visit [PostgreSQL Documentation](https://www.postgresql.org/docs/current/pgstatstatements.html).\r\n- You can also monitor the ongoing workload on the replica server by using the `pg_stat_activity` catalog view.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "queries"
+        }
+      ],
+      "name": "warning that query store is not available because given server is a replica"
+    }
+  ],
+  "fallbackResourceIds": [],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
