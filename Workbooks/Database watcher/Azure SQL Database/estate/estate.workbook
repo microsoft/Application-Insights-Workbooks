@@ -1637,7 +1637,7 @@
     {
       "type": 1,
       "content": {
-        "json": "* On each heatmap, a hexagon represents a single database\r\n* Heatmaps show top resource consuming databases. Use name filters or the `Databases` grid to find other databases.\r\n* Databases can be grouped by logical server, or by elastic pool name\r\n* Click on the database name in a hexagon to open a detailed dashboard for that database\r\n* Hexagons colors are described below. Databases with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Instance CPU`, `Data IO`, `Log write`, `Workers`|Each hexagon is colored depending on average utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of requests for the database in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Lock waits`|Each hexagon is colored depending on cumulative wait time of lock (`LCK_M_*`) waits for the database in the selected time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other databases on the same heatmap.|\r\n"
+        "json": "* On each heatmap, a hexagon represents a single database\r\n* Heatmaps show top resource consuming databases. Use name filters or the `Databases` grid to find other databases.\r\n* Databases can be grouped by logical server, or by elastic pool name\r\n* Click on the database name in a hexagon to open a detailed dashboard for that database\r\n* Hexagons colors are described below. Databases with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Instance CPU`, `Data IO`, `Log write`, `Workers`|Each hexagon is colored depending on average utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of requests for the database in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait category and time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other databases on the same heatmap.|\r\n"
       },
       "conditionalVisibilities": [
         {
@@ -1720,8 +1720,8 @@
             "id": "a78d4945-2c3a-44d4-bf32-e34e12826a97",
             "cellValue": "databaseHeatmapTabName",
             "linkTarget": "parameter",
-            "linkLabel": "Lock waits",
-            "subTarget": "Lock waits",
+            "linkLabel": "Waits",
+            "subTarget": "Waits",
             "style": "link"
           },
           {
@@ -2797,127 +2797,168 @@
       "name": "database_requests_heatmap"
     },
     {
-      "type": 3,
+      "type": 12,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let waits = materialize (\\r\\nsqldb_single_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where wait_type startswith(\\\"LCK_M_\\\")\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsummarize wait_time_ms = sum(wait_time_ms) by logical_server_name, database_name, sample_time_utc\\r\\n| sort by logical_server_name asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and logical_server_name == prev(logical_server_name), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| summarize wait_ms_per_second = avg(value), count_samples = dcount(sample_time_utc) by logical_server_name, database_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// Total count of samples per database in selected time range. Use base table because \\\"waits\\\" is restricted to lock waits only, for perf reasons.\\r\\nlet total_sample_count = (\\r\\nsqldb_single_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize total_count_samples = dcount(sample_time_utc) by logical_server_name, database_name\\r\\n);\\r\\n// typical count of samples per database in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet metric_timeline = (\\r\\ntotal_sample_count\\r\\n| join kind=leftouter waits on logical_server_name, database_name\\r\\n| make-series metric_timeline = avg(wait_ms_per_second) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_single_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name\\r\\n);\\r\\nlet agg_waits = (\\r\\ntotal_sample_count\\r\\n| join kind=leftouter waits on logical_server_name, database_name\\r\\n| summarize wait_ms_per_second = sum(wait_ms_per_second * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name\\r\\n| join kind=leftouter metric_timeline on logical_server_name, database_name\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name\\r\\n| project logical_server_name,\\r\\n          database_name,\\r\\n          elastic_pool_name,\\r\\n          wait_ms_per_second = case(\\r\\n                                   isnull(count_samples) or count_samples == 0, real(0),\\r\\n                                   toreal(count_samples)/expected_sample_count < 0.5, real(null),\\r\\n                                   wait_ms_per_second\\r\\n                                   ),\\r\\n          metric_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n                        \\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\n                        strcat(logical_server_name, \\\" | \\\", database_name)\\r\\n                        )\\r\\n);\\r\\n// Get the max value across databases in each grouper. This is used to limit to top N databases without tearing groups (logical servers, elastic pools).\\r\\nlet agg_waits_grouper = (\\r\\nagg_waits\\r\\n| summarize wait_ms_per_second = max(wait_ms_per_second) by grouper\\r\\n| sort by wait_ms_per_second desc\\r\\n| project grouper, wait_ms_per_second, grouper_number = row_number()\\r\\n);\\r\\nagg_waits\\r\\n| lookup agg_waits_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project logical_server_name, database_name, elastic_pool_name, wait_ms_per_second, grouper_wait_ms_per_second = wait_ms_per_second1, metric_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by wait_ms_per_second desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-        "size": 3,
-        "showAnalytics": true,
-        "noDataMessage": "There is no data for specified parameters.",
-        "showExportToExcel": true,
-        "queryType": 9,
-        "visualization": "graph",
-        "graphSettings": {
-          "type": 2,
-          "topContent": {
-            "columnMatch": "database_name",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "WorkbookTemplate",
-              "workbookContext": {
-                "componentIdSource": "workbook",
-                "resourceIdsSource": "workbook",
-                "templateIdSource": "static",
-                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
-                "typeSource": "workbook",
-                "gallerySource": "default",
-                "locationSource": "workbook",
-                "workbookName": "Azure SQL database",
-                "passSpecificParams": true,
-                "templateParameters": [
-                  {
-                    "name": "databaseName",
-                    "source": "column",
-                    "value": "database_name"
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "9839439c-056b-4b65-be62-c9e59ed8dd00",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "waitCategory",
+                  "label": "Wait category",
+                  "type": 10,
+                  "description": "Select a wait category to show on heatmap",
+                  "isRequired": true,
+                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| distinct wait_category\\r\\n| sort by wait_category asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "serverName",
-                    "source": "column",
-                    "value": "logical_server_name"
-                  },
-                  {
-                    "name": "timeRange",
-                    "source": "parameter",
-                    "value": "timeRange"
-                  },
-                  {
-                    "name": "linkAdxClusterUri",
-                    "source": "parameter",
-                    "value": "adxClusterUri"
-                  },
-                  {
-                    "name": "linkAdxDatabase",
-                    "source": "parameter",
-                    "value": "adxDatabase"
-                  },
-                  {
-                    "name": "tabName",
-                    "source": "static",
-                    "value": "Overview"
-                  },
-                  {
-                    "name": "haReplica",
-                    "source": "parameter",
-                    "value": "haReplica"
-                  },
-                  {
-                    "name": "showDescriptions",
-                    "source": "parameter",
-                    "value": "showDescriptions"
+                  "queryType": 9,
+                  "value": "Lock"
+                }
+              ],
+              "style": "above",
+              "queryType": 9
+            },
+            "name": "wait_category_parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let waits = materialize (\\r\\nsqldb_single_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where wait_category == \\\"{waitCategory}\\\"\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsummarize wait_time_ms = sum(wait_time_ms) by logical_server_name, database_name, sample_time_utc\\r\\n| sort by logical_server_name asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and logical_server_name == prev(logical_server_name), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| summarize wait_ms_per_second = avg(value), count_samples = dcount(sample_time_utc) by logical_server_name, database_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// Total count of samples per database in selected time range. Use base table because \\\"waits\\\" is restricted to lock waits only, for perf reasons.\\r\\nlet total_sample_count = (\\r\\nsqldb_single_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize total_count_samples = dcount(sample_time_utc) by logical_server_name, database_name\\r\\n);\\r\\n// typical count of samples per database in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet metric_timeline = (\\r\\ntotal_sample_count\\r\\n| join kind=leftouter waits on logical_server_name, database_name\\r\\n| make-series metric_timeline = avg(wait_ms_per_second) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_single_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name\\r\\n);\\r\\nlet agg_waits = (\\r\\ntotal_sample_count\\r\\n| join kind=leftouter waits on logical_server_name, database_name\\r\\n| summarize wait_ms_per_second = sum(wait_ms_per_second * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name\\r\\n| join kind=leftouter metric_timeline on logical_server_name, database_name\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name\\r\\n| project logical_server_name,\\r\\n          database_name,\\r\\n          elastic_pool_name,\\r\\n          wait_ms_per_second = case(\\r\\n                                   isnull(count_samples) or count_samples == 0, real(0),\\r\\n                                   toreal(count_samples)/expected_sample_count < 0.5, real(null),\\r\\n                                   wait_ms_per_second\\r\\n                                   ),\\r\\n          metric_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n                        \\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\n                        strcat(logical_server_name, \\\" | \\\", database_name)\\r\\n                        )\\r\\n);\\r\\n// Get the max value across databases in each grouper. This is used to limit to top N databases without tearing groups (logical servers, elastic pools).\\r\\nlet agg_waits_grouper = (\\r\\nagg_waits\\r\\n| summarize wait_ms_per_second = max(wait_ms_per_second) by grouper\\r\\n| sort by wait_ms_per_second desc\\r\\n| project grouper, wait_ms_per_second, grouper_number = row_number()\\r\\n);\\r\\nagg_waits\\r\\n| lookup agg_waits_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project logical_server_name, database_name, elastic_pool_name, wait_ms_per_second, grouper_wait_ms_per_second = wait_ms_per_second1, metric_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by wait_ms_per_second desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "workbook",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "default",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "parameter",
+                          "value": "haReplica"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ]
+                    }
                   }
-                ]
+                },
+                "centerContent": {
+                  "columnMatch": "wait_ms_per_second",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Cumulative lock wait time (in milliseconds per second) averaged over selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "metric_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "blue"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Cumulative lock waits over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 1
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "wait_ms_per_second",
+                  "type": 4,
+                  "heatmapPalette": "greenRed",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5
               }
-            }
-          },
-          "centerContent": {
-            "columnMatch": "wait_ms_per_second",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "none"
             },
-            "numberFormat": {
-              "unit": 23,
-              "options": {
-                "style": "decimal",
-                "useGrouping": true,
-                "maximumFractionDigits": 2
-              },
-              "emptyValCustomText": "N/A"
+            "conditionalVisibility": {
+              "parameterName": "waitCategory",
+              "comparison": "isNotEqualTo"
             },
-            "tooltipFormat": {
-              "tooltip": "Cumulative lock wait time (in milliseconds per second) averaged over selected time range. Shows \"N/A\" if the number of samples is insufficient."
-            }
-          },
-          "bottomContent": {
-            "columnMatch": "metric_timeline",
-            "formatter": 21,
-            "formatOptions": {
-              "palette": "blue"
-            },
-            "tooltipFormat": {
-              "tooltip": "Cumulative lock waits over selected time range"
-            }
-          },
-          "hivesContent": {
-            "columnMatch": "grouper",
-            "formatter": 1
-          },
-          "nodeIdField": "database_name",
-          "graphOrientation": 3,
-          "showOrientationToggles": false,
-          "nodeSize": null,
-          "staticNodeSize": 150,
-          "colorSettings": {
-            "nodeColorField": "wait_ms_per_second",
-            "type": 4,
-            "heatmapPalette": "greenRed",
-            "heatmapMin": null,
-            "heatmapMax": null,
-            "emptyValueColor": "gray"
-          },
-          "groupByField": "grouper",
-          "hivesMargin": 5
-        }
+            "name": "database_waits_heatmap"
+          }
+        ]
       },
       "conditionalVisibilities": [
         {
@@ -2938,10 +2979,10 @@
         {
           "parameterName": "databaseHeatmapTabName",
           "comparison": "isEqualTo",
-          "value": "Lock waits"
+          "value": "Waits"
         }
       ],
-      "name": "database_blocking_heatmap"
+      "name": "database_waits_group"
     },
     {
       "type": 3,
@@ -3112,7 +3153,7 @@
     {
       "type": 1,
       "content": {
-        "json": "* On each heatmap, a hexagon represents an elastic pool\r\n* Heatmaps show top resource consuming pools. Use name filters or the `Elastic pools` grid to find other pools.\r\n* Click on the pool name in a hexagon to open a detailed dashboard for that elastic pool\r\n* Elastic pools are grouped by logical server\r\n* Hexagons colors are described below. Eelastic pools with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Instance CPU`, `Data IO`, `Log write`, `Workers`|Each hexagon is colored depending on average elastic pool resource utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of requests for the elastic pool in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Lock waits`|Each hexagon is colored depending on cumulative wait time of lock (`LCK_M_*`) waits for the elastic pool in the selected time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other elastic pool on the same heatmap.|\r\n"
+        "json": "* On each heatmap, a hexagon represents an elastic pool\r\n* Heatmaps show top resource consuming pools. Use name filters or the `Elastic pools` grid to find other pools.\r\n* Click on the pool name in a hexagon to open a detailed dashboard for that elastic pool\r\n* Elastic pools are grouped by logical server\r\n* Hexagons colors are described below. Eelastic pools with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Instance CPU`, `Data IO`, `Log write`, `Workers`|Each hexagon is colored depending on average elastic pool resource utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of requests for the elastic pool in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait category and time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other elastic pools on the same heatmap.|\r\n"
       },
       "conditionalVisibilities": [
         {
@@ -3195,8 +3236,8 @@
             "id": "b5d0e186-15d6-4d67-90c6-dff9a522f9ed",
             "cellValue": "poolHeatmapTabName",
             "linkTarget": "parameter",
-            "linkLabel": "Lock waits",
-            "subTarget": "Lock waits",
+            "linkLabel": "Waits",
+            "subTarget": "Waits",
             "style": "link"
           },
           {
@@ -4247,127 +4288,164 @@
       "name": "pool_requests_heatmap"
     },
     {
-      "type": 3,
+      "type": 12,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let wait_stats = materialize (\\r\\nsqldb_elastic_pool_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where wait_type startswith(\\\"LCK_M_\\\")\\r\\n| project sample_time_utc, logical_server_name, elastic_pool_name, wait_time_ms\\r\\n| partition hint.strategy = shuffle by elastic_pool_name\\r\\n(\\r\\nsummarize wait_time_ms = sum(wait_time_ms) by logical_server_name, elastic_pool_name, sample_time_utc\\r\\n| sort by logical_server_name asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and logical_server_name == prev(logical_server_name), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| summarize wait_ms_per_second = avg(value), count_samples = dcount(sample_time_utc) by logical_server_name, elastic_pool_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// total count of samples per pool in selected time range\\r\\nlet total_sample_count = (\\r\\nsqldb_elastic_pool_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize total_count_samples = dcount(sample_time_utc) by logical_server_name, elastic_pool_name\\r\\n);\\r\\n// typical count of samples per pool in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet metric_timeline = \\r\\nwait_stats\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| make-series metric_timeline = avg(wait_ms_per_second) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, elastic_pool_name\\r\\n;\\r\\nwait_stats\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| summarize wait_ms_per_second = sum(wait_ms_per_second * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(total_count_samples)\\r\\n            by logical_server_name, elastic_pool_name\\r\\n| join kind=leftouter metric_timeline on logical_server_name, elastic_pool_name\\r\\n| project logical_server_name,\\r\\n          elastic_pool_name,\\r\\n          wait_ms_per_second = case(\\r\\n                                   isnull(count_samples) or count_samples == 0, real(0),\\r\\n                                   toreal(count_samples)/expected_sample_count < 0.5, real(null),\\r\\n                                   wait_ms_per_second\\r\\n                                   ),\\r\\n          metric_timeline\\r\\n| top 50 by wait_ms_per_second desc\\r\\n| sort by wait_ms_per_second desc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-        "size": 3,
-        "showAnalytics": true,
-        "noDataMessage": "There is no data for specified parameters.",
-        "showExportToExcel": true,
-        "queryType": 9,
-        "visualization": "graph",
-        "graphSettings": {
-          "type": 2,
-          "topContent": {
-            "columnMatch": "elastic_pool_name",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "WorkbookTemplate",
-              "workbookContext": {
-                "componentIdSource": "workbook",
-                "resourceIdsSource": "workbook",
-                "templateIdSource": "static",
-                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
-                "typeSource": "workbook",
-                "gallerySource": "default",
-                "locationSource": "workbook",
-                "workbookName": "Azure SQL DB elastic pool",
-                "passSpecificParams": true,
-                "templateParameters": [
-                  {
-                    "name": "elasticPoolName",
-                    "source": "column",
-                    "value": "elastic_pool_name"
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "9839439c-056b-4b65-be62-c9e59ed8dd00",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "waitCategory",
+                  "label": "Wait category",
+                  "type": 10,
+                  "description": "Select a wait category to show on heatmap",
+                  "isRequired": true,
+                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_elastic_pool_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| distinct wait_category\\r\\n| sort by wait_category asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "serverName",
-                    "source": "column",
-                    "value": "logical_server_name"
-                  },
-                  {
-                    "name": "timeRange",
-                    "source": "parameter",
-                    "value": "timeRange"
-                  },
-                  {
-                    "name": "linkAdxClusterUri",
-                    "source": "parameter",
-                    "value": "adxClusterUri"
-                  },
-                  {
-                    "name": "linkAdxDatabase",
-                    "source": "parameter",
-                    "value": "adxDatabase"
-                  },
-                  {
-                    "name": "tabName",
-                    "source": "static",
-                    "value": "Overview"
-                  },
-                  {
-                    "name": "haReplica",
-                    "source": "parameter",
-                    "value": "haReplica"
-                  },
-                  {
-                    "name": "showDescriptions",
-                    "source": "parameter",
-                    "value": "showDescriptions"
+                  "queryType": 9,
+                  "value": "Lock"
+                }
+              ],
+              "style": "above",
+              "queryType": 9
+            },
+            "name": "wait_category_parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let wait_stats = materialize (\\r\\nsqldb_elastic_pool_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where wait_category == \\\"{waitCategory}\\\"\\r\\n| project sample_time_utc, logical_server_name, elastic_pool_name, wait_time_ms\\r\\n| partition hint.strategy = shuffle by elastic_pool_name\\r\\n(\\r\\nsummarize wait_time_ms = sum(wait_time_ms) by logical_server_name, elastic_pool_name, sample_time_utc\\r\\n| sort by logical_server_name asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and logical_server_name == prev(logical_server_name), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| summarize wait_ms_per_second = avg(value), count_samples = dcount(sample_time_utc) by logical_server_name, elastic_pool_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// total count of samples per pool in selected time range\\r\\nlet total_sample_count = (\\r\\nsqldb_elastic_pool_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize total_count_samples = dcount(sample_time_utc) by logical_server_name, elastic_pool_name\\r\\n);\\r\\n// typical count of samples per pool in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet metric_timeline = \\r\\nwait_stats\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| make-series metric_timeline = avg(wait_ms_per_second) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, elastic_pool_name\\r\\n;\\r\\nwait_stats\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| summarize wait_ms_per_second = sum(wait_ms_per_second * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(total_count_samples)\\r\\n            by logical_server_name, elastic_pool_name\\r\\n| join kind=leftouter metric_timeline on logical_server_name, elastic_pool_name\\r\\n| project logical_server_name,\\r\\n          elastic_pool_name,\\r\\n          wait_ms_per_second = case(\\r\\n                                   isnull(count_samples) or count_samples == 0, real(0),\\r\\n                                   toreal(count_samples)/expected_sample_count < 0.5, real(null),\\r\\n                                   wait_ms_per_second\\r\\n                                   ),\\r\\n          metric_timeline\\r\\n| top 50 by wait_ms_per_second desc\\r\\n| sort by wait_ms_per_second desc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "elastic_pool_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "workbook",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "default",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL DB elastic pool",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "elasticPoolName",
+                          "source": "column",
+                          "value": "elastic_pool_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "parameter",
+                          "value": "haReplica"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ]
+                    }
                   }
-                ]
+                },
+                "centerContent": {
+                  "columnMatch": "wait_ms_per_second",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Cumulative lock wait time (in milliseconds per second) averaged over selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "metric_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "blue"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Cumulative lock waits over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "logical_server_name",
+                  "formatter": 1
+                },
+                "nodeIdField": "elastic_pool_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "wait_ms_per_second",
+                  "type": 4,
+                  "heatmapPalette": "greenRed",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "logical_server_name",
+                "hivesMargin": 5
               }
-            }
-          },
-          "centerContent": {
-            "columnMatch": "wait_ms_per_second",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "none"
             },
-            "numberFormat": {
-              "unit": 23,
-              "options": {
-                "style": "decimal",
-                "useGrouping": true,
-                "maximumFractionDigits": 2
-              },
-              "emptyValCustomText": "N/A"
-            },
-            "tooltipFormat": {
-              "tooltip": "Cumulative lock wait time (in milliseconds per second) averaged over selected time range. Shows \"N/A\" if the number of samples is insufficient."
-            }
-          },
-          "bottomContent": {
-            "columnMatch": "metric_timeline",
-            "formatter": 21,
-            "formatOptions": {
-              "palette": "blue"
-            },
-            "tooltipFormat": {
-              "tooltip": "Cumulative lock waits over selected time range"
-            }
-          },
-          "hivesContent": {
-            "columnMatch": "logical_server_name",
-            "formatter": 1
-          },
-          "nodeIdField": "elastic_pool_name",
-          "graphOrientation": 3,
-          "showOrientationToggles": false,
-          "nodeSize": null,
-          "staticNodeSize": 150,
-          "colorSettings": {
-            "nodeColorField": "wait_ms_per_second",
-            "type": 4,
-            "heatmapPalette": "greenRed",
-            "heatmapMin": null,
-            "heatmapMax": null,
-            "emptyValueColor": "gray"
-          },
-          "groupByField": "logical_server_name",
-          "hivesMargin": 5
-        }
+            "name": "pool_waits_heatmap"
+          }
+        ]
       },
       "conditionalVisibilities": [
         {
@@ -4383,10 +4461,10 @@
         {
           "parameterName": "poolHeatmapTabName",
           "comparison": "isEqualTo",
-          "value": "Lock waits"
+          "value": "Waits"
         }
       ],
-      "name": "pool_blocking_heatmap"
+      "name": "pool_waits_group"
     },
     {
       "type": 3,
