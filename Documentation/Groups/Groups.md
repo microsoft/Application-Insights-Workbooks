@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-create-workbook#add-groups.
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Using Groups
 
 A group item in a workbook allows you to logically group a set of steps in a workbook. In reading mode, the group itself has no "chrome", only showing the items that are inside the group:
@@ -20,14 +24,15 @@ Groups in workbooks are useful for several things:
 3. performance - in cases where you have a very large templates with many sections or tabs, you can convert each section into it's own sub-template and use groups to load all the sub-templates within the top level template. In these cases, the contents of the sub-templates won't load or run until a user makes those groups visible. See [How to split a large template into many templates](#how-to-split-a-large-template-into-many-templates) for more information.
 
 ## Scoping
-Note: at the current time, a group is treated as a new "scope" in the workbook. Any parameters created in the group are only visible *inside the group*. This is also true for things like merge, they can only see data inside their group or at the parent level.
+By default a group is treated as a new "scope" in the workbook. Any parameters created in the group are only visible *inside the group*. This is also true for things like merge, they can only see data inside their group or at the parent level.
+You can change this behavior for parameters by going into the `Advanced settings` for the group, and enabling `Export parameters inside this group to be visible outside the group` option. When this option is enabled, parameters inside a group will be visible below that group, like other standard parameters.
 
 ## Group types
 The workbook "group" item allows you to add a group of items to a workbook. As the author of a workbook, you specify which type of group it will be. There are 2 types of groups:
 
 * **editable** - the group in the workbook allows you to add/remove/edit the contents of the items in the group. this is most commonly used for layout and visibility purposes.
 
-* **from template** - the group in the workbook loads from the contents of another template by its id. the content of that template is loaded and merged into the workbook at runtime. In edit mode, you cannot modify any of the contents of the group, as they will just load again from the template next time the item loads.
+* **from template** - the group in the workbook loads from the contents of another template by its id. the content of that template is loaded and merged into the workbook at runtime. In edit mode, you cannot modify any of the contents of the group, as they will just load again from the template next time the item loads. When groups are loaded from templates, any parameters inside the loaded template that match with parameters in the outer content may be merged away. See [Using templates inside a group](#Using_templates_inside_a_group) below for how this works. This is commonly used to break up a large template into several smaller templates, or to share common content between multiple templates.
 
 ## Load types
 There are several different ways that the content of a group may be loaded. As the author of a workbook, you get to specify when and how the contents of the group will load
@@ -55,7 +60,7 @@ There are several different ways that the content of a group may be loaded. As t
 ## Using templates inside a group
 When a group is configured to load from a template, that content will be loaded "lazily" by default, in that it will only load when the group is visible.
 
-When a template is loaded into a group, the workbook attempts to "merge" any parameters declared in the template being loaded with parameters already existing in the group. Any parameters that already exist in the workbook with identical names will be "merged out" of the template being loaded (and if all parameters in a parameters step are merged out, the entire paramters step will disappear)
+When a template is loaded into a group, the workbook attempts to "merge" any parameters declared in the template being loaded with parameters already existing in the group. Any parameters that already exist in the workbook with identical names will be "merged out" of the template being loaded (and if all parameters in a parameters step are merged out, the entire parameters step will disappear)
 
 The syntax for the template Id is the same as for [links to workbooks/templates](../Links/LinkActions.md/#Workbook-template-link-settings): If this is a community template from the gallery (the most common case), prefix the path to the template with `Community-`, like `Community-Workbooks/Performance/Apdex` for the `Workbooks/Performance/Apdex` template. If this is a link to a saved workbook/template, it is the full Azure resource id of that item.
  
