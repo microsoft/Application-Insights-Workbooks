@@ -1,3 +1,8 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-map-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
+
 # Map Visualization
 
 Map allows visualizing region specific data, hence aiding in pin-pointing issues with specific regions. This also aids in high level aggregated view of the monitoring data by providing capability to aggregate all the data mapped to each location/country/region.
@@ -150,7 +155,7 @@ Map can be visualized if the underlying data/metrics has Latitude/Longitude info
 | Coloring Type | Explanation |
 |:------------- |:-------------|
 | `None` | All nodes have the same color |
-| `Thresholds` | In this type, cell colors are set by threshold rules (e.g. _CPU > 90%  => Red, 60% > CPU > 90% => Yellow, CPU < 60% => Green_) <ul><li> **Color by**: Value of this column will be used by Thresholds/Heatmap logic.</li> <li>**Aggregation for color**: This field specifies how to aggregate the **color by** column's which has same Azure Location/Azure Resource/Country-Region. </li> <ul> |
+| `Thresholds` | In this type, cell colors are set by threshold rules (e.g. _CPU > 90%  => Red, 60% > CPU > 90% => Yellow, CPU < 60% => Green_). The value property in Thresholds can refer to columns and parameters. Refer to columns with `["columnName"]`. Refer to parameters with `{paramName}`. Both column name and parameter name are case sensitive.<ul><li> **Color by**: Value of this column will be used by Thresholds/Heatmap logic.</li> <li>**Aggregation for color**: This field specifies how to aggregate the **color by** column's which has same Azure Location/Azure Resource/Country-Region. </li> <ul> |
 | `Heatmap` | In this type, the cells are colored based on the color palette and Color by field. This will also have same **Color by** and **Aggregation for color** options as in the case of thresholds. |
 
 

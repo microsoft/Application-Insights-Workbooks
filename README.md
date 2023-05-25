@@ -1,4 +1,6 @@
-# Azure Monitor Workbook Templates [![Build Status](https://travis-ci.org/microsoft/Application-Insights-Workbooks.svg?branch=master)](https://travis-ci.org/microsoft/Application-Insights-Workbooks)
+# Azure Monitor Workbook Templates [![Build Status](https://github.com/microsoft/Application-Insights-Workbooks/workflows/Template%20Validation/badge.svg)](https://travis-ci.org/microsoft/Application-Insights-Workbooks)
+
+
 
 ## Contributing
 
@@ -38,6 +40,8 @@ Use these links to learn more about workbooks:
 * [Contributing](Documentation/Contributing.md) 
 * [Testing](Documentation/Contributing.md#how-to-test-your-changes)
 * [Previews](Documentation/Contributing.md#testing-preview-workbook-templates)
+* [Auto-Refresh](Documentation/AutoRefresh.md)
+* [New Gallery](Documentation/Gallery.md)
 
 ### Sample Workbook 
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)

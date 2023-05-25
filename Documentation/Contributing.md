@@ -9,89 +9,55 @@ Root
  |
  |- Workbooks
        |- Category A
-             |- categoryResources.json
              |- Template A
                     |- TemplateA.workbook
-                    |- settings.json
                     |- icon.svg
              |- Template B
                     |- TemplateB.workbook
-                    |- settings.json
                     |- icon.svg
        |- Category B
-             |- categoryResources.json
              |- Template C
                     |- TemplateC.workbook
-                    |- settings.json
                     |- icon.svg
              |- Template D
                     |- TemplateD.workbook
-                    |- settings.json
                     |- icon.svg
 ```
-## Category folder
+
+## Gallery folder
 ```
 Root
- |
- |- Workbooks
-       |- Category folder 1
-       |- Category folder 2       
+ |- gallery
+    | workbooks (workbook type)
+        |- Azure Monitor.json (GalleryResourceType)
+        |- microsoft.provider-resourcetype.json 
+    | insights (etc,other workbook types. not common, verify with workbooks team!)
+        |- microsoft.provider-resourcetype.json
+        |- galleryB.json
+        
 ...       
 ```
-The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
+Each template can live in one or more galleries. The template galleries of the Workbooks tools are organized into categories, like Business Hypotheses, Performance, and Usage. Each category can contain many templates.
 ![Image of category view](./Images/CategoryView.png)
 
-To define a category, specify a categoryResources.json file per the category folder. The categoryResources.json file may contain localized versions of the category name, and a description if you are performing localization yourself. Here's an example categoryResources.json file.
-```json
-{
-    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
-    "en-us": {"name":"Business Hypotheses", "description": "Long description goes here", "order": 100}
-}
-```
+## Folder structure
+Within the workbooks folder, there is usually a top level folder owned by individual teams or functional areas that contain collections of templates. The exact hierarchy inside each folder is not strictly required, but this is the general practice: each folder has a single workbook inside. The *folder path* to that template becomes its "identifier" inside gallery files
 
-
-## Template folder
-Each category folder contains a list of templates.
-```
-|- Category A
-        |- categoryResources.json
+```text
+Root
+ |- workbooks
+    |- AnAreaOfTemplates
         |- Template A
             |- TemplateA.workbook
-            |- settings.json
-            |- icon.svg
         |- Template B
             |- TemplateB.workbook
-            |- settings.json
-            |- icon.svg
 ```
 
-Avoid using special characters (like `/\&?`) in your folder names. An optional icon file can be a PNG, SVG, or other common image format. Only one icon file per template is currently supported.
+so in the above example, there would be template ids of `Commmunity-workbooks/AnAreaOfTemplates/Template A` and `Commmunity-workbooks/AnAreaOfTemplates/Template B` 
 
-Each template folder contains the following files:
-* **.workbook file** - You can create a template file from Workbooks in the Azure portal. See the "How to create a .workbook file" section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name.
-* **settings.json file** - This file describes a template with metadata.
-    ```json
-        {
-            "name":"Improving User Retention",
-            "description": "Long description goes here",
-            "icon": "",
-            "tags": ["Foo", "Bar"],
-            "author": "Microsoft",
-            "galleries": [{ "type": "workbook", "resourceType": "microsoft.insights/components", "order": 300 }],
-            "order": 100,
-            "$schema": "..//schema/settings.json"
-        }
-    ```
-    * name: A localized name.
-    * description: A localized description.
-    * icon: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder. 
-    * tags: Optional. You can specify a list of tags that describes the template.
-    * author: The name of author or company who contributes.
-    * galleries: Optional. Settings for gallery view. Please note that this is not available for Cohorts templates.
-        * type: Workbook type like 'tsg', 'performance', and etc. The default value is 'workbook'
-        * resourceType: ARM resource type. The default value is 'microsoft.insights/components'
-        * order: When specified it will be display in the ascending order.
-    * order: If you have more than one template within a category and would like to order them in certain way, you can specify sort order. This will be overriden by the order within galleries if available.
+Avoid using special characters (like `/\&?`) in your folder names. 
+
+Each template folder should contain a single **.workbook file**. You can create a template file from Workbooks in the Azure portal. See the ["How to create a .workbook file"](#how-to-create-a-workbook-file) section for more details.  Ideally, the filename of the template is the same as its folder name, to make items easier to find by name. Any other files are ignored.
 
 ## How to create a .workbook file
 There are three ways of creating a template. 
@@ -100,12 +66,12 @@ There are three ways of creating a template.
 * From the existing report. You can modify or enhance the existing report.
 
 ## Create from the default template
-1. Go to http://portal.azure.com 
-2. Select an Application Insights resource
+1. Go to https://portal.azure.com 
+2. Select an Application Insights resource or go to Azure Monitor from the navigation bar
 3. Select "Workbooks"
-4. Select Default Template under Quick Start section.
+4. Select the Empty template under Quick Start section.
 
-    ![Image of default template](./Images//DefaultTemplate.png)
+    ![Image of empty template](./Images/EmptyTemplate.png)
 
 5. Modify report as you wish and click "Advanced Editor" button from the menu. 
 
@@ -116,7 +82,7 @@ There are three ways of creating a template.
     ![advanced editor](./Images/AdvancedEditor.png)
 
 ## Create from an existing template
-1. Go to http://portal.azure.com 
+1. Go to https://portal.azure.com 
 2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Select a template you are interested.
@@ -125,7 +91,7 @@ There are three ways of creating a template.
    Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 	
 ## Create from an existing report
-1. Go to http://portal.azure.com 
+1. Go to https://portal.azure.com 
 2. Select an Application Insights resource or Azure Monitor from the navigation bar.
 3. Select "Workbooks"
 4. Click on Open icon from the menu.
@@ -134,166 +100,186 @@ There are three ways of creating a template.
 7. Use the download button, or copy contents and create a file like `your custom template name.workbook`. 
    Make sure the file name ends with `.workbook` and avoid using any special characters (like `/\&?`) in your file name.
 
-## How to associate any existing template to an additional category in Workbooks
-You may also associate a templates to an virtual categories, not just the folder based categorie above. Previously, a category was always associated with templates by a folder structure but this requires to create physical folder structure which requires copying existing templates. This would introduce a lot of maintenance overhead of updating duplicated templates.
-
-First, to associate the existing template, we need to create a virtual category first.
-1. Go to Workbooks folder and locate "resourceCategory.json" file.
-2. Add new category entry under categories array as below:
-    ```json
-    {
-    "categories": [{
-            "key": "YourSampleUniqueCategoryKey",
-            "settings": {
-            "en-us": {
-                "name": "Sample Category",
-                "description": "Category description",
-                "order": 100
+## Gallery file
+ A gallery file associates your templates with a gallery and category. The following is an example of what a gallery file should look like. In the case where you would like to add a template to a gallery that exists, you should modify the existing gallery file.
+ ```json
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json",
+    "version": "TemplateGallery/1.0",
+    "categories": [
+        {
+            "id": "MyCategory",
+            "name": "My category",
+            "templates": [
+                {
+                    "id": "Workbooks/CategoryA/TemplateA",
+                    "name": "My template (preview)",
+                    "description": "Description of the template",
+                    "author": "Microsoft",
+                    "isPreview": true
                 }
-            }      
-        }]
-    }
-    ```
-    * key: This should be unique key value. This will be used in a template to link together.
-    * settings:
-        * name: This is a name of category. This will be localized.
-        * description: A description of this category.
-        * order: The sort order of category.
-3. Now we need to modify template settings to associate it together.
-4. Go to your template and open settings.json file
-    ```jsonc
-    {
-        "$schema": "..//schema/settings.json",
-        "name": "Bracket Retention",
-        "author": "Microsoft",
-        "galleries": [
-            {
-                "type": "workbook",
-                "resourceType": "microsoft.insights/components",
-                "order": 400
-            },
-            // This is the new section to add:
-            {
-                "type": "workbook",
-                "resourceType": "Azure Monitor",
-                "categoryKey": "YourSampleUniqueCategoryKey",
-                "order": 400
-            }
-        ]
-    }
-    ```
-    **Note that the second item in the galleries array, it has a "categoryKey". It should be match with a "key" in a virtual category.**
+            ]
+        }
+    ]
+}
+```
+
+* `$schema`: The link to the gallery schema. This should be `"https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json"`
+
+* `version`: Gallery version (eg. `TemplateGallery/1.0`)
+
+* `categories`: A list of categories for this gallery. *Note*: The order of categories in this list determines the order of the categories that will appear in this gallery
+
+    * `id`: The ID for the category. This field will not be localized
+
+    * `name`: The name of the category. This field will be localized
+    
+    * `templates`: A list of templates for the category. *Note*: The order of the templates in this list determines the order of the templates that will appear in this category
+
+        * `id`: The ID for the template. This ID should be the path to your template folder (eg. `Workbooks/Performance/Apdex`)
+
+        * `name`: The name of the template. This field will be localized
+
+        * `description`: The description for the template. This field will be localized
+
+        * `author`: Author for this template (eg. `Microsoft`)
+
+        * `icon`: Optional. If you don't specify "icon" property, it will use the default icon. Otherwise, specify the name of icon file that is located under the template folder.
+
+        * `tags`: Optional. You can specify a list of tags that describes the template.
+
+        * `isPreview`: Optional. Flag to mark the template as preview. See [Testing Preview Workbook Templates](#testing-preview-workbook-templates) for more details
+
+For more details on the schema of the gallery file, view the [Gallery JSON schema](../schema/gallery.json).
+
+## How to create and name a gallery file
+Gallery files are created under the `\gallery` folder. A gallery subfolder should be created for each Workbook type. The gallery file should live under the corresponding Workbook type subfolder. The gallery file name is the ARM resource type where slashes in the resource type are replaced with `'-'`.
+
+For example, if your workbook type is 'workbook' and your ARM resource type is 'microsoft-insights/components', then your gallery file should be under the `workbook` subfolder with gallery file named `microsoft.insights-components.json`.
+
+Note: Workbook types are known types, are not arbitrary, and controlled by the Workbooks team. 
+
+### Gallery Restrictions
+- A template can be associated with one or more galleries
+- A template should only appear once in a category
+- A category should only appear once in a gallery
+
+## All Resource Gallery
+There is a special case gallery for templates that can be associated with all Azure Resources. You can find this gallery [here](../gallery/all-resource-types/all.json). Templates specified here will be merged with the standard resource type gallery associated with that resource. If you plan to add any templates to this gallery, please test them thoroughly by following the [testing documentation](./Testing.md).
 
 # How to make changes (add, modify templates)
 
 1. Clone the repo, if you haven't already. If you have already, `git checkout master` and `git pull` to make sure you are up to date
 2. Create a new branch `git checkout -b nameOfNewBranch`
 3. Create a folder in the `Workbooks` folder, or find an existing category folder if you are making a new category
-4. Within that folder, create a new folder for your new workbook.  Put your .workbook and settings.json file there.
+4. Within that folder, create a new folder for your new workbook.  Put your .workbook file there.
     * the "id" for your workbook will be the folder path itself, like `Workbooks\My New Category\My New Workbook\my workbook.workbook` would have an id of `My New Category\My New Workbook`
-5. Add your new files to the branch with the appropriate `git add` command
-6. Commit your changes to your branch with git commit, with a useful message, like `git commit -m "Adding my new workbook to my new category"`
-7. Push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
-
+5. Add your template to a gallery by adding an entry for your category and template in the gallery file under the `\gallery` folder
+6. Add your new files to the branch with the appropriate `git add` command
+7. Commit your changes to your branch with git commit, with a useful message, like `git commit -m "Adding my new workbook to my new category"`
+8. Push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
 
 # How to test your changes
-
-There are 3 primary ways to test changes to a template, from simplest to more complicated but more powerful
-1. [Using advanced mode](#using-advanced-mode) - this will only work for you, locally in your browser
-2. [Redirecting the gallery to a github branch](#redirecting-the-gallery-to-a-github-branch) - can work for anyone with the url, as a short term testing solution
-3. [Deploying your own gallery](#deploying-your-own-gallery) - can work for anyone, can add/move items in galleries. most powerful but more setup
-
-## Using Advanced Mode
-It is possible to test your changes without merging your content to master.
-the simplest possible testing is by opening workbooks in the place you expect your template to work, 
-1. Create an empty workbook 
-2. Go to advanced mode
-3. Paste the contents of the `.workbook` template file into advanced mode
-4. Use the `Apply` button
-
-   Assuming your template content is valid, your template will appear in the view. If the template content was not valid, you will get an error notification displaying why your content is not valid.
-
-## Redirecting the gallery to a github branch
-
-If you are only changing the contents of an existing template, not adding new templates or altering which galleries a template appears in, you can use the feature flag `feature.workbookGalleryBranch` setting to tell the Workbooks view to look in a specific published github branch for the new content. Doing testing this way will let other users also see the changes to the template.
-
-1. Make your changes to your branch
-2. Push the branch to github
-3. Add `?feature.workbookGalleryBranch=[name of branch]` to the portal url.
-
-   If it works correctly, you'll see a banner in the gallery:
-   ![Gallery Redirect Banner](Images/GalleryBranchRedirect.png)
-
-> **Limitations**
-> 1. This only works for existing templates which are already exposed in a gallery, and which have `.workbook` file names that are the same as the parent directory.
-> 2. If templates are renamed, moved, or the branch is deleted, this method will stop working.
-> 3. This will cause your browser to read directly from `https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/`, which may be slower and may cause throttling errors if you attempt to load too many items too quickly. 
->
-> This feature flag is intended only for short term test usage, and should not be used as a long term solution.
-
-## Deploying your own gallery
-If you are adding new items to a gallery, or adding new gallery entirely, you can use the feature flag `feature.workbookGalleryRedirect` to redirect the entire workbook gallery to a url that you control.
-
-1. Clone the repo, create your local branch, and make your changes locally
-2. From the `scripts` folder of the repo, run `processDevPackageOnly.cmd` (ideally from a command prompt so you can see any output/errors)
-	- note: repeated runs of this script may generate error lines that files already exist and are being overwritten
-
-   You should now have an `outputs\package` folder in the repo that contains the built package of content, but only the en-us version.
-3. Every time you update any content, re-run the `processDevPackageOnly` script to repackage your changes.
-4. Copy/upload your package content (see below)
-5. Add `?feature.workbookGalleryRedirect=[url to your package]` to the portal url and reload the portal (if you already have other query parameters on the portal url)
-
-   If it works correctly, you'll see a banner in the gallery:
-   ![Gallery Redirect Banner](Images/GalleryRedirect.png)
-
-
-### If you are running a local web server
-If you are already running something like Apache or IIS locally, you don't need to create any kind of storage account.
-1. Use your web server settings to expose the `outputs\package` folder as readable.  Ensure it is available via HTTPS, and ensure that CORS is enabled to allow loading that url from the portal.
-2. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
-   - so you'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://localhost/package`
-3. Test this in the portal. Ensure you have no network errors in the network console, this is where you will see CORS related errors about missing headers if CORS is not enabled.
-4. As you make changes to your templates, rebuild the package and re-upload changed content.
-
-
-### setting up a storage account to deploy your package content
-1. Create azure storage account
-2. In that storage account create blob container, like "azure_monitor_workbook_templates"
-3. In that storage account, [enable CORS rules](https://docs.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) so your machine will be able to read from that storage account
-4. In that storage account, [configure public access](https://docs.microsoft.com/en-us/azure/storage/blobs/anonymous-read-access-configure?tabs=portal) to enable unauthenticated access to that storage account.
-5. Upload contents of `outputs\package` directory to the blob container (so you now have a path like `azure_monitor_workbook_templates/package` in the storage account)
-6. Get the url to that folder; it will be something like `https://[name of storage account].blob.core.windows.net/azure_monitor_workbook_templates/package`
-   - At this point, attempt to navigate directly to that folder url from a browser to make sure you have the right settings. (note that navigating directly will not test CORS, only access from the portal will)
-7. Set that as a feature flag setting on the portal url. the feature flag will be `feature.workbookGalleryRedirect=[your url]`
-   - You'll end up with something like `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
-8. Test this in the portal. Ensure you have no network errors in the network console, this is where you will see CORS related errors about missing headers if CORS is not enabled.
-9. As you make changes to your templates, rebuild the package and re-upload changed content.
-
-
+See [Testing](./Testing.md) on how to test your changes.
 # How to publish your changes
 
 1. After you are done, push your branch to the github repo via git push: `git push -u origin nameOfNewBranch`
-2. In github, create a pull request for your new branch to master. Again, use useful text for the name of your PR and in the PR, describe what you are changing, what your workbook does, add a screenshot if possible.
-3. A validation build will take place to make sure your workbook is valid json, doesn't have hardcoded resource ids, etc.
-4. If your build passes, and someone else with write access to the repo approves your PR, complete your PR
-5. Upon the next [deployment](Deployment.md), your template will appear in the portal
+2. Ensure that if you are adding a new template, it has a corresponding entry in the gallery files.
+3. If you are adding a new template and/or gallery file, and you would like to take ownership of the files, add an entry for your team in `CODEOWNERS`. CODEOWNERS entries should be teams, not individuals.
+4. In Github, create a pull request for your new branch to master. Again, use useful text for the name of your PR and in the PR, describe what you are changing, what your workbook does, add a screenshot if possible.
+5. A validation build will take place to make sure your workbook is valid json, doesn't have hardcoded resource ids, etc.
+6. If your build passes, and someone else with write access to the repo approves your PR, complete your PR
+7. Upon the next [deployment](Deployment.md), your template will appear in the portal
 
 # Testing Preview Workbook Templates
 
-You can test templates that are still work in progress or simply not ready to be exposed to all users. To do this you need to add the property `"isPreview: true"` in settings.json.
+You can test templates that are still work in progress or simply not ready to be exposed to all users. To do this you need to add the property `"isPreview: true"` in the gallery file.
 Here is an example:
 
 ```jsonc
 {
-    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/settings.json",
-    "name":"My template (preview)",
-    "author": "Microsoft",
-    "isPreview": true, // add this line to make this a preview template
-    "galleries": [
-        { "type": "workbook", "resourceType": "microsoft.operationalinsights/workspaces", "order": 300 }
-    ]
+	"$schema": "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json",
+	"version": "TemplateGallery/1.0",
+	"categories": [
+		{
+			"id": "MyCategory",
+			"name": "My category",
+			"templates": [
+				{
+					"id": "Workbooks/CategoryA/TemplateA",
+					"name": "My template (preview)",
+                    "description": "Description of the template",
+					"author": "Microsoft",
+                    "isPreview": true // add this line to make this a preview template
+				}
+			]
+		}
+	]
 }
 ```
 
-Once you have add marked your template as `isPreview`, you can see this workbook by adding `feature.includePreviewTemplates` in your Azure Portal Url. So you URL looks something like [https://portal.azure.com/?feature.includePreviewTemplates=true](https://portal.azure.com/?feature.includePreviewTemplates=true)
+Once you have add marked your template as `isPreview`, you can see this workbook by adding `feature.includePreviewTemplates` in your Azure Portal Url. So your URL looks something like [https://portal.azure.com/?feature.includePreviewTemplates=true](https://portal.azure.com/?feature.includePreviewTemplates=true).
 
+# Troubleshooting
+
+If you open the workbooks blade for your type, and the gallery only shows the "Empty" item, or templates/categories you expect to see are missing, there are several things to check:
+ 
+1. Check for gallery id mismatches
+
+   The "Gallery" id used to find templates to display is defined by the combination of:
+workbook type (from the `Type` parameter when opening the workbooks blade, defaulting to "workbook" if unspecified, the most common case)
+resource type (from the `GalleryResourceType` parameter, defaulting to the resource type of the `ComponentId` resource id input parameter above, if unspecified)
+
+   The gallery file for your template in the github repo use the same 2 values in the path of the gallery, as `gallery\{type}\{gallery resource type}`
+
+    Case is insensitive for these comparisons, but ensure that the `type` field in your gallery entry matches the `Type` field in your blade inputs, and `resourceType` matches your `GalleryResourceType`, or the resource type of the `ComponentId` resource you are passing in.
+ 
+   to check the inputs to the workbooks blade, in the portal, while looking at the empty gallery, press `ctrl+alt+d`.  yellow debug info should appear.  Click on the link for the workbooks blade, and look in your browser's debug console window (you may need to adjust the filtering level to "all", by default Chrome will hide "verbose" output), expand the info so you can see the `inputs` field.  you'll see the values that were passed to the blade. and you should see something like this:
+
+   ```
+    Extension > AppInsightsExtension > Blade > UsageNotebookBlade
+    > {composition...
+        composition: {...}
+        definition: { ...}
+        inputs: 
+            ComponentId: "{your component id value here}"
+            ...
+            GalleryResourceType: "{your gallery resource type here}"
+            ...
+            Type: "{your workbook type here, should be workbook or a specific value agreed on with the workbooks team}
+    ```
+
+    Ensure the Type, GalleryResourceType, and ComponentId values are what you expect.
+ 
+2. Check for isPreview
+
+    Check if your settings.json file declares that your templates are "preview only", by having `"isPreview": true` in the gallery file.  If this is set, ensure your portal url also includes the feature flag:
+    `feature.includePreviewTemplates=true`
+ 
+3. Double-check all of your spelling and info
+
+    Make sure that resource types are spelled correctly, and that they are (generally) plural, like `microsoft.compute/virtualmachines`, not `microsoft.compute/virtualmachine`.  Also verify that your gallery filename is correctly spelled.  We've seen cases where the file was spelled `someresourcettype.json` (2 t's), and it took a long time to notice.
+ 
+4. Test your changes locally
+
+    this should hypothetically be step 0.  see the ["How to test your changes"](Testing.md) instructions.  depending on your change, there are options of how to test it locally by redirecting just a branch, or by redirecting the gallery entirely to another site or blob storage location.
+ 
+5. Ensure that your changes to your templates have actually been merged to master, built and deployed
+
+    Make sure your PR has been successfully completed.  The workbooks team does not complete PRs for other teams, so make sure your PR is actually *completed(), not just *approved*.
+
+    (if you are looking at git history, also be careful that the *commits* in the PR may have happened well earlier than the PR was actually merged, and so if you are looking at the wrong place, it can *look like* a commit has been in master for some time, when in fact the PR containg that commit was only completed today).
+
+    A daily build of templates occurs at noon PST. 
+    
+    After a successful build, a deployment will create an NPM package of the template content.
+    
+    Weekdays at 3pm, a merge+build of the application insights extension will take place, which will pick up the npm package of templates available at that time.  At ~4pm that build will be deployed to PPE environments. That build will roll out to MPAC and Production environments. See the [deployment](Deployment.md)  for full details.  It also contains links to test in the other environments to verify if your templates are on their way to production.
+ 
+    If a build fails or deployment fails, our team will get notifications and we'll look into it.
+ 
+6. If you got this far, and you still don't see your templates...
+
+    Start a conversation in the teams channel or ping someone from the workbooks team if your templates aren't appearing, it is possible that there's a larger issue going on, or deployments have been held up.
+
+    During holidays or other special events (elections, the Super Bowl, World Cup, etc), pay attention to the Workbooks team Announcements channel, as there are often Azure-wide deployment freezes that prevent teams from deploying new builds.

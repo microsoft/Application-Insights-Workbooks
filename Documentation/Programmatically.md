@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-automate
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Programmatically Manage Workbooks
 
 Resource owners have the option to create and manage their workbooks programmatically via ARM templates. 
@@ -15,6 +19,7 @@ There are two types of workbook resources that can be managed programmatically:
 ## Deploying a workbook template
 1. Open a workbook whose content you want to deploy programmatically.
 2. Switch the workbook to edit mode by clicking on the _Edit_ toolbar item.
+
 3. Open the _Advanced Editor_ using the _</>_ button on the toolbar.
 4. Ensure you are on the `Gallery Template` tab
 5. Copy the JSON payload to the clipboard for use in the ARM template later.
@@ -58,7 +63,7 @@ There are two types of workbook resources that can be managed programmatically:
     
 7. Paste the workbook payload in place of `<PASTE-COPIED-WORKBOOK_TEMPLATE_HERE>`. An reference ARM template that creates a workbook template can be found [here](ARM-template-for-creating-workbook-template).
 8. Update the gallery to deploy as applicable.
-9. Deploy this ARM template using either the [Azure portal](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-portal#deploy-resources-from-custom-template), [command line interface](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-cli), [powershell](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-powershell), etc.
+9. Deploy this ARM template using either the [Azure portal](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-portal#deploy-resources-from-custom-template), [command line interface](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-cli), [powershell](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/deploy-powershell), etc. For any issues that arise, please refer to the [Troubleshooting](#Troubleshooting) section.
 10. Open the Azure portal and navigate to the workbook gallery chosen in the ARM template. In the example template, navigate to the Azure Monitor workbook gallery by:
     1. Open the Azure portal and navigate to Azure Monitor
     2. Open `Workbooks` from the table of contents
@@ -187,5 +192,13 @@ Workbook types specify which workbook gallery type the new workbook instance wil
 | `tsg` | The Troubleshooting Guides gallery in Application Insights |
 | `usage` | The _More_ gallery under _Usage_ in Application Insights |
 
-### Limitations
-For an technical reason, this mechanism cannot be used to create workbook instances in the _Workbooks_ gallery of Application Insights. We are working on addressing this limitation. In the meanwhile, we recommend that you use the Troubleshooting Guide gallery (workbookType: _tsg_) to deploy Application Insights related workbooks.
+### Troubleshooting
+- Deployment template language expression evaluation failed
+    - This happens when the string of one of the workbook content fields begin with `[` and ends with `]`. For example:
+    ```
+    jsonData": "[\r\n    { \"value\":\"dev\", \"label\":\"Development\" },\r\n    { \"value\":\"ppe\", \"label\":\"Pre-production\" },\r\n    { \"value\":\"prod\", \"label\":\"Production\", \"selected\":true }\r\n]",
+    ```
+    The ARM template evaluation language will try and parse the expression. To fix this, [escape the character using an extra `[` at the beginning of the value](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/template-expressions#escape-characters) in your workbook content like so:
+    ```
+    jsonData": "[[\r\n    { \"value\":\"dev\", \"label\":\"Development\" },\r\n    { \"value\":\"ppe\", \"label\":\"Pre-production\" },\r\n    { \"value\":\"prod\", \"label\":\"Production\", \"selected\":true }\r\n]",
+    ```
