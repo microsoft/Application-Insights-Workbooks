@@ -448,6 +448,16 @@
             "queryType": 9,
             "id": "377394db-6a2c-41c1-b2a1-df53141a1da3",
             "value": null
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "sqlserver_storage_io",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show tables\\r\\n| where TableName == \\\"sqlserver_storage_io\\\"\\r\\n| project true\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "queryType": 9,
+            "id": "88d4914d-95c4-4525-a1b8-b38cc92a7118",
+            "value": null
           }
         ],
         "style": "above",
@@ -1164,7 +1174,7 @@
     {
       "type": 1,
       "content": {
-        "json": "* On each heatmap, a hexagon represents a SQL Server instance\r\n* Heatmaps show top resource consuming instances. Use name filters or the `Servers` grid to find other instances.\r\n* Instances can be grouped by machine (aka computer, aka node) name, or by failover cluster name\r\n* Click on the SQL instance name in a hexagon to open a detailed dashboard for that instance\r\n* Hexagons colors are described below. Instances with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`|Each hexagon is colored depending on average CPU utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of batch requests in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Lock waits`|Each hexagon is colored depending on cumulative wait time of lock (`LCK_M_*`) waits in the selected time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other SQL instances on the same heatmap.|\r\n|`Availability group health`|Each hexagon is colored green if for every sample in selected time range, all availability databases and replicas were healthy. Otherwise, it is colored red, and the number of samples with unhealthy databases or replicas is shown at the bottom.|\r\n|`Connectivity`|Each hexagon is colored green if every connectivity probe for that SQL instance in selected time range was successful. Otherwise, it is colored red, and the number of failed connectivity probes is shown at the bottom.|"
+        "json": "* On each heatmap, a hexagon represents a SQL Server instance\r\n* Heatmaps show top resource consuming instances. Use name filters or the `Servers` grid to find other instances.\r\n* Instances can be grouped by machine (aka computer, aka node) name, or by failover cluster name\r\n* Click on the SQL instance name in a hexagon to open a detailed dashboard for that instance\r\n* Hexagons colors are described below. Instances with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`|Each hexagon is colored depending on average CPU utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%)|\r\n|`Requests`|Each hexagon is colored depending on the average rate of batch requests in the selected time range, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait category and time range, using the green-to-red color palette. Green represents minimal waits, red represents higher waits compared to other SQL instances on the same heatmap.|\r\n|`Storage IO`|Each hexagon is colored to reflect the magnitude of selected IO metric (average latency, total IO operations, total bytes) in the selected time range for either read or write IO, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates|\r\n|`Availability group health`|Each hexagon is colored green if for every sample in selected time range, all availability databases and replicas were healthy. Otherwise, it is colored red, and the number of samples with unhealthy databases or replicas is shown at the bottom.|\r\n|`Connectivity`|Each hexagon is colored green if every connectivity probe for that SQL instance in selected time range was successful. Otherwise, it is colored red, and the number of failed connectivity probes is shown at the bottom.|"
       },
       "conditionalVisibilities": [
         {
@@ -1215,8 +1225,16 @@
             "id": "ca5f76ae-3b69-4fda-ae80-e9d975311d8f",
             "cellValue": "heatmapTabName",
             "linkTarget": "parameter",
-            "linkLabel": "Lock waits",
-            "subTarget": "Lock waits",
+            "linkLabel": "Waits",
+            "subTarget": "Waits",
+            "style": "link"
+          },
+          {
+            "id": "722da182-2411-4842-8595-d28408002ab9",
+            "cellValue": "heatmapTabName",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage IO",
+            "subTarget": "Storage IO",
             "style": "link"
           },
           {
@@ -1575,126 +1593,167 @@
       "name": "requests_heatmap"
     },
     {
-      "type": 3,
+      "type": 12,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let waits = materialize (\\r\\nsqlserver_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| where wait_type startswith(\\\"LCK_M_\\\")\\r\\n| partition hint.strategy = shuffle by machine_name\\r\\n(\\r\\nsummarize wait_time_ms = sum(wait_time_ms) by machine_name, server_name, sample_time_utc\\r\\n| sort by server_name asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and server_name == prev(server_name), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| summarize wait_ms_per_second = avg(value), count_samples = dcount(sample_time_utc) by machine_name, server_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// total count of samples per server in selected time range\\r\\nlet total_sample_count = (\\r\\nsqlserver_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| summarize total_count_samples = dcount(sample_time_utc) by machine_name, server_name\\r\\n);\\r\\n// typical count of samples per server in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet metric_timeline = (\\r\\nwaits\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| make-series waits_timeline = avg(wait_ms_per_second) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by machine_name, server_name\\r\\n);\\r\\nlet server_properties = (\\r\\nsqlserver_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize arg_max(sample_time_utc, cluster_name) by machine_name, server_name\\r\\n);\\r\\nlet agg_waits = (\\r\\nwaits\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| summarize wait_ms_per_second = sum(wait_ms_per_second * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by machine_name, server_name\\r\\n| join kind=leftouter metric_timeline on machine_name, server_name\\r\\n| join kind=leftouter server_properties on machine_name, server_name\\r\\n| project machine_name,\\r\\n          server_name,\\r\\n          cluster_name,\\r\\n          wait_ms_per_second = case(\\r\\n                                   isnull(count_samples) or count_samples == 0, real(0),\\r\\n                                   toreal(count_samples)/expected_sample_count < 0.5, real(null),\\r\\n                                   wait_ms_per_second\\r\\n                                   ),\\r\\n          waits_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"machine\\\", machine_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\", cluster_name,\\r\\n                        server_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across servers in each grouper. This is used to limit to top N servers without tearing groups (machines, clusters).\\r\\nlet agg_waits_grouper = (\\r\\nagg_waits\\r\\n| summarize wait_ms_per_second = max(wait_ms_per_second) by grouper\\r\\n| sort by wait_ms_per_second desc\\r\\n| project grouper, wait_ms_per_second, grouper_number = row_number()\\r\\n);\\r\\nagg_waits\\r\\n| lookup agg_waits_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project machine_name, server_name, cluster_name, wait_ms_per_second, grouper_wait_ms_per_second = wait_ms_per_second1, waits_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by wait_ms_per_second desc, tolower(grouper) asc, tolower(machine_name) asc, tolower(server_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-        "size": 3,
-        "showAnalytics": true,
-        "noDataMessage": "There is no data for specified parameters.",
-        "showExportToExcel": true,
-        "queryType": 9,
-        "visualization": "graph",
-        "graphSettings": {
-          "type": 2,
-          "topContent": {
-            "columnMatch": "server_name",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "WorkbookTemplate",
-              "workbookContext": {
-                "componentIdSource": "workbook",
-                "resourceIdsSource": "workbook",
-                "templateIdSource": "static",
-                "templateId": "Community-Workbooks/Database watcher/SQL Server/instance",
-                "typeSource": "workbook",
-                "gallerySource": "default",
-                "locationSource": "workbook",
-                "workbookName": "SQL Server instance",
-                "passSpecificParams": true,
-                "templateParameters": [
-                  {
-                    "name": "machineName",
-                    "source": "column",
-                    "value": "machine_name"
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "9839439c-056b-4b65-be62-c9e59ed8dd00",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "waitCategory",
+                  "label": "Wait category",
+                  "type": 10,
+                  "description": "Select a wait category to show on heatmap",
+                  "isRequired": true,
+                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqlserver_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| distinct wait_category\\r\\n| sort by wait_category asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "serverName",
-                    "source": "column",
-                    "value": "server_name"
-                  },
-                  {
-                    "name": "timeRange",
-                    "source": "parameter",
-                    "value": "timeRange"
-                  },
-                  {
-                    "name": "linkAdxClusterUri",
-                    "source": "parameter",
-                    "value": "adxClusterUri"
-                  },
-                  {
-                    "name": "linkAdxDatabase",
-                    "source": "parameter",
-                    "value": "adxDatabase"
-                  },
-                  {
-                    "name": "tabName",
-                    "source": "static",
-                    "value": "Overview"
-                  },
-                  {
-                    "name": "showDescriptions",
-                    "source": "parameter",
-                    "value": "showDescriptions"
+                  "queryType": 9,
+                  "value": "Lock"
+                }
+              ],
+              "style": "above",
+              "queryType": 9
+            },
+            "name": "wait_category_parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let waits = materialize (\\r\\nsqlserver_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| where wait_category == \\\"{waitCategory}\\\"\\r\\n| partition hint.strategy = shuffle by machine_name\\r\\n(\\r\\nsummarize wait_time_ms = sum(wait_time_ms) by machine_name, server_name, sample_time_utc\\r\\n| sort by server_name asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and server_name == prev(server_name), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| summarize wait_ms_per_second = avg(value), count_samples = dcount(sample_time_utc) by machine_name, server_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// total count of samples per server in selected time range\\r\\nlet total_sample_count = (\\r\\nsqlserver_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| summarize total_count_samples = dcount(sample_time_utc) by machine_name, server_name\\r\\n);\\r\\n// typical count of samples per server in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet metric_timeline = (\\r\\nwaits\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| make-series waits_timeline = avg(wait_ms_per_second) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by machine_name, server_name\\r\\n);\\r\\nlet server_properties = (\\r\\nsqlserver_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize arg_max(sample_time_utc, cluster_name) by machine_name, server_name\\r\\n);\\r\\nlet agg_waits = (\\r\\nwaits\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| summarize wait_ms_per_second = sum(wait_ms_per_second * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by machine_name, server_name\\r\\n| join kind=leftouter metric_timeline on machine_name, server_name\\r\\n| join kind=leftouter server_properties on machine_name, server_name\\r\\n| project machine_name,\\r\\n          server_name,\\r\\n          cluster_name,\\r\\n          wait_ms_per_second = case(\\r\\n                                   isnull(count_samples) or count_samples == 0, real(0),\\r\\n                                   toreal(count_samples)/expected_sample_count < 0.5, real(null),\\r\\n                                   wait_ms_per_second\\r\\n                                   ),\\r\\n          waits_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"machine\\\", machine_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\", cluster_name,\\r\\n                        server_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across servers in each grouper. This is used to limit to top N servers without tearing groups (machines, clusters).\\r\\nlet agg_waits_grouper = (\\r\\nagg_waits\\r\\n| summarize wait_ms_per_second = max(wait_ms_per_second) by grouper\\r\\n| sort by wait_ms_per_second desc\\r\\n| project grouper, wait_ms_per_second, grouper_number = row_number()\\r\\n);\\r\\nagg_waits\\r\\n| lookup agg_waits_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project machine_name, server_name, cluster_name, wait_ms_per_second, grouper_wait_ms_per_second = wait_ms_per_second1, waits_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by wait_ms_per_second desc, tolower(grouper) asc, tolower(machine_name) asc, tolower(server_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "server_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "workbook",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/SQL Server/instance",
+                      "typeSource": "workbook",
+                      "gallerySource": "default",
+                      "locationSource": "workbook",
+                      "workbookName": "SQL Server instance",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "machineName",
+                          "source": "column",
+                          "value": "machine_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ]
+                    }
                   }
-                ]
+                },
+                "centerContent": {
+                  "columnMatch": "wait_ms_per_second",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Cumulative wait time (in milliseconds per second) averaged over selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "waits_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "blue"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Cumulative lock waits over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 1
+                },
+                "nodeIdField": "server_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "wait_ms_per_second",
+                  "type": 4,
+                  "heatmapPalette": "greenRed",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5
               }
-            }
-          },
-          "centerContent": {
-            "columnMatch": "wait_ms_per_second",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "none"
             },
-            "numberFormat": {
-              "unit": 23,
-              "options": {
-                "style": "decimal",
-                "useGrouping": true,
-                "maximumFractionDigits": 1
-              },
-              "emptyValCustomText": "N/A"
+            "conditionalVisibility": {
+              "parameterName": "waitCategory",
+              "comparison": "isNotEqualTo"
             },
-            "tooltipFormat": {
-              "tooltip": "Cumulative wait time (in milliseconds per second) averaged over selected time range. Shows \"N/A\" if the number of samples is insufficient."
-            }
-          },
-          "bottomContent": {
-            "columnMatch": "waits_timeline",
-            "formatter": 21,
-            "formatOptions": {
-              "palette": "blue"
-            },
-            "tooltipFormat": {
-              "tooltip": "Cumulative lock waits over selected time range"
-            }
-          },
-          "hivesContent": {
-            "columnMatch": "grouper",
-            "formatter": 1
-          },
-          "nodeIdField": "server_name",
-          "graphOrientation": 3,
-          "showOrientationToggles": false,
-          "nodeSize": null,
-          "staticNodeSize": 150,
-          "colorSettings": {
-            "nodeColorField": "wait_ms_per_second",
-            "type": 4,
-            "heatmapPalette": "greenRed",
-            "heatmapMin": null,
-            "heatmapMax": null,
-            "emptyValueColor": "gray"
-          },
-          "groupByField": "grouper",
-          "hivesMargin": 5
-        }
+            "name": "waits_heatmap"
+          }
+        ]
       },
       "conditionalVisibilities": [
         {
-          "parameterName": "sqlserver_performance_counters_common",
+          "parameterName": "sqlserver_wait_stats",
           "comparison": "isEqualTo",
           "value": "1"
         },
@@ -1711,10 +1770,42 @@
         {
           "parameterName": "heatmapTabName",
           "comparison": "isEqualTo",
-          "value": "Lock waits"
+          "value": "Waits"
         }
       ],
-      "name": "blocking_heatmap"
+      "name": "waits_heatmap_group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "template",
+        "loadFromTemplateId": "Community-Workbooks/Database watcher/SQL Server/estate/storage io",
+        "items": []
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "sqlserver_storage_io",
+          "comparison": "isEqualTo",
+          "value": "1"
+        },
+        {
+          "parameterName": "sqlserver_properties",
+          "comparison": "isEqualTo",
+          "value": "1"
+        },
+        {
+          "parameterName": "tabName",
+          "comparison": "isEqualTo",
+          "value": "Heatmaps"
+        },
+        {
+          "parameterName": "heatmapTabName",
+          "comparison": "isEqualTo",
+          "value": "Storage IO"
+        }
+      ],
+      "name": "io_group"
     },
     {
       "type": 3,
