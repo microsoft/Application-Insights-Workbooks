@@ -706,9 +706,9 @@
             "content": {
               "version": "NotebookGroup/1.0",
               "groupType": "template",
-              "loadFromTemplateId": "community-Workbooks/Windows Virtual Desktop/shared/Host Pool Overview",
               "title": "Host pool details",
-              "items": [ ]
+              "loadFromTemplateId": "community-Workbooks/Windows Virtual Desktop/shared/Host Pool Overview",
+              "items": []
             },
             "name": "OverviewDetails",
             "styleSettings": {
@@ -765,9 +765,6 @@
                     "version": "KqlItem/1.0",
                     "query": "let FullList = datatable(Value:string)[\"Host\", \"User\", \"Resource\", \"Client\"];\r\nlet GetConnectionFailures = (BaseData:(Slicer:string, CorrelationId:string, UserName:string, ResourceAlias:string, SessionHostName:string, Client:string, TimeGenerated:datetime , Connected:bool), ViewName:string)\r\n{\r\n    BaseData\r\n    | summarize Users=dcount(UserName), Resources=dcount(ResourceAlias), Hosts=dcount(SessionHostName), Clients=dcount(Client), LastAttempt=max(TimeGenerated), Attempts=dcount(CorrelationId), View=ViewName, Activities=makeset(CorrelationId) by Slicer, Connected\r\n    | as BySlicer\r\n    | where Connected != true\r\n    | join kind=leftanti\r\n    (\r\n        BySlicer\r\n        | where Connected\r\n    ) on Slicer\r\n    | project-away Connected\r\n};\r\nWVDConnections\r\n| where State == \"Completed\" and _ResourceId =~ '{HostPool}'\r\n| join kind=leftouter\r\n(\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\"\r\n    | project CorrelationId, Connected=true\r\n) on CorrelationId\r\n| extend SessionHostName==trim_end(@\"\\..*\", SessionHostName), Client=strcat(replace(\"com.microsoft.rdc.\", \"\", ClientType), \" \", ClientVersion)\r\n| as BaseData\r\n| extend Slicer=UserName\r\n| invoke GetConnectionFailures(\"User\")\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=Client\r\n    | invoke GetConnectionFailures(\"Client\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=SessionHostName\r\n    | invoke GetConnectionFailures(\"Host\")\r\n)\r\n| union \r\n(\r\n    BaseData\r\n    | extend Slicer=ResourceAlias\r\n    | invoke GetConnectionFailures(\"Resource\")\r\n)\r\n| where strlen(Slicer) > 2\r\n| sort by View, Attempts desc \r\n| summarize Items=dcount(Slicer) by Value=View\r\n| join kind=fullouter FullList on Value\r\n| project Value=strcat(coalesce(Value, Value1), \"s\"), Items=coalesce(Items, 0), Subtitle=\"with potential issues\"",
                     "size": 1,
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -826,13 +823,10 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "WVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where LoadBalanceOutcome == \"NewSession\"\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| make-series Median=percentile(ProductiveTime, 50) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n| extend Median=series_fill_linear(Median, int(null))",
+                    "query": "WVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where LoadBalanceOutcome == \"NewSession\"\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| where ProductiveTime > 0\r\n| make-series Median=percentile(ProductiveTime, 50) default=int(null) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n| extend Median=series_fill_linear(Median, int(null))",
                     "size": 1,
                     "aggregation": 5,
                     "color": "blue",
-                    "timeContext": {
-                      "durationMs": 604800000
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -864,11 +858,8 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "WVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where LoadBalanceOutcome == \"NewSession\"\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n|  summarize Metrics = pack(\"Min\", min(ProductiveTime), \"Median\", percentile(ProductiveTime, 50), \"Average\", avg(ProductiveTime), \"p95\",percentile(ProductiveTime, 95)), Connections=dcount(CorrelationId)\r\n| mv-expand Metrics\r\n| extend Metric=tostring(bag_keys(Metrics)[0])\r\n| project Metric, Value = Metrics[Metric], Title=\"Time to connect E2E\", Subtitle=strcat(\"Connections: \", Connections)\r\n| sort by Metric asc",
+                    "query": "WVDConnections\r\n| where _ResourceId =~ \"{HostPool}\"\r\n| as ConnectionData\r\n| where State == \"Started\"\r\n| join kind = leftsemi\r\n(\r\n    // Only include connections that actually reached the host to prevent short (failed) attempts from skewing the data\r\n    WVDCheckpoints\r\n    | where Source == \"RDStack\" and Name == \"RdpStackConnectionEstablished\" and _ResourceId =~ \"{HostPool}\"\r\n) on CorrelationId\r\n| join kind = leftsemi\r\n(\r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name == \"LoadBalancedNewConnection\"\r\n    | extend LoadBalanceOutcome=Parameters.LoadBalanceOutcome\r\n    | where LoadBalanceOutcome == \"NewSession\"\r\n) on CorrelationId\r\n| join kind = inner\r\n(\r\n    WVDCheckpoints // new session\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"ShellReady\" or ( Name =~ \"LaunchExecutable\" and Parameters.connectionStage == \"RdpShellAppExecuted\") or Name=~\"RdpShellAppExecuted\"\r\n    | project ProductiveTime=TimeGenerated, CorrelationId\r\n    | summarize ProductiveTime=min(ProductiveTime) by CorrelationId\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"OnCredentialsAcquisitionCompleted\"\r\n    | project CorrelationId, credaquire = Parameters.DurationMS\r\n    //OnCredentialsAcquisitionCompleted\t2021-09-13T16:48:50.4440000Z\tClient\t{\"CredentialType\":\"SavedPassword\",\"DurationMS\":\"9\",\"Success\":\"True\"}\r\n) on CorrelationId\r\n| join kind = leftouter\r\n(  \r\n    WVDCheckpoints\r\n    | where _ResourceId =~ \"{HostPool}\"\r\n    | where Name =~ \"SSOTokenRetrieval\"\r\n    | project CorrelationId, ssotokeretrieval = Parameters.DurationMS\r\n) on CorrelationId\r\n| extend ProductiveTime = (ProductiveTime - TimeGenerated) / 1s - (coalesce(credaquire,0)/1000) - (coalesce(ssotokeretrieval,0)/1000)\r\n| where ProductiveTime > 0\r\n| summarize Metrics = pack(\"Min\", min(ProductiveTime), \"Median\", percentile(ProductiveTime, 50), \"Average\", avg(ProductiveTime), \"p95\",percentile(ProductiveTime, 95)), Connections=dcount(CorrelationId)\r\n| mv-expand Metrics\r\n| extend Metric=tostring(bag_keys(Metrics)[0])\r\n| project Metric, Value = Metrics[Metric], Title=\"Time to connect E2E\", Subtitle=strcat(\"Connections: \", Connections)\r\n| sort by Metric asc",
                     "size": 1,
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -904,7 +895,7 @@
                     }
                   },
                   "customWidth": "30",
-                  "name": "query - 9"
+                  "name": "TimeToProductiveTiles"
                 }
               ]
             },
@@ -925,11 +916,8 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nEvent\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts) and EventLog in (\"Application\", \"System\") and EventLevel <= 1\r\n| make-series TotalEvents=count() default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer=trim_end(@\"\\..*\", Computer)",
+                    "query": "let errorLevel=iff(\"{UsingAMA}\"==\"yes\",2,1);\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nEvent\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts) and EventLevel == errorLevel\r\n| make-series TotalEvents=count() default=0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Computer=trim_end(@\"\\..*\", Computer)",
                     "size": 1,
-                    "timeContext": {
-                      "durationMs": 604800000
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -954,11 +942,8 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let WVDHosts = dynamic([{WVDHosts}]);\r\nEvent\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts) and EventLog in (\"Application\", \"System\") and EventLevel <= 1\r\n| summarize TotalEvents=count(), UniqueEvents=dcount(EventID) by Computer=trim_end(@\"\\..*\", Computer), Subtitle=\"Unique events / Total events\"",
+                    "query": "let errorLevel=iff(\"{UsingAMA}\"==\"yes\",2,1);\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nEvent\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts) and EventLevel == errorLevel\r\n| summarize TotalEvents=count(), UniqueEvents=dcount(EventID) by Computer=trim_end(@\"\\..*\", Computer), Subtitle=\"Unique events / Total events\"",
                     "size": 1,
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -1023,9 +1008,6 @@
                     "query": "// Reference: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Process\" and CounterName == \"Max Input Delay\" and InstanceName !in (\"Max\", \"Average\") and CounterValue > 0\r\n| parse InstanceName with SessionId \":\" ProcessId \" <\" ProcessName\r\n| extend ProcessName=trim_end(\">\", ProcessName), Host=trim_end(@\"\\..*\", Computer)\r\n| make-series Median=percentile(CounterValue, 50) on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by Host\r\n| sort by Host asc",
                     "size": 1,
                     "aggregation": 5,
-                    "timeContext": {
-                      "durationMs": 604800000
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
@@ -1066,9 +1048,6 @@
                     "query": "// Reference: https://docs.microsoft.com/en-us/windows-server/remote/remote-desktop-services/rds-rdsh-performance-counters\r\nlet WVDHosts = dynamic([{WVDHosts}]);\r\nPerf\r\n| extend HostPool = '{HostPool:label}'\r\n| extend HostPool = strcat(HostPool, \"/\")\r\n| extend ComputerName = strcat(HostPool, Computer)\r\n| where ComputerName in~ (WVDHosts)\r\n| where ObjectName == \"User Input Delay per Process\" and CounterName == \"Max Input Delay\" and InstanceName !in (\"Max\", \"Average\") and CounterValue > 0\r\n| summarize (Median, p95)=percentiles(CounterValue, 50, 95), Samples=count() by Host=trim_end(@\"\\..*\", Computer)\r\n| project Host, Median, p95, Subtitle=\"Median\", Bottom=strcat(\"Samples: \", Samples)\r\n| sort by Median desc",
                     "size": 1,
                     "aggregation": 3,
-                    "timeContext": {
-                      "durationMs": 0
-                    },
                     "timeContextFromParameter": "TimeRange",
                     "queryType": 0,
                     "resourceType": "microsoft.operationalinsights/workspaces",
