@@ -17,7 +17,7 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 14400000
+              "durationMs": 86400000
             },
             "typeSettings": {
               "selectableValues": [
@@ -86,6 +86,52 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
+            "id": "10fd2df8-44a3-4c8f-ba3f-e4cfb94ae130",
+            "version": "KqlParameterItem/1.0",
+            "name": "ArcEnabledClusters",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "ExtensibilityResources \r\n| where type =~ 'microsoft.azurestackhci/clusters/arcSettings'\r\n| extend property = properties.aggregateState\r\n| where property == 'Connected' or property == 'PartiallyConnected'\r\n| extend clusters = extract(\"/[Ss]ubscriptions/([^/]+)/[Rr]esourceGroups/([^/]+)/[Pp]roviders/([^/]+)/[Cc]lusters/([^/]+)\", 0, id)\r\n| project clusters",
+            "crossComponentResources": [
+              "{subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "a9a627fb-343a-4461-a7e5-a2609b603682",
+            "version": "KqlParameterItem/1.0",
+            "name": "AMAInstalledClusters",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "ExtensibilityResources \r\n| where type =~ 'microsoft.azurestackhci/clusters/arcSettings/extensions' \r\n| where  name == \"AzureMonitorWindowsAgent\"\r\n| extend clusters = extract(\"/[Ss]ubscriptions/([^/]+)/[Rr]esourceGroups/([^/]+)/[Pp]roviders/([^/]+)/[Cc]lusters/([^/]+)\", 0, id)\r\n| project clusters",
+            "crossComponentResources": [
+              "{subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
             "id": "0bd8be0a-5391-4e03-9b4b-5eb2643f9b73",
             "version": "KqlParameterItem/1.0",
             "name": "clusters",
@@ -94,7 +140,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\"\r\n| extend ClusterArmId = _ResourceId\r\n| where ClusterArmId contains \"/Microsoft.AzureStackHCI/\"\r\n| where EventID in (\"3000\", \"3001\", \"3002\", \"3003\", \"3004\")\r\n| where TimeGenerated {timeRange:query}\r\n| distinct ClusterArmId\r\n| union (datatable (ClusterArmId:string)[\"*\"])",
+            "query": "Event\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\"\r\n| extend ClusterArmId = _ResourceId\r\n| where ClusterArmId contains \"/Microsoft.AzureStackHCI/\"\r\n| where ClusterArmId in~ ({ArcEnabledClusters})\r\n| where ClusterArmId in~ ({AMAInstalledClusters})\r\n| where EventID in (\"3000\", \"3001\", \"3002\", \"3003\", \"3004\")\r\n| where TimeGenerated {timeRange:query}\r\n| distinct ClusterArmId\r\n| union (datatable (ClusterArmId:string)[\"*\"])",
             "crossComponentResources": [
               "{subscription}"
             ],
@@ -2514,7 +2560,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Health = Event\r\n| where EventLog =~ \"Microsoft-Windows-Health/Operational\"\r\n| extend description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(description.CorrelationId)\r\n| where CorrelationId in~ ({lastCorrelationId})\r\n| extend ClusterArmId = tostring(description.ArmId)\r\n| extend Severity = iff(isempty(description.Fault), 0, toint(description.Fault.Severity))\r\n| extend Severity = case(Severity == 2, 3, Severity == 1, 2, Severity == 255, 1, 0)\r\n| summarize Status = max(Severity) by ClusterArmId;\r\n\r\nEvent\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3000\" \r\n| extend ClusterArmId = _ResourceId\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend servers_information = parse_json(RenderedDescription).m_servers\r\n| summarize arg_max(TimeGenerated,*) by ClusterName\r\n| mv-expand servers_information\r\n| summarize TotalServers = count(), ClusterName = any(ClusterName) by ClusterArmId\r\n| join kind = leftouter Health on ClusterArmId\r\n| extend Status = iff(isempty(Status), iff(ClusterArmId in~ ({healthyClusters}), 0, 1), Status)\r\n| sort by tolower(ClusterName) asc\r\n| extend ServerCritical = iif(Status == 3, 1, 0)\r\n| extend ServerWarning = iif(Status == 2, 1, 0)\r\n| extend ServerUnknown = iif(Status == 1, 1, 0)\r\n| summarize TotalClusters = count(), Critical = sum(ServerCritical), Warning = sum(ServerWarning), Other = sum(ServerUnknown)\r\n| extend Healthy = TotalClusters - (Critical + Warning + Other)\r\n| project TotalClusters, Healthy, Warning, Critical, Other\r\n| evaluate narrow()\r\n| extend Column = iff(Column == \"TotalClusters\", \"Total clusters\", Column)\r\n| project Column, tolong(Value)",
+                    "query": "let Health = Event\r\n| where EventLog =~ \"Microsoft-Windows-Health/Operational\"\r\n| extend description = parse_json(RenderedDescription)\r\n| extend CorrelationId = tostring(description.CorrelationId)\r\n| where CorrelationId in~ ({lastCorrelationId})\r\n| extend ClusterArmId = tolower(tostring(description.ArmId))\r\n| extend Severity = iff(isempty(description.Fault), 0, toint(description.Fault.Severity))\r\n| extend Severity = case(Severity == 2, 3, Severity == 1, 2, Severity == 255, 1, 0)\r\n| summarize Status = max(Severity) by ClusterArmId;\r\n\r\nEvent\r\n| where EventLog =~ \"Microsoft-Windows-SDDC-Management/Operational\" and EventID == \"3000\" \r\n| extend ClusterArmId = tolower(_ResourceId)\r\n| where ClusterArmId in~ ({selectedCluster:query})\r\n| extend ClusterName = tostring(parse_xml(EventData).DataItem.UserData.EventData[\"ClusterName\"])\r\n| extend servers_information = parse_json(RenderedDescription).m_servers\r\n| summarize arg_max(TimeGenerated,*) by ClusterName\r\n| mv-expand servers_information\r\n| summarize TotalServers = count(), ClusterName = any(ClusterName) by ClusterArmId\r\n| join kind = leftouter Health on ClusterArmId\r\n| extend Status = iff(isempty(Status), iff(ClusterArmId in~ ({healthyClusters}), 0, 1), Status)\r\n| sort by tolower(ClusterName) asc\r\n| extend ServerCritical = iif(Status == 3, 1, 0)\r\n| extend ServerWarning = iif(Status == 2, 1, 0)\r\n| extend ServerUnknown = iif(Status == 1, 1, 0)\r\n| summarize TotalClusters = count(), Critical = sum(ServerCritical), Warning = sum(ServerWarning), Other = sum(ServerUnknown)\r\n| extend Healthy = TotalClusters - (Critical + Warning + Other)\r\n| project TotalClusters, Healthy, Warning, Critical, Other\r\n| evaluate narrow()\r\n| extend Column = iff(Column == \"TotalClusters\", \"Total clusters\", Column)\r\n| project Column, tolong(Value)",
                     "size": 3,
                     "timeContextFromParameter": "timeRange",
                     "queryType": 0,
