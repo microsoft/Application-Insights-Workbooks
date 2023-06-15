@@ -43,6 +43,13 @@ const visualizationNames: { [n: string]: string; } = {
     "-3": "graph"
 };
 
+
+const graphTypeNames : { [n: string]: string; } = { 
+    undefined: "graph",
+    0: "graph",
+    2: "honeycomb"
+};
+
 const parameterTypes: { [n: string]: string; } = { 
     "1": "text", 
     "2": "dropdown", 
@@ -64,7 +71,6 @@ const parameterTypes: { [n: string]: string; } = {
 // styles of actions (toolbar/tabs/links/etc)
 // types of links in visualization settings
 // steps using conditional visibilty (single, multi)
-// graphs with honeycomb
 // Check for grids with custom rowcounts
 // time brushing enabled
 // App insight annotations enabled
@@ -123,6 +129,16 @@ export const Summarizers: BestPracticeSummarizer[] =
         name: "Count of query visualizations used in queries or metrics (combined)", 
         valueMap: visualizationNames,
     },
+    { 
+        id: "VIS003", //honeycombs
+        valuePaths: ["$.content.graphSettings.type"],
+        testPaths: [
+            "$..items[?(@.type == 3 && @.content.visualization == \"graph\")]", 
+            "$..items[?(@.type == 10 && @.content.visualization == \"graph\")]"], // query or metrics using graph
+        name: "Count of graph types used", 
+        valueMap: graphTypeNames,
+    },
+
     { 
         id: "PARAMS001",
         valuePaths: ["$.type"], 
