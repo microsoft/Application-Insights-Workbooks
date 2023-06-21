@@ -142,7 +142,7 @@
             "content": {
               "version": "KqlParameterItem/1.0",
               "crossComponentResources": [
-                "{Subscriptions}"
+                "{HostPools}"
               ],
               "parameters": [
                 {
@@ -150,20 +150,50 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "HostPoolDetails",
                   "type": 1,
-                  "query": "resources \r\n| where id in ({HostPools})\r\n| extend id = tolower(id)\r\n| join (desktopvirtualizationresources\r\n| extend hpId = tolower(trim_end(\"/sessionhosts/.+\", id) ), vmRsourceId = tolower(properties.resourceId) \r\n| summarize  vmRsourceId=any(vmRsourceId),shCount = count() by hpId ) on $left.id == $right.hpId\r\n| join (resources \r\n    | extend sku = tostring(properties.hardwareProfile.vmSize)\r\n    | project id=tolower(id), cores = toint(extract(\"_[[:alpha:]]+([0-9]+)\",1, sku))\r\n    ) on $left.vmRsourceId == $right.id\r\n| extend sessionLimit = toint(properties.maxSessionLimit)\r\n| extend sessionLimit = iff(sessionLimit<=1000, sessionLimit, cores*4)  \r\n| project bag=pack(\"id\", id,\"resourceGroup\", resourceGroup, \"sessionLimit\", sessionLimit, \"shCount\", shCount, \"cores\", cores) \r\n| summarize tostring(make_list(bag))",
+                  "query": "resources \r\n| where id in ({HostPools})\r\n| extend id = tolower(id)\r\n| join (desktopvirtualizationresources\r\n| extend hpId = tolower(trim_end(\"/sessionhosts/.+\", id) ), vmRsourceId = tolower(properties.resourceId) \r\n| summarize  vmRsourceId=any(vmRsourceId),shCount = count() by hpId ) on $left.id == $right.hpId\r\n| join (resources \r\n    | extend sku = tostring(properties.hardwareProfile.vmSize)\r\n    | project id=tolower(id), cores = toint(extract(\"_[[:alpha:]]+([0-9]+)\",1, sku))\r\n    | extend cores=coalesce(cores,0)\r\n    ) on $left.vmRsourceId == $right.id\r\n| extend sessionLimit = toint(properties.maxSessionLimit)\r\n| extend sessionLimit = iff(sessionLimit<=1000, sessionLimit, cores*4)  \r\n| project bag=pack(\"id\", id,\"resourceGroup\", resourceGroup, \"sessionLimit\", sessionLimit, \"shCount\", shCount, \"cores\", cores) \r\n| summarize tostring(make_list(bag))",
                   "crossComponentResources": [
                     "{Subscriptions}"
                   ],
                   "isHiddenWhenLocked": true,
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "8f892586-bc8d-4182-8294-2fb5f99fde51",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HasHCI",
+                  "type": 2,
+                  "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nhpProps\r\n| where cores ==0\r\n| summarize c=count()\r\n| project c, disp=c, selected=1",
+                  "crossComponentResources": [
+                    "{HostPools}"
+                  ],
+                  "isHiddenWhenLocked": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "queryType": 0,
+                  "resourceType": "microsoft.desktopvirtualization/hostpools"
                 }
               ],
               "style": "pills",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources"
+              "queryType": 0,
+              "resourceType": "microsoft.desktopvirtualization/hostpools"
             },
             "name": "parameters - 4"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The charts with information on users per core do not include host pools using session hosts on Azure Stack HCI",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "HasHCI",
+              "comparison": "isNotEqualTo",
+              "value": "0"
+            },
+            "name": "text - 4"
           },
           {
             "type": 12,
@@ -348,7 +378,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nWVDAgentHealthStatus\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| join hpProps on $left._ResourceId == $right.id\r\n| make-series [\"Users/cores\"] = max(Sessions/cores) on TimeGenerated step {TimeRange:grain} by _ResourceId\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"], _ResourceId\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average) by _ResourceId\r\n| project [\"Res. group\"]= trim_end(\"/providers/.*\", _ResourceId), [\"Host pool\"]=_ResourceId, [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n\r\n",
+                          "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nWVDAgentHealthStatus\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| join hpProps on $left._ResourceId == $right.id\r\n| where cores > 0\r\n| make-series [\"Users/cores\"] = max(Sessions/cores) on TimeGenerated step {TimeRange:grain} by _ResourceId\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"], _ResourceId\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average) by _ResourceId\r\n| project [\"Res. group\"]= trim_end(\"/providers/.*\", _ResourceId), [\"Host pool\"]=_ResourceId, [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n\r\n",
                           "size": 1,
                           "title": "User per core summary",
                           "timeContextFromParameter": "TimeRange",
@@ -453,7 +483,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nWVDAgentHealthStatus\r\n| where ( \"{selectedHP}\"== \"not_selected\" or _ResourceId == \"{selectedHP}\")\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| join kind=inner hpProps on $left._ResourceId == $right.id\r\n| make-series [\"Users/cores\"] = max(Sessions/cores) on TimeGenerated step {TimeRange:grain}\r\n//| where array_length(TimeGenerated) > 0",
+                          "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nWVDAgentHealthStatus\r\n| where ( \"{selectedHP}\"== \"not_selected\" or _ResourceId == \"{selectedHP}\")\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| join kind=inner hpProps on $left._ResourceId == $right.id\r\n| where cores > 0\r\n| make-series [\"Users/cores\"] = max(Sessions/cores) on TimeGenerated step {TimeRange:grain}\r\n//| where array_length(TimeGenerated) > 0",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Max users per core",
@@ -848,7 +878,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName\r\n| top 10 by Hours desc nulls last",
+                    "query": "let StartWin = {TimeRange:start};\r\nlet EndWin = {TimeRange:end};\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName\r\n|  summarize TimeGenerated=min(TimeGenerated) by CorrelationId, State, UserName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName\r\n| top 10 by Hours desc nulls last",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Top 10 users by connection time",
@@ -979,7 +1009,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName, SessionHostName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, SessionHostName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by Computer = trim_end(@'\\..*', SessionHostName)\r\n| top 10 by Hours desc nulls last",
+                    "query": "let StartWin = {TimeRange:start};\r\nlet EndWin = {TimeRange:end};\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName, SessionHostName\r\n| summarize TimeGenerated=min(TimeGenerated) by CorrelationId, State, UserName, SessionHostName\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)  // if start aged off use 1st day\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, SessionHostName\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by Computer = trim_end(@'\\..*', SessionHostName)\r\n| top 10 by Hours desc nulls last",
                     "size": 1,
                     "aggregation": 5,
                     "title": "Top 10 hosts by connection time",
@@ -1114,11 +1144,10 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let StartWin = startofday({TimeRange:start});// each day to start at midnight\r\nlet EndWin = startofday({TimeRange:end}+1d);\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName,_ResourceId\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, _ResourceId\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName, _ResourceId\r\n| sort by Hours desc nulls last",
+                          "query": "let StartWin = {TimeRange:start};\r\nlet EndWin = {TimeRange:end};\r\nWVDConnections\r\n| project CorrelationId, State, TimeGenerated, UserName,_ResourceId\r\n| summarize TimeGenerated=min(TimeGenerated) by CorrelationId, State, UserName,_ResourceId\r\n| as Connections\r\n| where State == \"Started\"\r\n| extend StartTime = TimeGenerated\r\n| join kind=fullouter\r\n(\r\n    Connections\r\n    | where State == \"Completed\"\r\n    | extend EndTime = TimeGenerated\r\n)\r\non CorrelationId\r\n| extend EndTime = coalesce(EndTime, EndWin)  // if no end use end of window\r\n| where EndTime >= StartWin\r\n| extend StartTime = coalesce(StartTime, StartWin)\r\n| where StartTime <= EndWin\r\n| extend CorrelationId = coalesce(CorrelationId, CorrelationId1)  // fix fields that only came from a completed record\r\n| extend UserName = coalesce(UserName, UserName1)  // if start aged off use 1st day\r\n| project StartTime, EndTime, CorrelationId, State = coalesce(State1, State), UserName, _ResourceId\r\n| extend StartTime=max_of(StartTime, StartWin), EndTime=min_of(EndTime, EndWin)  // chop time for connections to window\r\n| extend Duration = (EndTime - StartTime)/1h\r\n| summarize Hours = sum(Duration) by UserName, _ResourceId\r\n| project UserName, ResourceGroup = trim_end(@'/providers/microsoft.desktopvirtualization/hostpools/.+', _ResourceId), _ResourceId, Hours\r\n| sort by Hours desc nulls last",
                           "size": 1,
                           "aggregation": 5,
                           "showAnalytics": true,
-                          "title": "All users usage",
                           "noDataMessage": "No connections found",
                           "showExportToExcel": true,
                           "queryType": 0,
@@ -1130,18 +1159,54 @@
                           "gridSettings": {
                             "formatters": [
                               {
+                                "columnMatch": "$gen_group",
+                                "formatter": 14,
+                                "formatOptions": {
+                                  "linkTarget": "Resource",
+                                  "showIcon": true,
+                                  "customColumnWidthSetting": "35ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "Usage by resource group",
+                                "formatter": 14,
+                                "formatOptions": {
+                                  "linkTarget": "Resource",
+                                  "showIcon": true,
+                                  "customColumnWidthSetting": "35ch"
+                                }
+                              },
+                              {
+                                "columnMatch": "UserName",
+                                "formatter": 5
+                              },
+                              {
+                                "columnMatch": "ResourceGroup",
+                                "formatter": 5
+                              },
+                              {
                                 "columnMatch": "Hours",
                                 "formatter": 0,
                                 "formatOptions": {
-                                  "aggregation": "Sum"
+                                  "aggregation": "Sum",
+                                  "customColumnWidthSetting": "12ch"
                                 },
                                 "numberFormat": {
                                   "unit": 0,
                                   "options": {
                                     "style": "decimal",
-                                    "minimumIntegerDigits": 1,
-                                    "minimumFractionDigits": 1
+                                    "minimumFractionDigits": 1,
+                                    "maximumFractionDigits": 1
                                   }
+                                }
+                              },
+                              {
+                                "columnMatch": "User",
+                                "formatter": 14,
+                                "formatOptions": {
+                                  "linkTarget": "Resource",
+                                  "showIcon": true,
+                                  "customColumnWidthSetting": "35ch"
                                 }
                               }
                             ],
@@ -1150,8 +1215,19 @@
                               "treeType": 1,
                               "groupBy": [
                                 "UserName"
-                              ]
-                            }
+                              ],
+                              "finalBy": "ResourceGroup"
+                            },
+                            "labelSettings": [
+                              {
+                                "columnId": "UserName",
+                                "label": "Usage by resource group"
+                              },
+                              {
+                                "columnId": "_ResourceId",
+                                "label": "Host pool"
+                              }
+                            ]
                           },
                           "chartSettings": {
                             "xAxis": "UserName",

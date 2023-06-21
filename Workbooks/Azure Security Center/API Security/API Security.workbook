@@ -1,0 +1,1826 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## API Security Dashboard \r\n\r\nThis workbook has been created to provide a security mapping for Microsoft Defender for APIs plan based on the resource telemetry in your own environment. Please note that these views are based on your API infrastructure."
+      },
+      "name": "Intro"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "7767523e-f230-4562-b00c-bce5a7d38fe7",
+            "version": "KqlParameterItem/1.0",
+            "name": "subscription",
+            "label": "Subscription",
+            "type": 6,
+            "description": "Please select one or several Subscription in your environment",
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "includeAll": true,
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ]
+          },
+          {
+            "id": "f38b2b18-3eda-4aeb-8155-b0e9b267864a",
+            "version": "KqlParameterItem/1.0",
+            "name": "severity",
+            "label": "Alert Severity",
+            "type": 2,
+            "description": "Please select an alert severity.",
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "",
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\": \"High\", \"label\":\"High\"},\r\n    {\"value\": \"Medium\", \"label\":\"Medium\"},\r\n    {\"value\": \"Low\", \"label\":\"Low\"},\r\n    {\"value\": \"Informational\", \"label\":\"Informational\"}\r\n]\r\n    ",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ]
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "select_subscriptions"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "7b8f3245-20ab-43a8-8b15-7b60d449308e",
+            "cellValue": "tab",
+            "linkTarget": "parameter",
+            "linkLabel": "🔎 Overview",
+            "subTarget": "overview",
+            "preText": "Overview",
+            "style": "link"
+          },
+          {
+            "id": "73f4146e-9c22-4f96-885a-34158a5617a3",
+            "cellValue": "tab",
+            "linkTarget": "parameter",
+            "linkLabel": "🔵 Hardening Recommendations",
+            "subTarget": "recommendations",
+            "style": "link"
+          },
+          {
+            "id": "c973a4aa-7315-4f9c-8b36-44ea4f6374dc",
+            "cellValue": "tab",
+            "linkTarget": "parameter",
+            "linkLabel": "🔔 Threat Detection - Alerts",
+            "subTarget": "alerts",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "Tab_Menu"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| where Status == \"Active\"\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = properties.TimeGeneratedUtc\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where AlertDisplayName !startswith ('[SAMPLE ALERT]')\r\n| where Severity in~ ({severity})\r\n| summarize count() by tostring(Severity)",
+        "size": 3,
+        "title": "Alert Summary",
+        "noDataMessage": "No alerts found",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Severity",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "contains",
+                    "thresholdValue": "High",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "contains",
+                    "thresholdValue": "Medium",
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "contains",
+                    "thresholdValue": "Low",
+                    "representation": "yellow",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "contains",
+                    "thresholdValue": "Informational",
+                    "representation": "gray",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "SystemAlertId",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "IsIncident",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "AlertURI",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "SubscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Location",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "ResourceId",
+              "formatter": 5
+            }
+          ],
+          "sortBy": [
+            {
+              "itemKey": "Tactics",
+              "sortOrder": 2
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "AlertDisplayName",
+              "label": "Alert Name"
+            },
+            {
+              "columnId": "IsIncident",
+              "label": "Incident/alert"
+            },
+            {
+              "columnId": "ResourceGroup",
+              "label": "Resource Group"
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "Tactics",
+            "sortOrder": 2
+          }
+        ],
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Severity",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "count_",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "showBorder": false
+        },
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "Medium",
+              "label": "Medium",
+              "color": "orange"
+            },
+            {
+              "seriesName": "High",
+              "label": "High",
+              "color": "red"
+            },
+            {
+              "seriesName": "Low",
+              "label": "Low",
+              "color": "green"
+            }
+          ]
+        },
+        "mapSettings": {
+          "locInfo": "LatLong",
+          "sizeSettings": "count_",
+          "sizeAggregation": "Sum",
+          "legendMetric": "count_",
+          "legendAggregation": "Sum",
+          "itemColorSettings": {
+            "type": "heatmap",
+            "colorAggregation": "Sum",
+            "nodeColorField": "count_",
+            "heatmapPalette": "greenRed"
+          }
+        },
+        "textSettings": {
+          "style": "bignumber"
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "33",
+      "name": "Overview_Alerts"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = properties.TimeGeneratedUtc\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where AlertDisplayName !startswith ('[SAMPLE ALERT]')\r\n| where Severity in~ ({severity})\r\n| summarize count() by tostring(Status)",
+        "size": 3,
+        "title": "Alerts by Status",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart"
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "33",
+      "name": "Alerts by Status"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type =~ \"microsoft.security/locations/alerts\"\r\n    | extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n    | extend IsIncident = properties.[\"IsIncident\"]\r\n    | extend AlertDisplayName = properties.[\"AlertDisplayName\"]\r\n    | extend SystemAlertId = properties.[\"SystemAlertId\"]\r\n    | extend Severity = properties.[\"Severity\"]\r\n    | extend Status = properties.[\"Status\"]\r\n    | extend Tactics = split(properties.[\"Intent\"],\",\")\r\n    | mv-expand Tactics\r\n    | extend Tactic = trim(\" \",tostring(Tactics))\r\n    | extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n    | extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n    | extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n    | extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n    | extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n    | extend ResourceIdentifiers = properties.[\"ResourceIdentifiers\"]\r\n    | mv-expand ResourceIdentifiers\r\n    | extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n    | extend Resource = tolower(tostring(ResourceId))\r\n    | project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n    | extend ResourceIdentifiers = properties.[\"ResourceIdentifiers\"]\r\n    | mv-expand ResourceIdentifiers\r\n    | extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n    | extend Resource = tolower(tostring(ResourceId))\r\n    | where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n    | extend affectedResourceId = tolower(affectedResourceId)\r\n    | extend ResourceGroup = tolower(resourceGroup)\r\n    | where Status == \"Active\"\r\n    | extend ResourceGroup = iif(isempty(ResourceGroup), \" \", ResourceGroup)\r\n    | where AlertDisplayName !startswith ('[SAMPLE ALERT]')\r\n    | where Severity in~ ({severity})\r\n    | distinct ['id'], Tactic\r\n    | summarize count() by Tactic\r\n ",
+        "size": 3,
+        "title": "Alerts by MITRE ATT&CK  Tactics",
+        "noDataMessage": "No alerts found",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Tactic",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "count_",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto",
+              "compositeBarSettings": {
+                "labelText": "",
+                "columnSettings": []
+              }
+            }
+          },
+          "showBorder": false
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "34",
+      "name": "Overview_Alert_Mitre"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type == \"microsoft.security/assessments\"\r\n    | where id contains \"microsoft.apimanagement/service\" or id contains \"Microsoft.ApiSecurity\"\r\n    | extend status = properties.status.code, severity = tostring(properties.metadata.severity)\r\n    | where status == 'Unhealthy'\r\n    | extend displayName = tostring(properties.displayName)\r\n    | summarize count() by severity",
+        "size": 3,
+        "title": "Unhealthy API Recommendations by Severity",
+        "noDataMessage": "No unhealthy APIs found",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "ResourceGroup",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Resource",
+              "formatter": 5,
+              "formatOptions": {
+                "customColumnWidthSetting": "20ch"
+              }
+            },
+            {
+              "columnMatch": "Total",
+              "formatter": 1,
+              "formatOptions": {
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "sevH",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev0",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "sevM",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev1",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "sevL",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev3",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "patchAvailable",
+              "formatter": 1,
+              "formatOptions": {
+                "compositeBarSettings": {
+                  "labelText": "",
+                  "columnSettings": []
+                },
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "CVEcount",
+              "formatter": 5,
+              "formatOptions": {
+                "customColumnWidthSetting": "15ch"
+              }
+            }
+          ],
+          "rowLimit": 1000
+        },
+        "sortBy": [],
+        "tileSettings": {
+          "showBorder": false
+        },
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "Medium",
+              "label": "Medium",
+              "color": "orange"
+            },
+            {
+              "seriesName": "High",
+              "label": "High",
+              "color": "redBright"
+            },
+            {
+              "seriesName": "Low",
+              "label": "Low",
+              "color": "blue"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "33",
+      "name": "Unhealthy_API_Recommendations_Severity"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type == \"microsoft.security/assessments\"\r\n    | where id contains \"microsoft.apimanagement/service\" or id contains \"Microsoft.ApiSecurity\"\r\n    | extend status = properties.status.code\r\n    | extend severity = tostring(properties.metadata.severity)    \r\n    | where severity == \"High\"\r\n    | summarize count() by tostring(status),tostring(severity)",
+        "size": 3,
+        "title": "High Severity Recommendations by Status",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "NotApplicable",
+              "label": "N/A"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "33",
+      "name": "High Severity Recommendations by Status"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type == \"microsoft.security/assessments\"\r\n    | where name == \"1c0ba94f-e732-43c7-bf3a-05e80f45d642\"\r\n    | extend status = properties.status.code\r\n    | summarize count() by tostring(status)",
+        "size": 3,
+        "title": "API Protection Status with Defender for APIs",
+        "noDataMessage": "The query returned no results.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "Unhealthy",
+              "label": "Unprotected",
+              "color": "redBright",
+              "comment": ""
+            },
+            {
+              "seriesName": "Healthy",
+              "label": "Protected",
+              "color": "blue",
+              "comment": ""
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "34",
+      "name": "Overview_APIs_Coverage"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name == \"Api\"\r\n| extend Coverage = properties.pricingTier\r\n| join kind = leftouter(resources | extend apiCount = iff(type == \"microsoft.apimanagement/service\", 1 , 0)) on subscriptionId\r\n| summarize apiResourceCount = sum(apiCount) by subscriptionId, tostring(Coverage)\r\n| order by subscriptionId asc\r\n",
+        "size": 3,
+        "title": "Subscription Coverage for Defender for APIs",
+        "noDataMessage": "No subscription data.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true,
+                "customColumnWidthSetting": "60ch"
+              }
+            },
+            {
+              "columnMatch": "Coverage",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Standard",
+                    "representation": "lightBlue",
+                    "text": "On"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "blueDark",
+                    "text": "Off"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "apiResourceCount",
+              "formatter": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "apiResourceCount",
+              "label": "API Management Service Count"
+            }
+          ]
+        },
+        "sortBy": []
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "customWidth": "100",
+      "name": "Defender for APIs Plan Coverage"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "Resources\r\n| where type in (\r\n 'microsoft.apimanagement/service'\r\n)\r\n| extend  PublicNetworkAccess=tostring(properties.publicNetworkAccess)\r\n| project Subscription=subscriptionId, ResourceGroup=resourceGroup, APIM=id, Tier=sku.name, PublicNetworkAccess, VNET=properties.virtualNetworkType\r\n",
+        "size": 3,
+        "title": "APIM Resources Overview",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 15,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "linkIsContextBlade": false,
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Tier",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "PublicNetworkAccess",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "blue",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "VNET",
+              "formatter": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "ResourceGroup",
+              "label": "Resource Group"
+            },
+            {
+              "columnId": "APIM",
+              "label": "APIM Service"
+            },
+            {
+              "columnId": "PublicNetworkAccess",
+              "label": "Public Network Access"
+            },
+            {
+              "columnId": "VNET",
+              "label": "Virtual Network"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "name": "APIM Resources Overview"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type == \"microsoft.security/assessments\"\r\n    | where name == \"1c0ba94f-e732-43c7-bf3a-05e80f45d642\"\r\n    | extend recommendationId=\"1c0ba94f-e732-43c7-bf3a-05e80f45d642\"\r\n    | project recommendationId, subscriptionId, ResourceGroup=resourceGroup, APIM = properties.additionalData.APIManagementResourceName, APICollection = properties.additionalData.apiCollectionDisplayName, Status=properties.status.code, link=\"https://ms.portal.azure.com/#view/Microsoft_Azure_Security/ApiOnboardingRecommendationDetailsBlade/assessmentKey/1c0ba94f-e732-43c7-bf3a-05e80f45d642\"\r\n",
+        "size": 3,
+        "title": "API Collection Onboarding Status",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Group",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "recommendationId",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "ResourceGroup",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "APIM",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "APICollection",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": null,
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unhealthy",
+                    "representation": "3",
+                    "text": "Not Onboarded"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Healthy",
+                    "representation": "Resolved",
+                    "text": "Onboarded"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "unknown",
+                    "text": "Not Applicable"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "link",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Url",
+                "showIcon": true
+              }
+            }
+          ],
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "APIM"
+            ],
+            "expandTopLevel": true
+          },
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "ResourceGroup",
+              "label": "Resource Group"
+            },
+            {
+              "columnId": "APICollection",
+              "label": "API Collection"
+            },
+            {
+              "columnId": "link",
+              "label": "Recommendation"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "name": "API Collection Onboarding Status"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/assessments\" and properties.status.code =~ \"Unhealthy\"\r\n| where id contains \"microsoft.apimanagement/service\" or id contains \"Microsoft.ApiSecurity\"\r\n| extend severityFilter = tostring(\"{severity}\"), severity = tostring(properties.metadata.severity)\r\n| project severity, severityFilter, id\r\n| where severityFilter has severity\r\n| summarize recommendations = dcount(id) by severity",
+        "size": 3,
+        "title": "Unhealthy Recommendations by Severity",
+        "noDataMessage": "No unhealthy recommendations found.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "High",
+              "label": "High"
+            },
+            {
+              "seriesName": "Low",
+              "label": "Low"
+            },
+            {
+              "seriesName": "Medium",
+              "label": "Medium"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "33",
+      "name": "Unhealthy recommendations"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/assessments\"\r\n| where id contains \"microsoft.apimanagement/service\" or id contains \"Microsoft.ApiSecurity\"\r\n| extend severityFilter = tostring(\"{severity}\"), severity = tostring(properties.metadata.severity)\r\n| project severity, severityFilter, id, statusCode = properties.status.code\r\n| where severityFilter has severity\r\n| summarize recommendations = dcount(id) by tostring(statusCode)",
+        "size": 3,
+        "title": "All Recommendations by Status",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "Healthy",
+              "label": "Healthy"
+            },
+            {
+              "seriesName": "NotApplicable",
+              "label": "N/A"
+            },
+            {
+              "seriesName": "Unhealthy",
+              "label": "Unhealthy"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "33",
+      "name": "All Recommendations by Status"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/assessments\"\r\n| where id contains \"operations/\"\r\n| extend severityFilter = tostring(\"{severity}\"), severity = tostring(properties.metadata.severity)\r\n| project severity, severityFilter, id, statusCode = properties.status.code\r\n| where severityFilter has severity\r\n| summarize recommendations = dcount(id) by tostring(statusCode)",
+        "size": 3,
+        "title": "API Endpoint Recommendations by Status",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "NotApplicable",
+              "label": "N/A"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "34",
+      "name": "API Endpoint Recommendations by Status"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type == \"microsoft.security/assessments\"\r\n    | where id contains \"microsoft.apimanagement/service\" or id contains \"Microsoft.ApiSecurity\"\r\n    | extend status = properties.status.code, Severity = properties.metadata.severity\r\n    | where status == 'Unhealthy'\r\n    | extend displayName = tostring(properties.displayName)\r\n    | summarize count() by displayName, tostring(Severity)\r\n    | order by tostring(Severity) desc",
+        "size": 3,
+        "title": "Unhealthy Resource Count by Recommendation",
+        "exportedParameters": [
+          {
+            "fieldName": "displayName",
+            "parameterName": "selectedAPIM",
+            "parameterType": 1,
+            "defaultValue": "All"
+          },
+          {
+            "fieldName": "apimSelected",
+            "parameterName": "apimSelected",
+            "parameterType": 1,
+            "defaultValue": "false"
+          }
+        ],
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "displayName",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "81.7143ch"
+              },
+              "tooltipFormat": {
+                "tooltip": "Select a recommendation to view unhealthy resources."
+              }
+            },
+            {
+              "columnMatch": "Severity",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "High",
+                    "representation": "red",
+                    "text": "High"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Medium",
+                    "representation": "orange",
+                    "text": "Medium"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Low",
+                    "representation": "green",
+                    "text": "Low"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "blue",
+                    "text": "{0}{1}"
+                  }
+                ]
+              },
+              "tooltipFormat": {
+                "tooltip": "Select a recommendation to view unhealthy resources."
+              }
+            },
+            {
+              "columnMatch": "count_",
+              "formatter": 0,
+              "tooltipFormat": {
+                "tooltip": "Select a recommendation to view unhealthy resources."
+              }
+            }
+          ],
+          "sortBy": [
+            {
+              "itemKey": "$gen_thresholds_Severity_1",
+              "sortOrder": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "displayName",
+              "label": "Recommendation Name"
+            },
+            {
+              "columnId": "count_",
+              "label": "Resource Count"
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "$gen_thresholds_Severity_1",
+            "sortOrder": 1
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "100",
+      "name": "Unhealthy Resource Count by Recommendation"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n    | where type == \"microsoft.security/assessments\"\r\n    | where id contains \"microsoft.apimanagement/service\" or id contains \"Microsoft.ApiSecurity\"\r\n    | extend status = properties.status.code, severity = properties.metadata.severity\r\n    | where status == 'Unhealthy'\r\n    | extend displayName = tostring(properties.displayName)\r\n    | where displayName == '{selectedAPIM}'\r\n    | extend resourceId = tostring(properties.resourceDetails.Id)\r\n    | project displayName, resourceId, status, severity",
+        "size": 3,
+        "title": "Unhealthy Resources",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "displayName",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "70ch"
+              }
+            },
+            {
+              "columnMatch": "status",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "severity",
+              "formatter": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "displayName",
+              "label": "Recommendation Name"
+            },
+            {
+              "columnId": "resourceId",
+              "label": "Affected Resource"
+            },
+            {
+              "columnId": "status",
+              "label": "Status"
+            },
+            {
+              "columnId": "severity",
+              "label": "Severity"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "apimSelected",
+          "comparison": "isNotEqualTo",
+          "value": "false"
+        },
+        {
+          "parameterName": "tab",
+          "comparison": "isEqualTo",
+          "value": "recommendations"
+        }
+      ],
+      "customWidth": "100",
+      "name": "Affected APIs"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources \r\n| union extensibilityresources \r\n| where type in (\"microsoft.security/apicollections/apiendpoints\", \"microsoft.apisecurity/apicollections/apicollectiondetails\") \r\n| extend  DisplayName = properties.DisplayName, CollectionName = properties.CollectionName, CollectionId = properties.CasApiCollectionId, Endpoint=properties.EndPoint, IsEndpointActive=properties.IsEndpointActive, IsEndpointAuthorized=properties.IsEndpointAuthorized, PII=properties.PII, HttpMethod=properties.HttpMethod, DiscoveryDate=properties.DiscoveryDate, TriggerDate=properties.TriggerDate, NumberOfExternalApiEndpoints=properties.NumberOfExternalEndpoints\r\n| where properties.PII != \"{}\" and properties.PII != \"\"\r\n| where IsEndpointExternal = true\r\n| where IsEndpointAuthorized != \"\"\r\n| summarize count() by tostring(IsEndpointAuthorized)",
+        "size": 3,
+        "title": "Authorization Status on External Endpoints with Sensitive Data",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "false",
+              "label": "Unauthorized Endpoints",
+              "color": "redBright"
+            },
+            {
+              "seriesName": "true",
+              "label": "Authorized Endpoints",
+              "color": "blue"
+            },
+            {
+              "seriesName": "",
+              "label": "Unknown",
+              "color": "green"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "50",
+      "name": "Authorization Status on External Endpoints with Sensitive Data"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources \r\n| union extensibilityresources \r\n| where type in (\"microsoft.security/apicollections/apiendpoints\", \"microsoft.apisecurity/apicollections/apicollectiondetails\") \r\n| extend  DisplayName = properties.DisplayName, CollectionName = properties.CollectionName, CollectionId = properties.CasApiCollectionId, Endpoint=properties.EndPoint, IsEndpointActive=properties.IsEndpointActive, IsEndpointAuthorized=properties.IsEndpointAuthorized, PII=properties.PII, HttpMethod=properties.HttpMethod, DiscoveryDate=properties.DiscoveryDate, TriggerDate=properties.TriggerDate, IsEndpointExternal = properties.IsExternal\r\n| where IsEndpointActive == \"true\"\r\n| where IsEndpointAuthorized != \"\"\r\n| where IsEndpointExternal == \"true\"\r\n| summarize count() by tostring(IsEndpointAuthorized)",
+        "size": 3,
+        "title": "Authorization Status on Active and External Endpoints",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "false",
+              "label": "Unauthorized",
+              "color": "redBright"
+            },
+            {
+              "seriesName": "true",
+              "label": "Authorized",
+              "color": "blue"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "50",
+      "name": "Authorization Status on Active and External Endpoints"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources \r\n| union extensibilityresources \r\n| where type in (\"microsoft.security/apicollections/apiendpoints\", \"microsoft.apisecurity/apicollections/apicollectiondetails\") \r\n| where properties.PII != \"{}\" and properties.PII != \"\"\r\n| extend  Operation = properties.DisplayName, Collection = properties.CollectionName, CollectionId = properties.CasApiCollectionId, Endpoint=properties.EndPoint, Active=properties.IsEndpointActive, Authorized=properties.IsEndpointAuthorized,NumberOfExternalApiEndpoints=properties.NumberOfExternalEndpoints, PII=properties.PII, HttpMethod=properties.HttpMethod, DiscoveryDate=properties.DiscoveryDate, TriggerDate=properties.TriggerDate, External = properties.IsExternal\r\n| where Authorized == \"false\"\r\n| where External = true\r\n| project Collection, Operation, id, Active, Authorized, External, Endpoint",
+        "size": 3,
+        "title": "List of Unauthorized External Endpoints with Sensitive Data",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Collection",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Operation",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Active",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Authorized",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "External",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Endpoint",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "CollectionName",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "DisplayName",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "IsEndpointActive",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "IsEndpointAuthorized",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "IsEndpointExternal",
+              "formatter": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "50",
+      "name": "List of Unauthorized External Endpoints with Sensitive Data"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources \r\n| union extensibilityresources \r\n| where type in (\"microsoft.security/apicollections/apiendpoints\", \"microsoft.apisecurity/apicollections/apicollectiondetails\") \r\n| extend  Operation = properties.DisplayName, Collection = properties.CollectionName, CollectionId = properties.CasApiCollectionId, Endpoint=properties.EndPoint, Active=properties.IsEndpointActive, Authorized=properties.IsEndpointAuthorized, PII=properties.PII, HttpMethod=properties.HttpMethod, DiscoveryDate=properties.DiscoveryDate, TriggerDate=properties.TriggerDate, External = properties.IsExternal\r\n| where Authorized == \"false\"\r\n| where Active == \"true\"\r\n| where External == \"true\"\r\n| project Collection, Operation, id, HttpMethod, External, Active, Authorized, Endpoint\r\n",
+        "size": 3,
+        "title": "List of Active and Unauthorized External Endpoints",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Collection",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Operation",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Endpoint",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "HttpMethod",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "External",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Active",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Authorized",
+              "formatter": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            }
+          ]
+        },
+        "sortBy": []
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "50",
+      "name": "List of Active and Unauthorized External Endpoints"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources \r\n| union extensibilityresources \r\n| where type in (\"microsoft.security/apicollections/apiendpoints\", \"microsoft.apisecurity/apicollections/apicollectiondetails\") \r\n| where properties.PII != \"{}\" and properties.PII != \"\"\r\n| extend  DisplayName = properties.DisplayName, CollectionName = properties.CollectionName, CollectionId = properties.CasApiCollectionId, Endpoint=properties.EndPoint, IsEndpointActive=properties.IsEndpointActive, IsEndpointAuthorized=properties.IsEndpointAuthorized, PII=properties.PII, HttpMethod=properties.HttpMethod, DiscoveryDate=properties.DiscoveryDate, TriggerDate=properties.TriggerDate \r\n| where IsEndpointAuthorized == \"false\"\r\n| extend PII = parse_json(PII)\r\n| mv-expand PII\r\n| extend SensitiveData = tostring(PII)\r\n| extend SensitiveData = replace('{', '', SensitiveData)\r\n| extend SensitiveData = replace('}', '', SensitiveData)\r\n| extend SensitiveData = replace('\"', '', SensitiveData)\r\n| extend SensitiveData = replace(':85', '', SensitiveData)\r\n| extend SensitiveData = replace(':98', '', SensitiveData)\r\n| summarize count() by SensitiveData",
+        "size": 0,
+        "title": "Count of Discovered Classifications",
+        "noDataMessage": "No sensitive data classifications discovered.",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "barchart"
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "100",
+      "name": "Count of Discovered Classifications"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources \r\n| union extensibilityresources \r\n| where type in (\"microsoft.security/apicollections/apiendpoints\", \"microsoft.apisecurity/apicollections/apicollectiondetails\") \r\n| where properties.PII != \"{}\" and properties.PII != \"\"\r\n| extend  Operation = properties.DisplayName, Collection = properties.CollectionName, CollectionId = properties.CasApiCollectionId, Endpoint=properties.EndPoint, Active=properties.IsEndpointActive, Authorized=properties.IsEndpointAuthorized, External = properties.IsExternal, PII=properties.PII, HttpMethod=properties.HttpMethod, DiscoveryDate=properties.DiscoveryDate, TriggerDate=properties.TriggerDate\r\n| extend PII = parse_json(PII)\r\n| mv-expand PII\r\n| extend SensitiveData = tostring(PII)\r\n| extend SensitiveData = replace('{', '', SensitiveData)\r\n| extend SensitiveData = replace('}', '', SensitiveData)\r\n| extend SensitiveData = replace('\"', '', SensitiveData)\r\n| extend SensitiveData = replace(':85', '', SensitiveData)\r\n| extend SensitiveData = replace(':98', '', SensitiveData)\r\n| project Collection, Operation, SensitiveData, HttpMethod, External, Active, Authorized, DiscoveryDate, TriggerDate, Endpoint",
+        "size": 3,
+        "title": "APIs Containing Sensitive Data Types",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "$gen_group",
+              "formatter": 0,
+              "tooltipFormat": {
+                "tooltip": "API Collection"
+              }
+            },
+            {
+              "columnMatch": "Group",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Collection",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Operation",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "SensitiveData",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "HttpMethod",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "External",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Active",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Authorized",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "DiscoveryDate",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "TriggerDate",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "Endpoint",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "$gen_group",
+              "formatter": 0,
+              "tooltipFormat": {
+                "tooltip": "API Collection"
+              }
+            }
+          ],
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "Collection"
+            ],
+            "expandTopLevel": true
+          }
+        },
+        "sortBy": []
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "recommendations"
+      },
+      "customWidth": "100",
+      "name": "APIs Containing Sensitive Data Types"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| where Status == \"Active\"\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = properties.TimeGeneratedUtc\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where Severity in~ ({severity})\r\n| summarize count() by tostring(AlertDisplayName)\r\n| top 5 by count_",
+        "size": 3,
+        "title": "Top 5 Alert Types",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "piechart",
+        "gridSettings": {
+          "labelSettings": [
+            {
+              "columnId": "AlertDisplayName",
+              "label": "Alert Name"
+            },
+            {
+              "columnId": "count_",
+              "label": "Alert Count"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "alerts"
+      },
+      "customWidth": "66",
+      "name": "Top 5 Alert Types"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| where Status == \"Active\"\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = properties.TimeGeneratedUtc\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where Severity in~ ({severity})\r\n| summarize count() by Resource \r\n| sort by count_ desc\r\n| top 10 by count_",
+        "size": 3,
+        "title": "Affected Resources",
+        "exportedParameters": [
+          {
+            "fieldName": "Resource",
+            "parameterName": "selectedAlert",
+            "parameterType": 1
+          },
+          {
+            "fieldName": "alertSelected",
+            "parameterName": "alertSelected",
+            "parameterType": 1,
+            "defaultValue": "false"
+          }
+        ],
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Resource",
+              "formatter": 0,
+              "tooltipFormat": {
+                "tooltip": "Select a resource to view alerts."
+              }
+            },
+            {
+              "columnMatch": "count_",
+              "formatter": 0,
+              "tooltipFormat": {
+                "tooltip": "Select a resource to view alerts."
+              }
+            }
+          ],
+          "sortBy": [
+            {
+              "itemKey": "$gen_link_Resource_0",
+              "sortOrder": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Resource",
+              "label": "Resource"
+            },
+            {
+              "columnId": "count_",
+              "label": "Alert Count"
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "$gen_link_Resource_0",
+            "sortOrder": 1
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "alerts"
+      },
+      "customWidth": "34",
+      "name": "Resources with Alerts"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| where Status == \"Active\"\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = properties.TimeGeneratedUtc\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where Severity in~ ({severity})\r\n| where Resource == '{selectedAlert}'\r\n| project\r\n    Resource,\r\n    AlertDisplayName,\r\n    tostring(Severity),\r\n    AlertTime,\r\n    Status,\r\n    Tactics,\r\n    AlertLink = AlertUri\r\n",
+        "size": 3,
+        "title": "Active Alerts on Selected Resource",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "AlertDisplayName",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Severity",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "AlertTime",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Tactics",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "AlertLink",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "Url"
+              }
+            }
+          ],
+          "sortBy": [
+            {
+              "itemKey": "AlertTime",
+              "sortOrder": 1
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "AlertDisplayName",
+              "label": "Alert Name"
+            },
+            {
+              "columnId": "AlertTime",
+              "label": "Time"
+            },
+            {
+              "columnId": "AlertLink",
+              "label": "Link"
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "AlertTime",
+            "sortOrder": 1
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tab",
+          "comparison": "isEqualTo",
+          "value": "alerts"
+        },
+        {
+          "parameterName": "alertSelected",
+          "comparison": "isNotEqualTo",
+          "value": "false"
+        }
+      ],
+      "customWidth": "100",
+      "name": "Alerts"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details[\"IsIncident\"]\r\n| extend AlertDisplayName = Details[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details[\"SystemAlertId\"]\r\n| extend Severity = Details[\"Severity\"]\r\n| extend AlertUri = Details[\"AlertUri\"]\r\n| extend Status = Details[\"Status\"]\r\n| extend Tactics = Details[\"Intent\"]\r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| extend ResourceIdentifiers = Details[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers)[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = todatetime(properties.TimeGeneratedUtc)\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where Severity in~ ({severity})\r\n| extend AlertTime = format_datetime(todatetime(properties.TimeGeneratedUtc), 'MM-dd-yyyy')\r\n| summarize count() by AlertTime\r\n",
+        "size": 3,
+        "title": "Alerts by Day",
+        "exportedParameters": [
+          {
+            "fieldName": "AlertTime",
+            "parameterName": "Time",
+            "parameterType": 1
+          },
+          {
+            "fieldName": "timeSelected",
+            "parameterName": "timeSelected",
+            "parameterType": 1,
+            "defaultValue": "false"
+          }
+        ],
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "AlertTime",
+            "formatter": 6,
+            "dateFormat": {
+              "showUtcTime": true,
+              "formatName": "shortDatePattern"
+            },
+            "tooltipFormat": {
+              "tooltip": "Select a date to view alerts."
+            }
+          },
+          "leftContent": {
+            "columnMatch": "count_",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          },
+          "showBorder": false,
+          "sortCriteriaField": "AlertTime",
+          "sortOrderField": 1
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "AlertTime",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "count_",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        },
+        "chartSettings": {
+          "xAxis": "AlertTime",
+          "showLegend": true,
+          "xSettings": {
+            "numberFormatSettings": {
+              "unit": 27,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        },
+        "mapSettings": {
+          "locInfo": "LatLong",
+          "sizeSettings": "count_",
+          "sizeAggregation": "Sum",
+          "legendMetric": "count_",
+          "legendAggregation": "Sum",
+          "itemColorSettings": {
+            "type": "heatmap",
+            "colorAggregation": "Sum",
+            "nodeColorField": "count_",
+            "heatmapPalette": "greenRed"
+          }
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "alerts"
+      },
+      "name": "Alerts by Day"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = format_datetime(todatetime(properties.TimeGeneratedUtc), 'MM-dd-yyyy')\r\n| where tostring(AlertTime) == '{Time}'\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where Severity in~ ({severity})\r\n| project\r\n    Resource,\r\n    AlertDisplayName,\r\n    tostring(Severity),\r\n    Status,\r\n    Tactics,\r\n    AlertLink = AlertUri",
+        "size": 3,
+        "title": "Alerts on Selected Day",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "AlertDisplayName",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Severity",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Tactics",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "AlertLink",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "Url"
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "AlertDisplayName",
+              "label": "Alert Name"
+            },
+            {
+              "columnId": "AlertLink",
+              "label": "Link"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tab",
+          "comparison": "isEqualTo",
+          "value": "alerts"
+        },
+        {
+          "parameterName": "timeSelected",
+          "comparison": "isNotEqualTo",
+          "value": "false"
+        }
+      ],
+      "name": "Alerts on Selected Day"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\r\n| where type =~ \"microsoft.security/locations/alerts\"\r\n| extend isAzure = tostring(properties.ResourceIdentifiers) matches regex '\"Type\"\\\\s*:\\\\s*\"AzureResource\"'\r\n| extend Details = parse_json(properties)\r\n| extend IsIncident = Details.[\"IsIncident\"]\r\n| extend AlertDisplayName = Details.[\"AlertDisplayName\"]\r\n| extend SystemAlertId = Details.[\"SystemAlertId\"]\r\n| extend Severity = Details.[\"Severity\"]\r\n| extend AlertUri = Details.[\"AlertUri\"]\r\n| extend Status = Details.[\"Status\"]\r\n| where Status == \"Active\"\r\n| extend Tactics = Details.[\"Intent\"]\r\n| parse AlertUri with * '/subscriptionId/'  SubscriptionId  '/' *\r\n| parse AlertUri with * '/resourceGroup/'  ResourceGroup  '/' *\r\n| parse AlertUri with * '/location/'  Location  \r\n| extend affectedResourceId = extract('\"AzureResourceId\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.ResourceIdentifiers))\r\n| extend hostName = iff(isAzure, \"\", extract('\"HostName\"\\\\s*:\\\\s*\"([^\"]*)\"', 1, tostring(properties.Entities)))\r\n| extend splitAffectedResourceId = split(affectedResourceId, \"/\")\r\n| extend resourceNameIndex = iff(array_length(splitAffectedResourceId) > 1, array_length(splitAffectedResourceId) - 1, 0)\r\n| extend affectedResourceName = iff(isAzure, splitAffectedResourceId[resourceNameIndex], iff(isempty(hostName), \"Non-Azure\", hostName))\r\n| project-away resourceNameIndex, splitAffectedResourceId, hostName\r\n| extend ResourceIdentifiers = Details.[\"ResourceIdentifiers\"]\r\n| mv-expand ResourceIdentifiers\r\n| extend ResourceId = parse_json(ResourceIdentifiers).[\"AzureResourceId\"]\r\n| extend Resource = tolower(tostring(ResourceId))\r\n| extend AlertTime = properties.TimeGeneratedUtc\r\n| where Resource has \"microsoft.APISecurity\" or Resource has \"microsoft.apimanagement\"\r\n| where Severity in~ ({severity})\r\n| summarize count() by tostring(location)\r\n",
+        "size": 3,
+        "title": "Map of Affected Resources by Location",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscription}"
+        ],
+        "visualization": "map",
+        "mapSettings": {
+          "locInfo": "AzureLoc",
+          "locInfoColumn": "location",
+          "sizeSettings": "count_",
+          "sizeAggregation": "Sum",
+          "labelSettings": "location",
+          "legendMetric": "count_",
+          "legendAggregation": "Sum",
+          "itemColorSettings": {
+            "nodeColorField": "count_",
+            "colorAggregation": "Sum",
+            "type": "heatmap",
+            "heatmapPalette": "greenRed"
+          }
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "alerts"
+      },
+      "name": "Map of Affected Resources by Location"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
