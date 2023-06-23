@@ -132,9 +132,7 @@ export const Summarizers: BestPracticeSummarizer[] =
     { 
         id: "VIS003", //honeycombs
         valuePaths: ["$.content.graphSettings.type"],
-        testPaths: [
-            "$..items[?(@.type == 3 && @.content.visualization == \"graph\")]", 
-            "$..items[?(@.type == 10 && @.content.visualization == \"graph\")]"], // query or metrics using graph
+        testPaths: ["$..items[?(@.content.chartType == -3 || @.content.visualization == \"graph\")]"], // metrics using graph
         name: "Count of graph types used", 
         valueMap: graphTypeNames,
     },
@@ -152,6 +150,12 @@ export const Summarizers: BestPracticeSummarizer[] =
         testPaths: ["$..items[?(@.type == 9)].content.parameters[*]"], 
         name: "Global vs standard parameters",
         valueMap: { "true": "Global", "false": "Standard", "": "Standard", undefined: "Standard" }, 
+    },
+    { 
+        id: "PARAMS003", // parameter styles
+        valuePaths: ["$.content.style"], 
+        testPaths: ["$..items[?(@.type == 9)]"], 
+        name: "Display style of parameter steps",
     },
 
 ];

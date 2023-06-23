@@ -55,8 +55,10 @@ export function testPath(path) : boolean {
 }
 
 export function forEachKey(x: any, func: (key, value) => void, sort?: (a: { [key: string]:any }, b:{ [key: string]:any }) => number ) {
+    if (!x) return;
+
     if (sort) {
-        let asArray = Object.keys(x).map(y => { return { key: y, value: x[y] }; }).sort(sort).forEach(pair => func(pair.key, pair.value));
+        Object.keys(x).map(y => { return { key: y, value: x[y] }; }).sort(sort).forEach(pair => func(pair.key, pair.value));
     } else {
         Object.keys(x).forEach( key => func(key, x[key]));
     }
