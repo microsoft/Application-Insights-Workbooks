@@ -38,7 +38,7 @@ if ($resolved -ne $true) {
 
     git checkout $hotfixBranch
 
-    git cherry-pick $commit
+    git merge $commit
 
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Oh no! The merge failed. If there were merge conflicts, resolve them and then rerun this script with parameters '-resolved $true'"
