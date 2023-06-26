@@ -15,7 +15,7 @@ if ($resolved -ne $true) {
     Write-Host "Welcome to the Hotfix creator tool!"
     
     $environment = Get-UserInput -prompt "First, tell me the environment you are trying to hotfix. Enter 'production' or 'mpac'." -validInputs '(production)|(mpac)'
-    $commit = Get-UserInput -prompt "OK, now I need the commit currently in $environment" -validInputs '(^([a-f]|[\d]){8}$)|(^([a-f]|[\d]){40})$'
+    $commit = Get-UserInput -prompt "OK, now I need the commit in master branch currently in $environment" -validInputs '(^([a-f]|[\d]){8}$)|(^([a-f]|[\d]){40})$'
 
     $cherrypicks = @()
     $null = Get-Cherrypicks | ForEach-Object { $cherrypicks.Add($_) }
@@ -28,10 +28,6 @@ if ($resolved -ne $true) {
 
     & git checkout $commit
 
-    $releaseBranch = Get-NewBranch -branch release
-
-    Write-Host "Checking out new branch $releaseBranch from commit $commit"
-    
     Write-Host "Checking out $hotfix branch"
     & git checkout $hotfix
 
@@ -41,6 +37,8 @@ if ($resolved -ne $true) {
     & git checkout -b $hotfixBranch
 
     git checkout $hotfixBranch
+
+    git cherry-pick $commit
 
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Oh no! The merge failed. If there were merge conflicts, resolve them and then rerun this script with parameters '-resolved $true'"
