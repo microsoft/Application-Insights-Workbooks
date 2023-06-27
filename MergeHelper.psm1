@@ -87,7 +87,7 @@ function Invoke-Cherrypicks {
     Write-Host "Cherry-picking commits $cherrypicks"
     $remainingCherries = $cherrypicks;
     foreach ($c in $cherrypicks) {
-        & git cherry-pick $c
+        & git cherry-pick -m 1 $c
         $remainingCherries.Remove(0)
         if ($LASTEXITCODE -ne 0) {
             $remaining = $remainingCherries -join ', '
