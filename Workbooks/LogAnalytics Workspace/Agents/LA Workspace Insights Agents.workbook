@@ -153,7 +153,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where Category == \"Azure Monitor Agent\"\r\n| distinct _ResourceId, Computer, Category, Version\r\n| count",
+              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where _ResourceId != \"\"\r\n| where Category == \"Azure Monitor Agent\"\r\n| distinct _ResourceId, ResourceType, Computer, Category\r\n| count",
               "size": 3,
               "title": "Azure Monitor Agents",
               "timeContextFromParameter": "TimeRange",
@@ -190,7 +190,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where Category == \"Direct Agent\"\r\n| distinct _ResourceId, Computer, Category, Version\r\n| count",
+              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where _ResourceId != \"\"\r\n| where Category == \"Direct Agent\"\r\n| distinct _ResourceId, Computer, Category\r\n| count",
               "size": 3,
               "title": "Direct Agents",
               "noDataMessage": "No direct agents found",
@@ -231,7 +231,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where Category == \"Gateway\"\r\n| distinct _ResourceId, Computer, Category, Version\r\n| count",
+              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where _ResourceId != \"\"\r\n| where Category == \"Gateway\"\r\n| distinct _ResourceId, Computer, Category\r\n| count",
               "size": 3,
               "title": "Gateway Agents",
               "noDataMessage": "No gateway agents found",
@@ -264,7 +264,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where Category == \"SCOM Agent\"\r\n| distinct _ResourceId, Computer, Category, Version\r\n| count",
+              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where _ResourceId != \"\"\r\n| where Category == \"SCOM Agent\"\r\n| distinct _ResourceId, Computer, Category\r\n| count",
               "size": 3,
               "title": "SCOM Agents",
               "timeContextFromParameter": "TimeRange",
@@ -296,7 +296,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where Category == \"SCOM Management Server\"\r\n| distinct _ResourceId, Computer, Category, Version\r\n| count",
+              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where _ResourceId != \"\"\r\n| where Category == \"SCOM Management Server\"\r\n| distinct _ResourceId, Computer, Category\r\n| count",
               "size": 3,
               "title": "SCOM Management servers",
               "timeContextFromParameter": "TimeRange",
@@ -328,7 +328,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| summarize TimeSinceLastHeartbeatSeconds=({TimeRange:end}-max(TimeGenerated))/1s by _ResourceId, Computer, Category, Version\r\n| extend State = iff(TimeSinceLastHeartbeatSeconds >= 3600, 'Unhealthy', 'Healthy')\r\n| summarize CalculatedCount=count() by State",
+              "query": "Heartbeat\r\n| where TimeGenerated {TimeRange:query}\r\n| where _ResourceId != \"\"\r\n| summarize LastHeartbeat=max(TimeGenerated), LastVersion=max(Version) by _ResourceId, ResourceType, Computer, AgentCategory=Category\r\n| extend ActivityState = iff(datetime_diff('minute',{TimeRange:end}, LastHeartbeat) >= 60, 'Unhealthy', 'Healthy')\r\n| summarize CalculatedCount=count() by ActivityState\r\n| sort by ActivityState asc",
               "size": 3,
               "title": "Agents State",
               "noDataMessage": "No agents found",
@@ -360,7 +360,7 @@
                   }
                 },
                 "rightContent": {
-                  "columnMatch": "State",
+                  "columnMatch": "ActivityState",
                   "formatter": 18,
                   "formatOptions": {
                     "thresholdsOptions": "icons",
@@ -380,8 +380,8 @@
                       {
                         "operator": "Default",
                         "thresholdValue": null,
-                        "representation": "success",
-                        "text": "{0}{1}"
+                        "representation": "unknown",
+                        "text": ""
                       }
                     ]
                   }
@@ -427,7 +427,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let RelevantAgents=materialize(\nHeartbeat\n| where TimeGenerated {TimeRange:query}\n| extend AgentVersion = strcat(Category,\" (\",Version,\")\")\n| summarize TimeSinceLastHeartbeatSeconds=({TimeRange:end}-max(TimeGenerated))/1s, arg_max(TimeGenerated, OSType, OSName) \n  by _ResourceId, ResourceType, Computer, AgentVersion, ComputerEnvironment, SubscriptionId, lowerRG=tolower(ResourceGroup)\n// filtering by the selected agent state, if selected\n| extend State = iff(TimeSinceLastHeartbeatSeconds >= 3600, 'Unhealthy', 'Healthy')\n| where State == '{AgentsState}' or '{AgentsState}'==\"All agents\");\nlet Trends=\nHeartbeat\n| where TimeGenerated {TimeRange:query}\n| where _ResourceId in (RelevantAgents)\n| extend AgentVersion = strcat(Category,\" (\",Version,\")\")\n| make-series HeartbeatsTrend=count() on TimeGenerated from ({TimeRange:start}) to ({TimeRange:end}) step ({TimeRange:grain}) by _ResourceId, ResourceType, Computer, AgentVersion, SubscriptionId, lowerRG=tolower(ResourceGroup), ComputerEnvironment;\nRelevantAgents\n// adding the trends\n| join kind=inner (Trends) on _ResourceId, ResourceType, Computer, AgentVersion, SubscriptionId, lowerRG, ComputerEnvironment\n// projecting fields\n| extend OS = strcat(OSType, iff(OSName==\"\", \"\", strcat(\" (\", OSName, \")\")))\n| project Resource=_ResourceId, [\"Resource type\"]=ResourceType, Computer, [\"Last heartbeat\"]=TimeSinceLastHeartbeatSeconds, Trend=HeartbeatsTrend, [\"Agent (version)\"]=AgentVersion, OS, Environment=ComputerEnvironment, [\"Subscription Id\"]=SubscriptionId, [\"Resource group\"]=lowerRG\n| sort by [\"Last heartbeat\"] desc",
+              "query": "let AgentsData = materialize(\nHeartbeat\n| where TimeGenerated {TimeRange:query}\n| where _ResourceId != \"\"\n| summarize\n    FirstHeartbeat=min(TimeGenerated),\n    LastHeartbeat=max(TimeGenerated),\n    arg_max(TimeGenerated, OSType, OSName) \n    by\n    _ResourceId, ResourceType, Computer, AgentCategory=Category, AgentVersion=Version, SubscriptionId, lowerRG=tolower(ResourceGroup), ComputerEnvironment\n| extend ActivityState = iff(datetime_diff('minute',{TimeRange:end}, LastHeartbeat) >= 60, 'Inactive', 'Active'));\nlet RelevantAgents =\nAgentsData\n| summarize AgentsActivityStates=makelist(ActivityState), \n            AgentVersions=makelist(AgentVersion),\n            ActiveAgentVersions=array_sort_asc(make_list_if(AgentVersion, ActivityState==\"Active\")),\n            LastHeartbeat=max(LastHeartbeat),\n            CurrentVersionStartTime=max(FirstHeartbeat)\n  by _ResourceId, Computer, AgentCategory \n| extend HealthState = iff(AgentsActivityStates has \"Active\", 'Healthy', 'Unhealthy')\n// filtering by the selected healthy state, if selected\n| where HealthState == '{AgentsState}' or '{AgentsState}'==\"All agents\";\nlet RelevantAgentsData = \nRelevantAgents \n| join kind=inner (AgentsData) on _ResourceId, Computer, AgentCategory;\nlet ActivityTrend =\nHeartbeat\n| where TimeGenerated {TimeRange:query}\n| where _ResourceId in (RelevantAgentsData)\n| make-series HeartbeatsTrend=count() on TimeGenerated from ({TimeRange:start}) to ({TimeRange:end}) step ({TimeRange:grain}) by _ResourceId, ResourceType, Computer, AgentCategory=Category, SubscriptionId, lowerRG=tolower(ResourceGroup), ComputerEnvironment;\nRelevantAgentsData\n| extend Details=case(\n    array_length(ActiveAgentVersions)==0, \n        strcat(\"Agent stopped, last heartbeat: \", format_datetime(LastHeartbeat, 'yyyy-MM-dd HH:mm:ss'), \" UTC\"),\n    array_length(AgentVersions)>1 and array_length(ActiveAgentVersions)==1, \n        strcat(\"Agent version upgraded at \", format_datetime(CurrentVersionStartTime,'yyyy-MM-dd HH:mm:ss'), \" UTC\"),\n    array_length(AgentVersions)>1 and array_length(ActiveAgentVersions)>1, \n        strcat(\"Multiple versions installed: \", strcat_array(AgentVersions, \", \")),\n    \"\")\n| summarize SubscriptionId=any(SubscriptionId), ComputerEnvironment=any(ComputerEnvironment), OSType=max(OSType), OSName=max(OSName), Details=any(Details)\n  by _ResourceId, ResourceType, Computer, AgentCategory, HealthState, AgentVersion=strcat_array(ActiveAgentVersions, \", \")\n// adding the activity trends\n| join kind=inner (ActivityTrend) on _ResourceId, ResourceType, Computer, AgentCategory, SubscriptionId, ComputerEnvironment\n// projecting fields\n| project Resource=_ResourceId, [\"Resource type\"]=ResourceType, Computer, OS=iff(strlen(OSName)>0, strcat(OSType, \" (\", OSName, \")\"), OSType), [\"Agent category\"]=AgentCategory, [\"Agent version\"]=AgentVersion, [\"Heartbeats trend\"]=HeartbeatsTrend, [\"Agent state\"]=HealthState, Details, Subscription=SubscriptionId, [\"Resource group\"]=lowerRG, Environment=ComputerEnvironment\n| sort by Resource asc, Computer asc, [\"Agent category\"] asc, [\"Agent version\"] asc\n\n",
               "size": 0,
               "showAnalytics": true,
               "timeContextFromParameter": "TimeRange",
@@ -458,6 +458,13 @@
                     "formatter": 0,
                     "formatOptions": {
                       "customColumnWidthSetting": "18%"
+                    }
+                  },
+                  {
+                    "columnMatch": "Heartbeats trend",
+                    "formatter": 10,
+                    "formatOptions": {
+                      "palette": "green"
                     }
                   },
                   {
@@ -493,13 +500,6 @@
                         "useGrouping": false,
                         "maximumFractionDigits": 0
                       }
-                    }
-                  },
-                  {
-                    "columnMatch": "Trend",
-                    "formatter": 10,
-                    "formatOptions": {
-                      "palette": "green"
                     }
                   },
                   {
