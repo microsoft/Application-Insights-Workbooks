@@ -14,7 +14,7 @@ $currentBranch = & git rev-parse --abbrev-ref HEAD
 if ($resolved -ne $true) {
     Write-Host "Welcome to the Hotfix creator tool!"
     
-    $environment = Get-UserInput -prompt "First, tell me the environment you are trying to hotfix. Enter 'production' or 'mpac'." -validInputs '(production)|(mpac)'
+    $environment = Get-UserInput -prompt "First, tell me the environment you are trying to hotfix. Enter 'ppe' 'production' or 'mpac'." -validInputs '(ppe)|(production)|(mpac)'
     $commit = Get-UserInput -prompt "OK, now I need the commit in master branch currently in $environment" -validInputs '(^([a-f]|[\d]){8}$)|(^([a-f]|[\d]){40})$'
 
     $cherrypicks = @()
