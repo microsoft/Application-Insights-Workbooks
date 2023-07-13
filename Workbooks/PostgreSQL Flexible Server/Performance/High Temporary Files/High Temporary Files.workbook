@@ -1,0 +1,3341 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Optimizing Temporary File Usage\r\n\r\nThe aim of this troubleshooting guide is to pinpoint potential reasons for high temporary file usage and suggest solutions to alleviate the issue. \r\n\r\nHigh temporary file usage may arise from various factors, such as a surge in workload or high temporary file generating queries.\r\n\r\nThe following table outlines the step-by-step approach to investigate server behavior and improve temporary file usage.\r\n\r\n",
+              "style": "info"
+            },
+            "name": "high temp header"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "\r\n\r\nStep | Observations\r\n--- | ---\r\n**Select Parameters** | Step 0: Select time interval of interest.\r\n**Understand Storage usage** | Step 1: Analyze server storage used using the `Storage Utilization` tab. Any sudden spike in storage used in the time interval selected compared to previous time intervals may need further investigation.\r\n**Understand Temporary File Generation** | Step 2: Analyze the number of temporary files and temporary bytes generated in the time interval selected using the `Temporary File Generated` tab. \r\n**Understand the workload** | Step 3: Analyze the  `read` and `write` workloads during the time interval using the `Workload Details` tab.\r\n**Top Queries By Temporary Files** | step 4: Identify and analyze high temporary file generation queries using `Top Queries By Temporary Files` tab."
+            },
+            "name": "high temp usage workbook"
+          }
+        ]
+      },
+      "name": "group - 45"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Start by setting the following parameters:"
+      },
+      "name": "high memory parameter set all"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "9ebd8e9a-5e9c-496a-bdb1-e41b9faaf9ad",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "isGlobal": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2419200000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "label": "TimeRange (Local Time)"
+          },
+          {
+            "id": "6573f642-b4c6-4a56-8bdd-8ef451b7bdf5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "type": 5,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false,
+              "componentIdOnly": true
+            }
+          },
+          {
+            "id": "09ae6e10-24ff-4eb0-964c-78c3bebf6b0b",
+            "version": "KqlParameterItem/1.0",
+            "name": "MIN_TIME_WINDOW_SEC",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "3600"
+                }
+              }
+            ]
+          },
+          {
+            "id": "655143e7-f5f6-4d8a-81f9-9aa8c49e2520",
+            "version": "KqlParameterItem/1.0",
+            "name": "READ_WORKLOAD_SPIKE_TUP_RETURNED_PCT",
+            "type": 1,
+            "description": "Defines the minimum % difference in tuples returned between intervals to classify a read workload spike. ",
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "50"
+                }
+              }
+            ]
+          },
+          {
+            "id": "e43a4f05-b912-4815-870d-e22141b050fc",
+            "version": "KqlParameterItem/1.0",
+            "name": "WINDOW_SIZE_FOR_QUERY_TIME_CAPTURE",
+            "type": 1,
+            "description": "Specifies aggregation window to capture max query time for high time consuming queries ",
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "30m"
+                }
+              }
+            ]
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "MIN_TIME_WINDOW_SEC",
+            "type": 1,
+            "description": "Defines the minimum time a connection may exist before it is classified as long lived",
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "3600"
+                }
+              }
+            ],
+            "id": "f8678c39-7dad-4aef-aae1-d67793e82c01"
+          },
+          {
+            "id": "089a8ccf-b6cb-4f68-adff-2bef115928ae",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryStoreTable",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureDiagnostics | where Category =='PostgreSQLFlexQueryStoreRuntime' | project TimeGenerated, Resource, RuntimeStatsEntryId = tolong(     iff(isnotempty(AdditionalFields.Runtime_stats_entry_id), AdditionalFields.Runtime_stats_entry_id,         column_ifexists('Runtime_stats_entry_id_d',             column_ifexists('Runtime_stats_entry_id',                 column_ifexists('Runtime_stats_entry_id_s', \"\")             )         )     ) ), UserId = toint(     iff(isnotempty(AdditionalFields.Userid), AdditionalFields.Userid,         column_ifexists('Userid_d',             column_ifexists('Userid',                 column_ifexists('Userid_s', \"\")             )         )     ) ), DatabaseId = toint(     iff(isnotempty(AdditionalFields.Dbid), AdditionalFields.Dbid,         column_ifexists('Dbid_d',             column_ifexists('Dbid',                 column_ifexists('Dbid_s', \"\")             )         )     ) ), QueryId = tolong(     iff(isnotempty(AdditionalFields.Queryid), AdditionalFields.Queryid,         column_ifexists('Queryid_d',             column_ifexists('Queryid',                 column_ifexists('Queryid_s', \"\")             )         )     ) ), PlanId = tolong(     iff(isnotempty(AdditionalFields.Plan_id), AdditionalFields.Plan_id,         column_ifexists('Plan_id_d',             column_ifexists('Plan_id_s',                 column_ifexists('Plan_id', \"\")             )         )     ) ), StartTime = todatetime(     iff(isnotempty(AdditionalFields.Start_time), AdditionalFields.Start_time,         column_ifexists('Start_time_t',             column_ifexists('Start_time',                 column_ifexists('Start_time_s', \"\")             )         )     ) ), EndTime = todatetime(     iff(isnotempty(AdditionalFields.End_time), AdditionalFields.End_time,         column_ifexists('End_time_t',             column_ifexists('End_time',                 column_ifexists('End_time_s', \"\")             )         )     ) ), Calls = tolong(     iff(isnotempty(AdditionalFields.Calls), AdditionalFields.Calls,         column_ifexists('Calls_d',             column_ifexists('Calls',                 column_ifexists('Calls_s', \"\")             )         )     ) ), TotalExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Total_time), AdditionalFields.Total_time,         column_ifexists('Total_time_d',             column_ifexists('Total_time',                 column_ifexists('Total_time_s', \"\")             )         )     ) ), MinExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Min_time), AdditionalFields.Min_time,         column_ifexists('Min_time_d',             column_ifexists('Min_time',                 column_ifexists('Min_time_s', \"\")             )         )     ) ), MaxExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Max_time), AdditionalFields.Max_time,         column_ifexists('Max_time_d',             column_ifexists('Max_time',                 column_ifexists('Max_time_s', \"\")             )         )     ) ), MeanExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Mean_time), AdditionalFields.Mean_time,         column_ifexists('Mean_time_d',             column_ifexists('Mean_time',                 column_ifexists('Mean_time_s', \"\")             )         )     ) ), StdDevExecDurationMs = todouble(     iff(isnotempty(AdditionalFields.Stddev_time), AdditionalFields.Stddev_time,         column_ifexists('Stddev_time_d',             column_ifexists('Stddev_time',                 column_ifexists('Stddev_time_s', \"\")             )         )     ) ), Rows = tolong(     iff(isnotempty(AdditionalFields.Rows), AdditionalFields.Rows,         column_ifexists('Rows_d',             column_ifexists('Rows',                 column_ifexists('Rows_s', \"\")             )         )     ) ), SharedBlksHit = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_hit), AdditionalFields.Shared_blks_hit,         column_ifexists('Shared_blks_hit_d',             column_ifexists('Shared_blks_hit',                 column_ifexists('Shared_blks_hit_s', \"\")             )         )     ) ), SharedBlksRead = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_read), AdditionalFields.Shared_blks_read,         column_ifexists('Shared_blks_read_d',             column_ifexists('Shared_blks_read',                 column_ifexists('Shared_blks_read_s', \"\")             )         )     ) ), SharedBlksDirtied = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_dirtied), AdditionalFields.Shared_blks_dirtied,         column_ifexists('Shared_blks_dirtied_d',             column_ifexists('Shared_blks_dirtied',                 column_ifexists('Shared_blks_dirtied_s', \"\")             )         )     ) ), SharedBlksWritten = tolong(     iff(isnotempty(AdditionalFields.Shared_blks_written), AdditionalFields.Shared_blks_written,         column_ifexists('Shared_blks_written_d',             column_ifexists('Shared_blks_written',                 column_ifexists('Shared_blks_written_s', \"\")             )         )     ) ), LocalBlksHit = tolong(     iff(isnotempty(AdditionalFields.Local_blks_hit), AdditionalFields.Local_blks_hit,         column_ifexists('Local_blks_hit_d',             column_ifexists('Local_blks_hit',                 column_ifexists('Local_blks_hit_s', \"\")             )         )     ) ), LocalBlksRead = tolong(     iff(isnotempty(AdditionalFields.Local_blks_read), AdditionalFields.Local_blks_read,         column_ifexists('Local_blks_read_d',             column_ifexists('Local_blks_read',                 column_ifexists('Local_blks_read_s', \"\")             )         )     ) ), LocalBlksDirtied = tolong(     iff(isnotempty(AdditionalFields.Local_blks_dirtied), AdditionalFields.Local_blks_dirtied,         column_ifexists('Local_blks_dirtied_d',             column_ifexists('Local_blks_dirtied',                 column_ifexists('Local_blks_dirtied_s', \"\")             )         )     ) ), LocalBlksWritten = tolong(     iff(isnotempty(AdditionalFields.Local_blks_written), AdditionalFields.Local_blks_written,         column_ifexists('Local_blks_written_d',             column_ifexists('Local_blks_written',                 column_ifexists('Local_blks_written_s', \"\")             )         )     ) ), TempBlksRead = tolong(     iff(isnotempty(AdditionalFields.Temp_blks_read), AdditionalFields.Temp_blks_read,         column_ifexists('Temp_blks_read_d',             column_ifexists('Temp_blks_read',                 column_ifexists('Temp_blks_read_s', \"\")             )         )     ) ), TempBlksWritten = tolong(     iff(isnotempty(AdditionalFields.Temp_blks_written), AdditionalFields.Temp_blks_written,         column_ifexists('Temp_blks_written_d',             column_ifexists('Temp_blks_written',                 column_ifexists('Temp_blks_written_s', \"\")             )         )     ) ), BlkReadTime = todouble(     iff(isnotempty(AdditionalFields.Blk_read_time), AdditionalFields.Blk_read_time,         column_ifexists('Blk_read_time_d',             column_ifexists('Blk_read_time',                 column_ifexists('Blk_read_time_s', \"\")             )         )     ) ), BlkWriteTime = todouble(     iff(isnotempty(AdditionalFields.Blk_write_time), AdditionalFields.Blk_write_time,         column_ifexists('Blk_write_time_d',             column_ifexists('Blk_write_time',                 column_ifexists('Blk_write_time_s', \"\")             )         )     ) ), IsSystemQuery = tobool(     iff(isnotempty(AdditionalFields.Is_system_query), AdditionalFields.Is_system_query,         column_ifexists('Is_system_query_b',             column_ifexists('Is_system_query',                 column_ifexists('Is_system_query_s', \"\")             )         )     ) ), QueryType = tostring(     iff(isnotempty(AdditionalFields.Query_type), AdditionalFields.Query_type,         column_ifexists('Query_type_s',             column_ifexists('Query_type', \"\")         )     ) )"
+                }
+              }
+            ]
+          },
+          {
+            "id": "e5f4fc66-344a-4a21-b495-f5cc20c3ec1a",
+            "version": "KqlParameterItem/1.0",
+            "name": "SessionsTable",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureDiagnostics | where Category =='PostgreSQLFlexSessions' | project TimeGenerated, Resource, DatabaseId = toint(     iff(isnotempty(AdditionalFields.Datid), AdditionalFields.Datid,         column_ifexists('Datid_d',             column_ifexists('Datid_s',                 column_ifexists('Datid', \"\")             )         )     )     ), DatabaseName = tostring(     iff(isnotempty(AdditionalFields.Database_name), AdditionalFields.Database_name,         column_ifexists('Database_name_s',            column_ifexists('Database_name', \"\")         )     ) ), ProcessId = toint(     iff(isnotempty(AdditionalFields.Pid), AdditionalFields.Pid,         column_ifexists('Pid_d',            column_ifexists('Pid', \"\")         )     ) ), UserId = toint(     iff(isnotempty(AdditionalFields.Usesysid), AdditionalFields.Usesysid,         column_ifexists('Usesysid_d',             column_ifexists('Usesysid_s',                 column_ifexists('Usesysid', \"\")             )         )     )     ), ApplicationName = tostring(     iff(isnotempty(AdditionalFields.Application_name), AdditionalFields.Application_name,         column_ifexists('Application_name_s',            column_ifexists('Application_name', \"\")         )     ) ), ClientIpAddress = tostring(     iff(isnotempty(AdditionalFields.Client_addr), AdditionalFields.Client_addr,         column_ifexists('Client_addr_s',            column_ifexists('Client_addr', \"\")         )     ) ), State = tostring(     iff(isnotempty(AdditionalFields.State), AdditionalFields.State,         column_ifexists('State_s',            column_ifexists('State', \"\")         )     ) ), WaitEventType = tostring(     iff(isnotempty(AdditionalFields.Wait_event_type), AdditionalFields.Wait_event_type,         column_ifexists('Wait_event_type_s',            column_ifexists('Wait_event_type', \"\")         )     ) ), WaitEvent = tostring(     iff(isnotempty(AdditionalFields.Wait_event), AdditionalFields.Wait_event,         column_ifexists('Wait_event_s',            column_ifexists('Wait_event', \"\")         )     ) ), BackendStartTime = todatetime(     iff(isnotempty(AdditionalFields.Backend_start), AdditionalFields.Backend_start,         column_ifexists('Backend_start_t',             column_ifexists('Backend_start',                 column_ifexists('Backend_start_s', \"\")             )         )     ) ), TransactionStartTime = todatetime(     iff(isnotempty(AdditionalFields.Xact_start), AdditionalFields.Xact_start,         column_ifexists('Xact_start_t',             column_ifexists('Xact_start_s',                 column_ifexists('Xact_start', \"\")             )         )     ) ), QueryStartTime = todatetime(     iff(isnotempty(AdditionalFields.Query_start), AdditionalFields.Query_start,         column_ifexists('Query_start_t',             column_ifexists('Query_start_s',                 column_ifexists('Query_start', \"\")             )         )     ) ), StateChangeTime = todatetime(     iff(isnotempty(AdditionalFields.State_change), AdditionalFields.State_change,         column_ifexists('State_change_t',             column_ifexists('State_change_s',                 column_ifexists('State_change', \"\")             )         )     ) ), CollectionTime = todatetime(     iff(isnotempty(AdditionalFields.Collection_time), AdditionalFields.Collection_time,         column_ifexists('Collection_time_t',             column_ifexists('Collection_time_s',                 column_ifexists('Collection_time', \"\")             )         )     ) ), TransactionId = tolong(     iff(isnotempty(AdditionalFields.Backend_xid), AdditionalFields.Backend_xid,         column_ifexists('Backend_xid_d',             column_ifexists('Backend_xid_s',                 column_ifexists('Backend_xid', \"\")             )         )     ) ), OldestTransactionId = tolong(     iff(isnotempty(AdditionalFields.Backend_xmin), AdditionalFields.Backend_xmin,         column_ifexists('Backend_xmin_d',             column_ifexists('Backend_xmin_s',                 column_ifexists('Backend_xmin', \"\")             )         )     ) ), BackendType = tostring(     iff(isnotempty(AdditionalFields.Backend_type), AdditionalFields.Backend_type,         column_ifexists('Backend_type_s',            column_ifexists('Backend_type', \"\")         )     ) )"
+                }
+              }
+            ]
+          },
+          {
+            "id": "50d73c33-57bd-4010-b262-b1b32cf9be16",
+            "version": "KqlParameterItem/1.0",
+            "name": "MetricsTable",
+            "type": 1,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "AzureMetrics"
+                }
+              }
+            ]
+          }
+        ],
+        "style": "above",
+        "queryType": 1,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "high temp parameters all"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "62507ec3-c7bd-4ef2-b0c5-69eddf960a36",
+            "version": "KqlParameterItem/1.0",
+            "name": "GlobalEndTime",
+            "type": 1,
+            "query": "// GlobalEndTime will always equal TimeRange:end\r\n// In the case which selected interval is less than an hour, \r\n// we set GlobalStartTime to be an hour before GlobalEndTime\r\n// in order to avoid showing data \"in the future\".\r\n//print iff(true, totimespan({TimeRange:end}), totimespan({TimeRange:end}))\r\n\r\nlet dt = {TimeRange:end};\r\nprint iff(dt<now(), dt, now())",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "25ec8def-09e9-4f9a-9b24-ac5fbe85ebf2",
+            "version": "KqlParameterItem/1.0",
+            "name": "GlobalStartTime",
+            "type": 1,
+            "query": "// GlobalEndTime will always equal TimeRange:end\r\n// In the case which selected interval is less than an hour, \r\n// we set GlobalStartTime to be an hour before GlobalEndTime\r\n// in order to avoid showing data \"in the future\".\r\n//print iff(true, totimespan({TimeRange:end}), totimespan({TimeRange:end}))\r\nprint iff (datetime_diff('second',{TimeRange:end},{TimeRange:start})<={MIN_TIME_WINDOW_SEC},todatetime('{GlobalEndTime}')-{MIN_TIME_WINDOW_SEC}s,{TimeRange:start})",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "477ec0d7-9343-498c-9124-6ab8e638c20c",
+            "version": "KqlParameterItem/1.0",
+            "name": "LessThanOneHourInterval",
+            "type": 1,
+            "query": "let interval = 1h;\r\nprint iff({TimeRange:end} - {TimeRange:start} < interval, \"Yes\", \"No\")",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "365629ac-caa7-4ffa-9889-7b40958a6bae",
+            "version": "KqlParameterItem/1.0",
+            "name": "ChartGrain",
+            "type": 1,
+            "query": "let trange=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nprint case(\r\n    trange<1h, strcat(format_timespan(trange,'m'),' minute(s)'),\r\n    trange>=1h and trange<1d, strcat(format_timespan(trange,'H'),' hour(s)') ,\r\n    strcat(format_timespan(trange,'dd'),' day(s)')\r\n);",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "d588d0c7-1779-4e73-9fa2-5cf8b82546aa",
+            "version": "KqlParameterItem/1.0",
+            "name": "MetricsGrain",
+            "type": 1,
+            "query": "let trange=iff({TimeRange:grain}<5m,5m, {TimeRange:grain});\r\nprint case(\r\n    trange<1h, strcat(format_timespan(trange,'m'),' minute(s)'),\r\n    trange>=1h and trange<1d, strcat(format_timespan(trange,'H'),' hour(s)') ,\r\n    strcat(format_timespan(trange,'dd'),' day(s)')\r\n);",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "3a7a3473-12de-428c-815c-251e02cdd4ab",
+            "version": "KqlParameterItem/1.0",
+            "name": "ChartGrainMin5",
+            "type": 1,
+            "query": "let trange=iff({TimeRange:grain}<5m,5m, {TimeRange:grain});\r\nprint case(\r\n    trange<1h, strcat(format_timespan(trange,'m'),' minute(s)'),\r\n    trange>=1h and trange<1d, strcat(format_timespan(trange,'H'),' hour(s)') ,\r\n    strcat(format_timespan(trange,'dd'),' day(s)')\r\n);",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          },
+          {
+            "id": "2bcdd9c1-a232-42e5-959c-a807bf44f44f",
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagnosticsGetEnabledGroups",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value[?(@.properties.workspaceId!=null )].properties.logs[?(@.categoryGroup!=null&&@.enabled==true)]\",\"columns\":[{\"path\":\"$.categoryGroup\",\"columnid\":\"CategoryGroup\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "9dac9dcc-3f9f-4f29-8ca9-b04e34fd1b00",
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureDiagnosticsGetAllEnabledCategories",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value[?(@.properties.workspaceId!=null )].properties.logs[?(@.category!=null&&@.enabled==true)]\",\"columns\":[{\"path\":\"$.category\",\"columnid\":\"Category\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "565d9a83-0cc6-4771-a3d7-2d1d09d42939",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryStoreCheck",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/pg_qs.query_capture_mode?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":true,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$..value\",\"columnid\":\"value\",\"substringRegexMatch\":\"^None|NONE|none$\",\"substringReplace\":\"none\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "d9c007b5-a303-452f-a8e1-5015cdb91dfe",
+            "version": "KqlParameterItem/1.0",
+            "name": "isQueryStoreEnabled",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "QueryStoreCheck",
+                  "operator": "!=",
+                  "rightValType": "static",
+                  "rightVal": "none",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "id": "36494c35-b8fd-4cb0-954a-93742783ce08",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsMetricsCollectorDatabaseActivityOn",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}/configurations/metrics.collector_database_activity?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":true,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$..value\",\"columnid\":\"value\",\"substringRegexMatch\":\"^ON|on|On$\",\"substringReplace\":\"ON\"}]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "e8981d8d-08e7-47b9-a792-efbb490d686e",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerPrimaryAPI",
+            "type": 1,
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{Resource}?api-version=2022-12-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$..properties..replicationRole\",\"columns\":[]}}]}",
+            "queryType": 12
+          },
+          {
+            "id": "f7f1a077-1250-431f-8122-8ee86e4b00c2",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsQueryStoreRuntimeSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "allLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "audit",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetAllEnabledCategories",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "PostgreSQLFlexQueryStoreRuntime",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "id": "c61d900d-f432-4759-b2e4-ba4903c3a6bc",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsServerPrimaryCheck",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "IsServerPrimaryAPI",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Primary",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          },
+          {
+            "id": "b7f18b83-0bf0-46c2-886e-4f5fbc674920",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+            "type": 1,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "allLogs",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetEnabledGroups",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "audit",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "AzureDiagnosticsGetAllEnabledCategories",
+                  "operator": "contains",
+                  "rightValType": "static",
+                  "rightVal": "PostgreSQLFlexSessions",
+                  "resultValType": "static",
+                  "resultVal": "Yes"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "No"
+                }
+              }
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "high temp parameters la"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Enhanced Metrics are currently disabled.\r\nThis troubleshooting guide requires the use of enhanced metrics to display the content in `workload` and `temporary files generated` tabs below. To activate these metrics, simply enable the dynamic server parameter `metrics.collector_database_activity`.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+        "comparison": "isNotEqualTo",
+        "value": "ON"
+      },
+      "name": "high temp enhanced metrics"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Query Store is currently disabled\r\nThis troubleshooting guide on Query Store data. You need to enable it by setting the dynamic server parameter `pg_qs.query_capture_mode` to either ALL or TOP. Refer to this guide for detailed instructions: https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-query-store",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp qs disabled error"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The Query Store data is not being transmitted to the log analytics workspace\r\nThe Query Store data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for Query Store category `PostgreSQL Query Store Runtime` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsQueryStoreRuntimeSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp qs not sent to la"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The PostgreSQL Sessions logs data is not being transmitted to the log analytics workspace\r\nThe PostgreSQL Sessions logs data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for category `PostgreSQL Sessions` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
+        "style": "error"
+      },
+      "conditionalVisibility": {
+        "parameterName": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
+        "comparison": "isEqualTo",
+        "value": "No"
+      },
+      "name": "high temp session logs error"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "tabStyle": "bigger",
+        "links": [
+          {
+            "id": "ee43ed49-2952-4ec1-bc72-84bbcc71591a",
+            "cellValue": "temptab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage Utilization",
+            "subTarget": "storage",
+            "preText": "Storage Utilization",
+            "style": "link"
+          },
+          {
+            "id": "9b83c708-b230-436c-bd2f-16dc00270d74",
+            "cellValue": "temptab",
+            "linkTarget": "parameter",
+            "linkLabel": "Temporary Files Generated",
+            "subTarget": "tempfiles",
+            "style": "link"
+          },
+          {
+            "id": "77c6da6f-b6a5-4014-a702-7dfd33d570f8",
+            "cellValue": "temptab",
+            "linkTarget": "parameter",
+            "linkLabel": "Workload Details",
+            "subTarget": "workload",
+            "style": "link"
+          },
+          {
+            "id": "002bb8a3-a418-42f3-a9ae-b23596d9b62f",
+            "cellValue": "temptab",
+            "linkTarget": "parameter",
+            "linkLabel": "Top Queries by Temporary Files",
+            "subTarget": "tempqueries",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "high temp tab"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "6ecc08b6-475d-4e78-b2d6-6fc300932335",
+            "cellValue": "storage-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage Used Percentage",
+            "subTarget": "storagepct",
+            "style": "link"
+          },
+          {
+            "id": "559e5a96-b09c-4c9c-9d6b-ab15ef257d28",
+            "cellValue": "storage-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage Used Size",
+            "subTarget": "storageused",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "temptab",
+        "comparison": "isEqualTo",
+        "value": "storage"
+      },
+      "name": "high temp storage tab"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbooka25b2c44-0749-4517-ba9d-63dbec8293ab",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_used",
+            "aggregation": 3,
+            "splitBy": null
+          }
+        ],
+        "title": "Maximum Storage Space Used. Data is plotted at a granularity of {MetricsGrain}",
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "storage-tab",
+          "comparison": "isEqualTo",
+          "value": "storageused"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "storage"
+        }
+      ],
+      "name": "high temp storage used metric"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook20a3930f-e48b-43a6-8739-0906f905d8cc",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent",
+            "aggregation": 3,
+            "splitBy": null
+          }
+        ],
+        "title": "Maximum Percent of Storage Space Used. Data is plotted at a granularity of {MetricsGrain}",
+        "showCreateAlertRule": true,
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent Timeline",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 1,
+                "options": null
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent",
+              "label": "Storage percent (Max)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Saturation-storage_percent Timeline",
+              "label": "Storage percent Timeline"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "storage-tab",
+          "comparison": "isEqualTo",
+          "value": "storagepct"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "storage"
+        }
+      ],
+      "name": "high temp storage utilization"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Analyze storage used percentage or storage used size charts for any sudden spikes in storage utilization. It is recommended to analyze the Temporary Files Generated tab in this troubleshooting guide if sudden storage spikes are noticed.",
+        "style": "info"
+      },
+      "conditionalVisibility": {
+        "parameterName": "temptab",
+        "comparison": "isEqualTo",
+        "value": "storage"
+      },
+      "name": "high temp storage warning"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### The Enhanced Metrics are disabled on server. To obtain additional information, please refer to the error message located at the top of the troubleshooting guide.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isNotEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "high temp temp file enhanced metrics"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "6ecc08b6-475d-4e78-b2d6-6fc300932335",
+            "cellValue": "tempfiles-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Temporary Bytes Generated",
+            "subTarget": "bytes",
+            "style": "link"
+          },
+          {
+            "id": "559e5a96-b09c-4c9c-9d6b-ab15ef257d28",
+            "cellValue": "tempfiles-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Number of Temporary Files",
+            "subTarget": "count",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        }
+      ],
+      "name": "high temp temp metric tab"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookfbb2a9e5-99f8-487c-ad5f-c4473a8a9390",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files",
+            "aggregation": 1,
+            "splitBy": null
+          }
+        ],
+        "title": "Number of Temporary Files Generated. Data is plotted at a granularity of {MetricsGrain}",
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tempfiles-tab",
+          "comparison": "isEqualTo",
+          "value": "count"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        }
+      ],
+      "name": "high temp temp files metric"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookfbb2a9e5-99f8-487c-ad5f-c4473a8a9390",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files",
+            "aggregation": 1,
+            "splitBy": "DatabaseName"
+          }
+        ],
+        "title": "Number of Temporary Files Generated. Data is plotted at a granularity of {MetricsGrain}",
+        "gridFormatType": 2,
+        "resourceLimit": 10000,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 5,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 0,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": ".*\\/Temporary Files (Preview)$",
+              "formatter": 1
+            }
+          ],
+          "rowLimit": 10000,
+          "sortBy": [
+            {
+              "itemKey": "$gen_number_microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files_3",
+              "sortOrder": 2
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database Name"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files",
+              "label": "Temporary Files (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files Timeline",
+              "label": "Temporary Files (Sum) [Timeline]"
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "$gen_number_microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_files_3",
+            "sortOrder": 2
+          }
+        ],
+        "showExportToExcel": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tempfiles-tab",
+          "comparison": "isEqualTo",
+          "value": "count"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        }
+      ],
+      "name": "high temp temp files grid"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook98cdb18f-50ac-49d2-af89-e0197b1471e2",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes",
+            "aggregation": 1,
+            "splitBy": null
+          }
+        ],
+        "title": "Size of Temporary Files Generated. Data is plotted at a granularity of {MetricsGrain}",
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tempfiles-tab",
+          "comparison": "isEqualTo",
+          "value": "bytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        }
+      ],
+      "name": "high temp temp blks metric"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook98cdb18f-50ac-49d2-af89-e0197b1471e2",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes",
+            "aggregation": 1,
+            "splitBy": "DatabaseName"
+          }
+        ],
+        "title": "Size of Temporary Files Generated. Data is plotted at a granularity of {MetricsGrain}",
+        "gridFormatType": 2,
+        "resourceLimit": 10000,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 5,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 2,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 2,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": ".*\\/Temporary Files Size (Preview)$",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Metric",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Aggregation",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Value",
+              "formatter": 1
+            }
+          ],
+          "rowLimit": 10000,
+          "sortBy": [
+            {
+              "itemKey": "$gen_number_microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes_3",
+              "sortOrder": 2
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database Name"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes",
+              "label": "Temporary Files Size (sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes Timeline",
+              "label": "Temporary Files Size (sum) [Timeline]"
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "$gen_number_microsoft.dbforpostgresql/flexibleservers-Database (Preview)-temp_bytes_3",
+            "sortOrder": 2
+          }
+        ],
+        "showExportToExcel": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "tempfiles-tab",
+          "comparison": "isEqualTo",
+          "value": "bytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        }
+      ],
+      "name": "high temp temp blks grid"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### If the temporary file generation is high and storage spikes exist in the window of interest then analyze the workload and also top temporary files/bytes generating queries ",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempfiles"
+        }
+      ],
+      "name": "high temp temporary file generation info"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### The Enhanced Metrics are disabled on server. To obtain additional information, please refer to the error message located at the top of the troubleshooting guide.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isNotEqualTo",
+          "value": "ON"
+        }
+      ],
+      "name": "high temp workload enahanced metric warning"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "31dbd029-ed17-4617-8c18-c4797cafe412",
+            "cellValue": "workload-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Read Workload",
+            "subTarget": "readbytes",
+            "preText": "Read Workload",
+            "style": "link"
+          },
+          {
+            "id": "2bbfd1c5-fd32-4615-826c-083f83ffc503",
+            "cellValue": "workload-tab",
+            "linkTarget": "parameter",
+            "linkLabel": "Write Workload",
+            "subTarget": "writebytes",
+            "preText": "Write Workload",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        }
+      ],
+      "name": "high temp workload tab"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Read workload details\r\n\r\n**tup_fetched** and **tup_returned** are two metrics that measure the number of rows read from a table.\r\n\r\n**tup_returned** represents the number of live rows fetched by sequential scans and index entries returned by index scans in this database.\r\n\r\n**tup_fetched** measures the number of live rows fetched by index scans in this database.\r\n\r\nBy monitoring these two metrics, administrators can gain a better understanding of the performance of their PostgreSQL read workloads.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "readbytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        }
+      ],
+      "name": "high temp workload readworkload info"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookb945890e-3384-4f08-8518-0515c1c5b144",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+            "aggregation": 1,
+            "splitBy": null,
+            "columnName": "Tuples Fetched"
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+            "aggregation": 1,
+            "columnName": "Tuples Returned"
+          }
+        ],
+        "title": "Read Workload Metrics",
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "readbytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        }
+      ],
+      "name": "high temp workload readworkload metric"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**The read workload metric calculates the total number of tuples fetched and returned, but it does not include databases like `azure_sys` and `azure_maintenance`.**",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "readbytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        }
+      ],
+      "name": "high temp workload readworkload info db limitation"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookb945890e-3384-4f08-8518-0515c1c5b144",
+        "version": "MetricsItem/2.0",
+        "size": 1,
+        "chartType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          }
+        ],
+        "title": "Tup_fetched & Tup_returned by Database",
+        "gridFormatType": 2,
+        "resourceLimit": 10000,
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "showRefreshButton": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 5,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": ".*\\/Tuples Returned$",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Tuples Returned Timeline",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Tuples Returned",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 0,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "Metric",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Aggregation",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Value",
+              "formatter": 1
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database Name"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "label": "Tuples Fetched (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched Timeline",
+              "label": "Tuples Fetched (Sum) [Timeline]"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "label": "Tuples Returned  (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned Timeline",
+              "label": "Tuples Returned (Sum) [Timeline]"
+            }
+          ]
+        },
+        "sortBy": [],
+        "showExportToExcel": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "readbytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        }
+      ],
+      "name": "high temp workload readworkload grid"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Write workload details are not available for replica servers.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "writebytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isNotEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "text - 47"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Write workload details \r\nThe number of tuples that have been inserted, updated, or deleted are critical for understanding the overall performance of the database and for identifying potential inefficiencies.\r\n\r\nBy monitoring these metrics, administrators can gain insights into the performance of their PostgreSQL write workloads and make data-driven decisions to optimize the database.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "writebytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp workload writeworkload info"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbook5576f52a-daae-4bd6-8b6e-333f5de05ac1",
+        "version": "MetricsItem/2.0",
+        "size": 0,
+        "chartType": 2,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+            "aggregation": 1,
+            "splitBy": null,
+            "columnName": "Tuples Inserted"
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+            "aggregation": 1,
+            "columnName": "Tuples Updated"
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+            "aggregation": 1,
+            "columnName": "Tuples Deleted"
+          }
+        ],
+        "title": "Write Workload Metrics",
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "writebytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp workload writeworkload metric"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**The write workload metric calculates the total number of inserted, updated, and deleted tuples, but it does not include databases like `azure_sys` and `azure_maintenance`.**\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "writebytes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp workload writeworkload info db limitation"
+    },
+    {
+      "type": 10,
+      "content": {
+        "chartId": "workbookb945890e-3384-4f08-8518-0515c1c5b144",
+        "version": "MetricsItem/2.0",
+        "size": 1,
+        "chartType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "metricScope": 0,
+        "resourceParameter": "Resource",
+        "resourceIds": [
+          "{Resource}"
+        ],
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "metrics": [
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          },
+          {
+            "namespace": "microsoft.dbforpostgresql/flexibleservers",
+            "metric": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+            "aggregation": 1,
+            "splitBy": "DatabaseName",
+            "splitBySortOrder": -1,
+            "splitByLimit": 50
+          }
+        ],
+        "title": "Tuples Inserted, Updated & Deleted by Database",
+        "gridFormatType": 2,
+        "resourceLimit": 10000,
+        "showCreateAlertRule": true,
+        "filters": [
+          {
+            "id": "1",
+            "key": "DatabaseName",
+            "operator": 1,
+            "values": [
+              "azure_maintenance",
+              "azure_sys"
+            ]
+          }
+        ],
+        "timeBrushParameterName": "TimeRange",
+        "timeBrushExportOnlyWhenBrushed": true,
+        "showRefreshButton": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Subscription",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 5,
+              "formatOptions": {
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Timeline",
+              "formatter": 21,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_fetched",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_returned",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 17,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": ".*\\/Tuples Returned$",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Tuples Returned Timeline",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Tuples Returned",
+              "formatter": 1,
+              "numberFormat": {
+                "unit": 0,
+                "options": null
+              }
+            },
+            {
+              "columnMatch": "Metric",
+              "formatter": 1
+            },
+            {
+              "columnMatch": "Aggregation",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Value",
+              "formatter": 1
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "Segment",
+              "label": "Database Name"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted",
+              "label": "Tuples Inserted (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_inserted Timeline",
+              "label": "Tuples Inserted (Sum) [Timeline]"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated",
+              "label": "Tuples Updated (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_updated Timeline",
+              "label": "Tuples Updated (Sum) [Timeline]"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted",
+              "label": "Tuples Deleted (Sum)"
+            },
+            {
+              "columnId": "microsoft.dbforpostgresql/flexibleservers-Database (Preview)-tup_deleted Timeline",
+              "label": "Tuples Deleted (Sum) [Timeline]"
+            }
+          ]
+        },
+        "sortBy": [],
+        "showExportToExcel": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "workload-tab",
+          "comparison": "isEqualTo",
+          "value": "writebytes"
+        },
+        {
+          "parameterName": "IsMetricsCollectorDatabaseActivityOn",
+          "comparison": "isEqualTo",
+          "value": "ON"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "workload"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp workload writeworkload grid"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The Query Store's capabilities are not functioning on the replica server.\r\n#### After analysis, we have determined that this server is a replica server, which means that the query store functionality is not available. However, there are alternative methods you can use to monitor long-running sessions on the replica server.\r\n- To help pinpoint possible performance issues, a recommended solution is to enable `log_temp_files`. This will enable the logging of queries and the size of temporary bytes they generate.\r\n- Another option is to configure `pg_stat_statements`, which allows you to view information about your query performance on the replica server. However, Please keep in mind that you need to execute the `CREATE EXTENSION pg_stat_statements` command on the primary server database. For more informaiton, please visit [PostgreSQL Documentation](https://www.postgresql.org/docs/current/pgstatstatements.html).\r\n- You can also monitor the ongoing workload on the replica server by using the `pg_stat_activity` catalog view.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs - readreplica"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "c446d2b0-4db6-48c9-a6ad-244ea9dcf53b",
+            "version": "KqlParameterItem/1.0",
+            "name": "HighTempQueries",
+            "type": 1,
+            "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where EndTime >= Start_Time and EndTime <= End_Time\r\n|where TempBlksWritten >0\r\n| where UserId!= 10\r\n| count \r\n| extend HaveQueryIds = iff(Count > 0, \"Yes\", \"No\")\r\n| project HaveQueryIds",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibility": {
+        "parameterName": "x",
+        "comparison": "isEqualTo",
+        "value": "y"
+      },
+      "name": "high temp qs hightempquery"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsQueryStoreRuntimeSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp qs lano"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### There is no data available in the telemetry for the chosen window or you may have recently configured logging for the server.\r\n\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsQueryStoreRuntimeSentToLogAnalytics",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp qs layes"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Query Store has no data in the selected TimeRange.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs time interval"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Query Store is disabled on the server.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs querystore disabled warning"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Selected interval is too small. A one hour capture from the selected End Time is being shown.**",
+        "style": "warning"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "LessThanOneHourInterval",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "high temp qs timeinterval warning"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "98d4f3a7-4057-400a-a84f-cbd61df98051",
+            "version": "KqlParameterItem/1.0",
+            "name": "TopTempConsumingQueries",
+            "label": "Max Count",
+            "type": 2,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n { \"value\":\"5\", \"label\":\"5\",\"selected\":true },\r\n  { \"value\":\"10\", \"label\":\"10\" },\r\n    { \"value\":\"20\", \"label\":\"20\" }\r\n]",
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs maxcount"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet TopQueryIDs = \r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId != 10\r\n|where TempBlksWritten >0\r\n| extend Mean_temp_blks = TempBlksWritten / Calls\r\n| summarize Max_blks = max(Mean_temp_blks) by QueryId\r\n| top {TopTempConsumingQueries} by Max_blks desc\r\n| project QueryId;\r\n{QueryStoreTable}\r\n| where QueryId in (TopQueryIDs)\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId != 10\r\n| extend Mean_temp_blks = TempBlksWritten * 8 / Calls\r\n| extend  EVENT_TIME_GRAPHGRAIN = bin(EndTime, 1m)\r\n| make-series Max_blks = max(Mean_temp_blks) default = 0 on EVENT_TIME_GRAPHGRAIN from TimeStart to TimeEnd step graphgrain by Queryid_d=strcat('QueryId: ', tolong(QueryId))",
+        "size": 0,
+        "aggregation": 2,
+        "title": "Top {TopTempConsumingQueries} Temporary File Generating Queries. Data is plotted at a granularity of {ChartGrain}",
+        "timeBrushParameterName": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "areachart",
+        "chartSettings": {
+          "showLegend": true,
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 37,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs chart"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**The chart above depicts the top {TopTempConsumingQueries} queries responsible for creating the largest combined size of temporary files, which could be a result of either numerous small files or one or several massive ones.**\r\n\r\n\r\nDetails on these QueryIds are shown below. ",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs chart info"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "parameters": [
+          {
+            "id": "98d4f3a7-4057-400a-a84f-cbd61df98051",
+            "version": "KqlParameterItem/1.0",
+            "name": "QueryIdsByTemp",
+            "label": "QueryId Snapshot",
+            "type": 2,
+            "isRequired": true,
+            "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId != 10\r\n|where TempBlksWritten >0\r\n| extend Mean_temp_blks = TempBlksWritten / Calls\r\n| summarize Max_blks = max(Mean_temp_blks) by QueryId\r\n| top {TopTempConsumingQueries} by Max_blks desc\r\n| serialize Rank = row_number()\r\n| project label = QueryId, value =  QueryId, selected = iff(Rank == 1, true, false)",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+            "value": null
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs rank query"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable}\r\n| where UserId != 10\r\n| where QueryId == '{QueryIdsByTemp}'\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| distinct MeanExecDurationMs,MaxExecDurationMs,MinExecDurationMs,Calls,QueryId,QueryType,TempBlksRead,TempBlksWritten,RuntimeStatsEntryId\r\n| extend Mean_Temp_blks_written = TempBlksWritten* 8 / Calls\r\n| extend kb_Temp_blks_written = TempBlksWritten * 8\r\n| summarize MeanTempBlksWritten = avg(Mean_Temp_blks_written), MeanExecutionTime=avg(MeanExecDurationMs), MaxTempBlksWritten = max(Mean_Temp_blks_written), MaxExecutionTime=max(MaxExecDurationMs), TotalCalls=sum(Calls), TotalTempBlksWritten=sum(kb_Temp_blks_written), MinTempBlksWritten=min(Mean_Temp_blks_written), MinExecutionTime=min(MinExecDurationMs) by QueryId,QueryType",
+        "size": 4,
+        "title": "QueryId {QueryIdsByTemp} Summary in Selected TimeRange",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "MeanTempBlksWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxTempBlksWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalTempBlksWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinTempBlksWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 2,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgReadWriteIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxReadWriteIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinReadWriteIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Start_time",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "End_time",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "Blk_read_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Blk_write_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_query_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_blk_rw_time",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "greenRed"
+              },
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_dataRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "greenRed"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_dataWritten",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "greenRed"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_blk_rw_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_dataRead",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_dataWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Min_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Max_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "dataRead",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "dataWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ],
+          "rowLimit": 10000
+        },
+        "sortBy": []
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "give details for high temp query id"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet databasename = \r\n{SessionsTable}\r\n| distinct DatabaseName,DatabaseId;\r\n{QueryStoreTable}\r\n| where UserId != 10   \r\n| where QueryId == {QueryIdsByTemp}\r\n| distinct MeanExecDurationMs,MaxExecDurationMs,MinExecDurationMs,Calls,QueryId,QueryType,Rows,TotalExecDurationMs,StartTime,EndTime,PlanId,DatabaseId,UserId,TempBlksWritten,TempBlksRead, RuntimeStatsEntryId \r\n| where todatetime(EndTime) >= TimeStart and todatetime(EndTime) <= TimeEnd\r\n| extend total_Temp_blks_written = TempBlksWritten*8\r\n| extend total_Temp_blks_read = TempBlksRead*8\r\n| extend Mean_Temp_blks_written=TempBlksWritten*8/Calls\r\n| extend Mean_Temp_blks_read=TempBlksRead*8/Calls\r\n| summarize WindowStart=min(StartTime), WindowEnd=max(EndTime), MeanTempBlksWritten=avg(Mean_Temp_blks_written),MeanTempBlksRead=avg(Mean_Temp_blks_read),MinTempBlksWritten=min(Mean_Temp_blks_written), MaxTempBlksWritten=max(Mean_Temp_blks_written),MeanRows=sum(Rows)/sum(Calls),TotalRows=sum(Rows),TotalCalls=sum(Calls), MeanExecutionTime=avg(MeanExecDurationMs),MinExecutionTime=min(MinExecDurationMs),MaxExecutionTime=max(MaxExecDurationMs),TotalExecutionTime=sum(TotalExecDurationMs),TotalTempBlksWritten=sum(total_Temp_blks_written) by bin(todatetime(EndTime), graphgrain), QueryId,QueryType,PlanId,DatabaseId,UserId\r\n| join kind=leftouter databasename on $left.DatabaseId == $right.DatabaseId\r\n| project QueryId,QueryType,PlanId,DatabaseName = iff(isempty(DatabaseName),strcat(\"oid::\",DatabaseId), DatabaseName), UserId, WindowStart, WindowEnd,MeanRows, MeanTempBlksWritten, MeanTempBlksRead,MeanExecutionTime, TotalRows,TotalTempBlksWritten, TotalCalls, TotalExecutionTime, MinTempBlksWritten, MaxTempBlksWritten, MinExecutionTime, MaxExecutionTime\r\n|order by WindowStart asc",
+        "size": 0,
+        "title": "QueryId {QueryIdsByTemp} Runtime Statistics Split by Time Buckets of {ChartGrain} Each",
+        "noDataMessageStyle": 4,
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "WindowStart",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "WindowEnd",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "MeanTempBlksWritten",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanTempBlksRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalTempBlksWritten",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalCalls",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "TotalExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinTempBlksWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxTempBlksWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxExecutionTime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "EndTime",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "End_time",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "TemporaryBlocksWritten",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TemporaryBlocksRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanTemporaryBlockWritten",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "MeanTemporaryBlockRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            },
+            {
+              "columnMatch": "MeanIOtime",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanDataRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanDataWrite",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MinIOtime",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MaxIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanReadIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "MeanWriteIOtime",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Start_time",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "Blk_read_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Blk_write_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_query_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_blk_rw_time",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_dataRead",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_dataWritten",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_blk_rw_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_dataRead",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_dataWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Total_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Min_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Max_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "Mean_time",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 23,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "dataRead",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            },
+            {
+              "columnMatch": "dataWritten",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal"
+                }
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "filter": true,
+          "sortBy": [
+            {
+              "itemKey": "$gen_heatmap_MeanTempBlksRead_9",
+              "sortOrder": 1
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "$gen_heatmap_MeanTempBlksRead_9",
+            "sortOrder": 1
+          }
+        ]
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "show info regarding the high temp id"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Details of columns from above grid:**\r\n\r\n**MeanTempBlksWritten**: The mean (average) temporary blocks written by the QueryId  in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**MeanTempBlksRead**: The mean (average) temporary blocks read by the QueryId  in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**MinTempBlksWritten**:The minimum temporary blocks written by the QueryId  in a single call  across the time bucket defined between WindowStart and WindowEnd\r\n\r\n**MaxTempBlksWritten**:The maximum temporary blocks written by the QueryId  in a single call  across the time bucket defined between WindowStart and WindowEnd\r\n\r\n**MeanRows**: The mean (average) rows retrieved or affected by the QueryId  in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**TotalCalls**: Total calls in the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**TotalRows**: Total rows retrieved or affected by the QueryId  for all the calls in the time bucket defined between WindowStart and WindowEnd\r\n\r\n**MeanExecutionTime**: The mean (average) execution time of the QueryId  in a single call across the time bucket defined between WindowStart and WindowEnd<br>\r\n\r\n**MinExecutionTime**: The minimum execution time of the QueryId  in a single call across the time bucket defined between WindowStart and WindowEnd <br>\r\n\r\n**MaxExecutionTime**: The maximum execution time of the QueryId  in a single call across the time bucket defined between WindowStart and WindowEnd <br>\r\n\r\n**TotalExecutionTime**: The total execution time of the QueryId  for all the calls in the time bucket defined between WindowStart and WindowEnd <br>\r\n\r\n\r\n\r\nQueries that generated too many temorrary files or temporary bytes may be ones which are contributing to storage spikes on the server. They are good candidates to further analyze and tune.\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs history query columns"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**How can you retrieve the Query Text for a specific QueryId?**\r\n\r\nTo retrieve the Query Text for a specific QueryId, you need to follow these steps:\r\n\r\n1. Connect to the server using the **`azure_sys`** database where QueryStore is installed. For example, you can use the following command:\r\n```SQL\r\npsql -h ServerName.postgres.database.azure.com -U AdminUsername -d azure_sys\r\n```\r\n\r\n2. Use the generated GetQueryText column to retrieve the Query Text associated with the QueryId.\r\n\r\nIt is important to note that the Query Store retention period applies when querying the database, and older data gets deleted based on the server parameter `pg_qs.retention_period_in_days`. However, our telemetry has a higher retention period.\r\n\r\n**To retrieve the Query Text for a given QueryId, use the following SQL:**",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs query text info"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{QueryStoreTable} \r\n    | where TempBlksWritten+TempBlksRead > 0\r\n    | where UserId != 10\r\n    | where EndTime >= TimeStart and EndTime <= TimeEnd\r\n    | extend blk_rw_time=TempBlksWritten / Calls\r\n    | summarize max(blk_rw_time) by QueryId\r\n    | top {TopTempConsumingQueries} by max_blk_rw_time desc\r\n    | extend SQL= strcat(\"SELECT query_sql_text FROM query_store.query_texts_view WHERE query_text_id=\",QueryId,\";\")\r\n    | project SQL",
+        "size": 1,
+        "title": "Get query_text from QueryId",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs query text query"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Recommendations** \r\n\r\n**1)** Tuning queries identified using explain analyze. More information on EXPLAIN command [can be found here](https://www.postgresql.org/docs/current/sql-explain.html).\r\n\r\n*Query Specific Recommendations*:\r\n\t\r\n\t* Make sure that queries are using the right indices. Create any missing indices.\r\n\t\t\r\n\t* Include columns that are only needed on select statements. \r\n\r\n\t* Avoid unnecessary joins. \r\n\r\n\t* Avoid cross joins that fetches huge amount of data from tables. \r\n\r\n\t* Increase the work_mem parameter. Please maintain caution and change work_mem value. A very high work_mem value will pretty soon lead to Out of memory issues.\r\n\r\n    * Avoid long running transactions on the server. Have statement_timeout or idle_in_transaction_timeout parameter set. \r\n\r\n\r\n**2)** Could also consider enabling local SSD parameter `azure.enable_temp_tablespaces_on_local_ssd` on the server. Follow the link to understand the amount of local SSD available for various SKUs. [Edv4 and Edsv4-series - Azure Virtual Machines | Microsoft Learn](https://learn.microsoft.com/en-us/azure/virtual-machines/edv4-edsv4-series)\r\n\r\nWhen `azure.enable_temp_tablespaces_on_local_ssd` parameter is enabled on the server it is advised to execute below statements\r\n\r\n`GRANT CREATE ON TABLESPACE temptblspace TO public;`\r\n\r\nor grant to specific role that is being used to execute the queries.\r\n\r\n**3)** Consider adding more storage to server\r\n\r\n** `work_mem`  Guidance **\r\n\r\nThe  work_mem  parameter specifies the amount of memory to be used by internal sort operations and hash tables before writing to temporary disk files. It\r\nisn't on a per-query basis rather, it's set based on the number of sort and hash operations.\r\n\r\nIf the workload has many short-running queries with simple joins and minimal sort operations, it's advised to keep lower  work_mem.\r\nIf there are a few active queries with complex joins and sorts, then it's advised to set a higher value for work_mem.\r\nIt's tough to get the value of work_mem right. If you notice high memory utilization or out-of-memory issues, consider decreasing work_mem.\r\n\r\nA safer setting for work_mem is  work_mem = Total RAM / Max_Connections / 16\r\n\r\nThe default value of  work_mem = 4 MB. You can set the  work_mem  value on multiple levels including at the server level via the\r\nparameters page in the Azure portal. A good strategy is to monitor memory consumption during peak times.\r\nIf disk sorts are happening during this time and there's plenty of unused memory, increase  work_mem  gradually until you're able\r\nto reach a good balance between available and used memory. Similarly, if the memory use looks high, reduce  work_mem.\r\n",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HighTempQueries",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isQueryStoreEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "IsServerPrimaryCheck",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "temptab",
+          "comparison": "isEqualTo",
+          "value": "tempqueries"
+        }
+      ],
+      "name": "high temp qs recommendations"
+    }
+  ],
+  "fallbackResourceIds": [],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
