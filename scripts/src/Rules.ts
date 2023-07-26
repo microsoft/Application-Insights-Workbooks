@@ -370,3 +370,9 @@ export const Rules: BestPracticeRule[] =
         evaluator: resourceIdCheck,
     },
 ];
+
+
+// TODO: more complicated rules:
+// parameters marked global but then never used that way
+// parameters declared but never used
+// nothing downstream exports them again (could be in nested content maybe though?)
