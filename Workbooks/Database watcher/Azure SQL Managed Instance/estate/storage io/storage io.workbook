@@ -1,0 +1,438 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "3bf03c31-f68a-4ebf-b8be-d191353b24b8",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioDirection",
+            "label": "IO direction",
+            "type": 10,
+            "description": "Select the type of IO to show: reads from database files or writes to database files",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[{\"value\":\"read\",\"label\":\"Read\"},{\"value\":\"write\",\"label\":\"Write\"}]",
+            "value": "read"
+          },
+          {
+            "id": "9f5cce7e-986c-4be7-a62d-d0af1cf35b10",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioMetric",
+            "label": "Metric",
+            "type": 10,
+            "description": "Select an IO metric to show on the heatmap. \"Latency\" uses the average latency of read or write IO operations; \"IO operations\" uses the total number of read or write IO operations (aka IOs); \"Bytes\" uses the total number of read or written bytes.",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\":\"latency\",\"label\":\"Latency\"},\r\n    {\"value\":\"ios\",\"label\":\"IO operations\"},\r\n    {\"value\":\"bytes\",\"label\":\"Bytes\"}\r\n]",
+            "value": "latency"
+          },
+          {
+            "id": "8c906d60-0b93-46ac-852c-c23b638aaeb9",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioFileType",
+            "label": "Database files",
+            "type": 10,
+            "description": "Select \"All\" to include IO against all types of database files; select \"Data\" or \"Transaction log\" to include IO against these database files types only",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\":\"All\",\"label\":\"All\"},\r\n    {\"value\":\"Data\",\"label\":\"Data\"},\r\n    {\"value\":\"Log\",\"label\":\"Transaction log\"}\r\n]",
+            "value": "All"
+          },
+          {
+            "id": "ef2a3806-e806-484f-8f49-694dc5a3c0f3",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioDatabaseType",
+            "label": "Databases",
+            "type": 10,
+            "description": "\"User databases\" includes IO against all user databases; \"System\" includes IO against the master, model, and msdb databases; \"tempdb\" includes IO against the tempdb database only",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\":\"all\",\"label\":\"All\"},\r\n    {\"value\":\"user\",\"label\":\"User\"},\r\n    {\"value\":\"system\",\"label\":\"System\"},\r\n    {\"value\":\"tempdb\",\"label\":\"tempdb\"}\r\n]",
+            "value": "all"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "io_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqlmi_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and database_id > 4) or (\\\"{ioDatabaseType}\\\" == \\\"system\\\" and database_id in (1,3,4)) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and database_id == 2)\\r\\n| project sample_time_utc, managed_instance_name, file_id, database_id, io_snapshot_sample_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsort by database_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and database_id == prev(database_id) and file_id == prev(file_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and database_id == prev(database_id) and file_id == prev(file_id), num_of_writes - prev(num_of_writes), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by managed_instance_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", total_reads,\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", total_writes,\\r\\n                         long(null)\\r\\n                         )\\r\\n)\\r\\n);\\r\\n// total count of samples per instance in selected time range\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name\\r\\n);\\r\\n// typical count of samples per instance in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| lookup total_sample_count on managed_instance_name\\r\\n| make-series ios_timeline = max(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name\\r\\n| project series_fill_linear(ios_timeline, int(null), false), managed_instance_name\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name\\r\\n);\\r\\nlet agg_io = (\\r\\nio\\r\\n| lookup total_sample_count on managed_instance_name\\r\\n| summarize ios = sum(total_ios),\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name\\r\\n| join kind=leftouter io_timeline on managed_instance_name\\r\\n| join kind=leftouter instance_properties on managed_instance_name\\r\\n| project managed_instance_name, service_tier, ios = iif(toreal(count_samples)/expected_sample_count < 0.5, long(null), ios), ios_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\n                        managed_instance_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across instances in each grouper. This is used to limit to top N instances without tearing groups.\\r\\nlet agg_io_grouper = (\\r\\nagg_io\\r\\n| summarize ios = max(ios) by grouper\\r\\n| sort by ios desc\\r\\n| project grouper, ios, grouper_number = row_number()\\r\\n);\\r\\nagg_io\\r\\n| lookup agg_io_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project managed_instance_name, service_tier, ios, grouper_ios = ios1, ios_timeline, \\r\\n          grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by ios desc, tolower(grouper) asc, tolower(managed_instance_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "managed_instance_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Managed Instance/instance",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Managed instance",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "managedInstanceName",
+                    "source": "column",
+                    "value": "managed_instance_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "ios",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true,
+                "maximumFractionDigits": 1
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or write IOs for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "ios_timeline",
+            "formatter": 21,
+            "formatOptions": {
+              "palette": "purple"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or write IOs over selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "grouper",
+            "formatter": 1
+          },
+          "nodeIdField": "managed_instance_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "ios",
+            "type": 4,
+            "heatmapPalette": "coldHot",
+            "heatmapMin": null,
+            "heatmapMax": null,
+            "emptyValueColor": "gray"
+          },
+          "groupByField": "grouper",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "ioMetric",
+        "comparison": "isEqualTo",
+        "value": "ios"
+      },
+      "name": "storage_io_ios_heatmap"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqlmi_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and database_id > 4) or (\\\"{ioDatabaseType}\\\" == \\\"system\\\" and database_id in (1,3,4)) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and database_id == 2)\\r\\n| project sample_time_utc, managed_instance_name, file_id, database_id, io_snapshot_sample_ms, num_of_bytes_read, num_of_bytes_written\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsort by database_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_bytes_read = iif(num_of_bytes_read >= prev(num_of_bytes_read) and database_id == prev(database_id) and file_id == prev(file_id), num_of_bytes_read - prev(num_of_bytes_read), long(null)),\\r\\n         delta_num_of_bytes_written = iif(num_of_bytes_written >= prev(num_of_bytes_written) and database_id == prev(database_id) and file_id == prev(file_id), num_of_bytes_written - prev(num_of_bytes_written), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_read_bytes = sum(delta_num_of_bytes_read),\\r\\n            total_written_bytes = sum(delta_num_of_bytes_written),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by managed_instance_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_bytes = case(\\r\\n                           \\\"{ioDirection}\\\" == \\\"read\\\", total_read_bytes,\\r\\n                           \\\"{ioDirection}\\\" == \\\"write\\\", total_written_bytes,\\r\\n                           long(null)\\r\\n                           )\\r\\n)\\r\\n);\\r\\n// total count of samples per instance in selected time range\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name\\r\\n);\\r\\n// typical count of samples per instance in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| lookup total_sample_count on managed_instance_name\\r\\n| make-series bytes_timeline = max(total_bytes) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name\\r\\n| project series_fill_linear(bytes_timeline, int(null), false), managed_instance_name\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name\\r\\n);\\r\\nlet agg_io = (\\r\\nio\\r\\n| lookup total_sample_count on managed_instance_name\\r\\n| summarize bytes = sum(total_bytes),\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name\\r\\n| join kind=leftouter io_timeline on managed_instance_name\\r\\n| join kind=leftouter instance_properties on managed_instance_name\\r\\n| project managed_instance_name, service_tier, bytes = iif(toreal(count_samples)/expected_sample_count < 0.5, long(null), bytes), bytes_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\n                        managed_instance_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across instances in each grouper. This is used to limit to top N instances without tearing groups.\\r\\nlet agg_io_grouper = (\\r\\nagg_io\\r\\n| summarize bytes = max(bytes) by grouper\\r\\n| sort by bytes desc\\r\\n| project grouper, bytes, grouper_number = row_number()\\r\\n);\\r\\nagg_io\\r\\n| lookup agg_io_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project managed_instance_name, service_tier, bytes, grouper_bytes = bytes1, bytes_timeline, \\r\\n          grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by bytes desc, tolower(grouper) asc, tolower(managed_instance_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "managed_instance_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Managed Instance/instance",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Managed instance",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "managedInstanceName",
+                    "source": "column",
+                    "value": "managed_instance_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "bytes",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 2,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true,
+                "maximumFractionDigits": 1
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or written bytes for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "bytes_timeline",
+            "formatter": 21,
+            "formatOptions": {
+              "palette": "purple"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or write bytes over selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "grouper",
+            "formatter": 1
+          },
+          "nodeIdField": "managed_instance_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "bytes",
+            "type": 4,
+            "heatmapPalette": "coldHot",
+            "heatmapMin": null,
+            "heatmapMax": null,
+            "emptyValueColor": "gray"
+          },
+          "groupByField": "grouper",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "ioMetric",
+        "comparison": "isEqualTo",
+        "value": "bytes"
+      },
+      "name": "storage_io_bytes_heatmap"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqlmi_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and database_id > 4) or (\\\"{ioDatabaseType}\\\" == \\\"system\\\" and database_id in (1,3,4)) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and database_id == 2)\\r\\n| project sample_time_utc, managed_instance_name, file_id, database_id, io_snapshot_sample_ms, io_stall_read_ms, io_stall_write_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsort by database_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and database_id == prev(database_id) and file_id == prev(file_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and database_id == prev(database_id) and file_id == prev(file_id), num_of_writes - prev(num_of_writes), long(null)),\\r\\n         delta_io_stall_read_ms = iif(io_stall_read_ms >= prev(io_stall_read_ms) and database_id == prev(database_id) and file_id == prev(file_id), io_stall_read_ms - prev(io_stall_read_ms), long(null)),\\r\\n         delta_io_stall_write_ms = iif(io_stall_write_ms >= prev(io_stall_write_ms) and database_id == prev(database_id) and file_id == prev(file_id), io_stall_write_ms - prev(io_stall_write_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            total_read_stall_time = sum(delta_io_stall_read_ms),\\r\\n            total_write_stall_time = sum(delta_io_stall_write_ms),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by managed_instance_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_stall_time = case(\\r\\n                                \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_read_stall_time),\\r\\n                                \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_write_stall_time),\\r\\n                                real(null)\\r\\n                                ),\\r\\n         total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_reads),\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_writes),\\r\\n                         real(null)\\r\\n                         )\\r\\n| project-away total_read_stall_time, total_write_stall_time, total_reads, total_writes\\r\\n)\\r\\n);\\r\\n// total count of samples per instance in selected time range\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name\\r\\n);\\r\\n// typical count of samples per instance in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| lookup total_sample_count on managed_instance_name\\r\\n| make-series latency_timeline = sum(total_stall_time)/sum(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name\\r\\n| project series_fill_linear(latency_timeline, int(null), false), managed_instance_name\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name\\r\\n);\\r\\nlet agg_io = (\\r\\nio\\r\\n| lookup total_sample_count on managed_instance_name\\r\\n| summarize latency = iif(sum(total_ios) > 0, sum(total_stall_time)/sum(total_ios), real(null)),\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name\\r\\n| join kind=leftouter io_timeline on managed_instance_name\\r\\n| join kind=leftouter instance_properties on managed_instance_name\\r\\n| project managed_instance_name, service_tier, latency = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), latency), latency_timeline,\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\n                        managed_instance_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across instances in each grouper. This is used to limit to top N instances without tearing groups.\\r\\nlet agg_io_grouper = (\\r\\nagg_io\\r\\n| summarize latency = max(latency) by grouper\\r\\n| sort by latency desc\\r\\n| project grouper, latency, grouper_number = row_number()\\r\\n);\\r\\nagg_io\\r\\n| lookup agg_io_grouper on grouper\\r\\n| where grouper_number <= 50 // limit to top hitters\\r\\n| project managed_instance_name, service_tier, latency, grouper_latency = latency1, latency_timeline, \\r\\n          grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by latency desc, tolower(grouper) asc, tolower(managed_instance_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "managed_instance_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Managed Instance/instance",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Managed instance",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "managedInstanceName",
+                    "source": "column",
+                    "value": "managed_instance_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "latency",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 23,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true,
+                "maximumFractionDigits": 1
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "Average read or write IO latency for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "latency_timeline",
+            "formatter": 21,
+            "formatOptions": {
+              "palette": "purple"
+            },
+            "tooltipFormat": {
+              "tooltip": "Average read or write IO latency over selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "grouper",
+            "formatter": 1
+          },
+          "nodeIdField": "managed_instance_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "latency",
+            "type": 4,
+            "heatmapPalette": "coldHot",
+            "heatmapMin": null,
+            "heatmapMax": null,
+            "emptyValueColor": "gray"
+          },
+          "groupByField": "grouper",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "ioMetric",
+        "comparison": "isEqualTo",
+        "value": "latency"
+      },
+      "name": "storage_io_latency_heatmap"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

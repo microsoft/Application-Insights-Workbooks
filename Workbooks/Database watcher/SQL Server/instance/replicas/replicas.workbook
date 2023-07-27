@@ -1,0 +1,1616 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "2297c2b5-a2fc-4d53-9d60-0fe5424df5e6",
+            "version": "KqlParameterItem/1.0",
+            "name": "replicasSampleType",
+            "label": "Data to show",
+            "type": 10,
+            "description": "\"Last available\" shows the most recent sample within specified time range, if any. \"Historical\" lets you select any sample within specified time range. Refresh the workbook to see most recent samples.Latest - shows the most recent sample in selected time range. Historical - lets you select a previous sample within selected time range.",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[{\"value\":\"Latest\",\"label\":\"Last available\"},{\"value\":\"Historical\",\"label\":\"Historical\"}]",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "Latest"
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "50",
+      "name": "replicas_sample_type_parameters"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "2c51791d-7825-4637-af1a-73e7a0d346cc",
+            "version": "KqlParameterItem/1.0",
+            "name": "replicasSampleSubtype",
+            "label": "Sample type",
+            "type": 10,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[{\"value\":\"all\",\"label\":\"All\"},{\"value\":\"interesting\",\"label\":\"Notable\"}]",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "all"
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "replicasSampleType",
+        "comparison": "isEqualTo",
+        "value": "Historical"
+      },
+      "customWidth": "50",
+      "name": "replicas_sample_subtype_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Certain DMV columns are only populated for a replica (or database) when a DMV is queried locally on that replica.\\r\\n// If a value is missing in the DMVs for currently selected server, we try getting it from other servers hosting replicas for the same availability group.\\r\\nlet local_replicas = materialize (\\r\\nsqlserver_database_replicas\\r\\n| where sample_time_utc between (({timeRange:start} - 5m) .. {timeRange:end})\\r\\n| where server_name !~ @\\\"{serverName}\\\" // we already have local data for the current server in the next query\\r\\n| where is_local_replica \\r\\n| where is_suspended\\r\\n        or\\r\\n        database_replica_synchronization_state_desc in (\\\"NOT SYNCHRONIZING\\\",\\\"REVERTING\\\",\\\"INITIALIZING\\\")\\r\\n        or\\r\\n        database_replica_synchronization_health_desc in (\\\"NOT_HEALTHY\\\",\\\"PARTIALLY_HEALTHY\\\")\\r\\n        or\\r\\n        database_state_desc in (\\\"RESTORING\\\",\\\"RECOVERING\\\",\\\"RECOVERY_PENDING\\\",\\\"SUSPECT\\\",\\\"EMERGENCY\\\",\\\"OFFLINE\\\")\\r\\n        or\\r\\n        replica_role_desc in (\\\"RESOLVING\\\")\\r\\n        or\\r\\n        replica_operational_state_desc in (\\\"PENDING_FAILOVER\\\",\\\"PENDING\\\",\\\"OFFLINE\\\",\\\"FAILED\\\",\\\"FAILED_NO_QUORUM\\\")\\r\\n        or\\r\\n        replica_connected_state_desc in (\\\"DISCONNECTED\\\")\\r\\n        or\\r\\n        replica_recovery_health_desc in (\\\"ONLINE_IN_PROGRESS\\\")\\r\\n        or\\r\\n        replica_synchronization_health_desc in (\\\"NOT_HEALTHY\\\",\\\"PARTIALLY_HEALTHY\\\")\\r\\n| project remote_sample_time_utc = sample_time_utc,\\r\\n          group_id,\\r\\n          replica_id,\\r\\n          group_database_id,\\r\\n          replica_server_name,\\r\\n          remote_replica_role_desc = replica_role_desc,\\r\\n          remote_replica_operational_state_desc = replica_operational_state_desc,\\r\\n          remote_replica_connected_state_desc = replica_connected_state_desc,\\r\\n          remote_replica_recovery_health_desc = replica_recovery_health_desc,\\r\\n          remote_replica_synchronization_health_desc = replica_synchronization_health_desc,\\r\\n          remote_is_suspended = is_suspended,\\r\\n          remote_database_replica_synchronization_state_desc = database_replica_synchronization_state_desc,\\r\\n          remote_database_replica_synchronization_health_desc = database_replica_synchronization_health_desc,\\r\\n          remote_database_state_desc = database_state_desc\\r\\n);\\r\\nsqlserver_database_replicas\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| join kind=leftouter local_replicas on group_id, replica_id, group_database_id\\r\\n| project-away group_id1, replica_id1, group_database_id1\\r\\n| extend sample_diff = abs(sample_time_utc - remote_sample_time_utc) // time distance between the sample from the current server and a remote sample for the same replica and database\\r\\n| summarize arg_min(sample_diff, *) by group_id, replica_id, group_database_id, sample_time_utc // restrict to samples with minimal time distance\\r\\n| extend replica_role_desc = case(isnotempty(replica_role_desc), replica_role_desc, sample_diff < 5m, remote_replica_role_desc, \\\"\\\"), // use a remote sample only if it is within a sufficiently close time distance\\r\\n         replica_operational_state_desc = case(isnotempty(replica_operational_state_desc), replica_operational_state_desc, sample_diff < 5m, remote_replica_operational_state_desc, \\\"\\\"),\\r\\n         replica_connected_state_desc = case(isnotempty(replica_connected_state_desc), replica_connected_state_desc, sample_diff < 5m, remote_replica_connected_state_desc, \\\"\\\"),\\r\\n         replica_recovery_health_desc = case(isnotempty(replica_recovery_health_desc), replica_recovery_health_desc, sample_diff < 5m, remote_replica_recovery_health_desc, \\\"\\\"),\\r\\n         replica_synchronization_health_desc = case(isnotempty(replica_synchronization_health_desc), replica_synchronization_health_desc, sample_diff < 5m, remote_replica_synchronization_health_desc, \\\"\\\"),\\r\\n         is_suspended = case(isnotempty(is_suspended), is_suspended, sample_diff < 5m, is_suspended, bool(null)),\\r\\n         database_replica_synchronization_state_desc = case(isnotempty(database_replica_synchronization_state_desc), database_replica_synchronization_state_desc, sample_diff < 5m, remote_database_replica_synchronization_state_desc, \\\"\\\"),\\r\\n         database_replica_synchronization_health_desc = case(isnotempty(database_replica_synchronization_health_desc), database_replica_synchronization_health_desc, sample_diff < 5m, remote_database_replica_synchronization_health_desc, \\\"\\\"),\\r\\n         database_state_desc = case(isnotempty(database_state_desc), database_state_desc, sample_diff < 5m, remote_database_state_desc, \\\"\\\")\\r\\n| extend sample_subtype = iif(\\r\\n                          is_suspended\\r\\n                          or\\r\\n                          database_replica_synchronization_state_desc in (\\\"NOT SYNCHRONIZING\\\",\\\"REVERTING\\\",\\\"INITIALIZING\\\")\\r\\n                          or\\r\\n                          database_replica_synchronization_health_desc in (\\\"NOT_HEALTHY\\\",\\\"PARTIALLY_HEALTHY\\\")\\r\\n                          or\\r\\n                          database_state_desc in (\\\"RESTORING\\\",\\\"RECOVERING\\\",\\\"RECOVERY_PENDING\\\",\\\"SUSPECT\\\",\\\"EMERGENCY\\\",\\\"OFFLINE\\\")\\r\\n                          or\\r\\n                          replica_role_desc in (\\\"RESOLVING\\\")\\r\\n                          or\\r\\n                          replica_operational_state_desc in (\\\"PENDING_FAILOVER\\\",\\\"PENDING\\\",\\\"OFFLINE\\\",\\\"FAILED\\\",\\\"FAILED_NO_QUORUM\\\")\\r\\n                          or\\r\\n                          replica_connected_state_desc in (\\\"DISCONNECTED\\\")\\r\\n                          or\\r\\n                          replica_recovery_health_desc in (\\\"ONLINE_IN_PROGRESS\\\")\\r\\n                          or\\r\\n                          replica_synchronization_health_desc in (\\\"NOT_HEALTHY\\\",\\\"PARTIALLY_HEALTHY\\\")\\r\\n                          , \\\"interesting\\\", \\\"regular\\\")\\r\\n| where \\\"{replicasSampleSubtype}\\\" == \\\"all\\\" or (\\\"{replicasSampleSubtype}\\\" == \\\"interesting\\\" and sample_subtype == \\\"{replicasSampleSubtype}\\\")\\r\\n| make-series metric = dcount(strcat(replica_id, group_database_id)) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor}*2 by sample_subtype\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 4,
+        "aggregation": 3,
+        "title": "Select a sample",
+        "noDataMessage": "No samples are available",
+        "timeBrushParameterName": "timeRange",
+        "exportParameterName": "replicasHistoricalSample",
+        "exportDefaultValue": "0",
+        "queryType": 9,
+        "visualization": "barchart",
+        "chartSettings": {
+          "showMetrics": false,
+          "showLegend": true,
+          "seriesLabelSettings": [
+            {
+              "seriesName": "interesting",
+              "label": "Notable",
+              "color": "red"
+            },
+            {
+              "seriesName": "regular",
+              "label": "Regular",
+              "color": "blueDark"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "replicasSampleType",
+        "comparison": "isEqualTo",
+        "value": "Historical"
+      },
+      "name": "replica_timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqlserver_database_replicas\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| summarize count_samples = dcount(sample_time_utc)\\r\\n| project strcat(\\\"There are `\\\", count_samples, \\\"` samples in the selected time range. Each vertical bar stands for a group of samples. Bar height is the number of distinct databases in a sample or a group of samples. Select a bar to view one sample from that group. Zoom in to see smaller sample groups, down to individual samples.\\\")\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "noDataMessage": "No samples are available",
+        "queryType": 9,
+        "visualization": "card",
+        "textSettings": {
+          "style": "markdown"
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "replicasSampleType",
+        "comparison": "isEqualTo",
+        "value": "Historical"
+      },
+      "name": "replicas_sample_count"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "85962b84-790e-43b3-bcb8-1b28a604e985",
+            "version": "KqlParameterItem/1.0",
+            "name": "replicasLatestSampleTime",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqlserver_database_replicas\\r\\n| where sample_time_utc between (\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 5m, ({timeRange:start} - 5m), {timeRange:start})\\r\\n                                ..\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 5m, ({timeRange:end} + 5m), {timeRange:end})\\r\\n                                ) // Expand the range if selected range is shorter than the least frequent collection interval (5m)\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| summarize sample_time_utc = max(sample_time_utc)\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 9
+          },
+          {
+            "id": "5b8d5988-63c0-4b41-b972-ebf964c936c2",
+            "version": "KqlParameterItem/1.0",
+            "name": "replicasHistoricalSampleTime",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Selected time from the history chart is a binned time generated by make-series and is unlikely to match an actual sample.\\r\\n// Look up an actual sample within the sample group selected on the history chart, differentiating between samples in different series.\\r\\nsqlserver_database_replicas\\r\\n| where sample_time_utc between (todatetime(\\\"{replicasHistoricalSample:$.x}\\\") .. (todatetime(\\\"{replicasHistoricalSample:$.x}\\\") + {timeRange:grain}))\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| extend sample_type = iif(\\r\\n                          is_suspended\\r\\n                          or\\r\\n                          database_replica_synchronization_state_desc in (\\\"NOT SYNCHRONIZING\\\",\\\"REVERTING\\\",\\\"INITIALIZING\\\")\\r\\n                          or\\r\\n                          database_replica_synchronization_health_desc in (\\\"NOT_HEALTHY\\\",\\\"PARTIALLY_HEALTHY\\\")\\r\\n                          or\\r\\n                          database_state_desc in (\\\"RESTORING\\\",\\\"RECOVERING\\\",\\\"RECOVERY_PENDING\\\",\\\"SUSPECT\\\",\\\"EMERGENCY\\\",\\\"OFFLINE\\\")\\r\\n                          or\\r\\n                          replica_role_desc in (\\\"RESOLVING\\\")\\r\\n                          or\\r\\n                          replica_operational_state_desc in (\\\"PENDING_FAILOVER\\\",\\\"PENDING\\\",\\\"OFFLINE\\\",\\\"FAILED\\\",\\\"FAILED_NO_QUORUM\\\")\\r\\n                          or\\r\\n                          replica_connected_state_desc in (\\\"DISCONNECTED\\\")\\r\\n                          or\\r\\n                          replica_recovery_health_desc in (\\\"ONLINE_IN_PROGRESS\\\")\\r\\n                          or\\r\\n                          replica_synchronization_health_desc in (\\\"NOT_HEALTHY\\\",\\\"PARTIALLY_HEALTHY\\\")\\r\\n                          , \\\"interesting\\\", \\\"regular\\\")\\r\\n| where sample_type == \\\"{replicasHistoricalSample:$.series}\\\"\\r\\n| summarize sample_time_utc = min(sample_time_utc) // Selecting any sample within a sample group is valid. Use the earliest for determinism.\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 9
+          },
+          {
+            "id": "d3907030-6a67-4079-8f9e-9526e42321bc",
+            "version": "KqlParameterItem/1.0",
+            "name": "replicasSampleTime",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "replicasSampleType",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Latest",
+                  "resultValType": "param",
+                  "resultVal": "replicasLatestSampleTime"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "replicasSampleType",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Historical",
+                  "resultValType": "param",
+                  "resultVal": "replicasHistoricalSampleTime"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "param",
+                  "resultVal": "replicasLatestSampleTime"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 9
+      },
+      "conditionalVisibility": {
+        "parameterName": "alwaysHidden",
+        "comparison": "isNotEqualTo"
+      },
+      "customWidth": "50",
+      "name": "replicas_sample_time_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqlserver_database_replicas\\r\\n| where sample_time_utc == todatetime(\\\"{replicasSampleTime}\\\")\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| summarize count_replicas = dcount(replica_id) by sample_time_utc\\r\\n| project sample_time = sample_time_utc, sample_time_utc, sample_age = format_timespan(now() - sample_time_utc, \\\"d.hh:mm:ss\\\"), count_replicas\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 4,
+        "noDataMessage": "No replica samples are available",
+        "queryType": 9,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "sample_time",
+              "formatter": 6,
+              "formatOptions": {
+                "customColumnWidthSetting": "28ch"
+              },
+              "dateFormat": {
+                "showUtcTime": null,
+                "formatName": "shortDateTimePattern"
+              }
+            },
+            {
+              "columnMatch": "sample_time_utc",
+              "formatter": 6,
+              "formatOptions": {
+                "customColumnWidthSetting": "28ch"
+              },
+              "dateFormat": {
+                "showUtcTime": true,
+                "formatName": "shortDateTimePattern"
+              }
+            },
+            {
+              "columnMatch": "sample_age",
+              "formatter": 2,
+              "tooltipFormat": {
+                "tooltip": "Time difference between last workbook refresh and displayed sample"
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "sample_time",
+              "label": "Collection time"
+            },
+            {
+              "columnId": "sample_time_utc",
+              "label": "Collection time (UTC)"
+            },
+            {
+              "columnId": "sample_age",
+              "label": "Age of sample"
+            },
+            {
+              "columnId": "count_replicas",
+              "label": "Replicas"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "replicasSampleTime",
+        "comparison": "isNotEqualTo"
+      },
+      "customWidth": "50",
+      "name": "selected_replica_sample"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "252ab2b9-4c79-4073-8bbf-2a59adb8ca18",
+            "cellValue": "tabAvailabilityGroupsListeners",
+            "linkTarget": "parameter",
+            "linkLabel": "Availability groups, replicas, databases",
+            "subTarget": "AvailabilityGroups",
+            "style": "link"
+          },
+          {
+            "id": "99fd804c-4bf5-45ef-b366-d5f42e148de2",
+            "cellValue": "tabAvailabilityGroupsListeners",
+            "linkTarget": "parameter",
+            "linkLabel": "Listeners",
+            "subTarget": "Listeners",
+            "style": "link"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "replicasSampleTime",
+        "comparison": "isNotEqualTo"
+      },
+      "name": "availabilityGroupsListeners"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let local_and_primary_replicas = materialize (\\r\\nsqlserver_database_replicas\\r\\n| where sample_time_utc between ((todatetime(\\\"{replicasSampleTime}\\\") - 5m) .. todatetime(\\\"{replicasSampleTime}\\\"))\\r\\n| where is_local_replica\\r\\n        or\\r\\n        replica_role_desc == \\\"PRIMARY\\\" // get primary replica server name to create a link to it, which is used to get a complete view of AG/replica/database state\\r\\n| summarize arg_max(sample_time_utc, replica_operational_state_desc, replica_connected_state_desc, replica_recovery_health_desc, replica_create_date, replica_modify_date, replica_last_connect_error_description, replica_last_connect_error_timestamp, machine_name, secondary_lag_seconds, database_state_desc)\\r\\n            by group_id, group_database_id, replica_server_name, is_local_replica, replica_role_desc\\r\\n);\\r\\nlet primary_replicas = (\\r\\nlocal_and_primary_replicas\\r\\n| where replica_role_desc == \\\"PRIMARY\\\"\\r\\n| summarize arg_max(sample_time_utc, primary_replica_server_name = replica_server_name, primary_replica_machine_name = machine_name)\\r\\n            by group_id\\r\\n);\\r\\n// Certain DMV columns are only populated for a replica (or database) when a DMV is queried locally on that replica.\\r\\n// If a value is missing in the DMVs for currently selected server, we try getting it from other servers hosting replicas for the same availability group.\\r\\nlet local_replicas = (\\r\\nlocal_and_primary_replicas\\r\\n| where is_local_replica\\r\\n| summarize arg_max(sample_time_utc, remote_replica_operational_state_desc = replica_operational_state_desc, remote_replica_connected_state_desc = replica_connected_state_desc, remote_replica_recovery_health_desc = replica_recovery_health_desc, remote_replica_create_date = replica_create_date, remote_replica_modify_date = replica_modify_date, remote_replica_last_connect_error_description = replica_last_connect_error_description, remote_replica_last_connect_error_timestamp = replica_last_connect_error_timestamp, remote_secondary_lag_seconds = secondary_lag_seconds, remote_database_state_desc = database_state_desc)\\r\\n            by group_id, group_database_id, replica_server_name\\r\\n);\\r\\nlet replicas = materialize (\\r\\nsqlserver_database_replicas\\r\\n| where sample_time_utc == todatetime(\\\"{replicasSampleTime}\\\")\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| join kind=leftouter local_replicas on group_id, replica_server_name, group_database_id\\r\\n| project-away group_id1, sample_time_utc1, group_database_id1\\r\\n| join kind=leftouter primary_replicas on group_id\\r\\n| project-away group_id1, sample_time_utc1\\r\\n| extend replica_operational_state_desc = iif(isnotempty(replica_operational_state_desc), replica_operational_state_desc, remote_replica_operational_state_desc),\\r\\n         replica_connected_state_desc = iif(isnotempty(replica_connected_state_desc), replica_connected_state_desc, remote_replica_connected_state_desc),\\r\\n         replica_recovery_health_desc = iif(isnotempty(replica_recovery_health_desc), replica_recovery_health_desc, remote_replica_recovery_health_desc),\\r\\n         replica_create_date = iif(isnotempty(replica_create_date), replica_create_date, remote_replica_create_date),\\r\\n         replica_modify_date = iif(isnotempty(replica_modify_date), replica_modify_date, remote_replica_modify_date),\\r\\n         replica_last_connect_error_description = iif(isnotempty(replica_last_connect_error_description), replica_last_connect_error_description, remote_replica_last_connect_error_description),\\r\\n         replica_last_connect_error_timestamp = iif(isnotempty(replica_last_connect_error_timestamp), replica_last_connect_error_timestamp, remote_replica_last_connect_error_timestamp),\\r\\n         secondary_lag_seconds = iif(isnotempty(secondary_lag_seconds), secondary_lag_seconds, remote_secondary_lag_seconds),\\r\\n         database_state_desc = iif(isnotempty(database_state_desc), database_state_desc, remote_database_state_desc)\\r\\n| project group_id,\\r\\n          replica_id,\\r\\n          group_database_id,\\r\\n          availability_group_name,\\r\\n          replica_server_name,\\r\\n          availability_mode_desc = case(availability_mode_desc == \\\"ASYNCHRONOUS_COMMIT\\\", \\\"Async\\\", availability_mode_desc == \\\"SYNCHRONOUS_COMMIT\\\", \\\"Sync\\\", availability_mode_desc),\\r\\n          failover_mode_desc = case(failover_mode_desc == \\\"AUTOMATIC\\\", \\\"Auto\\\", failover_mode_desc == \\\"MANUAL\\\", \\\"Manual\\\", failover_mode_desc == \\\"EXTERNAL\\\", \\\"External\\\", failover_mode_desc),\\r\\n          is_readable = case(replica_role_desc == \\\"PRIMARY\\\", true, replica_role_desc == \\\"SECONDARY\\\" and secondary_role_allow_connections_desc in (\\\"ALL\\\", \\\"READ_ONLY\\\"), true, replica_role_desc == \\\"SECONDARY\\\" and secondary_role_allow_connections_desc == \\\"NO\\\", false, bool(null)),\\r\\n          replica_role_desc = case(replica_role_desc == \\\"PRIMARY\\\", \\\"Primary\\\", replica_role_desc == \\\"SECONDARY\\\", \\\"Secondary\\\", replica_role_desc == \\\"RESOLVING\\\", \\\"Resolving\\\", replica_role_desc),\\r\\n          replica_recovery_health_desc = case(replica_recovery_health_desc == \\\"ONLINE\\\", \\\"Online\\\", replica_recovery_health_desc == \\\"ONLINE_IN_PROGRESS\\\", \\\"Online in progress\\\", \\\"\\\"),\\r\\n          replica_synchronization_health_desc = case(replica_synchronization_health_desc == \\\"HEALTHY\\\", \\\"Healthy\\\", replica_synchronization_health_desc == \\\"PARTIALLY_HEALTHY\\\", \\\"Partially healthy\\\", replica_synchronization_health_desc == \\\"NOT_HEALTHY\\\", \\\"Not healthy\\\", \\\"\\\"),\\r\\n          replica_connected_state_desc = case(replica_connected_state_desc == \\\"CONNECTED\\\", \\\"Connected\\\", replica_connected_state_desc == \\\"DISCONNECTED\\\", \\\"Disconnected\\\", \\\"\\\"),\\r\\n          replica_operational_state_desc = case(replica_operational_state_desc == \\\"PENDING_FAILOVER\\\", \\\"Pending failover\\\", replica_operational_state_desc == \\\"PENDING\\\", \\\"Pending\\\", replica_operational_state_desc == \\\"ONLINE\\\", \\\"Online\\\", replica_operational_state_desc == \\\"OFFLINE\\\", \\\"Offline\\\", replica_operational_state_desc == \\\"FAILED\\\", \\\"Failed\\\", replica_operational_state_desc == \\\"FAILED_NO_QUORUM\\\", \\\"Failed, no quorum\\\", \\\"\\\"),\\r\\n          primary_replica_server_name = iif(replica_role_desc == \\\"SECONDARY\\\", primary_replica_server_name, \\\"\\\"), primary_replica_machine_name = iif(replica_role_desc == \\\"SECONDARY\\\", primary_replica_machine_name, \\\"\\\"),\\r\\n          database_id,\\r\\n          database_name,\\r\\n          is_local_database_replica,\\r\\n          is_suspended,\\r\\n          database_replica_synchronization_state_desc = case(database_replica_synchronization_state_desc == \\\"NOT SYNCHRONIZING\\\", \\\"Not synchronizing\\\", database_replica_synchronization_state_desc == \\\"SYNCHRONIZING\\\", \\\"Synchronizing\\\", database_replica_synchronization_state_desc == \\\"SYNCHRONIZED\\\", \\\"Synchronized\\\", database_replica_synchronization_state_desc == \\\"REVERTING\\\", \\\"Reverting\\\", database_replica_synchronization_state_desc == \\\"INITIALIZING\\\", \\\"Initializing\\\", \\\"\\\"),\\r\\n          database_replica_synchronization_health_desc = case(database_replica_synchronization_health_desc == \\\"NOT_HEALTHY\\\", \\\"Not healthy\\\", database_replica_synchronization_health_desc == \\\"PARTIALLY_HEALTHY\\\", \\\"Partially healthy\\\", database_replica_synchronization_health_desc == \\\"HEALTHY\\\", \\\"Healthy\\\", \\\"\\\"),\\r\\n          database_state_desc = case(database_state_desc == \\\"ONLINE\\\", \\\"Online\\\", database_state_desc == \\\"RESTORING\\\", \\\"Restoring\\\", database_state_desc == \\\"RECOVERING\\\", \\\"Recovering\\\", database_state_desc == \\\"RECOVERY_PENDING\\\", \\\"Recovery pending\\\", database_state_desc == \\\"SUSPECT\\\", \\\"Suspect\\\", database_state_desc == \\\"EMERGENCY\\\", \\\"Emergency\\\", database_state_desc == \\\"OFFLINE\\\", \\\"Offline\\\", \\\"\\\"),\\r\\n          availability_group_listeners,\\r\\n          secondary_lag_seconds,\\r\\n          log_send_queue_size_kb,\\r\\n          log_send_rate_kbps,\\r\\n          redo_queue_size_kb,\\r\\n          redo_rate_kbps,\\r\\n          automated_backup_preference_desc,\\r\\n          cluster_type_desc,\\r\\n          failure_condition_level,\\r\\n          health_check_timeout_ms,\\r\\n          required_synchronized_secondaries_to_commit,\\r\\n          count_availability_group_threads,\\r\\n          basic_features,\\r\\n          dtc_support,\\r\\n          db_failover,\\r\\n          is_distributed,\\r\\n          replica_last_connect_error_description,\\r\\n          endpoint_url,\\r\\n          primary_role_allow_connections_desc,\\r\\n          secondary_role_allow_connections_desc,\\r\\n          seeding_mode_desc,\\r\\n          session_timeout,\\r\\n          backup_priority,\\r\\n          replica_last_connect_error_timestamp,\\r\\n          replica_create_date,\\r\\n          replica_modify_date,\\r\\n          suspend_reason_desc,\\r\\n          low_water_mark_for_ghosts,\\r\\n          count_database_capture_threads,\\r\\n          count_database_redo_threads,\\r\\n          is_primary_database_replica,\\r\\n          is_commit_participant,\\r\\n          last_hardened_time,\\r\\n          last_redone_time,\\r\\n          last_commit_time\\r\\n);\\r\\n// Create JSON for detail grids\\r\\n// Define column labels for each grid\\r\\nlet availability_group_column_labels_string = dynamic(\\r\\n[\\r\\n\\\"group_id\\\",\\\"availability_group_name\\\",\\\"automated_backup_preference_desc\\\",\\\"cluster_type_desc\\\"\\r\\n]);\\r\\nlet availability_group_column_labels_number_count = dynamic(\\r\\n[\\r\\n\\\"failure_condition_level\\\",\\\"health_check_timeout_ms\\\",\\\"required_synchronized_secondaries_to_commit\\\",\\\"count_availability_group_threads\\\"\\r\\n]);\\r\\nlet availability_group_column_labels_boolean = dynamic(\\r\\n[\\r\\n\\\"basic_features\\\",\\\"dtc_support\\\",\\\"db_failover\\\",\\\"is_distributed\\\"\\r\\n]);\\r\\nlet replica_column_labels_string = dynamic(\\r\\n[\\r\\n\\\"replica_id\\\",\\\"replica_last_connect_error_description\\\",\\\"endpoint_url\\\",\\\"primary_role_allow_connections_desc\\\",\\\"secondary_role_allow_connections_desc\\\",\\\"seeding_mode_desc\\\"\\r\\n]);\\r\\nlet replica_column_labels_number_count = dynamic(\\r\\n[\\r\\n\\\"session_timeout\\\",\\\"backup_priority\\\"\\r\\n]);\\r\\nlet replica_column_labels_datetime = dynamic(\\r\\n[\\r\\n\\\"replica_last_connect_error_timestamp\\\",\\\"replica_create_date\\\",\\\"replica_modify_date\\\"\\r\\n]);\\r\\nlet database_column_labels_string = dynamic(\\r\\n[\\r\\n\\\"group_database_id\\\",\\\"suspend_reason_desc\\\"\\r\\n]);\\r\\nlet database_column_labels_number_count = dynamic(\\r\\n[\\r\\n\\\"low_water_mark_for_ghosts\\\",\\\"count_database_capture_threads\\\",\\\"count_database_redo_threads\\\"\\r\\n]);\\r\\nlet database_column_labels_boolean = dynamic(\\r\\n[\\r\\n\\\"is_primary_database_replica\\\",\\\"is_commit_participant\\\"\\r\\n]);\\r\\nlet database_column_labels_datetime = dynamic(\\r\\n[\\r\\n\\\"last_hardened_time\\\",\\\"last_redone_time\\\",\\\"last_commit_time\\\"\\r\\n]);\\r\\n// result set for availability group strings grid\\r\\nlet availability_group_details_string = (\\r\\nreplicas\\r\\n| distinct group_id, availability_group_name, automated_backup_preference_desc, cluster_type_desc\\r\\n| project group_id, columns = pack_all() // put all columns into a property bag\\r\\n| mv-apply column_label = availability_group_column_labels_string to typeof(string) on (project column_label, column_value = tostring(columns[column_label])) // create a row for each name/value pair\\r\\n| project-away columns\\r\\n| sort by column_label asc // make_list later will preserve sort order\\r\\n| project group_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value) // introduce \\\"Property\\\" and \\\"Value\\\" column names\\r\\n| summarize availability_group_details_string = dynamic_to_json(make_list(c)) by group_id // for each group_id, aggregate rowset into a json array of rows, to be used as grid source\\r\\n);\\r\\n// result set for availability group count numbers grid\\r\\nlet availability_group_details_number_count = (\\r\\nreplicas\\r\\n| distinct group_id, failure_condition_level, health_check_timeout_ms, required_synchronized_secondaries_to_commit, count_availability_group_threads\\r\\n| project group_id, columns = pack_all()\\r\\n| mv-apply column_label = availability_group_column_labels_number_count to typeof(string) on (project column_label, column_value = tolong(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize availability_group_details_number_count = dynamic_to_json(make_list(c)) by group_id\\r\\n);\\r\\n// result set for availability group boolean grid\\r\\nlet availability_group_details_boolean = (\\r\\nreplicas\\r\\n| distinct group_id, basic_features, dtc_support, db_failover, is_distributed\\r\\n| project group_id, columns = pack_all()\\r\\n| mv-apply column_label = availability_group_column_labels_boolean to typeof(string) on (project column_label, column_value = tobool(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize availability_group_details_boolean = dynamic_to_json(make_list(c)) by group_id\\r\\n);\\r\\n// result set for replica strings grid\\r\\nlet replica_details_string = (\\r\\nreplicas\\r\\n| distinct group_id, replica_id, replica_last_connect_error_description, endpoint_url, primary_role_allow_connections_desc, secondary_role_allow_connections_desc, seeding_mode_desc\\r\\n| project group_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = replica_column_labels_string to typeof(string) on (project column_label, column_value = tostring(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize replica_details_string = dynamic_to_json(make_list(c)) by group_id, replica_id\\r\\n);\\r\\n// result set for replica count numbers grid\\r\\nlet replica_details_number_count = (\\r\\nreplicas\\r\\n| distinct group_id, replica_id, session_timeout, backup_priority\\r\\n| project group_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = replica_column_labels_number_count to typeof(string) on (project column_label, column_value = tolong(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize replica_details_number_count = dynamic_to_json(make_list(c)) by group_id, replica_id\\r\\n);\\r\\n// result set for replica datetime grid\\r\\nlet replica_details_datetime = (\\r\\nreplicas\\r\\n| distinct group_id, replica_id, replica_last_connect_error_timestamp, replica_create_date, replica_modify_date\\r\\n| project group_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = replica_column_labels_datetime to typeof(string) on (project column_label, column_value = todatetime(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize replica_details_datetime = dynamic_to_json(make_list(c)) by group_id, replica_id\\r\\n);\\r\\n// result set for database strings grid\\r\\nlet database_details_string = (\\r\\nreplicas\\r\\n| distinct group_id, group_database_id, replica_id, suspend_reason_desc\\r\\n| project group_id, group_database_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = database_column_labels_string to typeof(string) on (project column_label, column_value = tostring(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, group_database_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize database_details_string = dynamic_to_json(make_list(c)) by group_id, group_database_id, replica_id\\r\\n);\\r\\n// result set for database count numbers grid\\r\\nlet database_details_number_count = (\\r\\nreplicas\\r\\n| distinct group_id, group_database_id, replica_id, low_water_mark_for_ghosts, count_database_capture_threads, count_database_redo_threads\\r\\n| project group_id, group_database_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = database_column_labels_number_count to typeof(string) on (project column_label, column_value = tolong(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, group_database_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize database_details_number_count = dynamic_to_json(make_list(c)) by group_id, group_database_id, replica_id\\r\\n);\\r\\n// result set for database boolean grid\\r\\nlet database_details_boolean = (\\r\\nreplicas\\r\\n| distinct group_id, group_database_id, replica_id, is_primary_database_replica, is_commit_participant\\r\\n| project group_id, group_database_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = database_column_labels_boolean to typeof(string) on (project column_label, column_value = tobool(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, group_database_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize database_details_boolean = dynamic_to_json(make_list(c)) by group_id, group_database_id, replica_id\\r\\n);\\r\\n// result set for database datetime grid\\r\\nlet database_details_datetime = (\\r\\nreplicas\\r\\n| distinct group_id, group_database_id, replica_id, last_hardened_time, last_redone_time, last_commit_time\\r\\n| project group_id, group_database_id, replica_id, columns = pack_all()\\r\\n| mv-apply column_label = database_column_labels_datetime to typeof(string) on (project column_label, column_value = todatetime(columns[column_label]))\\r\\n| project-away columns\\r\\n| sort by column_label asc\\r\\n| project group_id, group_database_id, replica_id, c = pack(\\\"Property\\\", column_label, \\\"Value\\\", column_value)\\r\\n| summarize database_details_datetime = dynamic_to_json(make_list(c)) by group_id, group_database_id, replica_id\\r\\n);\\r\\n// result set with joined detail JSON columns\\r\\nlet replicas_including_details = materialize (\\r\\nreplicas\\r\\n| join kind=inner availability_group_details_string on group_id\\r\\n| join kind=inner availability_group_details_number_count on group_id\\r\\n| join kind=inner availability_group_details_boolean on group_id\\r\\n| join kind=inner replica_details_string on group_id, replica_id\\r\\n| join kind=inner replica_details_number_count on group_id, replica_id\\r\\n| join kind=inner replica_details_datetime on group_id, replica_id\\r\\n| join kind=inner database_details_string on group_id, group_database_id, replica_id\\r\\n| join kind=inner database_details_number_count on group_id, group_database_id, replica_id\\r\\n| join kind=inner database_details_boolean on group_id, group_database_id, replica_id\\r\\n| join kind=inner database_details_datetime on group_id, group_database_id, replica_id\\r\\n| project-away group_id1, group_id2, group_id3, group_id4, group_id5, group_id6, group_id7, group_id8, group_id9, replica_id1, replica_id2, replica_id3, group_database_id1, group_database_id2, group_database_id3, replica_id4, replica_id5, replica_id6, replica_id7\\r\\n| extend empty_details = '[{\\\"Property\\\":\\\"\\\",\\\"Value\\\":\\\"\\\"}]'\\r\\n);\\r\\n// top grid level (availability group)\\r\\nreplicas_including_details\\r\\n| summarize by parent_id = \\\"\\\", id = group_id, grouper = strcat(\\\"🔢\\\", availability_group_name), availability_group_listeners, availability_group_details_string, availability_group_details_number_count, availability_group_details_boolean, replica_details_string = empty_details, replica_details_number_count = empty_details, replica_details_datetime = empty_details, database_details_string = empty_details, database_details_number_count = empty_details, database_details_boolean = empty_details, database_details_datetime = empty_details\\r\\n| union (\\r\\n// next grid level (availability replica)\\r\\nreplicas_including_details\\r\\n| summarize by parent_id = group_id, id = replica_id, grouper = strcat(\\\"🖥\\\", replica_server_name), replica_role_desc, availability_mode_desc, failover_mode_desc, is_readable, replica_connected_state_desc, replica_operational_state_desc, replica_recovery_health_desc, replica_synchronization_health_desc, primary_replica_server_name, primary_replica_machine_name, availability_group_listeners, availability_group_details_string, availability_group_details_number_count, availability_group_details_boolean, replica_details_string, replica_details_number_count, replica_details_datetime, database_details_string = empty_details, database_details_number_count = empty_details, database_details_boolean = empty_details, database_details_datetime = empty_details\\r\\n)\\r\\n| union (\\r\\n// leaf grid level (availability database on an availability replica)\\r\\nreplicas_including_details\\r\\n| project parent_id = replica_id, id = strcat(replica_id, \\\"_\\\", group_database_id), grouper = strcat(\\\"🔘\\\", database_name), is_local_database_replica, is_suspended, database_replica_synchronization_state_desc, database_replica_synchronization_health_desc, database_state_desc, secondary_lag_seconds, redo_queue_size_kb, redo_rate_kbps, log_send_queue_size_kb, log_send_rate_kbps, availability_group_details_string, availability_group_details_number_count, availability_group_details_boolean, replica_details_string, replica_details_number_count, replica_details_datetime, database_details_string, database_details_number_count, database_details_boolean, database_details_datetime\\r\\n)\\r\\n| sort by grouper asc\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "exportedParameters": [
+          {
+            "fieldName": "availability_group_details_string",
+            "parameterName": "availability_group_details_string",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "availability_group_details_number_count",
+            "parameterName": "availability_group_details_number_count",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "availability_group_details_boolean",
+            "parameterName": "availability_group_details_boolean",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "replica_details_string",
+            "parameterName": "replica_details_string",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "replica_details_number_count",
+            "parameterName": "replica_details_number_count",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "replica_details_datetime",
+            "parameterName": "replica_details_datetime",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "database_details_string",
+            "parameterName": "database_details_string",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "database_details_number_count",
+            "parameterName": "database_details_number_count",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "database_details_boolean",
+            "parameterName": "database_details_boolean",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          },
+          {
+            "fieldName": "database_details_datetime",
+            "parameterName": "database_details_datetime",
+            "parameterType": 1,
+            "defaultValue": "[{\"Property\":\"\",\"Value\":\"\"}]"
+          }
+        ],
+        "showExportToExcel": true,
+        "queryType": 9,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "parent_id",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "id",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "availability_group_listeners",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "availability_group_details_string",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "availability_group_details_number_count",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "availability_group_details_boolean",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "replica_details_string",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "replica_details_number_count",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "replica_details_datetime",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "database_details_string",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "database_details_number_count",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "database_details_boolean",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "database_details_datetime",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "replica_role_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Primary",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Secondary",
+                    "representation": "turquoise",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Resolving",
+                    "representation": "yellow",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "13ch"
+              }
+            },
+            {
+              "columnMatch": "availability_mode_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Async",
+                    "representation": "grayBlue",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Sync",
+                    "representation": "greenDark",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "12ch"
+              }
+            },
+            {
+              "columnMatch": "failover_mode_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Auto",
+                    "representation": "lightBlue",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Manual",
+                    "representation": "gray",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "External",
+                    "representation": "brown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "13ch"
+              }
+            },
+            {
+              "columnMatch": "is_readable",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "true",
+                    "representation": "Check",
+                    "text": ""
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "false",
+                    "representation": "Subtract",
+                    "text": ""
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "14ch"
+              }
+            },
+            {
+              "columnMatch": "replica_connected_state_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Connected",
+                    "representation": "Connect",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disconnected",
+                    "representation": "Disconnect",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "20ch"
+              }
+            },
+            {
+              "columnMatch": "replica_operational_state_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Pending failover",
+                    "representation": "pending",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Pending",
+                    "representation": "pending",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Online",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Offline",
+                    "representation": "cancelled",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "failed",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "thresholdValue": "Failed, no quorum",
+                    "representation": "failed",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "20ch"
+              }
+            },
+            {
+              "columnMatch": "replica_recovery_health_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Online",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Online in progress",
+                    "representation": "pending",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "replica_synchronization_health_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Healthy",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not healthy",
+                    "representation": "critical",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Partially healthy",
+                    "representation": "warning",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "primary_replica_server_name",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "WorkbookTemplate",
+                "workbookContext": {
+                  "componentIdSource": "workbook",
+                  "resourceIdsSource": "workbook",
+                  "templateIdSource": "static",
+                  "templateId": "Community-Workbooks/Database watcher/SQL Server/instance",
+                  "typeSource": "workbook",
+                  "gallerySource": "default",
+                  "locationSource": "workbook",
+                  "workbookName": "SQL Server instance",
+                  "passSpecificParams": true,
+                  "templateParameters": [
+                    {
+                      "name": "timeRange",
+                      "source": "parameter",
+                      "value": "timeRange"
+                    },
+                    {
+                      "name": "watcherResourceId",
+                      "source": "parameter",
+                      "value": "watcherResourceId"
+                    },
+                    {
+                      "name": "linkAdxClusterUri",
+                      "source": "parameter",
+                      "value": "adxClusterUri"
+                    },
+                    {
+                      "name": "linkAdxDatabase",
+                      "source": "parameter",
+                      "value": "adxDatabase"
+                    },
+                    {
+                      "name": "tabName",
+                      "source": "static",
+                      "value": "Replicas"
+                    },
+                    {
+                      "name": "machineName",
+                      "source": "column",
+                      "value": "primary_replica_machine_name"
+                    },
+                    {
+                      "name": "serverName",
+                      "source": "column",
+                      "value": "primary_replica_server_name"
+                    }
+                  ]
+                },
+                "customColumnWidthSetting": "18ch"
+              }
+            },
+            {
+              "columnMatch": "primary_replica_machine_name",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "is_local_database_replica",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "true",
+                    "representation": "Check",
+                    "text": ""
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "false",
+                    "representation": "Subtract",
+                    "text": ""
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": ""
+                  }
+                ],
+                "customColumnWidthSetting": "10ch"
+              }
+            },
+            {
+              "columnMatch": "is_suspended",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "true",
+                    "representation": "critical",
+                    "text": "Yes"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "false",
+                    "representation": "success",
+                    "text": "No"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": ""
+                  }
+                ],
+                "customColumnWidthSetting": "15ch"
+              }
+            },
+            {
+              "columnMatch": "database_replica_synchronization_state_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not synchronizing",
+                    "representation": "error",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Synchronizing",
+                    "representation": "1",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Synchronized",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Reverting",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Initializing",
+                    "representation": "uninitialized",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "database_replica_synchronization_health_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Healthy",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Partially healthy",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not healthy",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "18ch"
+              }
+            },
+            {
+              "columnMatch": "database_state_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Online",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Restoring",
+                    "representation": "1",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Recovering",
+                    "representation": "pending",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Recovery pending",
+                    "representation": "pending",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Suspect",
+                    "representation": "failed",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Emergency",
+                    "representation": "critical",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Offline",
+                    "representation": "cancelled",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "18ch"
+              }
+            },
+            {
+              "columnMatch": "secondary_lag_seconds",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            },
+            {
+              "columnMatch": "redo_queue_size_kb",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            },
+            {
+              "columnMatch": "redo_rate_kbps",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 12,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            },
+            {
+              "columnMatch": "log_send_queue_size_kb",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 3,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            },
+            {
+              "columnMatch": "log_send_rate_kbps",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 12,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            },
+            {
+              "columnMatch": "replica_server_name",
+              "formatter": 5
+            }
+          ],
+          "filter": true,
+          "hierarchySettings": {
+            "idColumn": "id",
+            "parentColumn": "parent_id",
+            "treeType": 0,
+            "expanderColumn": "grouper",
+            "expandTopLevel": true
+          },
+          "labelSettings": [
+            {
+              "columnId": "grouper",
+              "label": "AG>Replica>Database"
+            },
+            {
+              "columnId": "replica_role_desc",
+              "label": "Role"
+            },
+            {
+              "columnId": "availability_mode_desc",
+              "label": "Mode"
+            },
+            {
+              "columnId": "failover_mode_desc",
+              "label": "Failover"
+            },
+            {
+              "columnId": "is_readable",
+              "label": "Readable"
+            },
+            {
+              "columnId": "replica_connected_state_desc",
+              "label": "Connected state"
+            },
+            {
+              "columnId": "replica_operational_state_desc",
+              "label": "Operational state"
+            },
+            {
+              "columnId": "replica_recovery_health_desc",
+              "label": "Recovery state"
+            },
+            {
+              "columnId": "replica_synchronization_health_desc",
+              "label": "Sync health"
+            },
+            {
+              "columnId": "primary_replica_server_name",
+              "label": "Primary"
+            },
+            {
+              "columnId": "is_local_database_replica",
+              "label": "Local"
+            },
+            {
+              "columnId": "is_suspended",
+              "label": "Suspended"
+            },
+            {
+              "columnId": "database_replica_synchronization_state_desc",
+              "label": "DB sync state"
+            },
+            {
+              "columnId": "database_replica_synchronization_health_desc",
+              "label": "DB sync health"
+            },
+            {
+              "columnId": "database_state_desc",
+              "label": "DB state"
+            },
+            {
+              "columnId": "secondary_lag_seconds",
+              "label": "Secondary lag"
+            },
+            {
+              "columnId": "redo_queue_size_kb",
+              "label": "Redo queue"
+            },
+            {
+              "columnId": "redo_rate_kbps",
+              "label": "Redo rate"
+            },
+            {
+              "columnId": "log_send_queue_size_kb",
+              "label": "Log send queue"
+            },
+            {
+              "columnId": "log_send_rate_kbps",
+              "label": "Log send rate"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "replicasSampleTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "tabAvailabilityGroupsListeners",
+          "comparison": "isEqualTo",
+          "value": "AvailabilityGroups"
+        }
+      ],
+      "name": "database_replicas"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let availability_group = \\r\\nsqlserver_database_replicas\\r\\n| where sample_time_utc == todatetime(\\\"{replicasSampleTime}\\\")\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| where isnotempty(availability_group_listeners)\\r\\n| summarize availability_group_listeners = take_any(todynamic(availability_group_listeners)) by group_id, availability_group_name\\r\\n| mv-expand availability_group_listeners;\\r\\n// top level - availability group/listener\\r\\navailability_group\\r\\n| mv-expand listener_id = availability_group_listeners.listener_id to typeof(string), dns_name = availability_group_listeners.dns_name to typeof(string), port = availability_group_listeners.port to typeof(int), is_conformant = availability_group_listeners.is_conformant to typeof(bool)\\r\\n| extend id = listener_id, parent_id = \\\"\\\"\\r\\n| union (\\r\\n// leaf level - listener IP address\\r\\navailability_group\\r\\n| mv-expand listener_id = availability_group_listeners.listener_id to typeof(string)\\r\\n| extend listener_ip_addresses = extract_json(\\\"$.listener_ip_address\\\", tostring(availability_group_listeners), typeof(dynamic))\\r\\n| mv-expand listener_ip_addresses\\r\\n| mv-expand ip_address = listener_ip_addresses.ip_address to typeof(string), ip_subnet_mask = listener_ip_addresses.ip_subnet_mask to typeof(string), is_dhcp = listener_ip_addresses.is_dhcp to typeof(bool), network_subnet_ip = listener_ip_addresses.network_subnet_ip to typeof(string), network_subnet_prefix_length = listener_ip_addresses.network_subnet_prefix_length to typeof(string), network_subnet_ipv4_mask = listener_ip_addresses.network_subnet_ipv4_mask to typeof(string), state_desc = listener_ip_addresses.state_desc to typeof(string)\\r\\n| project-away availability_group_name\\r\\n| extend id = ip_address, parent_id = listener_id, state_desc = case(state_desc == \\\"ONLINE\\\", \\\"Online\\\", state_desc == \\\"OFFLINE\\\", \\\"Offline\\\", state_desc == \\\"ONLINE_PENDING\\\", \\\"Online pending\\\", state_desc == \\\"FAILED\\\", \\\"Failed\\\", \\\"\\\")\\r\\n)\\r\\n| project-away group_id, availability_group_listeners, listener_id, listener_ip_addresses\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "title": "Listeners",
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "is_conformant",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "true",
+                    "representation": "Check",
+                    "text": "Yes"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "false",
+                    "representation": "Subtract",
+                    "text": "No"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "id",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "parent_id",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "is_dhcp",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "true",
+                    "representation": "Check",
+                    "text": "Yes"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "false",
+                    "representation": "Subtract",
+                    "text": "No"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "state_desc",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Online",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Offline",
+                    "representation": "cancelled",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Online pending",
+                    "representation": "pending",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "failed",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "hierarchySettings": {
+            "idColumn": "id",
+            "parentColumn": "parent_id",
+            "treeType": 0,
+            "expanderColumn": "availability_group_name",
+            "expandTopLevel": true
+          },
+          "labelSettings": [
+            {
+              "columnId": "availability_group_name",
+              "label": "Availability group"
+            },
+            {
+              "columnId": "dns_name",
+              "label": "Listener"
+            },
+            {
+              "columnId": "port",
+              "label": "Port"
+            },
+            {
+              "columnId": "is_conformant",
+              "label": "Conformant"
+            },
+            {
+              "columnId": "ip_address",
+              "label": "Listener IP"
+            },
+            {
+              "columnId": "ip_subnet_mask",
+              "label": "Listener mask"
+            },
+            {
+              "columnId": "is_dhcp",
+              "label": "DHCP"
+            },
+            {
+              "columnId": "network_subnet_ip",
+              "label": "Subnet"
+            },
+            {
+              "columnId": "network_subnet_prefix_length",
+              "label": "Prefix"
+            },
+            {
+              "columnId": "network_subnet_ipv4_mask",
+              "label": "Subnet mask"
+            },
+            {
+              "columnId": "state_desc",
+              "label": "State"
+            }
+          ]
+        }
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "replicasSampleTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "tabAvailabilityGroupsListeners",
+          "comparison": "isEqualTo",
+          "value": "Listeners"
+        }
+      ],
+      "name": "ag_listeners"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Availability group details",
+        "expandable": true,
+        "expanded": true,
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{availability_group_details_string}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table"
+            },
+            "name": "availability_group_details_string"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{availability_group_details_number_count}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Value",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "availability_group_details_number_count"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{availability_group_details_boolean}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Value",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "Check",
+                          "text": ""
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "Subtract",
+                          "text": ""
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "availability_group_details_boolean"
+          }
+        ],
+        "exportParameters": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "replicasSampleTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "tabAvailabilityGroupsListeners",
+          "comparison": "isEqualTo",
+          "value": "AvailabilityGroups"
+        }
+      ],
+      "customWidth": "33",
+      "name": "availability_group_details_group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Replica details",
+        "expandable": true,
+        "expanded": true,
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{replica_details_string}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table"
+            },
+            "name": "replica_details_string"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{replica_details_number_count}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table"
+            },
+            "name": "replica_details_number_count"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{replica_details_datetime}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Value",
+                    "formatter": 6,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    },
+                    "dateFormat": {
+                      "showUtcTime": true,
+                      "formatName": "shortDateTimePattern"
+                    },
+                    "tooltipFormat": {
+                      "tooltip": "Displayed in local time of the database engine instance"
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "replica_details_datetime"
+          }
+        ],
+        "exportParameters": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "replicasSampleTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "tabAvailabilityGroupsListeners",
+          "comparison": "isEqualTo",
+          "value": "AvailabilityGroups"
+        }
+      ],
+      "customWidth": "33",
+      "name": "replica_details_group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Database details",
+        "expandable": true,
+        "expanded": true,
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{database_details_string}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table"
+            },
+            "name": "database_details_string"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{database_details_number_count}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table"
+            },
+            "name": "database_details_number_count"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{database_details_datetime}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Value",
+                    "formatter": 6,
+                    "dateFormat": {
+                      "showUtcTime": true,
+                      "formatName": "shortDateTimePattern"
+                    },
+                    "tooltipFormat": {
+                      "tooltip": "Displayed in local time of the database engine instance"
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "database_details_datetime"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"1.0.0\",\"content\":\"{database_details_boolean}\",\"transformers\":null}",
+              "size": 3,
+              "noDataMessage": "Unknown",
+              "showExportToExcel": true,
+              "queryType": 8,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Value",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "Check",
+                          "text": ""
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "Subtract",
+                          "text": ""
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "name": "database_details_boolean"
+          }
+        ],
+        "exportParameters": true
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "replicasSampleTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "tabAvailabilityGroupsListeners",
+          "comparison": "isEqualTo",
+          "value": "AvailabilityGroups"
+        }
+      ],
+      "customWidth": "33",
+      "name": "database_details_group"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

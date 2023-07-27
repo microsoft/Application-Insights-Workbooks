@@ -1,0 +1,454 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "Each connectivity probe opens a new connection and executes a simple read query. A successful connectivity probe establishes that the network connection and simple query processing was successful, but does not guarantee server or database availability and health."
+      },
+      "conditionalVisibility": {
+        "parameterName": "showDescriptions",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "name": "connectivity_help"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "d22c6ae2-511d-4fc3-be51-11212028d0fe",
+            "version": "KqlParameterItem/1.0",
+            "name": "connectivitySampleType",
+            "label": "Data to show",
+            "type": 10,
+            "description": "\"Last available\" shows the most recent sample within specified time range, if any. \"Historical\" lets you select any sample within specified time range. Refresh the workbook to see most recent samples.",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[{\"value\":\"Latest\",\"label\":\"Last available\"},{\"value\":\"Historical\",\"label\":\"Historical\"}]",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "Historical"
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "50",
+      "name": "connectivity_sample_type_parameters"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "1b807fef-bbc9-4862-aeb3-22813875dd51",
+            "version": "KqlParameterItem/1.0",
+            "name": "connectivitySampleSubtype",
+            "label": "Sample type",
+            "type": 10,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[{\"value\":\"all\",\"label\":\"All\"},{\"value\":\"failed\",\"label\":\"Failed\"}]",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "all"
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "connectivitySampleType",
+        "comparison": "isEqualTo",
+        "value": "Historical"
+      },
+      "customWidth": "50",
+      "name": "connectivity_sample_subtype_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server/database name to target logical server and database names\\r\\nlet connection_server_target = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend sample_subtype = iif(probe_return_value != 1, \\\"failed\\\", \\\"successful\\\")\\r\\n| where \\\"{connectivitySampleSubtype}\\\" == \\\"all\\\" or (\\\"{connectivitySampleSubtype}\\\" == \\\"failed\\\" and sample_subtype == \\\"{connectivitySampleSubtype}\\\")\\r\\n| make-series metric = count() default = long(null) on probe_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor}*2 by sample_subtype\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 4,
+        "aggregation": 3,
+        "title": "Select a sample",
+        "noDataMessage": "No connectivity samples are available",
+        "timeBrushParameterName": "timeRange",
+        "exportParameterName": "connectivityHistoricalSample",
+        "exportDefaultValue": "0",
+        "queryType": 9,
+        "visualization": "barchart",
+        "chartSettings": {
+          "showMetrics": false,
+          "showLegend": true,
+          "seriesLabelSettings": [
+            {
+              "seriesName": "failed",
+              "label": "Failed",
+              "color": "red"
+            },
+            {
+              "seriesName": "successful",
+              "label": "Successful",
+              "color": "greenDark"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "connectivitySampleType",
+        "comparison": "isEqualTo",
+        "value": "Historical"
+      },
+      "name": "connectivity_timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server name to target server/machine name\\r\\nlet connection_server_target = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend sample_subtype = iif(probe_return_value != 1, \\\"failed\\\", \\\"successful\\\")\\r\\n| summarize count_successful_samples = countif(sample_subtype == \\\"successful\\\"),\\r\\n            count_failed_samples = countif(sample_subtype == \\\"failed\\\")\\r\\n| project strcat(\\\"There are `\\\", count_successful_samples, \\\"` successful and `\\\", count_failed_samples, \\\"` failed connectivity probe(s) in the selected time range. Each vertical bar stands for a group of probes. Bar height is the total number of probes in a group. Select a bar to view one probe from that group, and its preceding and following probes. Zoom in to see smaller groups, down to individual probes.\\\")\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "noDataMessage": "No connectivity samples are available",
+        "queryType": 9,
+        "visualization": "card",
+        "textSettings": {
+          "style": "markdown"
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "connectivitySampleType",
+        "comparison": "isEqualTo",
+        "value": "Historical"
+      },
+      "name": "connectivity_sample_count"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "56e281c0-0f45-4b7a-9942-9328603b6e16",
+            "version": "KqlParameterItem/1.0",
+            "name": "connectivityLatestSampleTime",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server/database name to target logical server and database names\\r\\nlet connection_server_target = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 1h, ({timeRange:start} - 1h), {timeRange:start})\\r\\n                                ..\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 1h, ({timeRange:end} + 1h), {timeRange:end})\\r\\n                                ) // Expand the range if selected range is shorter than the least frequent collection interval (1h)\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize probe_time_utc = max(probe_time_utc)\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 9
+          },
+          {
+            "id": "c83db031-6de6-46e6-9cf2-a5863eee0a22",
+            "version": "KqlParameterItem/1.0",
+            "name": "connectivityHistoricalSampleTime",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Selected time from the history chart is a binned time generated by make-series and is unlikely to match an actual sample.\\r\\n// Look up an actual sample within the sample group selected on the history chart, differentiating between samples in different series.\\r\\n// Map connection server/database name to target logical server and database names\\r\\nlet connection_server_target = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (todatetime(\\\"{connectivityHistoricalSample:$.x}\\\") .. (todatetime(\\\"{connectivityHistoricalSample:$.x}\\\") + {timeRange:grain}))\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend sample_subtype = iif(probe_return_value != 1, \\\"failed\\\", \\\"successful\\\")\\r\\n| where sample_subtype == \\\"{connectivityHistoricalSample:$.series}\\\"\\r\\n| summarize probe_time_utc = min(probe_time_utc) // Selecting any sample within a sample group is valid. Use the earliest for determinism.\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 9
+          },
+          {
+            "id": "a46d5538-ceba-4047-bf72-0f6494a4ab51",
+            "version": "KqlParameterItem/1.0",
+            "name": "connectivitySampleTime",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "connectivitySampleType",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Latest",
+                  "resultValType": "param",
+                  "resultVal": "connectivityLatestSampleTime"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "connectivitySampleType",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "Historical",
+                  "resultValType": "param",
+                  "resultVal": "connectivityHistoricalSampleTime"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "param",
+                  "resultVal": "connectivityLatestSampleTime"
+                }
+              }
+            ],
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "formHorizontal",
+        "queryType": 9
+      },
+      "conditionalVisibility": {
+        "parameterName": "alwaysHidden",
+        "comparison": "isNotEqualTo"
+      },
+      "customWidth": "50",
+      "name": "connectivity_sample_time_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server/database name to target logical server and database names\\r\\nlet connection_server_target = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc == todatetime(\\\"{connectivitySampleTime}\\\")\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time = probe_time_utc, probe_time_utc, probe_age = format_timespan(now() - probe_time_utc, \\\"d.hh:mm:ss\\\")\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 4,
+        "noDataMessage": "No sample is selected",
+        "queryType": 9,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "sample_time",
+              "formatter": 6,
+              "formatOptions": {
+                "customColumnWidthSetting": "28ch"
+              },
+              "dateFormat": {
+                "showUtcTime": null,
+                "formatName": "shortDateTimePattern"
+              }
+            },
+            {
+              "columnMatch": "probe_time_utc",
+              "formatter": 6,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal"
+                }
+              },
+              "dateFormat": {
+                "showUtcTime": true,
+                "formatName": "shortDateTimePattern"
+              }
+            },
+            {
+              "columnMatch": "probe_age",
+              "formatter": 2,
+              "tooltipFormat": {
+                "tooltip": "Time difference between latest probe and displayed probe"
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "sample_time",
+              "label": "Probe time"
+            },
+            {
+              "columnId": "probe_time_utc",
+              "label": "Probe time (UTC)"
+            },
+            {
+              "columnId": "probe_age",
+              "label": "Age of probe"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "connectivitySampleTime",
+        "comparison": "isNotEqualTo"
+      },
+      "customWidth": "50",
+      "name": "selected_connectivity_sample"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server/database name to target logical server and database names\\r\\nlet connection_server_target = (\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, logical_server_name, database_name) by connection_server_name, connection_database_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\n// Get the latest successful probe before the current probe, and the earliest successful probe after the current probe\\r\\n// For a failed probe, these will be the last successful probe before outage and first successful probe after outage\\r\\n// For a successful probe, these will be the immediately preceding and immediately following probes\\r\\nlet range_bounds = toscalar(\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc between (({timeRange:start}) .. ({timeRange:end}))\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| summarize left_bound_probe_time_utc = maxif(probe_time_utc, probe_time_utc < todatetime(\\\"{connectivitySampleTime}\\\") and probe_return_value == 1),\\r\\n            right_bound_probe_time_utc = minif(probe_time_utc, probe_time_utc > todatetime(\\\"{connectivitySampleTime}\\\") and probe_return_value == 1)\\r\\n| extend bound_probe_times = pack_array(left_bound_probe_time_utc, right_bound_probe_time_utc)\\r\\n| project-away left_bound_probe_time_utc, right_bound_probe_time_utc\\r\\n);\\r\\nsqldb_single_database_connectivity\\r\\n| where probe_time_utc in (todatetime(\\\"{connectivitySampleTime}\\\"), range_bounds[0], range_bounds[1]) // The number of returned rows may be less than 3 if left/right bound probes fall outside selected time range\\r\\n| lookup connection_server_target on connection_server_name, connection_database_name // A failed probe has empty logical_server_name and database_name. Look it up for the most recent successful probe with the same connection names.\\r\\n| extend logical_server_name = iif(isempty(logical_server_name), logical_server_name1, logical_server_name),\\r\\n         database_name = iif(isempty(database_name), database_name1, database_name)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name =~ @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| order by probe_time_utc asc\\r\\n| project probe_time_utc,\\r\\n          probe_age = format_timespan(probe_time_utc - todatetime(\\\"{connectivitySampleTime}\\\"), \\\"d.hh:mm:ss\\\"),\\r\\n          probe_return_value,\\r\\n          error_number,\\r\\n          error_message,\\r\\n          error_state,\\r\\n          connection_server_name,\\r\\n          connection_database_name,\\r\\n          connection_application_intent,\\r\\n          connection_timeout_seconds,\\r\\n          execution_timeout_seconds,\\r\\n          client_connection_id\\r\\n;\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "title": "Connectivity probes",
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "probe_time_utc",
+              "formatter": 6,
+              "formatOptions": {
+                "customColumnWidthSetting": "28ch"
+              },
+              "dateFormat": {
+                "showUtcTime": null,
+                "formatName": "shortDateTimePattern"
+              }
+            },
+            {
+              "columnMatch": "probe_age",
+              "formatter": 2,
+              "formatOptions": {
+                "customColumnWidthSetting": "15ch"
+              },
+              "tooltipFormat": {
+                "tooltip": "The difference between selected probe time and preceding or following probe time"
+              }
+            },
+            {
+              "columnMatch": "probe_return_value",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "1",
+                    "representation": "success",
+                    "text": "{0} - Successful"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "0",
+                    "representation": "failed",
+                    "text": "{0} - Failed"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Unknown",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "customColumnWidthSetting": "18ch"
+              }
+            },
+            {
+              "columnMatch": "connection_server_name",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "30ch"
+              }
+            },
+            {
+              "columnMatch": "connection_timeout_seconds",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            },
+            {
+              "columnMatch": "execution_timeout_seconds",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 24,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
+                }
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "probe_time_utc",
+              "label": "Probe time"
+            },
+            {
+              "columnId": "probe_age",
+              "label": "Age of probe"
+            },
+            {
+              "columnId": "probe_return_value",
+              "label": "Result"
+            },
+            {
+              "columnId": "error_number",
+              "label": "Error number"
+            },
+            {
+              "columnId": "error_message",
+              "label": "Error message"
+            },
+            {
+              "columnId": "error_state",
+              "label": "Error state"
+            },
+            {
+              "columnId": "connection_server_name",
+              "label": "Connection server"
+            },
+            {
+              "columnId": "connection_database_name",
+              "label": "Database"
+            },
+            {
+              "columnId": "connection_application_intent",
+              "label": "Application intent"
+            },
+            {
+              "columnId": "connection_timeout_seconds",
+              "label": "Connection timeout"
+            },
+            {
+              "columnId": "execution_timeout_seconds",
+              "label": "Execution timeout"
+            },
+            {
+              "columnId": "client_connection_id",
+              "label": "Client connection ID"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "connectivitySampleTime",
+        "comparison": "isNotEqualTo"
+      },
+      "name": "connectivity_probe"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "If a failed probe is displayed, then the last successful probe before that failed probe, and the first successful probe after that failed probe are displayed as well, if they are present in the selected time range.\r\n\r\nIf a successful probe is displayed, then the immediately preceding and immediately following successful probes, if any, are displayed as well."
+      },
+      "conditionalVisibility": {
+        "parameterName": "showDescriptions",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "name": "connectivity_probes_help"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

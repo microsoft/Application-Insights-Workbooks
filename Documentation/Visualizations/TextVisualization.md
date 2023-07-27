@@ -1,3 +1,7 @@
+> [!NOTE] 
+> This documentation for Azure workbooks is now located at: https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/workbooks-text-visualizations
+> Please **do not** edit this file. All up-to-date information is in the new location and documentation should only be updated there.
+
 # Text Visualization
 
 The text *visualization* in query steps is different from the [text *step*](Text.md). A text step is a top level item in a workbook, and supports replacing parameters in the content, and allows for error/warning styling.
