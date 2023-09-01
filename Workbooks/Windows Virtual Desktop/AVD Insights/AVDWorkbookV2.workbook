@@ -374,7 +374,7 @@
             "version": "KqlParameterItem/1.0",
             "name": "OneWVDHost",
             "type": 5,
-            "query": "{\"version\":\"1.0.0\",\"content\":\"{\\\"value\\\":\\\"{WVDHostsId}\\\"}\",\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"\",\"columns\":[{\"path\":\"$.value\",\"columnid\":\"Host\",\"substringRegexMatch\":\"'([^']+)'.*\",\"substringReplace\":\"$1\"},{\"path\":\"$.value\",\"columnid\":\"dis\"},{\"path\":\"$.value\",\"columnid\":\"select\"}]}}]}",
+            "query": "resources\r\n| where id in ({WVDHostsId})\r\n| project id=tolower(id), name\r\n| join kind=leftouter(\r\nresources\r\n| where type == \"microsoft.compute/virtualmachines/extensions\"\r\n| extend  exttype= properties.type\r\n| where exttype =~\"AzureMonitorWindowsAgent\"\r\n| project  exttype, id=tolower(trim_end(\"/extensions/.+\",id))\r\n ) on id\r\n|project id,name, rank=iff(isnotempty(id1),1,2)\r\n| top 1 by rank asc",
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [],
@@ -384,15 +384,24 @@
               "durationMs": 0
             },
             "timeContextFromParameter": "TimeRange",
-            "queryType": 8
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           },
           {
             "id": "1723cce1-060a-4bcf-981c-ad9c417117b2",
             "version": "KqlParameterItem/1.0",
-            "name": "OneHostAssoc",
-            "type": 1,
-            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{OneWVDHost}/providers/Microsoft.Insights/dataCollectionRuleAssociations?api-version=2021-04-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":null}",
+            "name": "assignedDCR",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{OneWVDHost}/providers/Microsoft.Insights/dataCollectionRuleAssociations?api-version=2021-04-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.value\",\"columns\":[{\"path\":\"$.properties.dataCollectionRuleId\",\"columnid\":\"Id\",\"columnType\":\"string\"},{\"path\":\"$.properties.dataCollectionRuleId\",\"columnid\":\"Name\",\"columnType\":\"string\",\"substringRegexMatch\":\".*/dataCollectionRules/(microsoft-avdi-).*\",\"substringReplace\":\"$1\"},{\"path\":\"$.properties.dataCollectionRuleId\",\"columnid\":\"Selected\",\"substringRegexMatch\":\".*/dataCollectionRules/(microsoft-avdi-).*|.*\",\"substringReplace\":\"$1\"}]}}]}",
             "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
             "timeContext": {
               "durationMs": 0
             },
@@ -400,28 +409,11 @@
             "queryType": 12
           },
           {
-            "id": "c0034ed5-157b-47b5-ab67-c7c80e6165b0",
-            "version": "KqlParameterItem/1.0",
-            "name": "assignedDCR",
-            "type": 5,
-            "query": "resources\r\n| take 1\r\n| extend data = todynamic(\"{OneHostAssoc:escapejson}\")\r\n| project data=data.value\r\n| mv-expand  data\r\n| project name= tostring(data.name), dcrId = tostring(data.properties.dataCollectionRuleId)\r\n| where (dcrId contains \"microsoft-avdi-\")\r\n| join (resources | where type =~ \"Microsoft.Insights/dataCollectionRules\") on $left.dcrId == $right.id\r\n| project id, disp=id, selected=1",
-            "crossComponentResources": [
-              "value::all"
-            ],
-            "isHiddenWhenLocked": true,
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
-          },
-          {
             "id": "5199ed88-0a8f-4807-bf05-7dd31bc13eeb",
             "version": "KqlParameterItem/1.0",
             "name": "Workspace",
             "type": 5,
-            "query": "resources\r\n| where id =~ \"{assignedDCR}\"\r\n| project properties.destinations.logAnalytics[0].workspaceResourceId, name, selected=1",
+            "query": "resources\r\n| where id =~ \"{assignedDCR:id}\"\r\n| project properties.destinations.logAnalytics[0].workspaceResourceId, name, selected=1",
             "crossComponentResources": [
               "value::all"
             ],
@@ -434,8 +426,7 @@
               "durationMs": 0
             },
             "timeContextFromParameter": "TimeRange",
-            "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
+            "queryType": 1
           },
           {
             "id": "fc86a0b6-e5ca-4936-aaf6-9c3bb9e566e0",
@@ -455,10 +446,18 @@
               },
               {
                 "criteriaContext": {
-                  "operator": "Default",
+                  "leftOperand": "assignedDCR",
+                  "operator": "is Empty",
                   "rightValType": "param",
-                  "resultValType": "param",
-                  "resultVal": "Workspace"
+                  "resultValType": "static",
+                  "resultVal": "no"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "yes"
                 }
               }
             ]
@@ -493,6 +492,16 @@
                   "leftOperand": "HasMonitorPool",
                   "operator": "is Empty",
                   "rightValType": "param",
+                  "resultValType": "static",
+                  "resultVal": "no"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "HasMonitorHosts",
+                  "operator": "==",
+                  "rightValType": "static",
+                  "rightVal": "no",
                   "resultValType": "static",
                   "resultVal": "no"
                 }
@@ -545,16 +554,33 @@
             "isHiddenWhenLocked": true,
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
-          },
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "conditionalVisibility": {
+        "parameterName": "HostPoolOwner",
+        "comparison": "isNotEqualTo",
+        "value": "Microsoft_Azure_WVD"
+      },
+      "name": "common_parameters_general"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
           {
-            "id": "32478e20-266f-49f3-9f00-0d645d824d01",
+            "id": "dc2b0472-5213-4b3f-8e25-57819fbca285",
             "version": "KqlParameterItem/1.0",
             "name": "assocResources",
             "type": 2,
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GETARRAY\",\"path\":\"{assignedDCR}/associations?api-version=2021-04-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"columns\":[{\"path\":\"$.id\",\"columnid\":\"id\",\"substringRegexMatch\":\"(.+)/providers/microsoft.insights/datacollectionruleassociations/(.*)\",\"substringReplace\":\"$1\"},{\"path\":\"$.id\",\"columnid\":\"disp\"},{\"path\":\"$.id\",\"columnid\":\"selected\"}]}}]}",
+            "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GETARRAY\",\"path\":\"{assignedDCR:id}/associations?api-version=2021-04-01\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"columns\":[{\"path\":\"$.id\",\"columnid\":\"id\",\"substringRegexMatch\":\"(.+)/providers/microsoft.insights/datacollectionruleassociations/(.*)\",\"substringReplace\":\"$1\"},{\"path\":\"$.id\",\"columnid\":\"disp\"},{\"path\":\"$.id\",\"columnid\":\"selected\"}]}}]}",
             "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [],
@@ -566,7 +592,7 @@
             "queryType": 12
           },
           {
-            "id": "76e19626-a6b8-4e01-b69a-9e257e510ee5",
+            "id": "3f5e224c-d34b-487c-bc80-98d6a80cf1a8",
             "version": "KqlParameterItem/1.0",
             "name": "assocCriteria",
             "type": 1,
@@ -592,7 +618,7 @@
             ]
           },
           {
-            "id": "9d4e0989-baa3-42fe-a665-b1f9e8c48ea1",
+            "id": "ed1e4e97-f01a-4090-90eb-21648127c578",
             "version": "KqlParameterItem/1.0",
             "name": "missingAssociations",
             "type": 1,
@@ -605,12 +631,12 @@
             "resourceType": "microsoft.operationalinsights/workspaces"
           },
           {
-            "id": "4649df42-7ebc-4739-b1f9-9e5cdf3cdfee",
+            "id": "452f25c1-ef99-488b-bcd9-3e20e8cb5633",
             "version": "KqlParameterItem/1.0",
             "name": "missingAMAExt",
             "type": 2,
             "isRequired": true,
-            "query": "resources\r\n| where id in~ ({WVDHostsId})\r\n| project id=tolower(id), name, identity= tostring(identity.type)\r\n| join kind=leftouter (\r\nresources\r\n| where (type =~ \"Microsoft.Compute/virtualMachines/extensions\" or type =~\"Microsoft.AzureStackHCI/virtualmachines/extensions\")and properties.type == \"AzureMonitorWindowsAgent\"\r\n| project vmname = tolower(extract(\"(.*?)/extension\", 1, id))\r\n) on $left.id == $right.vmname\r\n| where isempty(vmname) or isempty( identity) or identity =~ \"none\"\r\n| summarize vmcount=count() \r\n| project vmcount, disp=vmcount, selected=1",
+            "query": "resources\r\n| where id in~ ({WVDHostsId})\r\n| project id=tolower(id), name, identity= tostring(identity.type)\r\n| join kind=leftouter (\r\nresources\r\n| where (type =~ \"Microsoft.Compute/virtualMachines/extensions\" or type =~\"Microsoft.AzureStackHCI/virtualmachines/extensions\" or type=~\"microsoft.hybridcompute/machines/extensions\") and properties.type == \"AzureMonitorWindowsAgent\"\r\n| project vmname = tolower(extract(\"(.*?)/extension\", 1, id))\r\n) on $left.id == $right.vmname\r\n| where isempty(vmname) or isempty( identity) or identity =~ \"none\"\r\n| summarize vmcount=count() \r\n| project vmcount, disp=vmcount, selected=1",
             "crossComponentResources": [
               "value::all"
             ],
@@ -623,7 +649,7 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
-            "id": "8729d432-a4b2-4669-b8ae-6448bc28b845",
+            "id": "a67c2023-029b-4a73-9b62-ce63658ab065",
             "version": "KqlParameterItem/1.0",
             "name": "misConfigSH",
             "type": 1,
@@ -649,7 +675,7 @@
             ]
           },
           {
-            "id": "02344a77-ee0b-4dfb-ba9e-e216432882ab",
+            "id": "2cabc686-639d-4140-8ae7-06a1f5a2b4ad",
             "version": "KqlParameterItem/1.0",
             "name": "ShowConfigWarning",
             "type": 1,
@@ -694,7 +720,7 @@
             ]
           },
           {
-            "id": "2de8f86e-c0e0-4834-8021-e3d9aca5916f",
+            "id": "93b43b20-5f53-4b06-a949-000710de9b9b",
             "version": "KqlParameterItem/1.0",
             "name": "UsingAMA",
             "type": 1,
@@ -705,7 +731,7 @@
             "value": "yes"
           },
           {
-            "id": "2b28b7c3-8238-4ea9-847c-6abcc8033b02",
+            "id": "b3cb9a4a-d103-4be8-87e3-a7e442e10a3e",
             "version": "KqlParameterItem/1.0",
             "name": "configWorkbook",
             "type": 1,
@@ -714,15 +740,21 @@
           }
         ],
         "style": "pills",
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces"
+        "queryType": 12
       },
       "conditionalVisibility": {
-        "parameterName": "HostPoolOwner",
-        "comparison": "isNotEqualTo",
-        "value": "Microsoft_Azure_WVD"
+        "parameterName": "assignedDCR",
+        "comparison": "isNotEqualTo"
       },
-      "name": "common_parameters_general"
+      "name": "common_parameters_general_hidden"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Azure Virtual Desktop Insights powered by the Azure Monitor Agent - Preview",
+        "style": "info"
+      },
+      "name": "text - 9"
     },
     {
       "type": 12,
