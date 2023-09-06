@@ -1,0 +1,468 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "3bf03c31-f68a-4ebf-b8be-d191353b24b8",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioDirection",
+            "label": "IO direction",
+            "type": 10,
+            "description": "Select the type of IO to show: reads from database files or writes to database files",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[{\"value\":\"read\",\"label\":\"Read\"},{\"value\":\"write\",\"label\":\"Write\"}]",
+            "value": "read"
+          },
+          {
+            "id": "9f5cce7e-986c-4be7-a62d-d0af1cf35b10",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioMetric",
+            "label": "Metric",
+            "type": 10,
+            "description": "Select an IO metric to show on the heatmap. \"Latency\" uses the average latency of read or write IO operations; \"IO operations\" uses the total number of read or write IO operations (aka IOs); \"Bytes\" uses the total number of read or written bytes.",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\":\"latency\",\"label\":\"Latency\"},\r\n    {\"value\":\"ios\",\"label\":\"IO operations\"},\r\n    {\"value\":\"bytes\",\"label\":\"Bytes\"}\r\n]",
+            "value": "latency"
+          },
+          {
+            "id": "8c906d60-0b93-46ac-852c-c23b638aaeb9",
+            "version": "KqlParameterItem/1.0",
+            "name": "ioFileType",
+            "label": "Database files",
+            "type": 10,
+            "description": "Select \"All\" to include IO against all types of database files; select \"Data\" or \"Transaction log\" to include IO against these database files types only",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\":\"All\",\"label\":\"All\"},\r\n    {\"value\":\"Data\",\"label\":\"Data\"},\r\n    {\"value\":\"Log\",\"label\":\"Transaction log\"}\r\n]",
+            "value": "All"
+          },
+          {
+            "version": "KqlParameterItem/1.0",
+            "name": "ioDatabaseType",
+            "label": "Databases",
+            "type": 10,
+            "description": "\"User databases\" includes IO against all user databases; \"tempdb\" includes IO against the tempdb database only",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\":\"all\",\"label\":\"All\"},\r\n    {\"value\":\"user\",\"label\":\"User\"},\r\n    {\"value\":\"tempdb\",\"label\":\"tempdb\"}\r\n]",
+            "value": "all",
+            "id": "95aaddb9-22f9-474d-87a3-b2a0227a3518"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "io_parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_elastic_pool_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and instance_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and instance_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, elastic_pool_name, anchor_database_replica_id, file_id, instance_database_id, io_snapshot_sample_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by elastic_pool_name\\r\\n(\\r\\nsort by instance_database_id asc, anchor_database_replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id), num_of_writes - prev(num_of_writes), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, elastic_pool_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", total_reads,\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", total_writes,\\r\\n                         long(null)\\r\\n                         )\\r\\n)\\r\\n);\\r\\n// total count of samples per pool in selected time range\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, elastic_pool_name\\r\\n);\\r\\n// typical count of samples per pool in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| make-series ios_timeline = max(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, elastic_pool_name\\r\\n| project series_fill_linear(ios_timeline, int(null), false), logical_server_name, elastic_pool_name\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| summarize ios = sum(total_ios),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, elastic_pool_name\\r\\n| join kind=leftouter io_timeline on logical_server_name, elastic_pool_name\\r\\n| project logical_server_name,\\r\\n          elastic_pool_name,\\r\\n          ios = iif(toreal(count_samples)/expected_sample_count < 0.5, long(null), ios),\\r\\n          ios_timeline\\r\\n| top 50 by ios desc\\r\\n| sort by ios desc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "elastic_pool_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/elastic pool",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Azure SQL elastic pool",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "elasticPoolName",
+                    "source": "column",
+                    "value": "elastic_pool_name"
+                  },
+                  {
+                    "name": "serverName",
+                    "source": "column",
+                    "value": "logical_server_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "haReplica",
+                    "source": "parameter",
+                    "value": "haReplica"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "ios",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true,
+                "maximumFractionDigits": 1
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or write IOs for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "ios_timeline",
+            "formatter": 21,
+            "formatOptions": {
+              "palette": "purple"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or write IOs over selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "logical_server_name",
+            "formatter": 1
+          },
+          "nodeIdField": "elastic_pool_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "ios",
+            "type": 4,
+            "heatmapPalette": "coldHot",
+            "heatmapMin": null,
+            "heatmapMax": null,
+            "emptyValueColor": "gray"
+          },
+          "groupByField": "logical_server_name",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "ioMetric",
+        "comparison": "isEqualTo",
+        "value": "ios"
+      },
+      "name": "storage_io_ios_heatmap"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_elastic_pool_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and instance_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and instance_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, elastic_pool_name, anchor_database_replica_id, file_id, instance_database_id, io_snapshot_sample_ms, num_of_bytes_read, num_of_bytes_written\\r\\n| partition hint.strategy = shuffle by elastic_pool_name\\r\\n(\\r\\nsort by instance_database_id asc, anchor_database_replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_bytes_read = iif(num_of_bytes_read >= prev(num_of_bytes_read) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), num_of_bytes_read - prev(num_of_bytes_read), long(null)),\\r\\n         delta_num_of_bytes_written = iif(num_of_bytes_written >= prev(num_of_bytes_written) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), num_of_bytes_written - prev(num_of_bytes_written), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_read_bytes = sum(delta_num_of_bytes_read),\\r\\n            total_written_bytes = sum(delta_num_of_bytes_written),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, elastic_pool_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_bytes = case(\\r\\n                           \\\"{ioDirection}\\\" == \\\"read\\\", total_read_bytes,\\r\\n                           \\\"{ioDirection}\\\" == \\\"write\\\", total_written_bytes,\\r\\n                           long(null)\\r\\n                           )\\r\\n)\\r\\n);\\r\\n// total count of samples per pool in selected time range\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, elastic_pool_name\\r\\n);\\r\\n// typical count of samples per pool in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| make-series bytes_timeline = max(total_bytes) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, elastic_pool_name\\r\\n| project series_fill_linear(bytes_timeline, int(null), false), logical_server_name, elastic_pool_name\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| summarize bytes = sum(total_bytes),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, elastic_pool_name\\r\\n| join kind=leftouter io_timeline on logical_server_name, elastic_pool_name\\r\\n| project logical_server_name,\\r\\n          elastic_pool_name,\\r\\n          bytes = iif(toreal(count_samples)/expected_sample_count < 0.5, long(null), bytes),\\r\\n          bytes_timeline\\r\\n| top 50 by bytes desc\\r\\n| sort by bytes desc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "elastic_pool_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/elastic pool",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Azure SQL elastic pool",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "elasticPoolName",
+                    "source": "column",
+                    "value": "elastic_pool_name"
+                  },
+                  {
+                    "name": "serverName",
+                    "source": "column",
+                    "value": "logical_server_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "haReplica",
+                    "source": "parameter",
+                    "value": "haReplica"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "bytes",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 2,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true,
+                "maximumFractionDigits": 1
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or written bytes for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "bytes_timeline",
+            "formatter": 21,
+            "formatOptions": {
+              "palette": "purple"
+            },
+            "tooltipFormat": {
+              "tooltip": "Total read or write bytes over selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "logical_server_name",
+            "formatter": 1
+          },
+          "nodeIdField": "elastic_pool_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "bytes",
+            "type": 4,
+            "heatmapPalette": "coldHot",
+            "heatmapMin": null,
+            "heatmapMax": null,
+            "emptyValueColor": "gray"
+          },
+          "groupByField": "logical_server_name",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "ioMetric",
+        "comparison": "isEqualTo",
+        "value": "bytes"
+      },
+      "name": "storage_io_bytes_heatmap"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_elastic_pool_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n{serverNameFilter}\\r\\n{elasticPoolNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and instance_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and instance_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, elastic_pool_name, anchor_database_replica_id, file_id, instance_database_id, io_snapshot_sample_ms, io_stall_read_ms, io_stall_write_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by elastic_pool_name\\r\\n(\\r\\nsort by instance_database_id asc, anchor_database_replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), num_of_writes - prev(num_of_writes), long(null)),\\r\\n         delta_io_stall_read_ms = iif(io_stall_read_ms >= prev(io_stall_read_ms) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), io_stall_read_ms - prev(io_stall_read_ms), long(null)),\\r\\n         delta_io_stall_write_ms = iif(io_stall_write_ms >= prev(io_stall_write_ms) and instance_database_id == prev(instance_database_id) and file_id == prev(file_id) and anchor_database_replica_id == prev(anchor_database_replica_id), io_stall_write_ms - prev(io_stall_write_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            total_read_stall_time = sum(delta_io_stall_read_ms),\\r\\n            total_write_stall_time = sum(delta_io_stall_write_ms),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, elastic_pool_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_stall_time = case(\\r\\n                                \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_read_stall_time),\\r\\n                                \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_write_stall_time),\\r\\n                                real(null)\\r\\n                                ),\\r\\n         total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_reads),\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_writes),\\r\\n                         real(null)\\r\\n                         )\\r\\n| project-away total_read_stall_time, total_write_stall_time, total_reads, total_writes\\r\\n)\\r\\n);\\r\\n// total count of samples per pool in selected time range\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, elastic_pool_name\\r\\n);\\r\\n// typical count of samples per pool in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| make-series latency_timeline = sum(total_stall_time)/sum(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, elastic_pool_name\\r\\n| project series_fill_linear(latency_timeline, int(null), false), logical_server_name, elastic_pool_name\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, elastic_pool_name\\r\\n| summarize latency = iif(sum(total_ios) > 0, sum(total_stall_time)/sum(total_ios), real(null)),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, elastic_pool_name\\r\\n| join kind=leftouter io_timeline on logical_server_name, elastic_pool_name\\r\\n| project logical_server_name,\\r\\n          elastic_pool_name,\\r\\n          latency = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), latency),\\r\\n          latency_timeline\\r\\n| top 50 by latency desc\\r\\n| sort by latency desc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "showAnalytics": true,
+        "noDataMessage": "There is no data for specified parameters.",
+        "showExportToExcel": true,
+        "queryType": 9,
+        "visualization": "graph",
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "elastic_pool_name",
+            "formatter": 1,
+            "formatOptions": {
+              "linkTarget": "WorkbookTemplate",
+              "workbookContext": {
+                "componentIdSource": "workbook",
+                "resourceIdsSource": "workbook",
+                "templateIdSource": "static",
+                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/elastic pool",
+                "typeSource": "workbook",
+                "gallerySource": "default",
+                "locationSource": "workbook",
+                "workbookName": "Azure SQL elastic pool",
+                "passSpecificParams": true,
+                "templateParameters": [
+                  {
+                    "name": "elasticPoolName",
+                    "source": "column",
+                    "value": "elastic_pool_name"
+                  },
+                  {
+                    "name": "serverName",
+                    "source": "column",
+                    "value": "logical_server_name"
+                  },
+                  {
+                    "name": "timeRange",
+                    "source": "parameter",
+                    "value": "timeRange"
+                  },
+                  {
+                    "name": "linkAdxClusterUri",
+                    "source": "parameter",
+                    "value": "adxClusterUri"
+                  },
+                  {
+                    "name": "linkAdxDatabase",
+                    "source": "parameter",
+                    "value": "adxDatabase"
+                  },
+                  {
+                    "name": "tabName",
+                    "source": "static",
+                    "value": "Overview"
+                  },
+                  {
+                    "name": "haReplica",
+                    "source": "parameter",
+                    "value": "haReplica"
+                  },
+                  {
+                    "name": "showDescriptions",
+                    "source": "parameter",
+                    "value": "showDescriptions"
+                  }
+                ]
+              }
+            }
+          },
+          "centerContent": {
+            "columnMatch": "latency",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            },
+            "numberFormat": {
+              "unit": 23,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true,
+                "maximumFractionDigits": 1
+              },
+              "emptyValCustomText": "N/A"
+            },
+            "tooltipFormat": {
+              "tooltip": "Average read or write IO latency for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+            }
+          },
+          "bottomContent": {
+            "columnMatch": "latency_timeline",
+            "formatter": 21,
+            "formatOptions": {
+              "palette": "purple"
+            },
+            "tooltipFormat": {
+              "tooltip": "Average read or write IO latency over selected time range"
+            }
+          },
+          "hivesContent": {
+            "columnMatch": "logical_server_name",
+            "formatter": 1
+          },
+          "nodeIdField": "elastic_pool_name",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 150,
+          "colorSettings": {
+            "nodeColorField": "latency",
+            "type": 4,
+            "heatmapPalette": "coldHot",
+            "heatmapMin": null,
+            "heatmapMax": null,
+            "emptyValueColor": "gray"
+          },
+          "groupByField": "logical_server_name",
+          "hivesMargin": 5
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "ioMetric",
+        "comparison": "isEqualTo",
+        "value": "latency"
+      },
+      "name": "storage_io_latency_heatmap"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

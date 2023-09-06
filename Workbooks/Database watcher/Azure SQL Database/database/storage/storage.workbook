@@ -1,0 +1,802 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let metric = datatable(key:int, metric_name:string, tile_ordinal:int) [\\r\\n1, \\\"Data\\\", 1,\\r\\n1, \\\"Log\\\", 2,\\r\\n1, \\\"Tempdb data\\\", 3,\\r\\n1, \\\"Tempdb log\\\", 4,\\r\\n1, \\\"Local storage\\\", 5,\\r\\n1, \\\"Query store\\\", 6\\r\\n];\\r\\nlet storage_timeline = (\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between (\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 1h, ({timeRange:start} - 1h), {timeRange:start})\\r\\n                                ..\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 1h, ({timeRange:end} + 1h), {timeRange:end})\\r\\n                                ) // Expand the range if selected range is shorter than the least frequent collection interval (1h)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n| join kind=inner metric on key\\r\\n| project key, metric_name, sample_time_utc, \\r\\n          data_size_used_ratio = data_size_used_mb / data_max_size_mb, \\r\\n          log_size_used_ratio = log_size_used_mb / log_max_size_mb, \\r\\n          tempdb_data_size_used_ratio = tempdb_data_size_used_mb / tempdb_data_max_size_mb, \\r\\n          tempdb_log_size_used_ratio = tempdb_log_size_used_mb / tempdb_log_max_size_mb, \\r\\n          local_storage_size_ratio = toreal(used_local_storage_size_mb) / toreal(max_local_storage_size_mb),\\r\\n          query_store_size_ratio = toreal(query_store_size_mb) / toreal(query_store_max_size_mb),\\r\\n          data_max_size_mb\\r\\n| extend metric_value = case(\\r\\n                            metric_name == \\\"Data\\\" and data_max_size_mb != -1, data_size_used_ratio,\\r\\n                            metric_name == \\\"Log\\\", log_size_used_ratio,\\r\\n                            metric_name == \\\"Tempdb data\\\", tempdb_data_size_used_ratio,\\r\\n                            metric_name == \\\"Tempdb log\\\", tempdb_log_size_used_ratio,\\r\\n                            metric_name == \\\"Local storage\\\", todecimal(local_storage_size_ratio),\\r\\n                            metric_name == \\\"Query store\\\", todecimal(query_store_size_ratio),\\r\\n                            decimal(null)\\r\\n                            )\\r\\n| make-series metric_value = max(metric_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by metric_name, key\\r\\n);\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between (\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 1h, ({timeRange:start} - 1h), {timeRange:start})\\r\\n                                ..\\r\\n                                iif(({timeRange:end} - {timeRange:start}) <= 1h, ({timeRange:end} + 1h), {timeRange:end})\\r\\n                                ) // Expand the range if selected range is shorter than the least frequent collection interval (1h)\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| top 1 by sample_time_utc desc\\r\\n| project key = int(1), last_data_size_used_ratio = data_size_used_mb / data_max_size_mb,\\r\\n                        last_log_size_used_ratio = log_size_used_mb / log_max_size_mb, \\r\\n                        last_tempdb_data_size_used_ratio = tempdb_data_size_used_mb / tempdb_data_max_size_mb, \\r\\n                        last_tempdb_log_size_used_ratio = tempdb_log_size_used_mb / tempdb_log_max_size_mb,  \\r\\n                        last_local_storage_size_ratio = toreal(used_local_storage_size_mb) / toreal(max_local_storage_size_mb),\\r\\n                        last_query_store_size_ratio = toreal(query_store_size_mb) / toreal(query_store_max_size_mb),\\r\\n                        data_max_size_mb,\\r\\n                        log_max_size_mb,\\r\\n                        tempdb_data_max_size_mb,\\r\\n                        tempdb_log_max_size_mb,\\r\\n                        max_local_storage_size_mb,\\r\\n                        query_store_max_size_mb\\r\\n| join kind=inner metric on key\\r\\n| extend metric_value = case(\\r\\n                            metric_name == \\\"Data\\\" and data_max_size_mb != -1, last_data_size_used_ratio,\\r\\n                            metric_name == \\\"Log\\\", last_log_size_used_ratio,\\r\\n                            metric_name == \\\"Tempdb data\\\", last_tempdb_data_size_used_ratio,\\r\\n                            metric_name == \\\"Tempdb log\\\", last_tempdb_log_size_used_ratio,\\r\\n                            metric_name == \\\"Local storage\\\", todecimal(last_local_storage_size_ratio),\\r\\n                            metric_name == \\\"Query store\\\", todecimal(last_query_store_size_ratio),\\r\\n                            decimal(null)\\r\\n                            ),\\r\\n        tooltip_max_size = format_bytes(case(\\r\\n                                            metric_name == \\\"Data\\\", data_max_size_mb,\\r\\n                                            metric_name == \\\"Log\\\", log_max_size_mb,\\r\\n                                            metric_name == \\\"Tempdb data\\\", tempdb_data_max_size_mb,\\r\\n                                            metric_name == \\\"Tempdb log\\\", tempdb_log_max_size_mb,\\r\\n                                            metric_name == \\\"Local storage\\\", todecimal(max_local_storage_size_mb),\\r\\n                                            metric_name == \\\"Query store\\\", todecimal(query_store_max_size_mb),\\r\\n                                            decimal(null)\\r\\n                                            ) * 1024 * 1024)\\r\\n| summarize last_metric_value = max(metric_value),\\r\\n            tooltip_max_size = take_any(tooltip_max_size),\\r\\n            data_max_size_mb = take_any(data_max_size_mb)\\r\\n            by metric_name, tile_ordinal\\r\\n| join kind=leftouter storage_timeline on metric_name\\r\\n| project sample_time_utc, metric_value, metric_name, last_metric_value, tile_ordinal, tooltip_max_size = iif(metric_name == \\\"Data\\\" and data_max_size_mb == -1, \\\"N/A\\\", tooltip_max_size)\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "size": 3,
+        "aggregation": 5,
+        "showAnalytics": true,
+        "title": "Storage consumption",
+        "noDataMessage": "There is no data for specified parameters.",
+        "queryType": 9,
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "metric_name",
+            "formatter": 1,
+            "tooltipFormat": {
+              "tooltip": "Percentage of maximum size ([\"tooltip_max_size\"]). For more information, see Storage consumption details."
+            }
+          },
+          "rightContent": {
+            "columnMatch": "last_metric_value",
+            "formatter": 12,
+            "formatOptions": {
+              "min": 0,
+              "max": 1,
+              "palette": "greenRed"
+            },
+            "numberFormat": {
+              "unit": 0,
+              "options": {
+                "style": "percent",
+                "minimumFractionDigits": 2
+              },
+              "emptyValCustomText": "-"
+            }
+          },
+          "secondaryContent": {
+            "columnMatch": "metric_value",
+            "formatter": 9,
+            "formatOptions": {
+              "min": 0,
+              "max": 1,
+              "palette": "greenRed"
+            }
+          },
+          "showBorder": false,
+          "sortCriteriaField": "tile_ordinal",
+          "sortOrderField": 1
+        },
+        "graphSettings": {
+          "type": 0
+        },
+        "chartSettings": {
+          "showLegend": true,
+          "seriesLabelSettings": [
+            {
+              "seriesName": "Maximum query store",
+              "color": "redBright"
+            },
+            {
+              "seriesName": "Persistent version store",
+              "color": "orange"
+            },
+            {
+              "seriesName": "Used query store",
+              "color": "green"
+            },
+            {
+              "seriesName": "Online index version store",
+              "color": "pink"
+            },
+            {
+              "seriesName": "Hyperscale RBPEX",
+              "color": "blue"
+            }
+          ],
+          "showDataPoints": true,
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 0,
+              "options": {
+                "style": "percent",
+                "useGrouping": true,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "name": "storage_consumption"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Storage consumption metrics are provided for types of storage that have a fixed maximum size, and are expressed as percentages toward the maximum size.\r\n\r\n|Storage consumption metric|Description|\r\n|:-|:-|\r\n|`Data`|The ratio of used data storage to the maximum data storage of the database. Not applicable to Hyperscale databases.|\r\n|`Log`|The ratio of used transaction log storage to the maximum size of the transaction log.|\r\n|`Tempdb data`|The ratio of used data storage in the `tempdb` database to the maximum data storage of the `tempdb` database.|\r\n|`Tempdb log`|The ratio of used transaction log storage in the `tempdb` database to the maximum size of the `tempdb` transaction log.|\r\n|`Local storage`|The ratio of total local storage used by the database to the maximum local storage limit. Local storage is used to store data and transaction log files (in the Premium and Business Critical service tiers), `tempdb` data and transaction log files, RBPEX files (in the Hyperscale service tier), and other system files. [Learn more](https://go.microsoft.com/fwlink/?linkid=2242600).|\r\n|`Query store`|The ratio of used Query Store storage to the maximum Query Store storage size. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198632).|\r\n\r\nData is collected from [sys.database_files](https://go.microsoft.com/fwlink/?linkid=2198860), [sys.dm_os_performance_counters](https://go.microsoft.com/fwlink/?linkid=2198647), [sys.dm_io_virtual_file_stats()](https://go.microsoft.com/fwlink/?linkid=2198746), and other views."
+      },
+      "conditionalVisibility": {
+        "parameterName": "showDescriptions",
+        "comparison": "isEqualTo",
+        "value": "true"
+      },
+      "name": "storage_consumption_help"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Storage consumption details",
+        "expandable": true,
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Metrics on these charts describe storage space consumption in data and transaction log files for this database and for the `tempdb` database of the same database engine instance. Space consumed within data files by specialized data stores, such as Persistent Version Store, Query Store, etc. is provided as well. Data is collected from [sys.database_files](https://go.microsoft.com/fwlink/?linkid=2198860), [sys.dm_os_performance_counters](https://go.microsoft.com/fwlink/?linkid=2198647), and several other DMVs."
+            },
+            "conditionalVisibility": {
+              "parameterName": "showDescriptions",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "storage_utilization_details_help"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"datatable(key:int, metric_name:string) [\\r\\n1, \\\"Used data\\\",\\r\\n1, \\\"Allocated data\\\"\\r\\n]\\r\\n| join kind=inner\\r\\n(\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n) on key\\r\\n| project metric_name, sample_time_utc, data_size_used_mb, data_size_allocated_mb\\r\\n| extend metric = case(\\r\\n                      metric_name == \\\"Used data\\\", data_size_used_mb,\\r\\n                      metric_name == \\\"Allocated data\\\", data_size_allocated_mb,\\r\\n                      decimal(null)\\r\\n                      )\\r\\n| make-series metric = max(metric) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by metric_name\\r\\n| project metric_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Data storage",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "metric_name",
+                  "formatter": 1
+                },
+                "rightContent": {
+                  "columnMatch": "metric"
+                },
+                "showBorder": false
+              },
+              "graphSettings": {
+                "type": 0
+              },
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Allocated data",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Used data",
+                    "color": "green"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 4,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "data_storage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"datatable(key:int, metric_name:string) [\\r\\n1, \\\"Used log\\\",\\r\\n1, \\\"Allocated log\\\"\\r\\n]\\r\\n| join kind=inner\\r\\n(\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n) on key\\r\\n| project metric_name, sample_time_utc, log_size_used_mb, log_size_allocated_mb\\r\\n| extend metric = case(\\r\\n                      metric_name == \\\"Used log\\\", log_size_used_mb,\\r\\n                      metric_name == \\\"Allocated log\\\", log_size_allocated_mb,\\r\\n                      decimal(null)\\r\\n                      )\\r\\n| make-series metric = max(metric) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by metric_name\\r\\n| project metric_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Transaction log storage",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "metric_name",
+                  "formatter": 1
+                },
+                "rightContent": {
+                  "columnMatch": "metric"
+                },
+                "showBorder": false
+              },
+              "graphSettings": {
+                "type": 0
+              },
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Allocated log",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Used log",
+                    "color": "green"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 4,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "log_storage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"datatable(key:int, metric_name:string) [\\r\\n1, \\\"Used tempdb data\\\",\\r\\n1, \\\"Allocated tempdb data\\\"\\r\\n]\\r\\n| join kind=inner\\r\\n(\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n) on key\\r\\n| project metric_name, sample_time_utc, tempdb_data_size_used_mb, tempdb_data_size_allocated_mb\\r\\n| extend metric = case(\\r\\n                      metric_name == \\\"Used tempdb data\\\", tempdb_data_size_used_mb,\\r\\n                      metric_name == \\\"Allocated tempdb data\\\", tempdb_data_size_allocated_mb,\\r\\n                      decimal(null)\\r\\n                      )\\r\\n| make-series metric = max(metric) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by metric_name\\r\\n| project metric_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Tempdb data storage",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "metric_name",
+                  "formatter": 1
+                },
+                "rightContent": {
+                  "columnMatch": "metric"
+                },
+                "showBorder": false
+              },
+              "graphSettings": {
+                "type": 0
+              },
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Allocated tempdb data",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Used tempdb data",
+                    "color": "green"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 4,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "tempdb_data_storage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"datatable(key:int, metric_name:string) [\\r\\n1, \\\"Used tempdb log\\\",\\r\\n1, \\\"Allocated tempdb log\\\"\\r\\n]\\r\\n| join kind=inner\\r\\n(\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n) on key\\r\\n| project metric_name, sample_time_utc, tempdb_log_size_used_mb, tempdb_log_size_allocated_mb\\r\\n| extend metric = case(\\r\\n                      metric_name == \\\"Used tempdb log\\\", tempdb_log_size_used_mb,\\r\\n                      metric_name == \\\"Allocated tempdb log\\\", tempdb_log_size_allocated_mb,\\r\\n                      decimal(null)\\r\\n                      )\\r\\n| make-series metric = max(metric) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by metric_name\\r\\n| project metric_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Tempdb transaction log storage",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "metric_name",
+                  "formatter": 1
+                },
+                "rightContent": {
+                  "columnMatch": "metric"
+                },
+                "showBorder": false
+              },
+              "graphSettings": {
+                "type": 0
+              },
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Allocated tempdb log",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Used tempdb log",
+                    "color": "green"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 4,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "tempdb_log_storage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"datatable(key:int, metric_name:string) [\\r\\n1, \\\"Persistent version store\\\",\\r\\n1, \\\"Online index version store\\\",\\r\\n1, \\\"Used query store\\\"\\r\\n]\\r\\n| join kind=inner\\r\\n(\\r\\nsqldb_single_database_storage_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n) on key\\r\\n| project metric_name, sample_time_utc, rbpex_size_mb, persistent_version_store_size_mb, online_index_version_store_size_mb, query_store_size_mb\\r\\n| extend metric = case(\\r\\n                      metric_name == \\\"Persistent version store\\\", persistent_version_store_size_mb,\\r\\n                      metric_name == \\\"Online index version store\\\", online_index_version_store_size_mb,\\r\\n                      metric_name == \\\"Used query store\\\", todecimal(query_store_size_mb),\\r\\n                      decimal(null)\\r\\n                      )\\r\\n| make-series metric = max(metric) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by metric_name\\r\\n| project metric_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Special purpose data storage",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "metric_name",
+                  "formatter": 1
+                },
+                "rightContent": {
+                  "columnMatch": "metric"
+                },
+                "showBorder": false
+              },
+              "graphSettings": {
+                "type": 0
+              },
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Persistent version store",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "Used query store",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Online index version store",
+                    "color": "pink"
+                  },
+                  {
+                    "seriesName": "Hyperscale RBPEX",
+                    "color": "blue"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 4,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "name": "special_purpose_stores"
+          }
+        ]
+      },
+      "name": "storage_consumption_details_group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Storage IO statistics",
+        "expandable": true,
+        "expanded": true,
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Metrics on these charts describe storage IO statistics including IOPS, throughput, and latency for this database and for the `tempdb` database of the same database engine instance. Separate charts are provided for reads and writes. Data is collected from [sys.dm_io_virtual_file_stats()](https://go.microsoft.com/fwlink/?linkid=2198746)."
+            },
+            "conditionalVisibility": {
+              "parameterName": "showDescriptions",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "storage_io_stats_help"
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0",
+              "style": "tabs",
+              "links": [
+                {
+                  "id": "ca53e0e9-7129-4b85-b842-35b42d1ab5c4",
+                  "cellValue": "storageTabName",
+                  "linkTarget": "parameter",
+                  "linkLabel": "IOPS",
+                  "subTarget": "IOPS",
+                  "style": "link",
+                  "linkIsContextBlade": true
+                },
+                {
+                  "id": "8b5fd7cb-85e0-4912-aaf3-de7c1b10d7d4",
+                  "cellValue": "storageTabName",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Throughput",
+                  "subTarget": "Throughput",
+                  "style": "link"
+                },
+                {
+                  "id": "f6a93425-3f64-42f3-8715-4d59849ff645",
+                  "cellValue": "storageTabName",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Latency",
+                  "subTarget": "Latency",
+                  "style": "link"
+                }
+              ]
+            },
+            "name": "storage_io_stats_navigation"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time_utc, replica_id, file_id, file_type, io_database_id, num_of_reads, io_snapshot_sample_ms\\r\\n| sort by io_database_id asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| extend iops = toreal(delta_num_of_reads) / delta_io_snapshot_sample_ms * 1000\\r\\n| summarize iops = sum(iops) by sample_time_utc, file_type, io_database_id\\r\\n| project sample_time_utc, file_label = strcat(iif(io_database_id == 2, \\\"tempdb | \\\", \\\"\\\"), file_type), iops\\r\\n| make-series metric = max(iops) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by file_label\\r\\n| project file_label, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Read IOPS",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Data",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Log",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "tempdb | Data",
+                    "color": "blueDark"
+                  },
+                  {
+                    "seriesName": "tempdb | Log",
+                    "color": "greenDark"
+                  },
+                  {
+                    "seriesName": "RBPEX",
+                    "color": "turquoise"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "storageTabName",
+              "comparison": "isEqualTo",
+              "value": "IOPS"
+            },
+            "name": "read_iops"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time_utc, replica_id, file_id, file_type, io_database_id, num_of_writes, io_snapshot_sample_ms\\r\\n| sort by io_database_id asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_writes - prev(num_of_writes), long(null)),\\r\\n         delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| extend iops = toreal(delta_num_of_writes) / delta_io_snapshot_sample_ms * 1000\\r\\n| summarize iops = sum(iops) by sample_time_utc, file_type, io_database_id\\r\\n| project sample_time_utc, file_label = strcat(iif(io_database_id == 2, \\\"tempdb | \\\", \\\"\\\"), file_type), iops\\r\\n| make-series metric = max(iops) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by file_label\\r\\n| project file_label, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Write IOPS",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "tempdb | Log",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "Log",
+                    "color": "yellow"
+                  },
+                  {
+                    "seriesName": "Data",
+                    "color": "red"
+                  },
+                  {
+                    "seriesName": "tempdb | Data",
+                    "color": "redDark"
+                  },
+                  {
+                    "seriesName": "RBPEX",
+                    "color": "turquoise"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "storageTabName",
+              "comparison": "isEqualTo",
+              "value": "IOPS"
+            },
+            "name": "write_iops"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time_utc, replica_id, file_id, file_type, io_database_id, num_of_bytes_read, io_snapshot_sample_ms\\r\\n| sort by io_database_id asc, replica_id, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_num_of_bytes_read = iif(num_of_bytes_read >= prev(num_of_bytes_read) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_bytes_read - prev(num_of_bytes_read), long(null)),\\r\\n         delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize delta_num_of_bytes_read = sum(delta_num_of_bytes_read) by sample_time_utc, file_type, io_database_id, delta_io_snapshot_sample_ms\\r\\n| project sample_time_utc, file_label = strcat(iif(io_database_id == 2, \\\"tempdb | \\\", \\\"\\\"), file_type), delta_read_throughput = toreal(delta_num_of_bytes_read) / delta_io_snapshot_sample_ms * 1000\\r\\n| make-series metric = max(delta_read_throughput) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by file_label\\r\\n| project file_label, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Read throughput",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Data",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Log",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "tempdb | Data",
+                    "color": "blueDark"
+                  },
+                  {
+                    "seriesName": "tempdb | Log",
+                    "color": "greenDark"
+                  },
+                  {
+                    "seriesName": "RBPEX",
+                    "color": "turquoise"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 11,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "storageTabName",
+              "comparison": "isEqualTo",
+              "value": "Throughput"
+            },
+            "name": "read_throughput"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time_utc, replica_id, file_id, file_type, io_database_id, num_of_bytes_written, io_snapshot_sample_ms\\r\\n| sort by io_database_id asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_num_of_bytes_written = iif(num_of_bytes_written >= prev(num_of_bytes_written) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_bytes_written - prev(num_of_bytes_written), long(null)),\\r\\n         delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize delta_num_of_bytes_written = sum(delta_num_of_bytes_written) by sample_time_utc, file_type, io_database_id, delta_io_snapshot_sample_ms\\r\\n| project sample_time_utc, file_label = strcat(iif(io_database_id == 2, \\\"tempdb | \\\", \\\"\\\"), file_type), delta_write_throughput = toreal(delta_num_of_bytes_written) / delta_io_snapshot_sample_ms * 1000\\r\\n| make-series metric = max(delta_write_throughput) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by file_label\\r\\n| project file_label, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Write throughput",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "tempdb | Log",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "Data",
+                    "color": "red"
+                  },
+                  {
+                    "seriesName": "Log",
+                    "color": "yellow"
+                  },
+                  {
+                    "seriesName": "tempdb | Data",
+                    "color": "redDark"
+                  },
+                  {
+                    "seriesName": "RBPEX",
+                    "color": "turquoise"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 11,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "storageTabName",
+              "comparison": "isEqualTo",
+              "value": "Throughput"
+            },
+            "name": "write_throughput"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time_utc, replica_id, file_id, file_type, io_database_id, num_of_reads, io_stall_read_ms, io_snapshot_sample_ms\\r\\n| sort by io_database_id asc, replica_id asc, file_id asc, sample_time_utc asc\\r\\n| extend delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_io_stall_read_ms = iif(io_stall_read_ms >= prev(io_stall_read_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id), io_stall_read_ms - prev(io_stall_read_ms), long(null)),\\r\\n         delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize delta_num_of_reads = sum(delta_num_of_reads),\\r\\n            delta_io_stall_read_ms = sum(delta_io_stall_read_ms)\\r\\n  by sample_time_utc, file_type, io_database_id\\r\\n| project sample_time_utc, file_label = strcat(iif(io_database_id == 2, \\\"tempdb | \\\", \\\"\\\"), file_type), delta_read_latency_ms = iif(delta_num_of_reads != 0, toreal(delta_io_stall_read_ms) / delta_num_of_reads, real(null))\\r\\n| make-series metric = max(delta_read_latency_ms) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by file_label\\r\\n| project file_label, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Read latency",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Log",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Data",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "tempdb | Data",
+                    "color": "blueDark"
+                  },
+                  {
+                    "seriesName": "tempdb | Log",
+                    "color": "greenDark"
+                  },
+                  {
+                    "seriesName": "RBPEX",
+                    "color": "turquoise"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "minimumFractionDigits": 2,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "storageTabName",
+              "comparison": "isEqualTo",
+              "value": "Latency"
+            },
+            "name": "read_latency"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_single_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project sample_time_utc, replica_id, file_id, file_type, io_database_id, num_of_writes, io_stall_write_ms, io_snapshot_sample_ms\\r\\n| sort by io_database_id asc, replica_id asc, file_id asc, sample_time_utc asc\\r\\n| extend delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_writes - prev(num_of_writes), long(null)),\\r\\n         delta_io_stall_write_ms = iif(io_stall_write_ms >= prev(io_stall_write_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id), io_stall_write_ms - prev(io_stall_write_ms), long(null)),\\r\\n         delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize delta_num_of_writes = sum(delta_num_of_writes),\\r\\n            delta_io_stall_write_ms = sum(delta_io_stall_write_ms)\\r\\n  by sample_time_utc, file_type, io_database_id\\r\\n| project sample_time_utc, file_label = strcat(iif(io_database_id == 2, \\\"tempdb | \\\", \\\"\\\"), file_type), delta_write_latency_ms = iif(delta_num_of_writes != 0, toreal(delta_io_stall_write_ms) / delta_num_of_writes, real(null))\\r\\n| make-series metric = max(delta_write_latency_ms) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by file_label\\r\\n| project file_label, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 3,
+              "showAnalytics": true,
+              "title": "Write latency",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Log",
+                    "color": "yellow"
+                  },
+                  {
+                    "seriesName": "Data",
+                    "color": "red"
+                  },
+                  {
+                    "seriesName": "tempdb | Log",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "tempdb | Data",
+                    "color": "redDark"
+                  },
+                  {
+                    "seriesName": "RBPEX",
+                    "color": "turquoise"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "minimumFractionDigits": 2,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "storageTabName",
+              "comparison": "isEqualTo",
+              "value": "Latency"
+            },
+            "name": "write_latency"
+          }
+        ]
+      },
+      "name": "storage_io_stats_group"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
