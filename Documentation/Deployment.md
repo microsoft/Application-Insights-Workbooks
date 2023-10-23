@@ -18,6 +18,8 @@ Once content is checked into master, the template content is packaged into an np
 In the usual case, this means that template changes will not show up in Production Azure for at least 48 hours.
 
 ### Hotfixes
-If a hotfix is required to get changes out faster than that, you'll need to work with the Workbooks team to gather the required information to justify a hotfix. Start by [create an issue][new-issue], and someone from the workbooks team will work with you. If possible, use your internal telemetry to figure out how many people/subscriptions are affected by the issue you need to hotfix, etc, as leadership will ask those details when we want to hotfix. If there are ICM incidents, etc, include that information in your issue. 
+If a hotfix is required to get changes out faster than that, you'll need to work with the Workbooks team to gather the required information to justify a hotfix. Start by creating an ICM ticket against Workbooks & Experiences team, and someone from the workbooks team will work with you.
 
-[new-issue]: https://github.com/microsoft/Application-Insights-Workbooks/issues/new
+> **_NOTE:_** Please create the ICM ticket as **Severity 3** unless the issue matches the following Severity 2 definition according to the [OCEN](https://aka.ms/ocen) guideline: Major scenarios are impacted for more than 10% users. Eg. Workbooks blade is broken. Charts are not available.
+
+If possible, use your internal telemetry to figure out how many people/subscriptions are affected by the issue you need to hotfix, etc, as leadership will ask those details when we want to hotfix. If there are related ICM incidents, etc, include that information in your ticket.
