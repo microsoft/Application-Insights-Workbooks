@@ -70,6 +70,14 @@
                   "linkLabel": "Networking",
                   "subTarget": "Networking",
                   "style": "link"
+                },
+                {
+                  "id": "eaedbb0e-e895-4940-80ad-f743c3ab1041",
+                  "cellValue": "SelectedRateOptimizationTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Top 10 services",
+                  "subTarget": "Top10Services",
+                  "style": "link"
                 }
               ]
             },
@@ -196,6 +204,28 @@
             "content": {
               "version": "NotebookGroup/1.0",
               "groupType": "template",
+              "loadFromTemplateId": "community-Workbooks/Azure Advisor/Cost Optimization/Top10Services",
+              "items": []
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "SelectedTab",
+                "comparison": "isEqualTo",
+                "value": "UsageOptimization"
+              },
+              {
+                "parameterName": "SelectedRateOptimizationTab",
+                "comparison": "isEqualTo",
+                "value": "Top10Services"
+              }
+            ],
+            "name": "group - Top10Services"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "template",
               "loadFromTemplateId": "community-Workbooks/Azure Advisor/Cost Optimization/Networking",
               "items": []
             },
@@ -283,6 +313,86 @@
         "groupType": "editable",
         "items": [
           {
+            "type": 1,
+            "content": {
+              "json": "## Commitment-based savings\r\nTo maximize your Azure savings, consider savings plans for flexible usage and reserved instances for persistent needs. Azure Savings plans offer reduced rates with a fixed hourly spend and reserved instances allow pre-purchasing VM base price. Both options provide discounts and adapt to your usage patterns, helping you manage costs effectively. Below is an estimate of how much you can potentially save with 1-Year commitment for each option based on your usage pattern for the last 30 days.​",
+              "style": "upsell"
+            },
+            "customWidth": "50",
+            "name": "text - P1YTotalSavings"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "## Commitment-based savings\r\nTo maximize your Azure savings, consider savings plans for flexible usage and reserved instances for persistent needs. Savings plans offer reduced rates with a fixed hourly spend, while reserved instances allow pre-purchasing VM base price. Both options provide discounts and adapt to your usage patterns, helping you manage costs effectively. Below is an estimate of how much you can save with 3-Year commitment for each option based on your usage pattern for the last 30 days.​",
+              "style": "upsell"
+            },
+            "customWidth": "50",
+            "name": "text - P3YTotalSavings - Copy"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AdvisorResources \r\n| where type == 'microsoft.advisor/recommendations' \r\n| where properties.category == 'Cost' and (properties.shortDescription.solution contains \"Reserved Instance\" or properties.shortDescription.solution contains \"savings plan\")\r\n| extend\r\nrecommendationTypeId = tostring(properties.recommendationTypeId),\r\nreservedResourceType=tostring(properties.extendedProperties.reservedResourceType),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nterm=tostring(properties.extendedProperties.term),\r\nstableId = name,\r\nsubscriptionId = tostring(properties.extendedProperties.subId)\r\n| where term == \"P1Y\" and lookbackPeriod == \"Last 30 days\"\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources | where type=~'microsoft.advisor/suppressions'\r\n| extend tokens = split(id, '/')\r\n| extend stableId = iff(array_length(tokens) > 3, tokens[(array_length(tokens)-3)], '')\r\n| extend expirationTimeStamp = todatetime(iff(strcmp(tostring(properties.ttl), '-1') == 0, '9999-12-31', properties.expirationTimeStamp))\r\n| where expirationTimeStamp > now()\r\n| project stableId, expirationTimeStamp)\r\non stableId\r\n| where isempty(expirationTimeStamp)\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources \r\n| where type =~ 'microsoft.advisor/configurations'\r\n| where isempty(resourceGroup) == true\r\n| extend\r\nmaxCpuP95 = properties.extendedProperties.MaxCpuP95,\r\nlowCpuThreshold = properties.lowCpuThreshold,\r\nexcludeRecomm = properties.exclude,\r\nreservedResourceType=tostring(properties.extendedProperties.reservedResourceType),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\nregion = tostring(properties.extendedProperties.region),\r\nstableId = name,\r\nsubscriptionId = tostring(properties.extendedProperties.subId))\r\non subscriptionId\r\n| extend isActive1 = iff(isnull(excludeRecomm), true, tobool(excludeRecomm) == false)\r\n| extend isActive2 = iff(recommendationTypeId == 'e10b1381-5f0a-47ff-8c7b-37bd13d7c974', iff((isnotempty(lowCpuThreshold) and isnotempty(maxCpuP95)), toint(maxCpuP95) < toint(lowCpuThreshold), iff((isempty(maxCpuP95) or toint(maxCpuP95) < 5), true, false)), true)\r\n| where isActive1 == true and isActive2 == true\r\n| join kind = leftouter\r\n(advisorresources | where type =~ 'microsoft.advisor/configurations' | where isnotempty(resourceGroup) == true\r\n| project subscriptionId, resourceGroup, excludeProperty = properties.exclude)\r\non subscriptionId, resourceGroup\r\n| extend isActive3 = iff(isnull(excludeProperty), true, tobool(excludeProperty) == false)\r\n| where isActive3 == true\r\n| extend reservedResourceType=tostring(properties.extendedProperties.reservedResourceType),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\nregion = tostring(properties.extendedProperties.region),\r\nresources=tostring(properties.resourceMetadata.resourceId),  \r\nsubscription = tostring(properties.extendedProperties.subId),\r\ntypeOfRecommendation = iif(properties.shortDescription.solution contains \"Reserved Instance\", \"Reservations\", \"Savings plan\")\r\n| where term == \"P1Y\" and lookbackPeriod == \"Last 30 days\"\r\n| summarize bin (sum(savings), 0.01) by typeOfRecommendation,currency\r\n| order by sum_savings desc\r\n",
+              "size": 0,
+              "title": "1 year total commitment-based savings",
+              "noDataMessage": "There are no commitment-based recommendations",
+              "noDataMessageStyle": 3,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "value::all"
+              ],
+              "visualization": "piechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Reservations",
+                    "label": "Azure Reservations"
+                  },
+                  {
+                    "seriesName": "Savings plan",
+                    "label": "Azure Savings Plan for Compute"
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "query - CommitmentBasedSavingsP1Y"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AdvisorResources \r\n| where type == 'microsoft.advisor/recommendations' \r\n| where properties.category == 'Cost' and (properties.shortDescription.solution contains \"Reserved Instance\" or properties.shortDescription.solution contains \"savings plan\")\r\n| extend\r\nrecommendationTypeId = tostring(properties.recommendationTypeId),\r\nreservedResourceType=tostring(properties.extendedProperties.reservedResourceType),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nterm=tostring(properties.extendedProperties.term),\r\nstableId = name,\r\nsubscriptionId = tostring(properties.extendedProperties.subId)\r\n| where term == \"P3Y\" and lookbackPeriod == \"Last 30 days\"\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources | where type=~'microsoft.advisor/suppressions'\r\n| extend tokens = split(id, '/')\r\n| extend stableId = iff(array_length(tokens) > 3, tokens[(array_length(tokens)-3)], '')\r\n| extend expirationTimeStamp = todatetime(iff(strcmp(tostring(properties.ttl), '-1') == 0, '9999-12-31', properties.expirationTimeStamp))\r\n| where expirationTimeStamp > now()\r\n| project stableId, expirationTimeStamp)\r\non stableId\r\n| where isempty(expirationTimeStamp)\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources \r\n| where type =~ 'microsoft.advisor/configurations'\r\n| where isempty(resourceGroup) == true\r\n| extend\r\nmaxCpuP95 = properties.extendedProperties.MaxCpuP95,\r\nlowCpuThreshold = properties.lowCpuThreshold,\r\nexcludeRecomm = properties.exclude,\r\nreservedResourceType=tostring(properties.extendedProperties.reservedResourceType),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\nregion = tostring(properties.extendedProperties.region),\r\nstableId = name,\r\nsubscriptionId = tostring(properties.extendedProperties.subId))\r\non subscriptionId\r\n| extend isActive1 = iff(isnull(excludeRecomm), true, tobool(excludeRecomm) == false)\r\n| extend isActive2 = iff(recommendationTypeId == 'e10b1381-5f0a-47ff-8c7b-37bd13d7c974', iff((isnotempty(lowCpuThreshold) and isnotempty(maxCpuP95)), toint(maxCpuP95) < toint(lowCpuThreshold), iff((isempty(maxCpuP95) or toint(maxCpuP95) < 5), true, false)), true)\r\n| where isActive1 == true and isActive2 == true\r\n| join kind = leftouter\r\n(advisorresources | where type =~ 'microsoft.advisor/configurations' | where isnotempty(resourceGroup) == true\r\n| project subscriptionId, resourceGroup, excludeProperty = properties.exclude)\r\non subscriptionId, resourceGroup\r\n| extend isActive3 = iff(isnull(excludeProperty), true, tobool(excludeProperty) == false)\r\n| where isActive3 == true\r\n| extend reservedResourceType=tostring(properties.extendedProperties.reservedResourceType),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\nregion = tostring(properties.extendedProperties.region),\r\nresources=tostring(properties.resourceMetadata.resourceId),  \r\nsubscription = tostring(properties.extendedProperties.subId),\r\ntypeOfRecommendation = iif(properties.shortDescription.solution contains \"Reserved Instance\", \"Reservations\", \"Savings plan\")\r\n| where term == \"P3Y\" and lookbackPeriod == \"Last 30 days\"\r\n| summarize bin (sum(savings), 0.01) by typeOfRecommendation,currency\r\n| order by sum_savings desc\r\n",
+              "size": 0,
+              "title": "3 years total commitment-based savings",
+              "noDataMessage": "There are no commitment-based recommendations",
+              "noDataMessageStyle": 3,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "value::all"
+              ],
+              "visualization": "piechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Reservations",
+                    "label": "Azure Reservations"
+                  },
+                  {
+                    "seriesName": "Savings plan",
+                    "label": "Azure Savings Plan for Compute"
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "query - CommitmentBasedSavingsP3Y"
+          },
+          {
             "type": 11,
             "content": {
               "version": "LinkItem/1.0",
@@ -293,7 +403,23 @@
                   "cellValue": "selectedRateOptimizationTab",
                   "linkTarget": "parameter",
                   "linkLabel": "Azure Hybrid Benefit",
-                  "subTarget": "AHUB",
+                  "subTarget": "AHB",
+                  "style": "link"
+                },
+                {
+                  "id": "56eb4166-cb7c-4384-94a9-c5f201e1316d",
+                  "cellValue": "selectedRateOptimizationTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Azure Reservations",
+                  "subTarget": "Reservations",
+                  "style": "link"
+                },
+                {
+                  "id": "799d4fc7-5790-467c-84cc-ce4b4cc34a3f",
+                  "cellValue": "selectedRateOptimizationTab",
+                  "linkTarget": "parameter",
+                  "linkLabel": "Azure savings plan for compute",
+                  "subTarget": "SavingsPlan",
                   "style": "link"
                 }
               ]
@@ -304,6 +430,50 @@
               "value": "RateOptimization"
             },
             "name": "links - rate optimization tabs"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "template",
+              "loadFromTemplateId": "community-Workbooks/Azure Advisor/Cost Optimization/Reservations",
+              "items": []
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "SelectedTab",
+                "comparison": "isEqualTo",
+                "value": "RateOptimization"
+              },
+              {
+                "parameterName": "selectedRateOptimizationTab",
+                "comparison": "isEqualTo",
+                "value": "Reservations"
+              }
+            ],
+            "name": "group - Reservations"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "template",
+              "loadFromTemplateId": "community-Workbooks/Azure Advisor/Cost Optimization/SavingsPlan",
+              "items": []
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "SelectedTab",
+                "comparison": "isEqualTo",
+                "value": "RateOptimization"
+              },
+              {
+                "parameterName": "selectedRateOptimizationTab",
+                "comparison": "isEqualTo",
+                "value": "SavingsPlan"
+              }
+            ],
+            "name": "group - SavingsPlan"
           },
           {
             "type": 9,
@@ -417,7 +587,7 @@
             "conditionalVisibility": {
               "parameterName": "selectedRateOptimizationTab",
               "comparison": "isEqualTo",
-              "value": "AHUB"
+              "value": "AHB"
             },
             "name": "parameters - Filters"
           },
@@ -449,8 +619,7 @@
                   "defaultValue": "value::1",
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources",
-                  "label": "Resource Location",
-                  "value": "eastus"
+                  "label": "Resource Location"
                 }
               ],
               "style": "pills",
@@ -461,7 +630,7 @@
             "conditionalVisibility": {
               "parameterName": "selectedRateOptimizationTab",
               "comparison": "isEqualTo",
-              "value": "AHUB"
+              "value": "AHB"
             },
             "name": "parameters - location"
           },
@@ -471,14 +640,14 @@
               "version": "NotebookGroup/1.0",
               "groupType": "template",
               "loadType": "always",
-              "loadFromTemplateId": "community-Workbooks/Azure Advisor/Cost Optimization/AHUB",
+              "loadFromTemplateId": "community-Workbooks/Azure Advisor/Cost Optimization/AHB",
               "items": []
             },
             "conditionalVisibilities": [
               {
                 "parameterName": "selectedRateOptimizationTab",
                 "comparison": "isEqualTo",
-                "value": "AHUB"
+                "value": "AHB"
               },
               {
                 "parameterName": "SelectedTab",
@@ -486,7 +655,7 @@
                 "value": "RateOptimization"
               }
             ],
-            "name": "AHUB Overview"
+            "name": "AHB Overview"
           }
         ]
       },
