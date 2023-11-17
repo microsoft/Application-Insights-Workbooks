@@ -143,13 +143,61 @@
                   },
                   "queryType": 0,
                   "resourceType": "microsoft.workloads/monitors"
+                },
+                {
+                  "id": "45e53dae-8a94-4d74-ad48-9a58b658afd0",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "netWeaverProviderExist",
+                  "type": 1,
+                  "isHiddenWhenLocked": true,
+                  "criteriaData": [
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "param_providers_list",
+                        "operator": "is Empty",
+                        "rightValType": "param",
+                        "resultValType": "static",
+                        "resultVal": "false"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "param_check_provider_error",
+                        "operator": "==",
+                        "rightValType": "static",
+                        "rightVal": "-1",
+                        "resultValType": "static",
+                        "resultVal": "false"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "operator": "Default",
+                        "resultValType": "static",
+                        "resultVal": "true"
+                      }
+                    }
+                  ]
                 }
               ],
               "style": "pills",
               "queryType": 0,
-              "resourceType": "microsoft.workloads/monitors"
+              "resourceType": "microsoft.operationalinsights/workspaces"
             },
             "name": "ProviderParameter"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The workbook is loading. This can take up to 2 minutes.",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "netWeaverProviderExist",
+              "comparison": "isEqualTo",
+              "value": ""
+            },
+            "name": "WorkbookLoadingMsg"
           },
           {
             "type": 12,
@@ -198,9 +246,9 @@
               ]
             },
             "conditionalVisibility": {
-              "parameterName": "param_check_provider_error",
+              "parameterName": "netWeaverProviderExist",
               "comparison": "isEqualTo",
-              "value": "-1"
+              "value": "false"
             },
             "name": "No active provider warning"
           },
@@ -212,9 +260,9 @@
             },
             "conditionalVisibilities": [
               {
-                "parameterName": "param_check_provider_error",
-                "comparison": "isNotEqualTo",
-                "value": "-1"
+                "parameterName": "netWeaverProviderExist",
+                "comparison": "isEqualTo",
+                "value": "true"
               },
               {
                 "parameterName": "param_check_error",
@@ -828,7 +876,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "//base query to set the status\r\nlet baseQuery = SapNetweaver_GetSystemInstanceList_CL    \r\n    | summarize max(serverTimestamp_t) by SID_s, instanceNr_d, hostname_s, serverTimestamp_t, features_s, dispstatus_s\r\n    | extend instanceNr_s = tostring(toint(instanceNr_d))\r\n    | extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat(\"0\", instanceNr_s))    \r\n    | project instanceNr_d, hostname_s, serverTimestamp_t, features_s, dispstatus_s, SID_s\r\n    | extend Status = case(dispstatus_s == 'SAPControl-GREEN', \"Available\", \r\n        dispstatus_s == 'SAPControl-RED', \"Error\", \r\n        dispstatus_s == 'SAPControl-GRAY', \"Offline\",\r\n        dispstatus_s == 'SAPControl-YELLOW', \"Not Functional\",\r\n        \"\")\r\n    | extend Status = iff(serverTimestamp_t > ago(5m), Status, \"Status Updated 5 mins earlier\");\r\n//get the status from the ASCS = MESSAGESERVER + ENQUE\r\nlet ascsStatusResult = baseQuery\r\n    | where features_s has tolower(\"MESSAGESERVER|ENQUE\") or features_s has tolower(\"WEBDISP\") or features_s has tolower(\"TREX\")\r\n    | extend Rank = case(dispstatus_s == 'SAPControl-GREEN', 3, \r\n        dispstatus_s == 'SAPControl-RED', 0, \r\n        dispstatus_s == 'SAPControl-GRAY', 1,\r\n        dispstatus_s == 'SAPControl-YELLOW', 2, 0)   \r\n    | project ascsdispStatus = dispstatus_s, SID_s, serverTimestamp_t, ascsStatus = Status, features_s \r\n    | summarize arg_max(serverTimestamp_t, *) by SID_s;\r\n//get the count of app server which are running in the system\r\nlet availableAppServer = SapNetweaver_GetSystemInstanceList_CL \r\n| where features_s has \"ICMAN\" and dispstatus_s == \"SAPControl-GREEN\"\r\n| summarize arg_max(serverTimestamp_t,*) by SID_s, features_s, dispstatus_s, hostname_s\r\n| summarize count() by SID_s, hostname_s, dispstatus_s;\r\nlet availableAppServerCount = toscalar(availableAppServer | summarize count());\r\n//get the status from the app server = ICMAN\r\nlet appStatusResult = baseQuery\r\n    | where features_s has tolower(\"ICMAN\") or features_s has tolower(\"WEBDISP\") or features_s has tolower(\"TREX\")\r\n    | extend Rank = case(dispstatus_s == 'SAPControl-GREEN', 0, \r\n        dispstatus_s == 'SAPControl-RED', 3, \r\n        dispstatus_s == 'SAPControl-GRAY', 2,\r\n        dispstatus_s == 'SAPControl-YELLOW', 1, 0)   \r\n    | project appdispStatus = dispstatus_s, SID_s, serverTimestamp_t, appStatus = Status, features_s, Rank\r\n    | summarize arg_max(Rank, *) by SID_s;\r\n// join both the result where SID is same and check if any one of the app server is up and running\r\n// display green otherwise show the status as partially running\r\nascsStatusResult\r\n| join kind=inner appStatusResult on SID_s\r\n| extend NewStatus =  case(\r\n    ascsdispStatus == \"SAPControl-GREEN\" and ascsStatus == \"Status Updated 5 mins earlier\", \"Status Updated 5 mins earlier\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-GREEN\", \"Available\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-GRAY\" and availableAppServerCount==0, \"Offline\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-GRAY\", \"Partially Running\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-YELLOW\", \"Not Functional\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-RED\", \"Error\",\r\n    ascsdispStatus <> \"SAPControl-GREEN\", \"Offline\", \"Unknown\"\r\n    )\r\n| project dispstatus_s = appdispStatus, SID_s, serverTimestamp_t, Status = NewStatus;\r\nlet allNWProvidersfromSrc =\r\nprint allProviders=parse_json(tostring(\"{param_providers_list:escapejson}\")).value\r\n    | mv-expand allProviders\r\n    | extend sid = ((allProviders.properties)).providerSettings.sapSid\r\n    | extend type=((parse_json(allProviders).properties).providerSettings).providerType\r\n    | extend state=((allProviders.properties)).provisioningState\r\n    | extend error=(allProviders.properties).errors\r\n    | where type == \"SapNetWeaver\"\r\n    | project allProviders.name, type, state , sid;\r\nlet allNWProviders = \r\nallNWProvidersfromSrc\r\n| extend SID_s=tostring(sid)\r\n| project SID_s, allProviders_name, type, state;\r\nlet latestAvailTenant = ascsStatusResult \r\n    | join kind=leftouter(allNWProviders) on SID_s;\r\nlatestAvailTenant\r\n    | project  SID_s, serverTimestamp_t, state\r\n    | where state != \"Failed\";\r\n",
+                    "query": "//base query to set the status\r\nlet baseQuery = SapNetweaver_GetSystemInstanceList_CL    \r\n    | summarize max(serverTimestamp_t) by SID_s, instanceNr_d, hostname_s, serverTimestamp_t, features_s, dispstatus_s\r\n    | extend instanceNr_s = tostring(toint(instanceNr_d))\r\n    | extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat(\"0\", instanceNr_s))    \r\n    | project instanceNr_d, hostname_s, serverTimestamp_t, features_s, dispstatus_s, SID_s\r\n    | extend Status = case(dispstatus_s == 'SAPControl-GREEN', \"Available\", \r\n        dispstatus_s == 'SAPControl-RED', \"Error\", \r\n        dispstatus_s == 'SAPControl-GRAY', \"Offline\",\r\n        dispstatus_s == 'SAPControl-YELLOW', \"Not Functional\",\r\n        \"\")\r\n    | extend Status = iff(serverTimestamp_t > ago(5m), Status, \"Status Updated 5 mins earlier\");\r\n//get the status from the ASCS = MESSAGESERVER + ENQUE\r\nlet ascsStatusResult = baseQuery\r\n    | where features_s has tolower(\"MESSAGESERVER|ENQUE\") or features_s has tolower(\"WEBDISP\") or features_s has tolower(\"TREX\")\r\n    | extend Rank = case(dispstatus_s == 'SAPControl-GREEN', 3, \r\n        dispstatus_s == 'SAPControl-RED', 0, \r\n        dispstatus_s == 'SAPControl-GRAY', 1,\r\n        dispstatus_s == 'SAPControl-YELLOW', 2, 0)   \r\n    | project ascsdispStatus = dispstatus_s, SID_s, serverTimestamp_t, ascsStatus = Status, features_s \r\n    | summarize arg_max(serverTimestamp_t, *) by SID_s;\r\n//get the count of app server which are running in the system\r\nlet availableAppServer = SapNetweaver_GetSystemInstanceList_CL \r\n| where features_s has \"ICMAN\" and dispstatus_s == \"SAPControl-GREEN\"\r\n| summarize arg_max(serverTimestamp_t,*) by SID_s, features_s, dispstatus_s, hostname_s\r\n| summarize count() by SID_s, hostname_s, dispstatus_s;\r\nlet availableAppServerCount = toscalar(availableAppServer | summarize count());\r\n//get the status from the app server = ICMAN\r\nlet appStatusResult = baseQuery\r\n    | where features_s has tolower(\"ICMAN\") or features_s has tolower(\"WEBDISP\") or features_s has tolower(\"TREX\")\r\n    | extend Rank = case(dispstatus_s == 'SAPControl-GREEN', 0, \r\n        dispstatus_s == 'SAPControl-RED', 3, \r\n        dispstatus_s == 'SAPControl-GRAY', 2,\r\n        dispstatus_s == 'SAPControl-YELLOW', 1, 0)   \r\n    | project appdispStatus = dispstatus_s, SID_s, serverTimestamp_t, appStatus = Status, features_s, Rank\r\n    | summarize arg_max(Rank, *) by SID_s;\r\n// join both the result where SID is same and check if any one of the app server is up and running\r\n// display green otherwise show the status as partially running\r\nlet finalCompleteResult = ascsStatusResult\r\n| join kind=inner appStatusResult on SID_s\r\n| extend NewStatus =  case(\r\n    ascsdispStatus == \"SAPControl-GREEN\" and ascsStatus == \"Status Updated 5 mins earlier\", \"Status Updated 5 mins earlier\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-GREEN\", \"Available\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-GRAY\" and availableAppServerCount==0, \"Offline\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-GRAY\", \"Partially Running\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-YELLOW\", \"Not Functional\",\r\n    ascsdispStatus == \"SAPControl-GREEN\" and appdispStatus == \"SAPControl-RED\", \"Error\",\r\n    ascsdispStatus <> \"SAPControl-GREEN\", \"Offline\", \"Unknown\"\r\n    )\r\n| project dispstatus_s = appdispStatus, SID_s, serverTimestamp_t, Status = NewStatus;\r\nlet allNWProvidersfromSrc =\r\nprint allProviders=parse_json(tostring(\"{param_providers_list:escapejson}\")).value\r\n    | mv-expand allProviders\r\n    | extend sid = ((allProviders.properties)).providerSettings.sapSid\r\n    | extend type=((parse_json(allProviders).properties).providerSettings).providerType\r\n    | extend state=((allProviders.properties)).provisioningState\r\n    | extend error=(allProviders.properties).errors\r\n    | where type == \"SapNetWeaver\"\r\n    | project allProviders.name, type, state , sid;\r\nlet allNWProviders = \r\nallNWProvidersfromSrc\r\n| extend SID_s=tostring(sid)\r\n| project SID_s, allProviders_name, type, state;\r\nlet latestAvailTenant = finalCompleteResult \r\n    | join kind=rightouter(allNWProviders) on SID_s;\r\nlatestAvailTenant\r\n    | extend Status=iff(isnull(Status) or trim(' ', Status) == '', \"Offline\", Status)\r\n    | extend SID_s=iff(isnull(SID_s) or trim(' ', SID_s) == '', SID_s1, SID_s)\r\n    | where state != \"Failed\"\r\n    | distinct SID_s, Status;\r\n   \r\n",
                     "size": 0,
                     "title": "Availability Status by SID",
                     "timeContext": {
