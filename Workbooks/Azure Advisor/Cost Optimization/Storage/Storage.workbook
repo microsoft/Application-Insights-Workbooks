@@ -234,7 +234,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "recoveryservicesresources\r\n| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\r\n| extend vaultId = tostring(properties.vaultId),resourceId = tostring(properties.sourceResourceId), resourceType=tostring(properties.workloadType), protectionState=tostring(properties.protectionState),lastBackupTime=tostring(properties.lastBackupTime), idleBackup= datetime_diff('day', now(), todatetime(properties.lastBackupTime)) > 90, resourceGroup=strcat('/subscriptions/',subscriptionId,'/resourceGroups/',resourceGroup)\r\n| project resourceId,vaultId,resourceType,protectionState,lastBackupTime,idleBackup,location,resourceGroup,subscriptionId\r\n| join kind = inner(\r\n    resources\r\n    | extend replaced_tags = replace('{}', 'null', tostring(tags))\r\n    | extend replaced_tags = parse_json(replaced_tags)\r\n    | mv-expand replaced_tags\r\n    | extend tagName = tostring(bag_keys(replaced_tags)[0])\r\n    | extend tagValue = tostring(replaced_tags['{TagName}'])\r\n    | extend vaultId = id\r\n    | where tagName has '{TagName}' and tagValue has '{TagValue}'\r\n    | project vaultId\r\n    )\r\n    on vaultId\r\n    | project-away vaultId1",
+                    "query": "recoveryservicesresources\r\n| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\r\n| extend vaultId = tostring(properties.vaultId),resourceId = tostring(properties.sourceResourceId),idleBackup= datetime_diff('day', now(), todatetime(properties.lastBackupTime)) > 90, resourceType=tostring(properties.workloadType), protectionState=tostring(properties.protectionState),lastBackupTime=tostring(properties.lastBackupTime), resourceGroup=strcat('/subscriptions/',subscriptionId,'/resourceGroups/',resourceGroup),lastBackupDate=todatetime(properties.lastBackupTime)\r\n| where idleBackup != 0\r\n| project resourceId,vaultId,idleBackup,lastBackupDate,resourceType,protectionState,lastBackupTime,location,resourceGroup,subscriptionId\r\n| join kind = inner(\r\n    resources\r\n    | extend replaced_tags = replace('{}', 'null', tostring(tags))\r\n    | extend replaced_tags = parse_json(replaced_tags)\r\n    | mv-expand replaced_tags\r\n    | extend tagName = tostring(bag_keys(replaced_tags)[0])\r\n    | extend tagValue = tostring(replaced_tags['{TagName}'])\r\n    | extend vaultId = id\r\n    | where tagName has '{TagName}' and tagValue has '{TagValue}'\r\n    | project vaultId\r\n    )\r\n    on vaultId\r\n    | project-away vaultId1",
                     "size": 0,
                     "title": "Idle backups",
                     "queryType": 1,
@@ -288,6 +288,14 @@
                           "label": "Resource ID"
                         },
                         {
+                          "columnId": "idleBackup",
+                          "label": "Backup activity"
+                        },
+                        {
+                          "columnId": "lastBackupDate",
+                          "label": "Last backup date"
+                        },
+                        {
                           "columnId": "resourceType",
                           "label": "Resource type"
                         },
@@ -298,10 +306,6 @@
                         {
                           "columnId": "lastBackupTime",
                           "label": "Last backup time"
-                        },
-                        {
-                          "columnId": "idleBackup",
-                          "label": "Backup activity"
                         },
                         {
                           "columnId": "location",
@@ -333,7 +337,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "Resources\r\n| where type == 'microsoft.recoveryservices/vaults'\r\n| where resourceGroup in ({ResourceGroup})\r\n| extend skuTier = tostring(sku['tier']), skuName = tostring(sku['name']), resourceGroup=strcat('/subscriptions/',subscriptionId,'/resourceGroups/',resourceGroup),RGVault = resourceGroup\r\n| order by id asc\r\n| project id, resourceGroup, location,subscriptionId, skuTier, skuName,RGVault,name\r\n| join kind = innerunique (\r\n    resources\r\n    | extend replaced_tags = replace('{}', 'null', tostring(tags))\r\n    | extend replaced_tags = parse_json(replaced_tags)\r\n    | mv-expand replaced_tags\r\n    | extend tagName = tostring(bag_keys(replaced_tags)[0])\r\n    | extend tagValue = tostring(replaced_tags['{TagName}'])\r\n    | extend vaultId = id\r\n    | where tagName has '{TagName}' and tagValue has '{TagValue}'\r\n    | project id\r\n)\r\non id\r\n| project-away id1\r\n",
+                    "query": "Resources\r\n| where type == 'microsoft.recoveryservices/vaults'\r\n| where resourceGroup in ({ResourceGroup})\r\n| extend skuTier = tostring(sku['tier']), skuName = tostring(sku['name']), resourceGroup=strcat('/subscriptions/',subscriptionId,'/resourceGroups/',resourceGroup),redundancySettings = tostring(properties.redundancySettings['standardTierStorageRedundancy'])\r\n| order by id asc\r\n| project id,redundancySettings, resourceGroup, location,subscriptionId, skuTier, skuName\r\n| join kind = innerunique (\r\n    resources\r\n    | extend replaced_tags = replace('{}', 'null', tostring(tags))\r\n    | extend replaced_tags = parse_json(replaced_tags)\r\n    | mv-expand replaced_tags\r\n    | extend tagName = tostring(bag_keys(replaced_tags)[0])\r\n    | extend tagValue = tostring(replaced_tags['{TagName}'])\r\n    | extend vaultId = id\r\n    | where tagName has '{TagName}' and tagValue has '{TagValue}'\r\n    | project id\r\n)\r\non id\r\n| project-away id1\r\n",
                     "size": 0,
                     "title": "Recovery vaults storage replication ",
                     "exportedParameters": [
@@ -361,6 +365,27 @@
                     "gridSettings": {
                       "formatters": [
                         {
+                          "columnMatch": "redundancySettings",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "GeoRedundant",
+                                "representation": "Globe",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "ResourceFlat",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        },
+                        {
                           "columnMatch": "subscriptionId",
                           "formatter": 15,
                           "formatOptions": {
@@ -379,22 +404,7 @@
                       ]
                     }
                   },
-                  "customWidth": "70",
                   "name": "query - backupStorageReplication"
-                },
-                {
-                  "type": 3,
-                  "content": {
-                    "version": "KqlItem/1.0",
-                    "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupVault}/providers/Microsoft.RecoveryServices/vaults/{vaultName}/backupstorageconfig/vaultstorageconfig?\",\"urlParams\":[{\"key\":\"api-version\",\"value\":\"2018-12-20\"}],\"batchDisabled\":false,\"transformers\":[{\"type\":\"jsonpath\",\"settings\":{\"tablePath\":\"$.properties\",\"columns\":[{\"path\":\"$.storageModelType\",\"columnid\":\"StorageReplication\"}]}}]}",
-                    "size": 0,
-                    "queryType": 12
-                  },
-                  "customWidth": "30",
-                  "name": "query - recoveryVaultStorageReplicationType",
-                  "styleSettings": {
-                    "margin": "10"
-                  }
                 }
               ]
             },
