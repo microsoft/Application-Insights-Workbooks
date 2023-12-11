@@ -1549,7 +1549,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"datatable(key:int, metric_name:string) [\\r\\n1, \\\"CPU\\\",\\r\\n1, \\\"Data IO\\\",\\r\\n1, \\\"Log write\\\",\\r\\n1, \\\"Workers\\\",\\r\\n1, \\\"Memory\\\",\\r\\n1, \\\"Instance CPU\\\",\\r\\n1, \\\"Instance memory\\\",\\r\\n1, \\\"XTP memory\\\",\\r\\n1, \\\"Sessions\\\",\\r\\n1, \\\"DTU\\\"\\r\\n]\\r\\n| join kind=inner\\r\\n(\\r\\nsqldb_database_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| extend key = int(1)\\r\\n) on key\\r\\n| project metric_name, sample_time_utc, avg_cpu_percent, avg_data_io_percent, avg_log_write_percent, xtp_storage_percent, max_worker_percent, avg_memory_usage_percent, avg_instance_cpu_percent, avg_instance_memory_percent, max_session_percent, avg_dtu_percent\\r\\n| where \\\"{selectedResourceMetrics}\\\" == \\\"'*'\\\" or metric_name in ({selectedResourceMetrics})\\r\\n| extend metric = case(\\r\\n                    metric_name == \\\"CPU\\\", avg_cpu_percent,\\r\\n                    metric_name == \\\"Data IO\\\", avg_data_io_percent,\\r\\n                    metric_name == \\\"Log write\\\", avg_log_write_percent,\\r\\n                    metric_name == \\\"Workers\\\", max_worker_percent,\\r\\n                    metric_name == \\\"Memory\\\", avg_memory_usage_percent,\\r\\n                    metric_name == \\\"Instance CPU\\\", avg_instance_cpu_percent,\\r\\n                    metric_name == \\\"Instance memory\\\", avg_instance_memory_percent,\\r\\n                    metric_name == \\\"XTP memory\\\", xtp_storage_percent,\\r\\n                    metric_name == \\\"Sessions\\\", max_session_percent,\\r\\n                    metric_name == \\\"DTU\\\", avg_dtu_percent,\\r\\n                    decimal(null))\\r\\n| make-series metric = max(metric) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by metric_name\\r\\n| project metric_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Resource utilization",
               "noDataMessage": "There is no data for specified parameters.",
@@ -1636,7 +1636,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Workload Group Stats\\\" and counter_name in (\\\"Total request count\\\")\\r\\n| project replica_id, sample_time_utc, object_name, counter_name, cntr_value\\r\\n| sort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| project-away object_name, cntr_value, delta_cntr_value, delta_sample_time_utc\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Request rate",
               "noDataMessage": "There is no data for specified parameters.",
@@ -1767,7 +1767,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, wait_time_ms\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and replica_id == prev(replica_id), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, wait_time_ms\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and replica_id == prev(replica_id), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_wait_time_ms) / delta_sample_time_utc * 1000\\r\\n| make-series metric = avgif(value, isfinite(value)) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
               "aggregation": 3,
               "showAnalytics": true,
@@ -2276,7 +2276,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, wait_time_ms, waiting_tasks_count\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and replica_id == prev(replica_id), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_waiting_tasks_count = iif(waiting_tasks_count >= prev(waiting_tasks_count) and wait_type == prev(wait_type) and replica_id == prev(replica_id), waiting_tasks_count - prev(waiting_tasks_count), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend delta_avg_wait_time_ms = iif(delta_waiting_tasks_count != 0, toreal(delta_wait_time_ms) / delta_waiting_tasks_count, real(null))\\r\\n| make-series metric = max(delta_avg_wait_time_ms) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, wait_time_ms, waiting_tasks_count\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_wait_time_ms = iif(wait_time_ms >= prev(wait_time_ms) and replica_id == prev(replica_id), wait_time_ms - prev(wait_time_ms), long(null)),\\r\\n         delta_waiting_tasks_count = iif(waiting_tasks_count >= prev(waiting_tasks_count) and wait_type == prev(wait_type) and replica_id == prev(replica_id), waiting_tasks_count - prev(waiting_tasks_count), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend delta_avg_wait_time_ms = iif(delta_waiting_tasks_count != 0, toreal(delta_wait_time_ms) / delta_waiting_tasks_count, real(null))\\r\\n| make-series metric = avgif(delta_avg_wait_time_ms, isfinite(delta_avg_wait_time_ms)) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
               "aggregation": 3,
               "showAnalytics": true,
@@ -2785,7 +2785,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, signal_wait_time_ms, waiting_tasks_count\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_signal_wait_time_ms = iif(signal_wait_time_ms >= prev(signal_wait_time_ms) and replica_id == prev(replica_id), signal_wait_time_ms - prev(signal_wait_time_ms), long(null)),\\r\\n         delta_waiting_tasks_count = iif(waiting_tasks_count >= prev(waiting_tasks_count) and replica_id == prev(replica_id), waiting_tasks_count - prev(waiting_tasks_count), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend delta_avg_signal_wait_time_ms = iif(delta_waiting_tasks_count != 0, toreal(delta_signal_wait_time_ms) / delta_waiting_tasks_count, real(null))\\r\\n| make-series metric = max(delta_avg_signal_wait_time_ms) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, signal_wait_time_ms, waiting_tasks_count\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_signal_wait_time_ms = iif(signal_wait_time_ms >= prev(signal_wait_time_ms) and replica_id == prev(replica_id), signal_wait_time_ms - prev(signal_wait_time_ms), long(null)),\\r\\n         delta_waiting_tasks_count = iif(waiting_tasks_count >= prev(waiting_tasks_count) and replica_id == prev(replica_id), waiting_tasks_count - prev(waiting_tasks_count), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend delta_avg_signal_wait_time_ms = iif(delta_waiting_tasks_count != 0, toreal(delta_signal_wait_time_ms) / delta_waiting_tasks_count, real(null))\\r\\n| make-series metric = avgif(delta_avg_signal_wait_time_ms, isfinite(delta_avg_signal_wait_time_ms)) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
               "aggregation": 3,
               "showAnalytics": true,
@@ -3294,7 +3294,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, waiting_tasks_count\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_waiting_tasks_count = iif(waiting_tasks_count >= prev(waiting_tasks_count) and replica_id == prev(replica_id), waiting_tasks_count - prev(waiting_tasks_count), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_waiting_tasks_count) / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_wait_stats\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| project replica_id, sample_time_utc, wait_type, waiting_tasks_count\\r\\n| partition hint.strategy=shuffle by wait_type\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_waiting_tasks_count = iif(waiting_tasks_count >= prev(waiting_tasks_count) and replica_id == prev(replica_id), waiting_tasks_count - prev(waiting_tasks_count), long(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = toreal(delta_waiting_tasks_count) / delta_sample_time_utc * 1000\\r\\n| make-series metric = avgif(value, isfinite(value)) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by wait_type\\r\\n)\\r\\n| project wait_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
               "aggregation": 3,
               "showAnalytics": true,
@@ -3895,7 +3895,7 @@
                     "selectAllValue": "*",
                     "showDefault": false
                   },
-                  "jsonData": "[\r\n    {\"value\":\"SQL Compilations/sec\",\"label\":\"SQL compilations\"},\r\n    {\"value\":\"SQL Re-Compilations/sec\",\"label\":\"SQL recompilations\"},\r\n    {\"value\":\"Temp Tables Creation Rate\",\"label\":\"Temp tables creation\"},\r\n    {\"value\":\"Query optimizations/sec\",\"label\":\"Query optimizations\"}\r\n]\r\n",
+                  "jsonData": "[\r\n    {\"value\":\"SQL Compilations/sec\",\"label\":\"SQL compilations\"},\r\n    {\"value\":\"SQL Re-Compilations/sec\",\"label\":\"SQL recompilations\"},\r\n    {\"value\":\"Query optimizations/sec\",\"label\":\"Query optimizations\"}\r\n]\r\n",
                   "timeContext": {
                     "durationMs": 86400000
                   },
@@ -3909,72 +3909,8 @@
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
+            "customWidth": "50",
             "name": "rate_statistics_1_parameters"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (\\r\\n        (object_name == \\\"SQL Statistics\\\" and counter_name in (\\\"SQL Compilations/sec\\\",\\\"SQL Re-Compilations/sec\\\"))\\r\\n        or\\r\\n        (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Temp Tables Creation Rate\\\"))\\r\\n        or\\r\\n        (object_name == \\\"Workload Group Stats\\\" and counter_name in (\\\"Query optimizations/sec\\\") and instance_name startswith \\\"UserPrimaryGroup.DBId\\\")\\r\\n        )\\r\\n| where \\\"{selectedPerformanceCounters1}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters1})\\r\\n| project replica_id, sample_time_utc, object_name, cntr_value, counter_name\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, long(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-              "size": 1,
-              "aggregation": 3,
-              "showAnalytics": true,
-              "title": "Compilation, optimization, temp tables",
-              "noDataMessage": "There is no data for specified parameters.",
-              "timeBrushParameterName": "timeRange",
-              "queryType": 9,
-              "visualization": "linechart",
-              "chartSettings": {
-                "yAxis": [
-                  "metric"
-                ],
-                "showLegend": true,
-                "seriesLabelSettings": [
-                  {
-                    "seriesName": "SQL Compilations/sec",
-                    "label": "SQL compilations",
-                    "color": "redDark"
-                  },
-                  {
-                    "seriesName": "SQL Re-Compilations/sec",
-                    "label": "SQL recompilations",
-                    "color": "red"
-                  },
-                  {
-                    "seriesName": "Temp Tables Creation Rate",
-                    "label": "Temp tables creation",
-                    "color": "blue"
-                  },
-                  {
-                    "seriesName": "Query optimizations/sec",
-                    "label": "Query optimizations",
-                    "color": "redBright"
-                  }
-                ],
-                "ySettings": {
-                  "numberFormatSettings": {
-                    "unit": 31,
-                    "options": {
-                      "style": "decimal",
-                      "useGrouping": true
-                    }
-                  }
-                }
-              }
-            },
-            "name": "rate_statistics_1"
-          },
-          {
-            "type": 1,
-            "content": {
-              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`SQL compilations`|A query is compiled when it is not found in plan cache. If a query is parameterized (explicitly or automatically), it can be matched to an existing query in plan cache. Such queries might still be compiled, but they avoid CPU-intensive optimization.|\r\n|`Query optimizations`|As part of query compilation, a query is optimized to create an execution plan. Optimization is a CPU-intensive process. Make sure queries are parameterized to avoid unnecessary optimization. Specify data type, length, precision, and scale in parameter definition. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198744).|\r\n|`SQL recompilations`|A query is re-compiled because its previously cached plan is no longer valid or optimal. This can happen because of schema and data changes. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198738).|\r\n|`Temp tables creation`|The number of temporary tables and table variables created per second. Temp table caching alleviates possible contention due to high rate of temp table creation.|\r\n"
-            },
-            "conditionalVisibility": {
-              "parameterName": "showDescriptions",
-              "comparison": "isEqualTo",
-              "value": "true"
-            },
-            "name": "sql_stats_help_1"
           },
           {
             "type": 9,
@@ -3982,7 +3918,7 @@
               "version": "KqlParameterItem/1.0",
               "parameters": [
                 {
-                  "id": "0e2ec1f6-bd82-42ec-af47-9e1ca90280d5",
+                  "id": "5bb7c906-58b9-4982-b3c3-849a933c3378",
                   "version": "KqlParameterItem/1.0",
                   "name": "selectedPerformanceCounters2",
                   "label": "Select counters",
@@ -3998,7 +3934,157 @@
                     "selectAllValue": "*",
                     "showDefault": false
                   },
-                  "jsonData": "[\r\n    {\"value\":\"SQL Attention rate\",\"label\":\"Attentions\"},\r\n    {\"value\":\"Number of Deadlocks/sec\",\"label\":\"Deadlocks\"},\r\n    {\"value\":\"Full Scans/sec\",\"label\":\"Full scans\"},\r\n    {\"value\":\"Logins/sec\",\"label\":\"Logins\"},\r\n    {\"value\":\"Logouts/sec\",\"label\":\"Logouts\"},\r\n    {\"value\":\"Page Splits/sec\",\"label\":\"Page splits\"},\r\n    {\"value\":\"Table Lock Escalations/sec\",\"label\":\"Table lock escalations\"},\r\n    {\"value\":\"Errors/sec\",\"label\":\"User errors\"}\r\n]\r\n",
+                  "jsonData": "[\r\n    {\"value\":\"Temp Tables Creation Rate\",\"label\":\"Temp tables created\"}\r\n]\r\n",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "defaultValue": "value::all"
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "50",
+            "name": "rate_statistics_2_parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (\\r\\n        (object_name == \\\"SQL Statistics\\\" and counter_name in (\\\"SQL Compilations/sec\\\",\\\"SQL Re-Compilations/sec\\\"))\\r\\n        or\\r\\n        (object_name == \\\"Workload Group Stats\\\" and counter_name in (\\\"Query optimizations/sec\\\") and instance_name startswith \\\"UserPrimaryGroup.DBId\\\")\\r\\n        )\\r\\n| where \\\"{selectedPerformanceCounters1}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters1})\\r\\n| project replica_id, sample_time_utc, object_name, cntr_value, counter_name\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, long(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 2,
+              "showAnalytics": true,
+              "title": "Query compilation and optimization",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "yAxis": [
+                  "metric"
+                ],
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "SQL Compilations/sec",
+                    "label": "SQL compilations",
+                    "color": "grayBlue"
+                  },
+                  {
+                    "seriesName": "SQL Re-Compilations/sec",
+                    "label": "SQL recompilations",
+                    "color": "magenta"
+                  },
+                  {
+                    "seriesName": "Query optimizations/sec",
+                    "label": "Query optimizations",
+                    "color": "red"
+                  }
+                ],
+                          "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 31,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "rate_statistics_1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Temp Tables Creation Rate\\\"))\\r\\n| where \\\"{selectedPerformanceCounters2}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters2})\\r\\n| project replica_id, sample_time_utc, object_name, cntr_value, counter_name\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, long(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Temp table create",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "yAxis": [
+                  "metric"
+                ],
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Temp Tables Creation Rate",
+                    "label": "Temp tables created",
+                    "color": "greenDark"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 31,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "rate_statistics_2"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`SQL compilations`|A query is compiled when it is not found in plan cache. If a query is parameterized (explicitly or automatically), it can be matched to an existing query in plan cache. Such queries might still be compiled, but they avoid CPU-intensive optimization.|\r\n|`Query optimizations`|As part of query compilation, a query is optimized to create an execution plan. Optimization is a CPU-intensive process. Make sure queries are parameterized to avoid unnecessary optimization. Specify data type, length, precision, and scale in parameter definition. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198744).|\r\n|`SQL recompilations`|A query is re-compiled because its previously cached plan is no longer valid or optimal. This can happen because of schema and data changes. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198738).|\r\n"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "showDescriptions",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "sql_stats_help_1"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Temp tables created`|The number of temporary tables and table variables created per second. Temp table caching alleviates possible contention due to high rate of temp table creation.|\r\n"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "showDescriptions",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "sql_stats_help_2"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "0e2ec1f6-bd82-42ec-af47-9e1ca90280d5",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "selectedPerformanceCounters3",
+                  "label": "Select counters",
+                  "type": 2,
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "selectAllValue": "*",
+                    "showDefault": false
+                  },
+                  "jsonData": "[\r\n    {\"value\":\"SQL Attention rate\",\"label\":\"Attentions\"},\r\n    {\"value\":\"Number of Deadlocks/sec\",\"label\":\"Deadlocks\"},\r\n    {\"value\":\"Table Lock Escalations/sec\",\"label\":\"Table lock escalations\"},\r\n    {\"value\":\"Errors/sec\",\"label\":\"User errors\"}\r\n]\r\n",
                   "timeContext": {
                     "durationMs": 86400000
                   },
@@ -4012,17 +4098,57 @@
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
-            "name": "rate_statistics_2_parameters"
+            "customWidth": "50",
+            "name": "rate_statistics_3_parameters"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "10b670be-2317-4fa3-b854-d0169cc7528e",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "selectedPerformanceCounters4",
+                  "label": "Select counters",
+                  "type": 2,
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "selectAllValue": "*",
+                    "showDefault": false
+                  },
+                  "jsonData": "[\r\n    {\"value\":\"Full Scans/sec\",\"label\":\"Full scans\"},\r\n    {\"value\":\"Logins/sec\",\"label\":\"Logins\"},\r\n    {\"value\":\"Logouts/sec\",\"label\":\"Logouts\"},\r\n    {\"value\":\"Page Splits/sec\",\"label\":\"Page splits\"}\r\n]\r\n",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ]
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "50",
+            "name": "rate_statistics_4_parameters"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (\\r\\n        (object_name == \\\"SQL Statistics\\\" and counter_name in (\\\"SQL Attention rate\\\"))\\r\\n        or\\r\\n        (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Logins/sec\\\",\\\"Logouts/sec\\\"))\\r\\n        or\\r\\n        (object_name == \\\"SQL Errors\\\" and counter_name == \\\"Errors/sec\\\" and instance_name == \\\"User Errors\\\")\\r\\n        or\\r\\n        (object_name == \\\"Access Methods\\\" and counter_name in (\\\"Table Lock Escalations/sec\\\", \\\"Full Scans/sec\\\", \\\"Page Splits/sec\\\"))\\r\\n        or\\r\\n        (object_name == \\\"Locks\\\" and counter_name == \\\"Number of Deadlocks/sec\\\" and instance_name == \\\"_Total\\\")\\r\\n        )\\r\\n| where \\\"{selectedPerformanceCounters2}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters2})\\r\\n| project replica_id, sample_time_utc, object_name, cntr_value, \\r\\n          counter_name = case(\\r\\n                             counter_name == \\\"Errors/sec\\\" and instance_name == \\\"User Errors\\\", \\\"User Errors/sec\\\",\\r\\n                             counter_name == \\\"Number of Deadlocks/sec\\\", \\\"Deadlocks/sec\\\",\\r\\n                             counter_name\\r\\n                             )\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (\\r\\n        (object_name == \\\"SQL Statistics\\\" and counter_name in (\\\"SQL Attention rate\\\"))\\r\\n        or\\r\\n        (object_name == \\\"SQL Errors\\\" and counter_name == \\\"Errors/sec\\\" and instance_name == \\\"User Errors\\\")\\r\\n        or\\r\\n        (object_name == \\\"Access Methods\\\" and counter_name in (\\\"Table Lock Escalations/sec\\\"))\\r\\n        or\\r\\n        (object_name == \\\"Locks\\\" and counter_name == \\\"Number of Deadlocks/sec\\\" and instance_name == \\\"_Total\\\")\\r\\n        )\\r\\n| where \\\"{selectedPerformanceCounters3}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters3})\\r\\n| project replica_id, sample_time_utc, object_name, cntr_value, \\r\\n          counter_name = case(\\r\\n                             counter_name == \\\"Errors/sec\\\" and instance_name == \\\"User Errors\\\", \\\"User Errors/sec\\\",\\r\\n                             counter_name == \\\"Number of Deadlocks/sec\\\", \\\"Deadlocks/sec\\\",\\r\\n                             counter_name\\r\\n                             )\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 2,
               "showAnalytics": true,
-              "title": "Deadlocks, lock escalation, logins, logouts, timeouts, full scans, page splits",
+              "title": "Deadlocks, timeouts, user errors, lock escalation",
               "noDataMessage": "There is no data for specified parameters.",
               "timeBrushParameterName": "timeRange",
               "queryType": 9,
@@ -4033,16 +4159,6 @@
                 ],
                 "showLegend": true,
                 "seriesLabelSettings": [
-                  {
-                    "seriesName": "Logouts/sec",
-                    "label": "Logouts",
-                    "color": "blueDark"
-                  },
-                  {
-                    "seriesName": "Logins/sec",
-                    "label": "Logins",
-                    "color": "green"
-                  },
                   {
                     "seriesName": "SQL Attention rate",
                     "label": "Attentions",
@@ -4062,6 +4178,50 @@
                     "seriesName": "Deadlocks/sec",
                     "label": "Deadlocks",
                     "color": "purpleDark"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 31,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "rate_statistics_3"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (\\r\\n        (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Logins/sec\\\",\\\"Logouts/sec\\\"))\\r\\n        or\\r\\n        (object_name == \\\"Access Methods\\\" and counter_name in (\\\"Full Scans/sec\\\", \\\"Page Splits/sec\\\"))\\r\\n        )\\r\\n| where \\\"{selectedPerformanceCounters4}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters4})\\r\\n| project replica_id, sample_time_utc, object_name, cntr_value, counter_name\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Logins, logouts, full scans, page splits",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "yAxis": [
+                  "metric"
+                ],
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Logouts/sec",
+                    "label": "Logouts",
+                    "color": "blueDark"
+                  },
+                  {
+                    "seriesName": "Logins/sec",
+                    "label": "Logins",
+                    "color": "green"
                   },
                   {
                     "seriesName": "Page Splits/sec",
@@ -4085,19 +4245,34 @@
                 }
               }
             },
-            "name": "rate_statistics_2"
+            "customWidth": "50",
+            "name": "rate_statistics_4"
           },
           {
             "type": 1,
             "content": {
-              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Deadlocks`|A deadlock occurs when two or more requests block each other, requiring the database engine to terminate one of them. In some workloads, deadlocks occur routinely. A spike in the number of deadlocks might require investigation. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198741).|\r\n|`Logins`|A high number of logins and logouts per second might indicate that connection pooling is not used. Learn more: [connection pooling in ADO.NET (SqlClient)](https://go.microsoft.com/fwlink/?linkid=2198736), and [connection pooling in JDBC Driver for SQL Server](https://go.microsoft.com/fwlink/?linkid=2198857).|\r\n|`Logouts`|A spike in logouts per second might indicate a restart of client application.|\r\n|`User errors`|In many applications, user errors occur routinely. A spike in the number of user errors might require investigation.|\r\n|`Attentions`|An attention event occurs when a query times out or is canceled. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198868).|\r\n|`Table lock escalations`|Lock escalation to the object (table) level reduces memory use, but can cause lock blocking. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198651).|\r\n|`Full scans`|A sudden increase in the number of full scans can indicate a change in query plan for a frequently executed query.|\r\n|`Page splits`|A page split occurs when an index page cannot accommodate modified data and needs to be split in two. If the split page is in the middle of an index, this causes additional IO and fragments the index.|"
+              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Deadlocks`|A deadlock occurs when two or more requests block each other, requiring the database engine to terminate one of them. In some workloads, deadlocks occur routinely. A spike in the number of deadlocks might require investigation. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198741).|\r\n|`User errors`|In many applications, user errors occur routinely. A spike in the number of user errors might require investigation.|\r\n|`Attentions`|An attention event occurs when a query times out or is canceled. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198868).|\r\n|`Table lock escalations`|Lock escalation to the object (table) level reduces memory use, but can cause lock blocking. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198651).|"
             },
+            "customWidth": "50",
             "conditionalVisibility": {
               "parameterName": "showDescriptions",
               "comparison": "isEqualTo",
               "value": "true"
             },
-            "name": "sql_stats_help_2"
+            "name": "sql_stats_help_3"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Logins`|A high number of logins and logouts per second might indicate that connection pooling is not used. Learn more: [connection pooling in ADO.NET (SqlClient)](https://go.microsoft.com/fwlink/?linkid=2198736), and [connection pooling in JDBC Driver for SQL Server](https://go.microsoft.com/fwlink/?linkid=2198857).|\r\n|`Logouts`|A spike in logouts per second might indicate a restart of client application.|\r\n|`Full scans`|A sudden increase in the number of full scans can indicate a change in query plan for a frequently executed query.|\r\n|`Page splits`|A page split occurs when an index page cannot accommodate modified data and needs to be split in two. If the split page is in the middle of an index, this causes additional IO and fragments the index.|"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "showDescriptions",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "sql_stats_help_4"
           },
           {
             "type": 9,
@@ -4107,7 +4282,7 @@
                 {
                   "id": "44c07f96-2fdf-43e3-8311-2f370f9fed28",
                   "version": "KqlParameterItem/1.0",
-                  "name": "selectedPerformanceCounters3",
+                  "name": "selectedPerformanceCounters5",
                   "label": "Select counters",
                   "type": 2,
                   "isRequired": true,
@@ -4121,7 +4296,43 @@
                     "selectAllValue": "*",
                     "showDefault": false
                   },
-                  "jsonData": "[\r\n    {\"value\":\"Active Temp Tables\",\"label\":\"Active temp tables\"},\r\n    {\"value\":\"Logical Connections\",\"label\":\"Logical connections\"},\r\n    {\"value\":\"Processes blocked\",\"label\":\"Processes blocked\"},\r\n    {\"value\":\"User Connections\",\"label\":\"User connections\"}\r\n]\r\n",
+                  "jsonData": "[\r\n    {\"value\":\"Processes blocked\",\"label\":\"Processes blocked\"}\r\n]\r\n",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "defaultValue": "value::all"
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "50",
+            "name": "count_statistics_1_parameters"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "5f6646dc-e9f4-441e-b39f-fd5322e3b64e",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "selectedPerformanceCounters6",
+                  "label": "Select counters",
+                  "type": 2,
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "selectAllValue": "*",
+                    "showDefault": false
+                  },
+                  "jsonData": "[\r\n    {\"value\":\"Active Temp Tables\",\"label\":\"Active temp tables\"},\r\n    {\"value\":\"Logical Connections\",\"label\":\"Logical connections\"},\r\n    {\"value\":\"User Connections\",\"label\":\"User connections\"}\r\n]\r\n",
                   "timeContext": {
                     "durationMs": 86400000
                   },
@@ -4135,17 +4346,58 @@
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces"
             },
-            "name": "rate_statistics_3_parameters"
+            "customWidth": "50",
+            "name": "count_statistics_2_parameters"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Active Temp Tables\\\",\\\"Logical Connections\\\",\\\"Processes blocked\\\",\\\"User Connections\\\"))\\r\\n| where \\\"{selectedPerformanceCounters3}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters3})\\r\\n| project sample_time_utc, counter_name, cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Processes blocked\\\"))\\r\\n| where \\\"{selectedPerformanceCounters5}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters5})\\r\\n| project sample_time_utc, counter_name, cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 2,
               "showAnalytics": true,
-              "title": "Connections, blocked processes, temp tables",
+              "title": "Blocked processes",
+              "noDataMessage": "There is no data for specified parameters.",
+              "timeBrushParameterName": "timeRange",
+              "queryType": 9,
+              "visualization": "linechart",
+              "chartSettings": {
+                "yAxis": [
+                  "metric"
+                ],
+                "showLegend": true,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Processes blocked",
+                    "label": "Processes blocked",
+                    "color": "redBright"
+                  }
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "count_statistics_1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (object_name == \\\"General Statistics\\\" and counter_name in (\\\"Active Temp Tables\\\",\\\"Logical Connections\\\",\\\"User Connections\\\"))\\r\\n| where \\\"{selectedPerformanceCounters6}\\\" == \\\"'*'\\\" or counter_name in ({selectedPerformanceCounters6})\\r\\n| project sample_time_utc, counter_name, cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 1,
+              "aggregation": 5,
+              "showAnalytics": true,
+              "title": "Connections, active temp tables",
               "noDataMessage": "There is no data for specified parameters.",
               "timeBrushParameterName": "timeRange",
               "queryType": 9,
@@ -4170,11 +4422,6 @@
                     "seriesName": "Logical Connections",
                     "label": "Logical connections",
                     "color": "pink"
-                  },
-                  {
-                    "seriesName": "Processes blocked",
-                    "label": "Processes blocked",
-                    "color": "redBright"
                   }
                 ],
                 "ySettings": {
@@ -4189,19 +4436,34 @@
                 }
               }
             },
-            "name": "count_statistics"
+            "customWidth": "50",
+            "name": "count_statistics_2"
           },
           {
             "type": 1,
             "content": {
-              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Active temp tables`|The number of temporary tables or table variables in use.|\r\n|`Logical connections`|If multiple active result sets (MARS) is used, each physical connection can be used by multiple logical sessions. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198630).|\r\n|`Processes blocked`|The number of sessions that were blocked at data collection time. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198855).|\r\n|`User connections`|The number of physical connections, excluding system connections.|\r\n"
+              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Processes blocked`|The number of sessions that were blocked at data collection time. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198855).|\r\n"
             },
+            "customWidth": "50",
             "conditionalVisibility": {
               "parameterName": "showDescriptions",
               "comparison": "isEqualTo",
               "value": "true"
             },
-            "name": "sql_stats_help_3"
+            "name": "sql_stats_help_5"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "|Metric|Description|\r\n|:-|:-|\r\n|`Active temp tables`|The number of temporary tables or table variables in use.|\r\n|`Logical connections`|If multiple active result sets (MARS) is used, each physical connection can be used by multiple logical sessions. [Learn more](https://go.microsoft.com/fwlink/?linkid=2198630).|\r\n|`User connections`|The number of physical connections, excluding system connections.|\r\n"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "showDescriptions",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "sql_stats_help_6"
           },
           {
             "type": 1,
@@ -4213,7 +4475,7 @@
               "comparison": "isEqualTo",
               "value": "true"
             },
-            "name": "sql_stats_help_4"
+            "name": "sql_stats_help_7"
           }
         ]
       },
@@ -4383,7 +4645,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_memory_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where memory_clerk_type !in ({excludedPageMemoryClerks})\\r\\n| project sample_time_utc, memory_clerk_type, memory_clerk_name, pages_mb\\r\\n| make-series metric = max(pages_mb) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by memory_clerk_type\\r\\n| project memory_clerk_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Memory clerk page memory",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4418,7 +4680,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_memory_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where memory_clerk_type !in ({excludedVirtualMemoryClerks})\\r\\n| project sample_time_utc, memory_clerk_type, memory_clerk_name, virtual_memory_committed_mb\\r\\n| make-series metric = max(virtual_memory_committed_mb) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by memory_clerk_type\\r\\n| project memory_clerk_type, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Memory clerk virtual memory",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4465,7 +4727,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Memory Manager\\\"\\r\\n| where counter_name in (\\\"Target Server Memory (KB)\\\",\\\"Total Server Memory (KB)\\\",\\\"Granted Workspace Memory (KB)\\\",\\\"Lock Memory (KB)\\\")\\r\\n| project sample_time_utc, counter_name = replace_string(counter_name, \\\" (KB)\\\", \\\"\\\"), cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Memory manager",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4516,7 +4778,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Resource Pool Stats\\\" and counter_name in (\\\"Active memory grants count\\\",\\\"Pending memory grants count\\\")\\r\\n| extend series_name = case(\\r\\n                           (instance_name == \\\"SloSharedPool1\\\" or instance_name startswith \\\"UserPool.\\\") and counter_name == \\\"Active memory grants count\\\", \\\"User pool active grants\\\",\\r\\n                           (instance_name == \\\"SloSharedPool1\\\" or instance_name startswith \\\"UserPool.\\\") and counter_name == \\\"Pending memory grants count\\\", \\\"User pool pending grants\\\",\\r\\n                           instance_name == \\\"SloHkPool\\\" and counter_name == \\\"Active memory grants count\\\", \\\"XTP pool active grants\\\",\\r\\n                           instance_name == \\\"SloHkPool\\\" and counter_name == \\\"Pending memory grants count\\\", \\\"XTP pool pending grants\\\",\\r\\n                           \\\"\\\"\\r\\n                           )\\r\\n| project sample_time_utc, series_name, cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by series_name\\r\\n| project series_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 2,
               "showAnalytics": true,
               "title": "Memory grants",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4638,7 +4900,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (\\r\\n        (object_name == \\\"Buffer Manager\\\" and counter_name == \\\"Buffer cache hit ratio\\\")\\r\\n        or\\r\\n        (object_name == \\\"Plan Cache\\\" and counter_name == \\\"Cache Hit Ratio\\\" and instance_name == \\\"_Total\\\")\\r\\n        )\\r\\n| project sample_time_utc, counter_name = iif(object_name == \\\"Plan Cache\\\" and counter_name == \\\"Cache Hit Ratio\\\", \\\"Plan cache hit ratio\\\", counter_name), cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Cache hit ratios",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4708,7 +4970,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Buffer Manager\\\"\\r\\n| where counter_name in (\\\"Background writer pages/sec\\\",\\\"Checkpoint pages/sec\\\",\\\"Lazy writes/sec\\\",\\\"Page reads/sec\\\",\\\"Page writes/sec\\\",\\\"Readahead pages/sec\\\")\\r\\n| extend counter_name = replace_string(counter_name, \\\"/sec\\\", \\\"\\\")\\r\\n| project replica_id, sample_time_utc, counter_name, cntr_value\\r\\n| partition hint.strategy = shuffle by counter_name\\r\\n(\\r\\nsort by replica_id asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| project-away cntr_value, delta_cntr_value, delta_sample_time_utc\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n)\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Buffer manager",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4741,7 +5003,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Buffer Node\\\" and counter_name == \\\"Page life expectancy\\\"\\r\\n| project sample_time_utc, numa_node = strcat(\\\"NUMA node: \\\", instance_name), cntr_value\\r\\n| make-series metric = max(cntr_value) default = 0 on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by numa_node\\r\\n| project numa_node, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Page life expectancy",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4842,7 +5104,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Databases\\\" and counter_name in (\\\"Transactions/sec\\\",\\\"Write Transactions/sec\\\",\\\"Log Flushes/sec\\\")\\r\\n| project replica_id, sample_time_utc, object_name, counter_name, instance_name, cntr_value\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, instance_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| project sample_time_utc, series_name = strcat(counter_name, iif(instance_name == \\\"tempdb\\\", \\\" | tempdb\\\", \\\"\\\")), value\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by series_name\\r\\n| project series_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Transaction and log flush rate",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4918,7 +5180,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where object_name == \\\"Databases\\\" and counter_name == \\\"Log Bytes Flushed/sec\\\"\\r\\n| project replica_id, sample_time_utc, object_name, counter_name, instance_name, cntr_value\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, instance_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| project sample_time_utc, series_name = strcat(counter_name, iif(instance_name == \\\"tempdb\\\", \\\" | tempdb\\\", \\\"\\\")), value\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by series_name\\r\\n| project series_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Log flush rate",
               "noDataMessage": "There is no data for specified parameters.",
@@ -4963,7 +5225,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where instance_name == @\\\"{databaseName}\\\"\\r\\n| where (object_name == \\\"Database Replica\\\" and counter_name == \\\"Transaction Delay\\\")\\r\\n        or\\r\\n        (object_name == \\\"Databases\\\" and counter_name == \\\"Write Transactions/sec\\\")\\r\\n// Transaction Delay reports cumulative delay in ms/second for all transactions. Derive average per-transaction delay by dividing by the number of write transactions for this database\\r\\n| project replica_id, sample_time_utc, object_name, counter_name, cntr_value\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| project sample_time_utc, counter_name, value\\r\\n| summarize transaction_delay = sumif(value, counter_name == \\\"Transaction Delay\\\"),\\r\\n            write_transactions = sumif(value, counter_name == \\\"Write Transactions/sec\\\")\\r\\n            by sample_time_utc\\r\\n| project sample_time_utc, transaction_delay_per_transaction = iif(write_transactions != 0 and isnotempty(transaction_delay) and isnotempty(write_transactions), transaction_delay / write_transactions, real(null))\\r\\n| make-series transaction_delay_per_transaction = max(transaction_delay_per_transaction) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor}\\r\\n| project transaction_delay_per_transaction = series_fill_linear(transaction_delay_per_transaction, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 2,
               "showAnalytics": true,
               "title": "Transaction delay",
               "noDataMessage": "There is no data for specified parameters.",
@@ -5029,7 +5291,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where (replica_type != \\\"Primary\\\" and object_name == \\\"Database Replica\\\" and counter_name in (\\\"Log Bytes Received/sec\\\",\\\"Redone Bytes/sec\\\"))\\r\\n| project replica_id, sample_time_utc, object_name, counter_name, instance_name, cntr_value\\r\\n| sort by replica_id asc, object_name asc, counter_name asc, instance_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and object_name == prev(object_name) and counter_name == prev(counter_name) and replica_id == prev(replica_id), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| extend value = delta_cntr_value / delta_sample_time_utc * 1000\\r\\n| project sample_time_utc, counter_name, value\\r\\n| make-series metric = max(value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Secondary replica rates",
               "noDataMessage": "There is no data for specified parameters.",
@@ -5079,7 +5341,7 @@
               "version": "KqlItem/1.0",
               "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqldb_database_performance_counters_common\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| where logical_server_name =~ @\\\"{serverName}\\\"\\r\\n| where database_name == @\\\"{databaseName}\\\"\\r\\n| where instance_name == @\\\"{databaseName}\\\"\\r\\n| where ({haReplica} and replica_type == \\\"HA secondary\\\") or (not ({haReplica}) and replica_type != \\\"HA secondary\\\")\\r\\n| where replica_type != \\\"Primary\\\" and object_name == \\\"Database Replica\\\" and counter_name in (\\\"Recovery Queue\\\")\\r\\n| project sample_time_utc, counter_name, cntr_value\\r\\n| make-series metric = max(cntr_value) default = long(null) on sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain}/{grainFactor} by counter_name\\r\\n| project counter_name, metric = series_fill_linear(metric, int(null), false), sample_time_utc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
               "size": 1,
-              "aggregation": 3,
+              "aggregation": 5,
               "showAnalytics": true,
               "title": "Secondary replica redo queue",
               "noDataMessage": "There is no data for specified parameters.",
