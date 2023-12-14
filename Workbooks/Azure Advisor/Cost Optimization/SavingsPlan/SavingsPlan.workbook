@@ -1,0 +1,252 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "We analyzed your compute usage over the last 30 days and recommend adding a savings plan to increase your savings. <br>The savings plan unlocks lower prices on select compute services when you commit to spend a fixed hourly amount for 1 or 3 years. <br> As you use select compute services globally, your usage is covered by the plan at reduced prices. During the times when your usage is above your hourly commitment, you’ll simply be billed at your regular pay-as-you-go prices. With savings automatically applying across compute usage globally, you’ll continue saving even as your usage needs change over time. <br> Savings plan are more suited for dynamic workloads while accommodating for planned or unplanned changes while reservations are more suited for stable, predictable workloads with no planned changes. <br> Saving estimates are calculated for individual subscriptions and the usage pattern observed over last 30 days. **Shared scope savings plans are available in purchase experience and can further increase savings.** <br>\r\nTo learn more about Savings Plan, check out this [link.](https://learn.microsoft.com/en-us/azure/cost-management-billing/savings-plan/purchase-recommendations)​",
+              "style": "info"
+            },
+            "name": "text - advisorSavingsPlanDisclaimer"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "a1960768-9da4-455d-b6f6-6d43098cff76",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Subscription",
+                  "type": 6,
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "includeAll": true,
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "defaultValue": "value::all",
+                  "label": " Subscription",
+                  "value": [
+                    "value::all"
+                  ]
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "customWidth": "75",
+            "name": "parameters - Filters"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "parameters": [
+                {
+                  "id": "2b8ca845-75ba-4f4b-acad-54ee50d66d54",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "LookBackPeriod",
+                  "label": "Look back period",
+                  "type": 2,
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\r\n    {\"value\": \"Last 7 days\"},\r\n    {\"value\": \"Last 30 days\"},\r\n    {\"value\": \"Last 60 days\"}\r\n]",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "value": "Last 30 days"
+                },
+                {
+                  "id": "953c9e4c-af03-4fb7-bf30-3f1bfdf09199",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "term",
+                  "label": "Term",
+                  "type": 2,
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": []
+                  },
+                  "jsonData": "[\r\n    {\r\n        \"value\": \"P1Y\",\r\n        \"Selected\": \"true\"\r\n    },\r\n    {\r\n        \"value\": \"P3Y\"\r\n    }\r\n]",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "value": "P1Y"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "parameters - savingsPlanParams"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AdvisorResources \r\n| where type == 'microsoft.advisor/recommendations' \r\n| where properties.category == 'Cost' and properties.shortDescription.solution contains \"savings plan\"\r\n| extend recommendationTypeId = tostring(properties.recommendationTypeId),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nterm=tostring(properties.extendedProperties.term),\r\nstableId = name,\r\nsubscriptionId = tostring(properties.extendedProperties.subId),\r\ncommitment = tostring(properties.extendedProperties.commitment)\r\n| where term == \"{term}\" and lookbackPeriod == \"{LookBackPeriod}\"\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources | where type=~'microsoft.advisor/suppressions'\r\n| extend tokens = split(id, '/')\r\n| extend stableId = iff(array_length(tokens) > 3, tokens[(array_length(tokens)-3)], '')\r\n| extend expirationTimeStamp = todatetime(iff(strcmp(tostring(properties.ttl), '-1') == 0, '9999-12-31', properties.expirationTimeStamp))\r\n| where expirationTimeStamp > now()\r\n| project stableId, expirationTimeStamp)\r\non stableId\r\n| where isempty(expirationTimeStamp)\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources \r\n| where type =~ 'microsoft.advisor/configurations'\r\n| where isempty(resourceGroup) == true\r\n| extend\r\nmaxCpuP95 = properties.extendedProperties.MaxCpuP95,\r\nlowCpuThreshold = properties.lowCpuThreshold,\r\nexcludeRecomm = properties.exclude,\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\nregion = tostring(properties.extendedProperties.region),\r\nstableId = name,\r\ncommitment = tostring(properties.extendedProperties.commitment),\r\nsubscriptionId = tostring(properties.extendedProperties.subId))\r\non subscriptionId\r\n| extend isActive1 = iff(isnull(excludeRecomm), true, tobool(excludeRecomm) == false)\r\n| extend isActive2 = iff(recommendationTypeId == 'e10b1381-5f0a-47ff-8c7b-37bd13d7c974', iff((isnotempty(lowCpuThreshold) and isnotempty(maxCpuP95)), toint(maxCpuP95) < toint(lowCpuThreshold), iff((isempty(maxCpuP95) or toint(maxCpuP95) < 5), true, false)), true)\r\n| where isActive1 == true and isActive2 == true\r\n| join kind = leftouter\r\n(advisorresources | where type =~ 'microsoft.advisor/configurations' | where isnotempty(resourceGroup) == true\r\n| project subscriptionId, resourceGroup, excludeProperty = properties.exclude)\r\non subscriptionId, resourceGroup\r\n| extend isActive3 = iff(isnull(excludeProperty), true, tobool(excludeProperty) == false)\r\n| where isActive3 == true\r\n| extend lookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\nregion = tostring(properties.extendedProperties.region),\r\nresources=tostring(properties.resourceMetadata.resourceId),  \r\nsubscription = tostring(properties.extendedProperties.subId),\r\ncommitment = tostring(properties.extendedProperties.commitment)\r\n| where term == \"{term}\" and lookbackPeriod == \"{LookBackPeriod}\"\r\n| summarize Subscriptions=dcount(resources),  \r\n  bin (sum(savings), 0.01) by subscription ,commitment ,lookbackPeriod,scope,term ,currency\r\n| order by sum_savings desc\r\n| join (\r\nresourcecontainers\r\n| where type == 'microsoft.resources/subscriptions'\r\n| extend subscription = subscriptionId\r\n| project name,subscription\r\n) on subscription\r\n| project-away subscription1,subscription\r\n",
+              "size": 0,
+              "title": "Savings plan Summary",
+              "noDataMessage": "No savings plan recommendations found!",
+              "noDataMessageStyle": 3,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "categoricalbar",
+              "gridSettings": {
+                "filter": true
+              },
+              "chartSettings": {
+                "xAxis": "name",
+                "yAxis": [
+                  "sum_savings"
+                ],
+                "group": "reservedResourceType",
+                "createOtherGroup": 0,
+                "showLegend": true,
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "name": "query - Saving plan Summary"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AdvisorResources \r\n| where type == 'microsoft.advisor/recommendations' \r\n| where properties.category == 'Cost' and properties.shortDescription.solution contains \"savings plan\"\r\n| extend\r\nrecommendationTypeId = tostring(properties.recommendationTypeId),\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nterm=tostring(properties.extendedProperties.term),\r\nstableId = name,\r\nsubscriptionId = tostring(properties.extendedProperties.subId),\r\ncommitment = tostring(properties.extendedProperties.commitment)\r\n| where term == \"{term}\" and lookbackPeriod == \"{LookBackPeriod}\"\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources | where type=~'microsoft.advisor/suppressions'\r\n| extend tokens = split(id, '/')\r\n| extend stableId = iff(array_length(tokens) > 3, tokens[(array_length(tokens)-3)], '')\r\n| extend expirationTimeStamp = todatetime(iff(strcmp(tostring(properties.ttl), '-1') == 0, '9999-12-31', properties.expirationTimeStamp))\r\n| where expirationTimeStamp > now()\r\n| project stableId, expirationTimeStamp)\r\non stableId\r\n| where isempty(expirationTimeStamp)\r\n| extend subscriptionId,stableId\r\n| join kind = leftouter\r\n(advisorresources \r\n| where type =~ 'microsoft.advisor/configurations'\r\n| where isempty(resourceGroup) == true\r\n| extend\r\nmaxCpuP95 = properties.extendedProperties.MaxCpuP95,\r\nlowCpuThreshold = properties.lowCpuThreshold,\r\nexcludeRecomm = properties.exclude,\r\nlookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\nstableId = name,\r\ncommitment = tostring(properties.extendedProperties.commitment),\r\nsubscriptionId = tostring(properties.extendedProperties.subId))\r\non subscriptionId\r\n| extend isActive1 = iff(isnull(excludeRecomm), true, tobool(excludeRecomm) == false)\r\n| extend isActive2 = iff(recommendationTypeId == 'e10b1381-5f0a-47ff-8c7b-37bd13d7c974', iff((isnotempty(lowCpuThreshold) and isnotempty(maxCpuP95)), toint(maxCpuP95) < toint(lowCpuThreshold), iff((isempty(maxCpuP95) or toint(maxCpuP95) < 5), true, false)), true)\r\n| where isActive1 == true and isActive2 == true\r\n| join kind = leftouter\r\n(advisorresources | where type =~ 'microsoft.advisor/configurations' | where isnotempty(resourceGroup) == true\r\n| project subscriptionId, resourceGroup, excludeProperty = properties.exclude)\r\non subscriptionId, resourceGroup\r\n| extend isActive3 = iff(isnull(excludeProperty), true, tobool(excludeProperty) == false)\r\n| where isActive3 == true\r\n| extend lookbackPeriod=tostring(strcat(\"Last \",properties.extendedProperties.lookbackPeriod,\" days\")),\r\nscope=tostring(properties.extendedProperties.scope),\r\nterm=tostring(properties.extendedProperties.term),\r\nsavings=todouble(properties.extendedProperties.annualSavingsAmount),\r\nsavingsAmount = todouble(properties.extendedProperties.savingsAmount),\r\nRecommendation=tostring(properties.shortDescription.solution),  \r\ncurrency = tostring(properties.extendedProperties.savingsCurrency),\r\ndisplayQty = tostring(properties.extendedProperties.displayQty),\r\ndisplaySKU = tostring(properties.extendedProperties.displaySKU),\r\ncommitment = tostring(properties.extendedProperties.commitment),\r\nregion = tostring(properties.extendedProperties.region),\r\nsubscription = tostring(properties.extendedProperties.subId)\r\n| where term == \"{term}\" and lookbackPeriod == \"{LookBackPeriod}\"\r\n| project Recommendation,savings,commitment,currency,lookbackPeriod,term,subscription\r\n| order by savings desc\r\n| join (\r\nresourcecontainers\r\n| where type == 'microsoft.resources/subscriptions'\r\n| extend subscription = subscriptionId\r\n| project id,name,subscription\r\n) on subscription\r\n| project-away subscription1,subscription\r\n",
+              "size": 0,
+              "title": "Savings plan details",
+              "noDataMessage": "No savings plan recommendations found!",
+              "noDataMessageStyle": 3,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "$gen_group",
+                    "formatter": 15,
+                    "formatOptions": {
+                      "linkTarget": null,
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Recommendation",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 15,
+                    "formatOptions": {
+                      "linkTarget": null,
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "name",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "reservedResourceType",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "subscription",
+                    "formatter": 5
+                  }
+                ],
+                "filter": true,
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "id"
+                  ]
+                },
+                "labelSettings": [
+                  {
+                    "columnId": "savings",
+                    "label": "Total annual savings"
+                  },
+                  {
+                    "columnId": "commitment",
+                    "label": "Commitment"
+                  },
+                  {
+                    "columnId": "currency",
+                    "label": "Currency"
+                  },
+                  {
+                    "columnId": "lookbackPeriod",
+                    "label": "Look back period"
+                  },
+                  {
+                    "columnId": "term",
+                    "label": "Term"
+                  }
+                ]
+              },
+              "chartSettings": {
+                "xAxis": "reservedResourceType",
+                "yAxis": [
+                  "sum_savings"
+                ],
+                "group": "reservedResourceType",
+                "createOtherGroup": 0,
+                "showLegend": true,
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true
+                    }
+                  }
+                }
+              }
+            },
+            "name": "query - Savings plan details"
+          }
+        ]
+      },
+      "name": "group - 0"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
