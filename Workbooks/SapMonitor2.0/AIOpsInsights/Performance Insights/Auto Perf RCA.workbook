@@ -237,15 +237,14 @@
             "isHiddenWhenLocked": true
           },
           {
+            "id": "47adf0f0-441b-49d1-85a8-60207a51b806",
             "version": "KqlParameterItem/1.0",
-            "name": "AnomalyDetectedTime",
+            "name": "AnomalyLoggedTime",
             "type": 1,
             "isHiddenWhenLocked": true,
             "timeContext": {
               "durationMs": 86400000
-            },
-            "id": "47adf0f0-441b-49d1-85a8-60207a51b806",
-            "value": "2024-01-18T13:15:17.067Z"
+            }
           },
           {
             "id": "18e75970-d67f-401e-a398-fba791a99ea9",
@@ -256,11 +255,31 @@
             "isHiddenWhenLocked": true,
             "queryType": 0,
             "resourceType": "microsoft.workloads/monitors"
+          },
+          {
+            "id": "7980ea31-9383-452a-9a26-972b3b980d91",
+            "version": "KqlParameterItem/1.0",
+            "name": "hasRecommendations",
+            "type": 1,
+            "query": "WorkloadInsights_anomalyData_CL\r\n| where Scope_s == \"{Scope}\" and SID_s == \"{SID}\" and TimeGenerated == \"{AnomalyLoggedTime}\" and scenario_s == \"{Scenario}\"\r\n| where isnotempty(Recommendation_s)\r\n| distinct Recommendation_s",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "d6aba86f-6d99-4de0-b5fd-b6c9ac807cdc",
+            "version": "KqlParameterItem/1.0",
+            "name": "ScopeType_s",
+            "type": 1,
+            "isHiddenWhenLocked": true
           }
         ],
         "style": "pills",
         "queryType": 0,
-        "resourceType": "microsoft.workloads/monitors"
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
       "name": "passedParams"
     },
@@ -350,7 +369,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "WorkloadInsights_anomalyData_CL\r\n| where Scope_s == \"{Scope}\" and SID_s == \"{SID}\" and TimeGenerated == \"{AlertFired}\" and scenario_s == \"{Scenario}\"\r\n| extend ParsedJson = parse_json(Recommendation_s)\r\n| extend VM = tostring(bag_keys(ParsedJson)[0])\r\n| extend Message = split(tostring(ParsedJson[VM]), @\" | \")\r\n| mv-expand Message\r\n| project VM, Message",
+        "query": "WorkloadInsights_anomalyData_CL\r\n| where Scope_s == \"{Scope}\" and SID_s == \"{SID}\" and TimeGenerated == \"{AnomalyLoggedTime}\" and scenario_s == \"{Scenario}\"\r\n| extend ParsedJson = parse_json(Recommendation_s)\r\n| extend VM = tostring(bag_keys(ParsedJson)[0])\r\n| extend Message = split(tostring(ParsedJson[VM]), @\" | \")\r\n| mv-expand Message\r\n| distinct VM, Message = tostring(Message)",
         "size": 4,
         "title": "Recommendations",
         "queryType": 0,
@@ -383,10 +402,16 @@
           ]
         }
       },
-      "conditionalVisibility": {
-        "parameterName": "RecommendationJson",
-        "comparison": "isNotEqualTo"
-      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "RecommendationJson",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "hasRecommendations",
+          "comparison": "isNotEqualTo"
+        }
+      ],
       "name": "AdvInsightsRecommendations"
     },
     {
@@ -445,15 +470,33 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\n \r\nSapNetweaver_ABAPGetWPTable_CL\r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| extend appServer = strcat(hostname_s, '_', tostring(toint(instanceNr_d)))\r\n| extend appServerAndWorkType = strcat(appServer, '-', Typ_s)\r\n| where appServerAndWorkType == \"{Scope}\"\r\n| summarize totalWP = count(), freeWP = countif(Status_s == 'Wait') by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))\r\n| extend utilizationPctWP = round(toreal(totalWP - freeWP) / toreal(totalWP) * 100, 3)",
+        "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\n \r\nSapNetweaver_ABAPGetWPTable_CL\r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| extend appServer = strcat(hostname_s, '_', tostring(toint(instanceNr_d)))\r\n| extend appServerAndWorkType = strcat(appServer, '-', Typ_s)\r\n| where appServerAndWorkType == \"{Scope}\"\r\n| summarize totalWP = count(), freeWP = countif(Status_s == 'Wait') by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))\r\n| extend activeWP = round(toreal(totalWP - freeWP) / toreal(totalWP) * 100, 3)",
         "size": 1,
         "aggregation": 3,
+        "title": "Worker Process Utilization (%) {ScopeType_s}: {Scope}",
+        "timeBrushParameterName": "nwTimebrush",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
           "{Workspace}"
         ],
-        "visualization": "timechart"
+        "visualization": "timechart",
+        "chartSettings": {
+          "seriesLabelSettings": [
+            {
+              "seriesName": "freeWP",
+              "label": "Free Work Process"
+            },
+            {
+              "seriesName": "totalWP",
+              "label": "Total Work Process"
+            },
+            {
+              "seriesName": "activeWP",
+              "label": "Active Work Process"
+            }
+          ]
+        }
       },
       "conditionalVisibility": {
         "parameterName": "Scenario",
@@ -469,7 +512,8 @@
         "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\n \r\nSapNetweaver_SWNC_CL \r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s and Task_Type_Name_s == \"{Scope}\"\r\n| summarize ResponseTime = avg(ST03_Avg_Resp_Time_d) by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))",
         "size": 1,
         "aggregation": 3,
-        "title": "Response Time (ms) Task Type: {Scope}",
+        "title": "Response Time (ms) {ScopeType_s}: {Scope}",
+        "timeBrushParameterName": "nwTimebrush",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
@@ -508,6 +552,8 @@
         "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\n \r\nSapNetweaver_SMON_CL\r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 1, strcat(\"0\", instanceNr_s), instanceNr_s)\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where appServer == \"{Scope}\"\r\n| extend totalCPU = 100 - IDLE_TOTAL_d\r\n| summarize avg(totalCPU)  by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))",
         "size": 1,
         "aggregation": 3,
+        "title": "CPU Utilization (%) {ScopeType_s}: {Scope}",
+        "timeBrushParameterName": "nwTimebrush",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
@@ -546,28 +592,102 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\nlet tableSystemOverview = (\r\n    SapHana_SystemOverview_CL \r\n    | where TimeGenerated >= startTime\r\n    | extend SID_s = tostring(VALUE_s)\r\n    | extend PROVIDER_INSTANCE_s = tostring(PROVIDER_INSTANCE_s)\r\n    | where NAME_s == \"Instance ID\"\r\n    | distinct SID_s, PROVIDER_INSTANCE_s\r\n);\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| join kind=leftouter (tableSystemOverview) on PROVIDER_INSTANCE_s\r\n| where SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| where HOST_s == \"{Scope}\"\r\n| summarize avg(CPU_d)  by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))",
+        "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\n \r\nSapNetweaver_SMON_CL\r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 1, strcat(\"0\", instanceNr_s), instanceNr_s)\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where appServer == \"{Scope}\"\r\n| extend usedMemory = (100 - FREE_MEM_PERC_d)\r\n| summarize avg(usedMemory)  by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))",
         "size": 1,
+        "aggregation": 3,
+        "title": "Memory Utilization (%) {ScopeType_s}: {Scope}",
+        "timeBrushParameterName": "nwTimebrush",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
         "crossComponentResources": [
           "{Workspace}"
         ],
+        "visualization": "timechart",
+        "chartSettings": {
+          "xAxis": "TimeGenerated",
+          "group": null,
+          "createOtherGroup": 0,
+          "seriesLabelSettings": [
+            {
+              "seriesName": "avg_usedMemory",
+              "label": "Total Memory Utilization"
+            }
+          ],
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 1,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "Scenario",
+        "comparison": "isEqualTo",
+        "value": "Performance/Netweaver/MemoryUtilization"
+      },
+      "name": "AdvInsights-NW-MEMU"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\nlet tableSystemOverview = (\r\n    SapHana_SystemOverview_CL \r\n    | where TimeGenerated >= startTime\r\n    | extend SID_s = tostring(VALUE_s)\r\n    | extend PROVIDER_INSTANCE_s = tostring(PROVIDER_INSTANCE_s)\r\n    | where NAME_s == \"Instance ID\"\r\n    | distinct SID_s, PROVIDER_INSTANCE_s\r\n);\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| join kind=leftouter (tableSystemOverview) on PROVIDER_INSTANCE_s\r\n| where SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| where HOST_s == \"{Scope}\"\r\n| summarize avg(CPU_d)  by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))\r\n",
+        "size": 1,
+        "aggregation": 3,
+        "title": "CPU Utilization (%) {ScopeType_s}: {Scope}",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "chartSettings": {
+          "xAxis": "TimeGenerated",
+          "seriesLabelSettings": [
+            {
+              "seriesName": "avg_CPU_d",
+              "label": "CPU Utilization"
+            }
+          ],
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 1,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "Scenario",
+        "comparison": "isEqualTo",
+        "value": "Performance/Hana/CPUUtilization"
+      },
+      "name": "AdvInsights-Hana-CPUU"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let endTime=todatetime(\"{EndTime}\");\r\nlet startTime=todatetime(\"{StartTime}\");\r\nlet binSize=tolong(\"{MinutesBin}\");\r\nlet tableSystemOverview = (\r\n    SapHana_SystemOverview_CL \r\n    | where TimeGenerated >= startTime\r\n    | extend SID_s = tostring(VALUE_s)\r\n    | extend PROVIDER_INSTANCE_s = tostring(PROVIDER_INSTANCE_s)\r\n    | where NAME_s == \"Instance ID\"\r\n    | distinct SID_s, PROVIDER_INSTANCE_s\r\n);\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| join kind=leftouter (tableSystemOverview) on PROVIDER_INSTANCE_s\r\n| where SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| where HOST_s == \"{Scope}\"\r\n| summarize avg(CPU_d)  by bin(TimeGenerated, iff(binSize<60, 1m, binSize*1m))",
+        "size": 1,
+        "title": "Memory Utilization (%) {ScopeType_s}: {Scope}",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
         "visualization": "timechart"
       },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "Scenario",
-          "comparison": "isEqualTo",
-          "value": "Performance/Hana/CPUUtilization"
-        },
-        {
-          "parameterName": "hidden",
-          "comparison": "isEqualTo",
-          "value": "true"
-        }
-      ],
-      "name": "AdvInsights-Hana-CPUU"
+      "conditionalVisibility": {
+        "parameterName": "Scenario",
+        "comparison": "isEqualTo",
+        "value": "Performance/Hana/MemoryUtilization"
+      },
+      "name": "AdvInsights-Hana-MEMU"
     },
     {
       "type": 3,
@@ -3861,10 +3981,10 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nlet table_systemoverview = SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where NAME_s == \"Instance ID\"\r\n| where provider == \"{hana_Provider}\"\r\n| distinct sid, provider;\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| extend cpu = CPU_d\r\n| extend host = HOST_s\r\n| extend provider = PROVIDER_INSTANCE_s\r\n| join kind=leftouter (table_systemoverview) on provider\r\n| where provider == \"{hana_Provider}\"\r\n| project TimeGenerated, host, cpu\r\n| summarize max(cpu) by host, bin(TimeGenerated, 1m)\r\n",
+                          "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nlet table_systemoverview = SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where NAME_s == \"Instance ID\"\r\n| where provider == \"{hana_Provider}\"\r\n| project sid, provider;\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| extend memory_used = MEMORY_USED_d\r\n| extend memory_size = MEMORY_SIZE_d\r\n| extend host = HOST_s\r\n| extend provider = PROVIDER_INSTANCE_s\r\n| join kind=leftouter (table_systemoverview) on provider\r\n| where provider == \"{hana_Provider}\"\r\n| project TimeGenerated, host, memory_used, memory_size\r\n| summarize max(memory_used / memory_size * 100) by host, bin(TimeGenerated, 1m)\r\n\r\n",
                           "size": 1,
                           "aggregation": 3,
-                          "title": "CPU utilization",
+                          "title": "Memory utilization",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
@@ -3889,7 +4009,7 @@
                           "comparison": "isEqualTo",
                           "value": "Performance/Hana/CPUUtilization"
                         },
-                        "name": "cpuUtilization"
+                        "name": "memoryUtilization"
                       },
                       {
                         "type": 3,
@@ -3974,9 +4094,19 @@
                           ],
                           "visualization": "timechart",
                           "chartSettings": {
+                            "seriesLabelSettings": [
+                              {
+                                "seriesName": "nw_in",
+                                "label": "Network in"
+                              },
+                              {
+                                "seriesName": "nw_out",
+                                "label": "Network out"
+                              }
+                            ],
                             "ySettings": {
                               "numberFormatSettings": {
-                                "unit": 23,
+                                "unit": 12,
                                 "options": {
                                   "style": "decimal",
                                   "useGrouping": true,
@@ -4265,10 +4395,10 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nlet table_systemoverview = SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where NAME_s == \"Instance ID\"\r\n| where provider == \"{hana_Provider}\"\r\n| project sid, provider;\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| extend memory_used = MEMORY_USED_d\r\n| extend memory_size = MEMORY_SIZE_d\r\n| extend host = HOST_s\r\n| extend provider = PROVIDER_INSTANCE_s\r\n| join kind=leftouter (table_systemoverview) on provider\r\n| where provider == \"{hana_Provider}\"\r\n| project TimeGenerated, host, memory_used, memory_size\r\n| summarize max(memory_used / memory_size * 100) by host, bin(TimeGenerated, 1m)\r\n\r\n",
+                          "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nlet table_systemoverview = SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where NAME_s == \"Instance ID\"\r\n| where provider == \"{hana_Provider}\"\r\n| distinct sid, provider;\r\nSapHana_LoadHistory_CL\r\n| where TimeGenerated between (startTime .. endTime)\r\n| extend cpu = CPU_d\r\n| extend host = HOST_s\r\n| extend provider = PROVIDER_INSTANCE_s\r\n| join kind=leftouter (table_systemoverview) on provider\r\n| where provider == \"{hana_Provider}\"\r\n| project TimeGenerated, host, cpu\r\n| summarize max(cpu) by host, bin(TimeGenerated, 1m)\r\n",
                           "size": 1,
                           "aggregation": 3,
-                          "title": "Memory utilization",
+                          "title": "CPU utilization",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "crossComponentResources": [
@@ -4293,7 +4423,7 @@
                           "comparison": "isEqualTo",
                           "value": "Performance/Hana/MemoryUtilization"
                         },
-                        "name": "memoryUtilization"
+                        "name": "cpuUtilization"
                       },
                       {
                         "type": 3,
@@ -4378,9 +4508,19 @@
                           ],
                           "visualization": "timechart",
                           "chartSettings": {
+                            "seriesLabelSettings": [
+                              {
+                                "seriesName": "nw_in",
+                                "label": "Network in "
+                              },
+                              {
+                                "seriesName": "nw_out",
+                                "label": "Network out"
+                              }
+                            ],
                             "ySettings": {
                               "numberFormatSettings": {
-                                "unit": 23,
+                                "unit": 46,
                                 "options": {
                                   "style": "decimal",
                                   "useGrouping": true,
@@ -4630,48 +4770,109 @@
               "groupType": "editable",
               "items": [
                 {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "crossComponentResources": [
+                      "{Workspace}"
+                    ],
+                    "parameters": [
+                      {
+                        "id": "c955a4d7-7a6b-43de-965f-65b22f495023",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "vmsList",
+                        "type": 5,
+                        "multiSelect": true,
+                        "quote": "'",
+                        "delimiter": ",",
+                        "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nSapNetweaver_SWNC_CL \r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| join kind=inner (\r\n    COMMON_VM_ArmId_Mapping_CL\r\n    | where (isempty(sid_s) or sid_s==\"{SID}\") and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct vmid_s=tolower(VM_ARM_ID_s), hostname_s=tolower(vm_name_s), PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| distinct vmid_s",
+                        "crossComponentResources": [
+                          "{Workspace}"
+                        ],
+                        "isHiddenWhenLocked": true,
+                        "typeSettings": {
+                          "additionalResourceOptions": [
+                            "value::all"
+                          ]
+                        },
+                        "defaultValue": "value::all",
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      },
+                      {
+                        "id": "d59e50c7-39f2-4b76-8417-351958b606ab",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "vmsListHana",
+                        "type": 5,
+                        "multiSelect": true,
+                        "quote": "'",
+                        "delimiter": ",",
+                        "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nSapHana_SystemOverview_CL \r\n| distinct VALUE_s, PROVIDER_INSTANCE_s\r\n| where VALUE_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| join kind=inner (\r\n    COMMON_VM_ArmId_Mapping_CL\r\n    | where (isempty(sid_s) or sid_s==\"{SID}\") and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct vmid_s=tolower(VM_ARM_ID_s), hostname_s=tolower(vm_name_s), PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| distinct vmid_s",
+                        "crossComponentResources": [
+                          "{Workspace}"
+                        ],
+                        "isHiddenWhenLocked": true,
+                        "typeSettings": {
+                          "additionalResourceOptions": [
+                            "value::all"
+                          ],
+                          "showDefault": false
+                        },
+                        "defaultValue": "value::all",
+                        "queryType": 0,
+                        "resourceType": "microsoft.operationalinsights/workspaces"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces"
+                  },
+                  "name": "vmParams"
+                },
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [
+                      {
+                        "id": "ac31d089-8ead-48a0-858a-d6ba90f0b6c8",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "isAdvInsightsNetWeaver",
+                        "type": 1,
+                        "query": "print iff(\"{AlertTemplate}\" == \"advanced-insights\" and \"{Scenario}\" startswith \"Performance/NetWeaver/\", \"true\", \"false\")",
+                        "isHiddenWhenLocked": true,
+                        "timeContext": {
+                          "durationMs": 86400000
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.workloads/monitors"
+                      },
+                      {
+                        "id": "ac31d089-8ead-48a0-858a-d6ba90f0b6c8",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "isAdvInsightsHana",
+                        "type": 1,
+                        "query": "print iff(\"{AlertTemplate}\" == \"advanced-insights\" and \"{Scenario}\" startswith \"Performance/Hana/\", \"true\", \"false\")",
+                        "isHiddenWhenLocked": true,
+                        "timeContext": {
+                          "durationMs": 86400000
+                        },
+                        "queryType": 0,
+                        "resourceType": "microsoft.workloads/monitors"
+                      }
+                    ],
+                    "style": "pills",
+                    "queryType": 0,
+                    "resourceType": "microsoft.workloads/monitors"
+                  },
+                  "name": "parameters - 3"
+                },
+                {
                   "type": 12,
                   "content": {
                     "version": "NotebookGroup/1.0",
                     "groupType": "editable",
                     "items": [
-                      {
-                        "type": 9,
-                        "content": {
-                          "version": "KqlParameterItem/1.0",
-                          "crossComponentResources": [
-                            "{Workspace}"
-                          ],
-                          "parameters": [
-                            {
-                              "id": "c955a4d7-7a6b-43de-965f-65b22f495023",
-                              "version": "KqlParameterItem/1.0",
-                              "name": "vmsList",
-                              "type": 5,
-                              "multiSelect": true,
-                              "quote": "'",
-                              "delimiter": ",",
-                              "query": "let startTime=todatetime(\"{StartTime}\");\r\nlet endTime=todatetime(\"{EndTime}\");\r\nSapNetweaver_SWNC_CL \r\n| where TimeGenerated between (startTime .. endTime) and SID_s==\"{SID}\" and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n| join kind=inner (\r\n    COMMON_VM_ArmId_Mapping_CL\r\n    | where (isempty(sid_s) or sid_s==\"{SID}\") and \"{Provider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct vmid_s=tolower(VM_ARM_ID_s), hostname_s=tolower(vm_name_s), PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| distinct vmid_s",
-                              "crossComponentResources": [
-                                "{Workspace}"
-                              ],
-                              "isHiddenWhenLocked": true,
-                              "typeSettings": {
-                                "additionalResourceOptions": [
-                                  "value::all"
-                                ]
-                              },
-                              "defaultValue": "value::all",
-                              "queryType": 0,
-                              "resourceType": "microsoft.operationalinsights/workspaces"
-                            }
-                          ],
-                          "style": "pills",
-                          "queryType": 0,
-                          "resourceType": "microsoft.operationalinsights/workspaces"
-                        },
-                        "name": "vmParams"
-                      },
                       {
                         "type": 10,
                         "content": {
@@ -4694,7 +4895,6 @@
                               "namespace": "microsoft.compute/virtualmachines",
                               "metric": "microsoft.compute/virtualmachines--Percentage CPU",
                               "aggregation": 4,
-                              "splitBy": null,
                               "columnName": "CPU utilization (%)"
                             }
                           ],
@@ -4727,7 +4927,6 @@
                               "namespace": "microsoft.compute/virtualmachines",
                               "metric": "microsoft.compute/virtualmachines--Data Disk IOPS Consumed Percentage",
                               "aggregation": 4,
-                              "splitBy": null,
                               "columnName": "Data Disk IOPS consumed (%)"
                             }
                           ],
@@ -4759,8 +4958,7 @@
                             {
                               "namespace": "microsoft.compute/virtualmachines",
                               "metric": "microsoft.compute/virtualmachines--Network In Total",
-                              "aggregation": 4,
-                              "splitBy": null
+                              "aggregation": 4
                             },
                             {
                               "namespace": "microsoft.compute/virtualmachines",
@@ -4783,6 +4981,225 @@
                     "value": "sapnetweaver-response-time"
                   },
                   "name": "iso1Metrics"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbook0a76b683-d423-4ddb-8f3d-9def82b4bc5f",
+                          "version": "MetricsItem/2.0",
+                          "size": 1,
+                          "chartType": 2,
+                          "resourceType": "microsoft.compute/virtualmachines",
+                          "metricScope": 0,
+                          "resourceParameter": "vmsList",
+                          "resourceIds": [
+                            "{vmsList}"
+                          ],
+                          "timeContextFromParameter": "iso2BrushedTime",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--Percentage CPU",
+                              "aggregation": 4,
+                              "columnName": "CPU utilization (%)"
+                            }
+                          ],
+                          "title": "CPU utilization (%)",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "name": "cpuPercent"
+                      },
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbook67e58e11-00a7-4413-a898-001a32cbbf0c",
+                          "version": "MetricsItem/2.0",
+                          "size": 1,
+                          "chartType": 2,
+                          "resourceType": "microsoft.compute/virtualmachines",
+                          "metricScope": 0,
+                          "resourceParameter": "vmsList",
+                          "resourceIds": [
+                            "{vmsList}"
+                          ],
+                          "timeContextFromParameter": "iso2BrushedTime",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--Data Disk IOPS Consumed Percentage",
+                              "aggregation": 4,
+                              "columnName": "Data Disk IOPS consumed (%)"
+                            }
+                          ],
+                          "title": "Data Disk IOPS consumed (%)",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "name": "dataDiskIOPS"
+                      },
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbookc534ab03-093b-4cdb-be6c-9225fb625677",
+                          "version": "MetricsItem/2.0",
+                          "size": 1,
+                          "chartType": 2,
+                          "resourceType": "microsoft.compute/virtualmachines",
+                          "metricScope": 0,
+                          "resourceParameter": "vmsList",
+                          "resourceIds": [
+                            "{vmsList}"
+                          ],
+                          "timeContextFromParameter": "iso2BrushedTime",
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--Available Memory Bytes",
+                              "aggregation": 4
+                            }
+                          ],
+                          "title": "Available Memory",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "name": "availableMem"
+                      }
+                    ]
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "AlertTemplate",
+                    "comparison": "isEqualTo",
+                    "value": "sapnetweaver-batch-job-jobname"
+                  },
+                  "name": "iso2Metrics"
+                },
+                {
+                  "type": 12,
+                  "content": {
+                    "version": "NotebookGroup/1.0",
+                    "groupType": "editable",
+                    "items": [
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbook0a76b683-d423-4ddb-8f3d-9def82b4bc5f",
+                          "version": "MetricsItem/2.0",
+                          "size": 1,
+                          "chartType": 2,
+                          "resourceType": "microsoft.compute/virtualmachines",
+                          "metricScope": 0,
+                          "resourceParameter": "vmsListHana",
+                          "resourceIds": [
+                            "{vmsListHana}"
+                          ],
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--CPU Credits Consumed",
+                              "aggregation": 4,
+                              "splitBy": null,
+                              "columnName": "CPU Utilization (avg)"
+                            }
+                          ],
+                          "title": "CPU utilization (%)",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "name": "cpuPercent"
+                      },
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbook67e58e11-00a7-4413-a898-001a32cbbf0c",
+                          "version": "MetricsItem/2.0",
+                          "size": 1,
+                          "chartType": 2,
+                          "resourceType": "microsoft.compute/virtualmachines",
+                          "metricScope": 0,
+                          "resourceParameter": "vmsListHana",
+                          "resourceIds": [
+                            "{vmsListHana}"
+                          ],
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--Data Disk IOPS Consumed Percentage",
+                              "aggregation": 4,
+                              "columnName": "Data Disk IOPS consumed (%)"
+                            }
+                          ],
+                          "title": "Data Disk IOPS consumed (%)",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "name": "dataDiskIOPS"
+                      },
+                      {
+                        "type": 10,
+                        "content": {
+                          "chartId": "workbookc534ab03-093b-4cdb-be6c-9225fb625677",
+                          "version": "MetricsItem/2.0",
+                          "size": 1,
+                          "chartType": 2,
+                          "resourceType": "microsoft.compute/virtualmachines",
+                          "metricScope": 0,
+                          "resourceParameter": "vmsListHana",
+                          "resourceIds": [
+                            "{vmsListHana}"
+                          ],
+                          "timeContext": {
+                            "durationMs": 3600000
+                          },
+                          "metrics": [
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--Available Memory Bytes",
+                              "aggregation": 4,
+                              "splitBy": null
+                            }
+                          ],
+                          "title": "Available Memory",
+                          "gridSettings": {
+                            "rowLimit": 10000
+                          }
+                        },
+                        "name": "availableMem"
+                      }
+                    ]
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "isAdvInsightsHana",
+                    "comparison": "isEqualTo",
+                    "value": "true"
+                  },
+                  "name": "advinsights-hana"
                 },
                 {
                   "type": 12,
@@ -4840,10 +5257,9 @@
                           "resourceIds": [
                             "{vmsList}"
                           ],
-                          "timeContextFromParameter": "iso2BrushedTime",
+                          "timeContextFromParameter": "nwTimebrush",
                           "timeContext": {
-                            "durationMs": 1494600000,
-                            "endTime": "2023-03-17T17:20:00.000Z"
+                            "durationMs": 0
                           },
                           "metrics": [
                             {
@@ -4874,10 +5290,9 @@
                           "resourceIds": [
                             "{vmsList}"
                           ],
-                          "timeContextFromParameter": "iso2BrushedTime",
+                          "timeContextFromParameter": "nwTimebrush",
                           "timeContext": {
-                            "durationMs": 1494600000,
-                            "endTime": "2023-03-17T17:20:00.000Z"
+                            "durationMs": 0
                           },
                           "metrics": [
                             {
@@ -4908,34 +5323,38 @@
                           "resourceIds": [
                             "{vmsList}"
                           ],
-                          "timeContextFromParameter": "iso2BrushedTime",
+                          "timeContextFromParameter": "nwTimebrush",
                           "timeContext": {
-                            "durationMs": 1494600000,
-                            "endTime": "2023-03-17T17:20:00.000Z"
+                            "durationMs": 0
                           },
                           "metrics": [
                             {
                               "namespace": "microsoft.compute/virtualmachines",
-                              "metric": "microsoft.compute/virtualmachines--Available Memory Bytes",
+                              "metric": "microsoft.compute/virtualmachines--Network In Total",
                               "aggregation": 4,
                               "splitBy": null
+                            },
+                            {
+                              "namespace": "microsoft.compute/virtualmachines",
+                              "metric": "microsoft.compute/virtualmachines--Network Out Total",
+                              "aggregation": 4
                             }
                           ],
-                          "title": "Available Memory",
+                          "title": "Network In/Out Total",
                           "gridSettings": {
                             "rowLimit": 10000
                           }
                         },
-                        "name": "availableMem"
+                        "name": "networkIO"
                       }
                     ]
                   },
                   "conditionalVisibility": {
-                    "parameterName": "AlertTemplate",
+                    "parameterName": "isAdvInsightsNetWeaver",
                     "comparison": "isEqualTo",
-                    "value": "sapnetweaver-batch-job-jobname"
+                    "value": "true"
                   },
-                  "name": "iso2Metrics"
+                  "name": "advinsights-netweaver"
                 }
               ]
             },
