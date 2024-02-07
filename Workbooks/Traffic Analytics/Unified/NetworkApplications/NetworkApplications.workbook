@@ -6,7 +6,7 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "crossComponentResources": [
-          "{workspace}"
+          "value::all"
         ],
         "parameters": [
           {
@@ -62,15 +62,12 @@
             "jsonData": "[\r\n    { \"value\":\"both\", \"label\":\"NSG and VNet flow logs\", \"selected\":true },\r\n    { \"value\":\"nsg\", \"label\":\"NSG flow logs\" },\r\n    { \"value\":\"vnet\", \"label\":\"VNet flow logs\" }\r\n]"
           },
           {
-            "id": "5f59846f-1e06-4f6f-b52f-d06bb63b97fb",
+            "id": "77ad4c7e-43bf-4d7f-a48c-fad9dfc9b708",
             "version": "KqlParameterItem/1.0",
             "name": "workspace",
             "label": "Log Analytics Workspace",
             "type": 5,
-            "description": "Select a workspace where Traffic Analytics is configured",
-            "isRequired": true,
-            "isGlobal": true,
-            "query": "Resources\r\n| where type=~ \"microsoft.network/networkwatchers/flowlogs\"\r\n| where properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.enabled == true\r\n| project wsResourceId = tolower(properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.workspaceResourceId)\r\n| distinct wsResourceId\r\n| project wsResourceId, wsName = tolower(split(wsResourceId, '/')[8])\r\n",
+            "query": "Resources\r\n| where type=~ \"microsoft.network/networkwatchers/flowlogs\"\r\n| where properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.enabled == true and properties.provisioningState == \"Succeeded\"\r\n| project wsResourceId = tolower(properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.workspaceResourceId)\r\n| distinct wsResourceId\r\n| project wsResourceId, wsName = tolower(split(wsResourceId, '/')[8]), selected = 1",
             "crossComponentResources": [
               "value::all"
             ],
@@ -153,7 +150,7 @@
             "type": 1,
             "description": "Schema Check",
             "isRequired": true,
-            "query": "let SchemaTable = view () { print isPresent = 'false' };\r\nunion isfuzzy = true SchemaTable, (NTANetAnalytics | getschema | summarize c=count() | project isPresent = iff(c > 0, 'true', 'false')) \r\n| top 1 by isPresent",
+            "query": "let SchemaTable = view () { print isPresent = 'false' };\r\nunion isfuzzy = true SchemaTable, (NTANetAnalytics | take 1 | project isPresent = iff(iscolumnexists('AllowedInFlows'), 'true', 'false')) \r\n| top 1 by isPresent",
             "crossComponentResources": [
               "{workspace}"
             ],
@@ -185,7 +182,7 @@
           }
         ],
         "style": "pills",
-        "queryType": 0,
+        "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources"
       },
       "name": "MainParameters"
@@ -206,6 +203,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "QueryType",
                   "type": 1,
+                  "description": "Select type of Query",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -213,7 +211,7 @@
                         "leftOperand": "FlowType",
                         "operator": "==",
                         "rightValType": "static",
-                        "rightVal": "NSG",
+                        "rightVal": "nsg",
                         "resultValType": "static",
                         "resultVal": "{isNSGTopologySchemaPresent},NSG"
                       }
@@ -223,7 +221,7 @@
                         "leftOperand": "FlowType",
                         "operator": "==",
                         "rightValType": "static",
-                        "rightVal": "VNet",
+                        "rightVal": "vnet",
                         "resultValType": "static",
                         "resultVal": "{isVNetTopologySchemaPresent},VNet"
                       }
@@ -245,6 +243,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "SubscriptionQueryToRun",
                   "type": 1,
+                  "description": "Subscription dropdown query",
                   "isHiddenWhenLocked": true,
                   "criteriaData": [
                     {
@@ -314,7 +313,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "TopologyConditionVNet",
                   "type": 1,
-                  "description": "VNets in these subscriptions are configured to send their flow logs to the selected Log Analytics workspace. Select subscriptions, to analyze traffic from those subscriptions.",
+                  "description": "Topology condition check",
                   "isRequired": true,
                   "query": "NTATopologyDetails \r\n| extend timecheck = iff({timeInterval:seconds} < 86400, TimeGenerated between (datetime_add('day', -1, todatetime('{timeInterval:endISO}')) .. todatetime('{timeInterval:endISO}')), TimeGenerated between (todatetime('{timeInterval:startISO}') .. todatetime('{timeInterval:endISO}')))\r\n| where timecheck\r\n| where SubType == 'StatusMessage' and ComponentType =='Topology' and Status =='Completed' \r\n| project Subscription, DiscoveryRegion, TimeProcessed \r\n| where isnotempty(Subscription) and isnotempty(DiscoveryRegion) and isnotempty(TimeProcessed)\r\n| summarize arg_max(TimeProcessed, *) by Subscription \r\n| project value = strcat(Subscription, ',', DiscoveryRegion, ',', TimeProcessed), selected = 1;",
                   "crossComponentResources": [
@@ -326,10 +325,11 @@
                   "resourceType": "microsoft.operationalinsights/workspaces"
                 },
                 {
+                  "id": "1e310513-a332-4175-85a8-844c28aa5f2a",
                   "version": "KqlParameterItem/1.0",
                   "name": "TopologyConditionNSG",
                   "type": 1,
-                  "description": "VNets in these subscriptions are configured to send their flow logs to the selected Log Analytics workspace. Select subscriptions, to analyze traffic from those subscriptions.",
+                  "description": "Topology Condition Check",
                   "query": "AzureNetworkAnalytics_CL \r\n| where SubType_s == 'StatusMessage' and ComponentType_s =='Topology' and Status_s =='Completed' \r\n| project Subscription_g, DiscoveryRegion_s, TimeProcessed_t\r\n| where isnotempty(Subscription_g) and isnotempty(DiscoveryRegion_s) and isnotempty(TimeProcessed_t)\r\n| summarize arg_max(TimeProcessed_t, *) by Subscription_g \r\n| project value = strcat(Subscription_g, ',', DiscoveryRegion_s, ',', TimeProcessed_t), selected = 1;",
                   "crossComponentResources": [
                     "{workspace}"
@@ -337,8 +337,64 @@
                   "isHiddenWhenLocked": true,
                   "defaultValue": "value::all",
                   "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces",
-                  "id": "1e310513-a332-4175-85a8-844c28aa5f2a"
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                },
+                {
+                  "id": "16b899ae-5d18-4bea-8b92-021686bac208",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "isFlowAvailable",
+                  "type": 1,
+                  "isRequired": true,
+                  "isHiddenWhenLocked": true,
+                  "criteriaData": [
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "QueryType",
+                        "operator": "==",
+                        "rightValType": "static",
+                        "rightVal": "true,NSG",
+                        "resultValType": "static",
+                        "resultVal": "{isNSGFlowSchemaPresent},false"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "QueryType",
+                        "operator": "==",
+                        "rightValType": "static",
+                        "rightVal": "false,NSG",
+                        "resultValType": "static",
+                        "resultVal": "false,false"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "QueryType",
+                        "operator": "==",
+                        "rightValType": "static",
+                        "rightVal": "true,VNet",
+                        "resultValType": "static",
+                        "resultVal": "false,{isVNetFlowSchemaPresent}"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "QueryType",
+                        "operator": "==",
+                        "rightValType": "static",
+                        "rightVal": "false,VNet",
+                        "resultValType": "static",
+                        "resultVal": "false,false"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "operator": "Default",
+                        "resultValType": "static",
+                        "resultVal": "{isNSGFlowSchemaPresent},{isVNetFlowSchemaPresent}"
+                      }
+                    }
+                  ]
                 }
               ],
               "style": "pills",
@@ -350,15 +406,12 @@
               "comparison": "isEqualTo",
               "value": "set"
             },
-            "name": "parameters - 9"
+            "name": "QueryConditions"
           },
           {
             "type": 9,
             "content": {
               "version": "KqlParameterItem/1.0",
-              "crossComponentResources": [
-                "{workspace}"
-              ],
               "parameters": [
                 {
                   "id": "a24b1d2a-f7b6-439d-8e05-945ca7444e43",
@@ -366,7 +419,7 @@
                   "name": "subscriptions",
                   "label": "Discovered Subscriptions",
                   "type": 2,
-                  "description": "VNets in these subscriptions are configured to send their flow logs to the selected Log Analytics workspace. Select subscriptions, to analyze traffic from those subscriptions.",
+                  "description": "NSGs in these subscriptions are configured to send their flow logs to the selected Log Analytics workspace. Select subscriptions, to analyze traffic from those subscriptions.",
                   "isRequired": true,
                   "multiSelect": true,
                   "quote": "'",
@@ -459,8 +512,9 @@
                   "id": "0ebfeaf0-fcaa-4500-8f59-1b34f60d43f8",
                   "version": "KqlParameterItem/1.0",
                   "name": "resourceGroups",
+                  "label": "Resource Groups",
                   "type": 2,
-                  "description": "VNets in these subscriptions are configured to send their flow logs to the selected Log Analytics workspace. Select subscriptions, to analyze traffic from those subscriptions.",
+                  "description": "Traffic from the VNets in the selected resource groups, shall be analyzed. Select one or more resource groups.",
                   "isRequired": true,
                   "multiSelect": true,
                   "quote": "'",
@@ -478,8 +532,7 @@
                   },
                   "defaultValue": "value::all",
                   "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces",
-                  "label": "Resource Groups"
+                  "resourceType": "microsoft.operationalinsights/workspaces"
                 }
               ],
               "style": "pills",
@@ -491,7 +544,7 @@
               "comparison": "isNotEqualTo",
               "value": "false"
             },
-            "name": "parameters - 9 - Copy"
+            "name": "ScopeFilters"
           },
           {
             "type": 1,
@@ -499,17 +552,48 @@
               "json": "We could not find any data in this workspace for selected time interval. Try after 20-30 mins.\r\n 1. Please try changing the time interval for current workspace selection.\r\n 2. Select a different workspace or try after 20-30 mins.\r\n 3. Please try changing the Flowlog Type for current workspace selection.",
               "style": "info"
             },
-            "conditionalVisibility": {
-              "parameterName": "SubscriptionQueryToRun",
-              "comparison": "isEqualTo",
-              "value": "false"
-            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "SubscriptionQueryToRun",
+                "comparison": "isEqualTo",
+                "value": "false"
+              },
+              {
+                "parameterName": "QueryType",
+                "comparison": "isEqualTo"
+              }
+            ],
             "name": "InfoBubble"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "We could not find any data in this workspace for selected time interval. Try after 20-30 mins.\r\n 1. Please try changing the time interval for current workspace selection.\r\n 2. Select a different workspace or try after 20-30 mins.\r\n 3. Please try changing the Flowlog Type for current workspace selection.\r\n 4. Please check if the workspace resource exists.",
+              "style": "info"
+            },
+            "conditionalVisibility": {
+              "parameterName": "QueryType",
+              "comparison": "isEqualTo"
+            },
+            "name": "InfoBubble - Copy"
           }
         ],
         "exportParameters": true
       },
       "name": "Filters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### Looks like we have only resources data (Topology) and no flow info for the selected workspace. <a href = >Learn more. </a>\r\nNavigate to Your Environmnet to see your resources data.",
+        "style": "info"
+      },
+      "conditionalVisibility": {
+        "parameterName": "isFlowAvailable",
+        "comparison": "isEqualTo",
+        "value": "false,false"
+      },
+      "name": "TopologyInfoBubble"
     },
     {
       "type": 12,
@@ -527,7 +611,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let trafficDistributionVPNGwS2SAndInterVNet =\r\n    (AzureNetworkAnalytics_CL\r\n    | where SubType_s == 'Topology'\r\n        and ResourceType == 'VirtualNetworkGatewayConnection'\r\n        and ConnectionType_s in ('Vnet2Vnet', 'IPsec')\r\n        and iff({timeInterval:seconds} < 86400, TimeGenerated between (datetime_add('day', -1, todatetime('{timeInterval:endISO}')) .. todatetime('{timeInterval:endISO}')), TimeGenerated between (todatetime('{timeInterval:startISO}') .. todatetime('{timeInterval:endISO}')))\r\n    | extend ConnectionName = strcat(Subscription_g, '/', Name_s)\r\n    | distinct ConnectionName, VirtualNetworkGateway1_s, VirtualNetworkGateway2_s)\r\n    | mv-expand Gateway = pack_array(VirtualNetworkGateway1_s, VirtualNetworkGateway2_s) to typeof(string)\r\n    | where isnotempty(Gateway)\r\n    | join kind = inner\r\n        (AzureNetworkAnalytics_CL\r\n        | where SubType_s == 'FlowLog' and (FASchemaVersion_s == '1' or FASchemaVersion_s == '2') and TimeGenerated between (todatetime('{timeInterval:startISO}') .. datetime_add('day', 7, todatetime('{timeInterval:endISO}')))\r\n        and FlowStartTime_t between (datetime('{timeInterval:startISO}') .. datetime('{timeInterval:endISO}'))\r\n        | where FlowType_s in ('S2S', 'InterVNet') and ConnectionType_s == 'VpnGateway')\r\n        on $left.ConnectionName == $right.ConnectionName_s\r\n    | extend Direction = iif((FlowType_s == 'InterVNet') or (FlowType_s != 'InterVNet' and isnotempty(VM1_s)), 'Source', 'Destination');\r\nlet trafficDistributionVPNGwP2S =\r\n    AzureNetworkAnalytics_CL\r\n    | where SubType_s == 'FlowLog' and (FASchemaVersion_s == '1' or FASchemaVersion_s == '2') and TimeGenerated between (todatetime('{timeInterval:startISO}') .. datetime_add('day', 7, todatetime('{timeInterval:endISO}')))\r\n    and FlowStartTime_t between (datetime('{timeInterval:startISO}') .. datetime('{timeInterval:endISO}'))\r\n    | where FlowType_s == 'P2S' and ConnectionType_s == 'VpnGateway'\r\n    | extend Gateway = substring(ConnectionName_s, 0, indexof_regex(ConnectionName_s, '_[^_]+$'))\r\n    | extend Direction = iif(isnotempty(VM1_s), 'Source', 'Destination');\r\nlet common = trafficDistributionVPNGwS2SAndInterVNet\r\n    | union trafficDistributionVPNGwP2S\r\n    | extend CountryOrRegion = iif(FlowType_s == 'AzurePublic', AzureRegion_s, Country_s)\r\n    | extend isMaliciousFlow = (FlowType_s == 'MaliciousFlow')\r\n    | extend\r\n        AllowedInboundBytesAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(InboundBytes_d), 0),\r\n        BlockedInboundBytesAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(InboundBytes_d), 0),\r\n        AllowedOutboundBytesAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(OutboundBytes_d), 0),\r\n        BlockedOutboundBytesAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(OutboundBytes_d), 0),\r\n        AllowedInboundBytesAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(InboundBytes_d), 0),\r\n        BlockedInboundBytesAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(InboundBytes_d), 0),\r\n        AllowedOutboundBytesAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(OutboundBytes_d), 0),\r\n        BlockedOutboundBytesAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(OutboundBytes_d), 0)\r\n    | extend\r\n        AllowedInboundPacketsAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(InboundPackets_d), 0),\r\n        BlockedInboundPacketsAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(InboundPackets_d), 0),\r\n        AllowedOutboundPacketsAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(OutboundPackets_d), 0),\r\n        BlockedOutboundPacketsAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(OutboundPackets_d), 0),\r\n        AllowedInboundPacketsAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(InboundPackets_d), 0),\r\n        BlockedInboundPacketsAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(InboundPackets_d), 0),\r\n        AllowedOutboundPacketsAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(OutboundPackets_d), 0),\r\n        BlockedOutboundPacketsAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(OutboundPackets_d), 0)\r\n    | extend FlowDirection_s = iif(FlowType_s in ('InterVNet', 'IntraVNet'), '', FlowDirection_s)\r\n    | summarize \r\n        AllowedInbound = sum(AllowedInFlows_d),\r\n        BlockedInbound = sum(DeniedInFlows_d),\r\n        AllowedOutbound = sum(AllowedOutFlows_d),\r\n        BlockedOutbound = sum(DeniedOutFlows_d),\r\n        AllowedInboundBytesAtSrc = sum(AllowedInboundBytesAtSrc),\r\n        BlockedInboundBytesAtSrc = sum(BlockedInboundBytesAtSrc),\r\n        AllowedOutboundBytesAtSrc = sum(AllowedOutboundBytesAtSrc),\r\n        BlockedOutboundBytesAtSrc = sum(BlockedOutboundBytesAtSrc),\r\n        AllowedInboundBytesAtDest = sum(AllowedInboundBytesAtDest),\r\n        BlockedInboundBytesAtDest = sum(BlockedInboundBytesAtDest),\r\n        AllowedOutboundBytesAtDest = sum(AllowedOutboundBytesAtDest),\r\n        BlockedOutboundBytesAtDest = sum(BlockedOutboundBytesAtDest),\r\n        AllowedInboundPacketsAtSrc = sum(AllowedInboundPacketsAtSrc),\r\n        BlockedInboundPacketsAtSrc = sum(BlockedInboundPacketsAtSrc),\r\n        AllowedOutboundPacketsAtSrc = sum(AllowedOutboundPacketsAtSrc),\r\n        BlockedOutboundPacketsAtSrc = sum(BlockedOutboundPacketsAtSrc),\r\n        AllowedInboundPacketsAtDest = sum(AllowedInboundPacketsAtDest),\r\n        BlockedInboundPacketsAtDest = sum(BlockedInboundPacketsAtDest),\r\n        AllowedOutboundPacketsAtDest = sum(AllowedOutboundPacketsAtDest),\r\n        BlockedOutboundPacketsAtDest = sum(BlockedOutboundPacketsAtDest)\r\n        by\r\n        SrcIP_s,\r\n        Subscription1_g,\r\n        NIC1_s,\r\n        DestIP_s,\r\n        Subscription2_g,\r\n        NIC2_s,\r\n        FlowDirection_s,\r\n        L4Protocol_s,\r\n        DestPort_d,\r\n        CountryOrRegion,\r\n        Direction,\r\n        Gateway, \r\n        isMaliciousFlow\r\n    | extend AllowedOutbound_inferred = max_of(AllowedOutbound, AllowedInbound + BlockedInbound)\r\n    | extend\r\n        Outbound = AllowedOutbound_inferred + BlockedOutbound,\r\n        Inbound = AllowedOutbound_inferred\r\n    | extend FlowCount = max_of(Inbound, Outbound)\r\n    | extend\r\n        AllowedInbound = iif(Direction == 'Destination', tolong(AllowedInbound), 0),\r\n        BlockedInbound = iif(Direction == 'Destination', tolong(BlockedInbound), 0),\r\n        AllowedOutbound = iif(Direction == 'Source', tolong(AllowedOutbound_inferred), 0),\r\n        BlockedOutbound = iif(Direction == 'Source', tolong(BlockedOutbound), 0)\r\n    | extend AllowedOutboundBytesAtSrc_inferred = max_of(AllowedOutboundBytesAtSrc, AllowedInboundBytesAtDest + BlockedInboundBytesAtDest)\r\n    | extend AllowedOutboundBytesAtDest_inferred = max_of(AllowedOutboundBytesAtDest, AllowedInboundBytesAtSrc + BlockedInboundBytesAtSrc)\r\n    | extend\r\n        OutboundBytesAtSrc = AllowedOutboundBytesAtSrc_inferred + BlockedOutboundBytesAtSrc,\r\n        InboundBytesAtSrc = AllowedOutboundBytesAtDest_inferred\r\n    | extend\r\n        OutboundBytesAtDest = AllowedOutboundBytesAtDest_inferred + BlockedOutboundBytesAtDest,\r\n        InboundBytesAtDest = AllowedOutboundBytesAtSrc_inferred\r\n    | extend BytesCount = max_of(OutboundBytesAtSrc, InboundBytesAtDest) + max_of(OutboundBytesAtDest, InboundBytesAtSrc)\r\n    | extend\r\n        AllowedInboundBytes = iif(Direction == 'Source', tolong(AllowedInboundBytesAtSrc), tolong(AllowedInboundBytesAtDest)),\r\n        BlockedInboundBytes = iif(Direction == 'Source', tolong(BlockedInboundBytesAtSrc), tolong(BlockedInboundBytesAtDest)),\r\n        AllowedOutboundBytes = iif(Direction == 'Source', tolong(AllowedOutboundBytesAtSrc_inferred), tolong(AllowedOutboundBytesAtDest_inferred)),\r\n        BlockedOutboundBytes = iif(Direction == 'Source', tolong(BlockedOutboundBytesAtSrc), tolong(BlockedOutboundBytesAtDest))\r\n    | extend AllowedOutboundPacketsAtSrc_inferred = max_of(AllowedOutboundPacketsAtSrc, AllowedInboundPacketsAtDest + BlockedInboundPacketsAtDest)\r\n    | extend AllowedOutboundPacketsAtDest_inferred = max_of(AllowedOutboundPacketsAtDest, AllowedInboundPacketsAtSrc + BlockedInboundPacketsAtSrc)\r\n    | extend\r\n        OutboundPacketsAtSrc = AllowedOutboundPacketsAtSrc_inferred + BlockedOutboundPacketsAtSrc,\r\n        InboundPacketsAtSrc = AllowedOutboundPacketsAtDest_inferred\r\n    | extend\r\n        OutboundPacketsAtDest = AllowedOutboundPacketsAtDest_inferred + BlockedOutboundPacketsAtDest,\r\n        InboundPacketsAtDest = AllowedOutboundPacketsAtSrc_inferred\r\n    | extend PacketsCount = max_of(OutboundPacketsAtSrc, InboundPacketsAtDest) + max_of(OutboundPacketsAtDest, InboundPacketsAtSrc)\r\n    | extend\r\n        AllowedInboundPackets = iif(Direction == 'Source', tolong(AllowedInboundPacketsAtSrc), tolong(AllowedInboundPacketsAtDest)),\r\n        BlockedInboundPackets = iif(Direction == 'Source', tolong(BlockedInboundPacketsAtSrc), tolong(BlockedInboundPacketsAtDest)),\r\n        AllowedOutboundPackets = iif(Direction == 'Source', tolong(AllowedOutboundPacketsAtSrc_inferred), tolong(AllowedOutboundPacketsAtDest_inferred)),\r\n        BlockedOutboundPackets = iif(Direction == 'Source', tolong(BlockedOutboundPacketsAtSrc), tolong(BlockedOutboundPacketsAtDest))\r\n    | extend trafficForSorting = iff('{Units:value}' =~ 'bytes', BytesCount, iff('{Units:value}' =~ 'packets', PacketsCount, tolong(FlowCount)))\r\n    | extend \r\n    AllowedTraffic = tolong(AllowedInbound) + tolong(AllowedOutbound),\r\n    BlockedTraffic = tolong(BlockedInbound) + tolong(BlockedOutbound)\r\n    // fork part 2 Bytes:\r\n    | extend \r\n    AllowedTrafficBytes = tolong(AllowedInboundBytes) + tolong(AllowedOutboundBytes),\r\n    BlockedTrafficBytes = tolong(BlockedInboundBytes) + tolong(BlockedOutboundBytes)\r\n    // fork part 3 Packets:\r\n    | extend \r\n    AllowedTrafficPackets = tolong(AllowedInboundPackets) + tolong(AllowedOutboundPackets),\r\n    BlockedTrafficPackets = tolong(BlockedInboundPackets) + tolong(BlockedOutboundPackets)\r\n    | summarize \r\n    // summarize for flows\r\n    AllowedTraffic = sum(AllowedTraffic), \r\n    BlockedTraffic = sum(BlockedTraffic),\r\n    MaliciousFlow = sum(iff(isMaliciousFlow, AllowedTraffic + BlockedTraffic, 0)),\r\n    TotalFlow = sum(FlowCount),\r\n    // summarize for bytes\r\n    AllowedBytes = sum(AllowedTrafficBytes), \r\n    BlockedBytes = sum(BlockedTrafficBytes),\r\n    MaliciousBytes = sum(iff(isMaliciousFlow, AllowedTrafficBytes + BlockedTrafficBytes, 0)),\r\n    TotalBytes = sum(BytesCount),\r\n    // summarize for packets\r\n    AllowedPackets = sum(AllowedTrafficPackets),\r\n    BlockedPackets = sum(BlockedTrafficPackets),\r\n    MaliciousPackets = sum(iff(isMaliciousFlow, AllowedTrafficPackets + BlockedTrafficPackets, 0)),\r\n    TotalPackets = sum(PacketsCount) \r\n    by Gateway\r\n| summarize totalTraffic = iff('{Units:value}' =~ 'bytes', sum(TotalBytes), iff('{Units:value}' =~ 'packets', sum(TotalPackets), sum(TotalFlow))),\r\nallowedTraffic = iff('{Units:value}' =~ 'bytes', sum(AllowedBytes), iff('{Units:value}' =~ 'packets', sum(AllowedPackets), sum(AllowedTraffic))),\r\nmaliciousTraffic = iff('{Units:value}' =~ 'bytes', sum(MaliciousBytes), iff('{Units:value}' =~ 'packets', sum(MaliciousPackets), sum(MaliciousFlow))),\r\nblockedTraffic = iff('{Units:value}' =~ 'bytes', sum(BlockedBytes), iff('{Units:value}' =~ 'packets', sum(BlockedPackets), sum(BlockedTraffic)));\r\n union (\r\n        common\r\n        | project ColumnName = 'TotalTraffic', Value = totalTraffic\r\n    ),\r\n    (\r\n        common\r\n        | project ColumnName = 'AllowedTraffic', Value = allowedTraffic\r\n    ),\r\n    (\r\n        common\r\n        | project ColumnName = 'Malicious Traffic', Value = maliciousTraffic\r\n    ),\r\n    (\r\n        common\r\n        | project ColumnName = 'Blocked Traffic', Value = blockedTraffic\r\n    )",
+                    "query": "let trafficDistributionVPNGwS2SAndInterVNet =\r\n    (AzureNetworkAnalytics_CL\r\n    | where SubType_s == 'Topology'\r\n        and ResourceType == 'VirtualNetworkGatewayConnection'\r\n        and ConnectionType_s in ('Vnet2Vnet', 'IPsec')\r\n        and iff({timeInterval:seconds} < 86400, TimeGenerated between (datetime_add('day', -1, todatetime('{timeInterval:endISO}')) .. todatetime('{timeInterval:endISO}')), TimeGenerated between (todatetime('{timeInterval:startISO}') .. todatetime('{timeInterval:endISO}')))\r\n    | extend ConnectionName = strcat(Subscription_g, '/', Name_s)\r\n    | distinct ConnectionName, VirtualNetworkGateway1_s, VirtualNetworkGateway2_s)\r\n    | mv-expand Gateway = pack_array(VirtualNetworkGateway1_s, VirtualNetworkGateway2_s) to typeof(string)\r\n    | where isnotempty(Gateway)\r\n    | join kind = inner\r\n        (AzureNetworkAnalytics_CL\r\n        | where SubType_s == 'FlowLog' and (FASchemaVersion_s == '1' or FASchemaVersion_s == '2') and TimeGenerated between (todatetime('{timeInterval:startISO}') .. datetime_add('day', 7, todatetime('{timeInterval:endISO}')))\r\n        and FlowStartTime_t between (datetime('{timeInterval:startISO}') .. datetime('{timeInterval:endISO}'))\r\n        | where FlowType_s in ('S2S', 'InterVNet') and ConnectionType_s == 'VpnGateway')\r\n        on $left.ConnectionName == $right.ConnectionName_s\r\n    | extend Direction = iif((FlowType_s == 'InterVNet') or (FlowType_s != 'InterVNet' and isnotempty(VM1_s)), 'Source', 'Destination');\r\nlet trafficDistributionVPNGwP2S =\r\n    AzureNetworkAnalytics_CL\r\n    | where SubType_s == 'FlowLog' and (FASchemaVersion_s == '1' or FASchemaVersion_s == '2') and TimeGenerated between (todatetime('{timeInterval:startISO}') .. datetime_add('day', 7, todatetime('{timeInterval:endISO}')))\r\n    and FlowStartTime_t between (datetime('{timeInterval:startISO}') .. datetime('{timeInterval:endISO}'))\r\n    | where FlowType_s == 'P2S' and ConnectionType_s == 'VpnGateway'\r\n    | extend Gateway = substring(ConnectionName_s, 0, indexof_regex(ConnectionName_s, '_[^_]+$'))\r\n    | extend Direction = iif(isnotempty(VM1_s), 'Source', 'Destination');\r\nlet common = trafficDistributionVPNGwS2SAndInterVNet\r\n    | union trafficDistributionVPNGwP2S\r\n    | extend CountryOrRegion = iif(FlowType_s == 'AzurePublic', AzureRegion_s, Country_s)\r\n    | extend isMaliciousFlow = (FlowType_s == 'MaliciousFlow')\r\n    | extend\r\n        AllowedInboundBytesAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(InboundBytes_d), 0),\r\n        BlockedInboundBytesAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(InboundBytes_d), 0),\r\n        AllowedOutboundBytesAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(OutboundBytes_d), 0),\r\n        BlockedOutboundBytesAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(OutboundBytes_d), 0),\r\n        AllowedInboundBytesAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(InboundBytes_d), 0),\r\n        BlockedInboundBytesAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(InboundBytes_d), 0),\r\n        AllowedOutboundBytesAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(OutboundBytes_d), 0),\r\n        BlockedOutboundBytesAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(OutboundBytes_d), 0)\r\n    | extend\r\n        AllowedInboundPacketsAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(InboundPackets_d), 0),\r\n        BlockedInboundPacketsAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(InboundPackets_d), 0),\r\n        AllowedOutboundPacketsAtSrc = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Outbound', tolong(OutboundPackets_d), 0),\r\n        BlockedOutboundPacketsAtSrc = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Outbound', tolong(OutboundPackets_d), 0),\r\n        AllowedInboundPacketsAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(InboundPackets_d), 0),\r\n        BlockedInboundPacketsAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(InboundPackets_d), 0),\r\n        AllowedOutboundPacketsAtDest = iff(FlowStatus_s == 'Allowed' and FlowDirection_s == 'Inbound', tolong(OutboundPackets_d), 0),\r\n        BlockedOutboundPacketsAtDest = iff(FlowStatus_s == 'Denied' and FlowDirection_s == 'Inbound', tolong(OutboundPackets_d), 0)\r\n    | extend FlowDirection_s = iif(FlowType_s in ('InterVNet', 'IntraVNet'), '', FlowDirection_s)\r\n    | summarize \r\n        AllowedInbound = tolong(sum(AllowedInFlows_d)),\r\n        BlockedInbound = tolong(sum(DeniedInFlows_d)),\r\n        AllowedOutbound = tolong(sum(AllowedOutFlows_d)),\r\n        BlockedOutbound = tolong(sum(DeniedOutFlows_d)),\r\n        AllowedInboundBytesAtSrc = tolong(sum(AllowedInboundBytesAtSrc)),\r\n        BlockedInboundBytesAtSrc = tolong(sum(BlockedInboundBytesAtSrc)),\r\n        AllowedOutboundBytesAtSrc = tolong(sum(AllowedOutboundBytesAtSrc)),\r\n        BlockedOutboundBytesAtSrc = tolong(sum(BlockedOutboundBytesAtSrc)),\r\n        AllowedInboundBytesAtDest = tolong(sum(AllowedInboundBytesAtDest)),\r\n        BlockedInboundBytesAtDest = tolong(sum(BlockedInboundBytesAtDest)),\r\n        AllowedOutboundBytesAtDest = tolong(sum(AllowedOutboundBytesAtDest)),\r\n        BlockedOutboundBytesAtDest = tolong(sum(BlockedOutboundBytesAtDest)),\r\n        AllowedInboundPacketsAtSrc = tolong(sum(AllowedInboundPacketsAtSrc)),\r\n        BlockedInboundPacketsAtSrc = tolong(sum(BlockedInboundPacketsAtSrc)),\r\n        AllowedOutboundPacketsAtSrc = tolong(sum(AllowedOutboundPacketsAtSrc)),\r\n        BlockedOutboundPacketsAtSrc = tolong(sum(BlockedOutboundPacketsAtSrc)),\r\n        AllowedInboundPacketsAtDest = tolong(sum(AllowedInboundPacketsAtDest)),\r\n        BlockedInboundPacketsAtDest = tolong(sum(BlockedInboundPacketsAtDest)),\r\n        AllowedOutboundPacketsAtDest = tolong(sum(AllowedOutboundPacketsAtDest)),\r\n        BlockedOutboundPacketsAtDest = tolong(sum(BlockedOutboundPacketsAtDest))\r\n        by\r\n        SrcIP_s,\r\n        Subscription1_g,\r\n        NIC1_s,\r\n        DestIP_s,\r\n        Subscription2_g,\r\n        NIC2_s,\r\n        FlowDirection_s,\r\n        L4Protocol_s,\r\n        DestPort_d,\r\n        CountryOrRegion,\r\n        Direction,\r\n        Gateway, \r\n        isMaliciousFlow\r\n    | extend AllowedOutbound_inferred = max_of(AllowedOutbound, AllowedInbound + BlockedInbound)\r\n    | extend\r\n        Outbound = AllowedOutbound_inferred + BlockedOutbound,\r\n        Inbound = AllowedOutbound_inferred\r\n    | extend FlowCount = max_of(Inbound, Outbound)\r\n    | extend\r\n        AllowedInbound = iif(Direction == 'Destination', tolong(AllowedInbound), 0),\r\n        BlockedInbound = iif(Direction == 'Destination', tolong(BlockedInbound), 0),\r\n        AllowedOutbound = iif(Direction == 'Source', tolong(AllowedOutbound_inferred), 0),\r\n        BlockedOutbound = iif(Direction == 'Source', tolong(BlockedOutbound), 0)\r\n    | extend AllowedOutboundBytesAtSrc_inferred = max_of(AllowedOutboundBytesAtSrc, AllowedInboundBytesAtDest + BlockedInboundBytesAtDest)\r\n    | extend AllowedOutboundBytesAtDest_inferred = max_of(AllowedOutboundBytesAtDest, AllowedInboundBytesAtSrc + BlockedInboundBytesAtSrc)\r\n    | extend\r\n        OutboundBytesAtSrc = AllowedOutboundBytesAtSrc_inferred + BlockedOutboundBytesAtSrc,\r\n        InboundBytesAtSrc = AllowedOutboundBytesAtDest_inferred\r\n    | extend\r\n        OutboundBytesAtDest = AllowedOutboundBytesAtDest_inferred + BlockedOutboundBytesAtDest,\r\n        InboundBytesAtDest = AllowedOutboundBytesAtSrc_inferred\r\n    | extend BytesCount = max_of(OutboundBytesAtSrc, InboundBytesAtDest) + max_of(OutboundBytesAtDest, InboundBytesAtSrc)\r\n    | extend\r\n        AllowedInboundBytes = iif(Direction == 'Source', tolong(AllowedInboundBytesAtSrc), tolong(AllowedInboundBytesAtDest)),\r\n        BlockedInboundBytes = iif(Direction == 'Source', tolong(BlockedInboundBytesAtSrc), tolong(BlockedInboundBytesAtDest)),\r\n        AllowedOutboundBytes = iif(Direction == 'Source', tolong(AllowedOutboundBytesAtSrc_inferred), tolong(AllowedOutboundBytesAtDest_inferred)),\r\n        BlockedOutboundBytes = iif(Direction == 'Source', tolong(BlockedOutboundBytesAtSrc), tolong(BlockedOutboundBytesAtDest))\r\n    | extend AllowedOutboundPacketsAtSrc_inferred = max_of(AllowedOutboundPacketsAtSrc, AllowedInboundPacketsAtDest + BlockedInboundPacketsAtDest)\r\n    | extend AllowedOutboundPacketsAtDest_inferred = max_of(AllowedOutboundPacketsAtDest, AllowedInboundPacketsAtSrc + BlockedInboundPacketsAtSrc)\r\n    | extend\r\n        OutboundPacketsAtSrc = AllowedOutboundPacketsAtSrc_inferred + BlockedOutboundPacketsAtSrc,\r\n        InboundPacketsAtSrc = AllowedOutboundPacketsAtDest_inferred\r\n    | extend\r\n        OutboundPacketsAtDest = AllowedOutboundPacketsAtDest_inferred + BlockedOutboundPacketsAtDest,\r\n        InboundPacketsAtDest = AllowedOutboundPacketsAtSrc_inferred\r\n    | extend PacketsCount = max_of(OutboundPacketsAtSrc, InboundPacketsAtDest) + max_of(OutboundPacketsAtDest, InboundPacketsAtSrc)\r\n    | extend\r\n        AllowedInboundPackets = iif(Direction == 'Source', tolong(AllowedInboundPacketsAtSrc), tolong(AllowedInboundPacketsAtDest)),\r\n        BlockedInboundPackets = iif(Direction == 'Source', tolong(BlockedInboundPacketsAtSrc), tolong(BlockedInboundPacketsAtDest)),\r\n        AllowedOutboundPackets = iif(Direction == 'Source', tolong(AllowedOutboundPacketsAtSrc_inferred), tolong(AllowedOutboundPacketsAtDest_inferred)),\r\n        BlockedOutboundPackets = iif(Direction == 'Source', tolong(BlockedOutboundPacketsAtSrc), tolong(BlockedOutboundPacketsAtDest))\r\n    | extend trafficForSorting = iff('{Units:value}' =~ 'bytes', BytesCount, iff('{Units:value}' =~ 'packets', PacketsCount, tolong(FlowCount)))\r\n    | extend \r\n    AllowedTraffic = tolong(AllowedInbound) + tolong(AllowedOutbound),\r\n    BlockedTraffic = tolong(BlockedInbound) + tolong(BlockedOutbound)\r\n    // fork part 2 Bytes:\r\n    | extend \r\n    AllowedTrafficBytes = tolong(AllowedInboundBytes) + tolong(AllowedOutboundBytes),\r\n    BlockedTrafficBytes = tolong(BlockedInboundBytes) + tolong(BlockedOutboundBytes)\r\n    // fork part 3 Packets:\r\n    | extend \r\n    AllowedTrafficPackets = tolong(AllowedInboundPackets) + tolong(AllowedOutboundPackets),\r\n    BlockedTrafficPackets = tolong(BlockedInboundPackets) + tolong(BlockedOutboundPackets)\r\n    | summarize \r\n    // summarize for flows\r\n    AllowedTraffic = sum(AllowedTraffic), \r\n    BlockedTraffic = sum(BlockedTraffic),\r\n    MaliciousFlow = sum(iff(isMaliciousFlow, AllowedTraffic + BlockedTraffic, 0)),\r\n    TotalFlow = sum(FlowCount),\r\n    // summarize for bytes\r\n    AllowedBytes = sum(AllowedTrafficBytes), \r\n    BlockedBytes = sum(BlockedTrafficBytes),\r\n    MaliciousBytes = sum(iff(isMaliciousFlow, AllowedTrafficBytes + BlockedTrafficBytes, 0)),\r\n    TotalBytes = sum(BytesCount),\r\n    // summarize for packets\r\n    AllowedPackets = sum(AllowedTrafficPackets),\r\n    BlockedPackets = sum(BlockedTrafficPackets),\r\n    MaliciousPackets = sum(iff(isMaliciousFlow, AllowedTrafficPackets + BlockedTrafficPackets, 0)),\r\n    TotalPackets = sum(PacketsCount) \r\n    by Gateway\r\n| summarize totalTraffic = iff('{Units:value}' =~ 'bytes', sum(TotalBytes), iff('{Units:value}' =~ 'packets', sum(TotalPackets), sum(TotalFlow))),\r\nallowedTraffic = iff('{Units:value}' =~ 'bytes', sum(AllowedBytes), iff('{Units:value}' =~ 'packets', sum(AllowedPackets), sum(AllowedTraffic))),\r\nmaliciousTraffic = iff('{Units:value}' =~ 'bytes', sum(MaliciousBytes), iff('{Units:value}' =~ 'packets', sum(MaliciousPackets), sum(MaliciousFlow))),\r\nblockedTraffic = iff('{Units:value}' =~ 'bytes', sum(BlockedBytes), iff('{Units:value}' =~ 'packets', sum(BlockedPackets), sum(BlockedTraffic)));\r\n union (\r\n        common\r\n        | project ColumnName = 'TotalTraffic', Value = totalTraffic\r\n    ),\r\n    (\r\n        common\r\n        | project ColumnName = 'AllowedTraffic', Value = allowedTraffic\r\n    ),\r\n    (\r\n        common\r\n        | project ColumnName = 'Malicious Traffic', Value = maliciousTraffic\r\n    ),\r\n    (\r\n        common\r\n        | project ColumnName = 'Blocked Traffic', Value = blockedTraffic\r\n    )",
                     "size": 3,
                     "noDataMessage": "The Application Insights resource you selected has no data.",
                     "timeContextFromParameter": "timeInterval",
@@ -821,16 +905,20 @@
                 }
               ]
             },
-            "name": "ApplicationPortsGrid"
+            "name": "VPNDataGrid"
           }
         ],
         "exportParameters": true
+      },
+      "conditionalVisibility": {
+        "parameterName": "QueryType",
+        "comparison": "isNotEqualTo"
       },
       "name": "group - 5"
     }
   ],
   "fallbackResourceIds": [
-    "Azure Monitor"
+    "azure monitor"
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
