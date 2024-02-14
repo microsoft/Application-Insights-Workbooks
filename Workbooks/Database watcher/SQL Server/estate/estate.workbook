@@ -284,7 +284,7 @@
                   "label": "Kusto query URI ping result",
                   "type": 1,
                   "isRequired": true,
-                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show databases\\r\\n| where DatabaseName == @\\\"{adxDatabase}\\\"\\r\\n| project 1\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"\"}",
+                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show databases\\r\\n| where DatabaseName == @\\\"{adxDatabase}\\\" // ADX\\r\\n        or\\r\\n        (PrettyName == @\\\"{adxDatabase}\\\" and isnotempty(toguid(DatabaseName))) // Fabric Kusto\\r\\n| project 1\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"\"}",
                   "isHiddenWhenLocked": true,
                   "queryType": 9
                 }
@@ -1004,7 +1004,7 @@
                       "formatName": "shortDateTimePattern"
                     },
                     "tooltipFormat": {
-                      "tooltip": "Workbook refresh date and time"
+                      "tooltip": "Dashboard refresh date and time"
                     }
                   },
                   {
@@ -1270,7 +1270,7 @@
     {
       "type": 1,
       "content": {
-        "json": "* On each heatmap, a hexagon represents a SQL Server instance.\r\n*  Up to {topHitters} top resource consuming instances are shown. Use name filters or the `Servers` grid to find other instances.\r\n* Instances can be grouped by machine (aka computer, aka node) name, or by failover cluster name.\r\n* Click on the SQL instance name in a hexagon to open a detailed dashboard for that instance.\r\n* Hexagons colors are described below. Instances with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`|Each hexagon is colored depending on average CPU utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%).|\r\n|`Requests`|Each hexagon is colored depending on the average rate of batch requests in the selected time range, with lighter colors representing lower rates, and darker colors representing higher rates.|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait categories and time range, using the green-to-orange color palette. Green represents minimal waits, orange represents higher waits compared to other SQL instances on the same heatmap. Each wait category [maps](https://go.microsoft.com/fwlink/?linkid=2238095) to one or more individual wait types. Click on an instance name to see a chart of top wait types for that server over time.|\r\n|`Storage IO`|Each hexagon is colored to reflect the magnitude of selected IO metric (average latency, total IO operations, total bytes) in the selected time range for either read or write IO, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates.|\r\n|`Availability group health`|Each hexagon is colored green if for every sample in selected time range, all availability databases and replicas were healthy. Otherwise, it is colored red, and the number of samples with unhealthy databases or replicas is shown at the bottom.|\r\n|`Connectivity`|Each hexagon is colored green if every connectivity probe for that SQL instance in selected time range was successful. Otherwise, it is colored red, and the number of failed connectivity probes is shown at the bottom.|"
+        "json": "* On each heatmap, a hexagon represents a SQL Server instance.\r\n*  Up to {topHitters} top resource consuming instances are shown. Use name filters or the `Servers` grid to find other instances.\r\n* Instances can be grouped by machine (aka computer, aka node) name, or by failover cluster name.\r\n* Click on the SQL instance name in a hexagon to open a detailed dashboard for that instance.\r\n* Hexagons colors are described below. Instances with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`|Each hexagon is colored depending on average CPU utilization in the selected time range, by band: green (0%-49%), yellow (50%-89%), and red (90%-100%).|\r\n|`Requests`|Each hexagon is colored depending on the average rate of batch requests in the selected time range, with lighter colors representing lower rates, and darker colors representing higher rates.|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait categories and time range, with lighter colors representing lower waits, and darker colors representing higher waits. Each wait category [maps](https://go.microsoft.com/fwlink/?linkid=2238095) to one or more individual wait types. Click on an instance name to see a chart of top wait types for that server over time.|\r\n|`Storage IO`|Each hexagon is colored to reflect the magnitude of selected IO metric (average latency, IOPS, and throughput) in the selected time range for either read or write IO, with lighter colors representing lower rates, and darker colors representing higher rates.|\r\n|`Availability group health`|Each hexagon is colored green if for every sample in selected time range, all availability databases and replicas were healthy. Otherwise, it is colored red, and the number of samples with unhealthy databases or replicas is shown at the bottom.|\r\n|`Connectivity`|Each hexagon is colored green if every connectivity probe for that SQL instance in selected time range was successful. Otherwise, it is colored orange, and the number of failed connectivity probes is shown at the bottom.|"
       },
       "conditionalVisibilities": [
         {
@@ -1378,7 +1378,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let cpu_utilization = materialize (\\r\\nsqlserver_cpu_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| project-away process_sample_time_utc, idle_cpu_percent\\r\\n| partition hint.strategy = shuffle by machine_name\\r\\n(\\r\\nsummarize cpu_percentage = avg(avg_cpu_percent), count_samples = dcount(sample_time_utc) by machine_name, server_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// total count of samples per machine, server in selected time range\\r\\nlet total_sample_count = (\\r\\ncpu_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by machine_name, server_name\\r\\n);\\r\\n// typical count of samples per machine, server in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet cpu_timeline = (\\r\\ncpu_utilization\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| make-series cpu_percentage_timeline = max(cpu_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by machine_name, server_name\\r\\n);\\r\\nlet server_properties = (\\r\\nsqlserver_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize arg_max(sample_time_utc, cluster_name) by machine_name, server_name\\r\\n);\\r\\nlet agg_cpu_utilization = (\\r\\ncpu_utilization\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| summarize cpu_percentage = sum(cpu_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by machine_name, server_name\\r\\n| join kind=leftouter cpu_timeline on machine_name, server_name\\r\\n| join kind=leftouter server_properties on machine_name, server_name\\r\\n| project machine_name, server_name, cluster_name, cpu_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(cpu_percentage)), cpu_percentage_timeline,\\r\\n          color = case(\\r\\n                      toreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all servers\\r\\n                      cpu_percentage >= 90, \\\"red\\\",\\r\\n                      cpu_percentage >= 70, \\\"orange\\\",\\r\\n                      cpu_percentage >= 50, \\\"yellow\\\",\\r\\n                      cpu_percentage >= 0, \\\"green\\\",\\r\\n                      \\\"\\\"\\r\\n                      ),\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"machine\\\", machine_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isnotempty(cluster_name), cluster_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isempty(cluster_name), strcat(server_name, \\\" (not clustered)\\\"),\\r\\n                        server_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across servers in each grouper. This is used to limit to top N servers without tearing groups (machines, clusters).\\r\\nlet agg_cpu_utilization_grouper = (\\r\\nagg_cpu_utilization\\r\\n| summarize cpu_percentage = max(cpu_percentage) by grouper\\r\\n| sort by cpu_percentage desc\\r\\n| project grouper, cpu_percentage, grouper_number = row_number()\\r\\n);\\r\\nagg_cpu_utilization\\r\\n| lookup agg_cpu_utilization_grouper on grouper\\r\\n| where grouper_number <= {topHitters} // limit to top hitters\\r\\n| project machine_name, server_name, cluster_name, cpu_percentage, grouper_cpu_percentage = cpu_percentage1, color, cpu_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by cpu_percentage desc, tolower(grouper) asc, tolower(machine_name) asc, tolower(server_name) asc\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let cpu_utilization = materialize (\\r\\nsqlserver_cpu_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| project-away process_sample_time_utc, idle_cpu_percent\\r\\n| partition hint.strategy = shuffle by machine_name\\r\\n(\\r\\nsummarize cpu_percentage = avg(avg_cpu_percent), count_samples = dcount(sample_time_utc) by machine_name, server_name, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\n// total count of samples per machine, server in selected time range\\r\\nlet total_sample_count = (\\r\\ncpu_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by machine_name, server_name\\r\\n);\\r\\n// typical count of samples per machine, server in selected time range\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet cpu_timeline = (\\r\\ncpu_utilization\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| make-series cpu_percentage_timeline = max(cpu_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by machine_name, server_name\\r\\n);\\r\\nlet server_properties = (\\r\\nsqlserver_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize arg_max(sample_time_utc, cluster_name) by machine_name, server_name\\r\\n);\\r\\nlet agg_cpu_utilization = (\\r\\ncpu_utilization\\r\\n| lookup total_sample_count on machine_name, server_name\\r\\n| summarize cpu_percentage = sum(cpu_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by machine_name, server_name\\r\\n| join kind=leftouter cpu_timeline on machine_name, server_name\\r\\n| join kind=leftouter server_properties on machine_name, server_name\\r\\n| project machine_name, server_name, cluster_name, cpu_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(cpu_percentage)), cpu_percentage_timeline,\\r\\n          color = case(\\r\\n                      toreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all servers\\r\\n                      cpu_percentage >= 90, \\\"red\\\",\\r\\n                      cpu_percentage >= 50, \\\"yellow\\\",\\r\\n                      cpu_percentage >= 0, \\\"green\\\",\\r\\n                      \\\"\\\"\\r\\n                      ),\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"machine\\\", machine_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isnotempty(cluster_name), cluster_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isempty(cluster_name), strcat(server_name, \\\" (not clustered)\\\"),\\r\\n                        server_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across servers in each grouper. This is used to limit to top N servers without tearing groups (machines, clusters).\\r\\nlet agg_cpu_utilization_grouper = (\\r\\nagg_cpu_utilization\\r\\n| summarize cpu_percentage = max(cpu_percentage) by grouper\\r\\n| sort by cpu_percentage desc\\r\\n| project grouper, cpu_percentage, grouper_number = row_number()\\r\\n);\\r\\nagg_cpu_utilization\\r\\n| lookup agg_cpu_utilization_grouper on grouper\\r\\n| where grouper_number <= {topHitters} // limit to top hitters\\r\\n| project machine_name, server_name, cluster_name, cpu_percentage, grouper_cpu_percentage = cpu_percentage1, color, cpu_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by cpu_percentage desc, tolower(grouper) asc, tolower(machine_name) asc, tolower(server_name) asc\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
         "size": 3,
         "showAnalytics": true,
         "noDataMessage": "There is no data for specified parameters.",
@@ -1487,6 +1487,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -1513,11 +1518,6 @@
                 "operator": "==",
                 "thresholdValue": "red",
                 "representation": "red"
-              },
-              {
-                "operator": "==",
-                "thresholdValue": "orange",
-                "representation": "orange"
               },
               {
                 "operator": "==",
@@ -1672,6 +1672,11 @@
             "formatOptions": {
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
+                {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
                 {
                   "operator": "Default",
                   "thresholdValue": null,
@@ -1907,6 +1912,11 @@
                     "thresholdsOptions": "icons",
                     "thresholdsGrid": [
                       {
+                        "operator": "is Empty",
+                        "representation": "Blank",
+                        "text": "{0}{1}"
+                      },
+                      {
                         "operator": "Default",
                         "thresholdValue": null,
                         "representation": "ResourceFlat",
@@ -1923,7 +1933,7 @@
                 "colorSettings": {
                   "nodeColorField": "wait_ms_per_second",
                   "type": 4,
-                  "heatmapPalette": "blueOrange",
+                  "heatmapPalette": "greenBlue",
                   "heatmapMin": null,
                   "heatmapMax": null,
                   "emptyValueColor": "gray"
@@ -2104,6 +2114,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -2174,7 +2189,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server name to target server/machine name\\r\\nlet connection_server_target = materialize (\\r\\nsqlserver_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, server_name, machine_name) by connection_server_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\n// typical count of probes per machine, server in selected time range\\r\\nlet expected_probe_count = toscalar(\\r\\nsqlserver_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize count_samples = dcount(probe_time_utc) by machine_name, server_name\\r\\n| summarize percentile(count_samples, 90)\\r\\n);\\r\\nlet server_properties = (\\r\\nsqlserver_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize arg_max(sample_time_utc, cluster_name) by machine_name, server_name\\r\\n);\\r\\nlet agg_connectivity = (\\r\\nsqlserver_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_target on connection_server_name // A failed probe has empty machine_name/server_name. Look them up for the most recent successful probe with the same connection server name.\\r\\n| extend machine_name = iif(isempty(machine_name), machine_name1, machine_name),\\r\\n         server_name = iif(isempty(server_name), server_name1, server_name)\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize count_failed_probes = countif(probe_return_value != 1),\\r\\n            count_successful_probes = countif(probe_return_value == 1),\\r\\n            count_probes = count()\\r\\n            by machine_name, server_name\\r\\n| join kind=leftouter server_properties on machine_name, server_name\\r\\n| project machine_name, server_name, cluster_name, health_ratio = iif(toreal(count_probes)/expected_probe_count < 0.5, real(null), toreal(count_successful_probes) / toreal(count_probes)), count_failed_probes = iif(count_failed_probes > 0, count_failed_probes, int(null)),\\r\\n          color = case(\\r\\n                      toreal(count_probes)/expected_probe_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all servers\\r\\n                      count_failed_probes > 0, \\\"red\\\",\\r\\n                      count_successful_probes > 0, \\\"green\\\",\\r\\n                      \\\"\\\"\\r\\n                      ),\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"machine\\\", machine_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isnotempty(cluster_name), cluster_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isempty(cluster_name), strcat(server_name, \\\" (not clustered)\\\"),\\r\\n                        server_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across servers in each grouper. This is used to limit to top N servers without tearing groups (machines, clusters).\\r\\nlet agg_connectivity_grouper = (\\r\\nagg_connectivity\\r\\n| summarize health_ratio = min(health_ratio) by grouper\\r\\n| sort by health_ratio asc\\r\\n| project grouper, health_ratio, grouper_number = row_number()\\r\\n);\\r\\nagg_connectivity\\r\\n| lookup agg_connectivity_grouper on grouper\\r\\n| where grouper_number <= {topHitters} // limit to top hitters\\r\\n| project machine_name, server_name, cluster_name, health_ratio, grouper_health_ratio = health_ratio1, count_failed_probes, color, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by health_ratio asc, tolower(grouper) asc, tolower(machine_name) asc, tolower(server_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server name to target server/machine name\\r\\nlet connection_server_target = materialize (\\r\\nsqlserver_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, server_name, machine_name) by connection_server_name\\r\\n| project-away probe_time_utc\\r\\n);\\r\\n// typical count of probes per machine, server in selected time range\\r\\nlet expected_probe_count = toscalar(\\r\\nsqlserver_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize count_samples = dcount(probe_time_utc) by machine_name, server_name\\r\\n| summarize percentile(count_samples, 90)\\r\\n);\\r\\nlet server_properties = (\\r\\nsqlserver_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize arg_max(sample_time_utc, cluster_name) by machine_name, server_name\\r\\n);\\r\\nlet agg_connectivity = (\\r\\nsqlserver_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_target on connection_server_name // A failed probe has empty machine_name/server_name. Look them up for the most recent successful probe with the same connection server name.\\r\\n| extend machine_name = iif(isempty(machine_name), machine_name1, machine_name),\\r\\n         server_name = iif(isempty(server_name), server_name1, server_name)\\r\\n{machineNameFilter}\\r\\n{serverNameFilter}\\r\\n| summarize count_failed_probes = countif(probe_return_value != 1),\\r\\n            count_successful_probes = countif(probe_return_value == 1),\\r\\n            count_probes = count()\\r\\n            by machine_name, server_name\\r\\n| join kind=leftouter server_properties on machine_name, server_name\\r\\n| project machine_name, server_name, cluster_name, health_ratio = iif(toreal(count_probes)/expected_probe_count < 0.5, real(null), toreal(count_successful_probes) / toreal(count_probes)), count_failed_probes = iif(count_failed_probes > 0, count_failed_probes, int(null)),\\r\\n          color = case(\\r\\n                      toreal(count_probes)/expected_probe_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all servers\\r\\n                      count_failed_probes > 0, \\\"orange\\\",\\r\\n                      count_successful_probes > 0, \\\"green\\\",\\r\\n                      \\\"\\\"\\r\\n                      ),\\r\\n          grouper = case(\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"machine\\\", machine_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isnotempty(cluster_name), cluster_name,\\r\\n                        \\\"{HeatmapGroupBy}\\\" == \\\"cluster\\\" and isempty(cluster_name), strcat(server_name, \\\" (not clustered)\\\"),\\r\\n                        server_name\\r\\n                        )\\r\\n);\\r\\n// Get the max value across servers in each grouper. This is used to limit to top N servers without tearing groups (machines, clusters).\\r\\nlet agg_connectivity_grouper = (\\r\\nagg_connectivity\\r\\n| summarize health_ratio = min(health_ratio) by grouper\\r\\n| sort by health_ratio asc\\r\\n| project grouper, health_ratio, grouper_number = row_number()\\r\\n);\\r\\nagg_connectivity\\r\\n| lookup agg_connectivity_grouper on grouper\\r\\n| where grouper_number <= {topHitters} // limit to top hitters\\r\\n| project machine_name, server_name, cluster_name, health_ratio, grouper_health_ratio = health_ratio1, count_failed_probes, color, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper)\\r\\n| sort by health_ratio asc, tolower(grouper) asc, tolower(machine_name) asc, tolower(server_name) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
         "size": 3,
         "showAnalytics": true,
         "noDataMessage": "There is no data for specified parameters.",
@@ -2282,6 +2297,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -2306,8 +2326,8 @@
               },
               {
                 "operator": "==",
-                "thresholdValue": "red",
-                "representation": "red"
+                "thresholdValue": "orange",
+                "representation": "orange"
               },
               {
                 "operator": "==",
@@ -2672,7 +2692,7 @@
                   {
                     "operator": ">",
                     "thresholdValue": "360",
-                    "representation": "2",
+                    "representation": "Clock",
                     "text": "{0}{1}"
                   },
                   {
@@ -2690,7 +2710,7 @@
                 }
               },
               "tooltipFormat": {
-                "tooltip": "Time difference between the last workbook refresh and the last sample in the server properties dataset"
+                "tooltip": "Time difference between the last dashboard refresh and the last sample in the server properties dataset"
               }
             }
           ],

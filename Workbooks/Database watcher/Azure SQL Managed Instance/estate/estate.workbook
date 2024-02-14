@@ -284,7 +284,7 @@
                   "label": "Kusto query URI ping result",
                   "type": 1,
                   "isRequired": true,
-                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show databases\\r\\n| where DatabaseName == @\\\"{adxDatabase}\\\"\\r\\n| project 1\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"\"}",
+                  "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\".show databases\\r\\n| where DatabaseName == @\\\"{adxDatabase}\\\" // ADX\\r\\n        or\\r\\n        (PrettyName == @\\\"{adxDatabase}\\\" and isnotempty(toguid(DatabaseName))) // Fabric Kusto\\r\\n| project 1\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"\"}",
                   "isHiddenWhenLocked": true,
                   "queryType": 9
                 }
@@ -894,7 +894,7 @@
                       "formatName": "shortDateTimePattern"
                     },
                     "tooltipFormat": {
-                      "tooltip": "Workbook refresh date and time"
+                      "tooltip": "Dashboard refresh date and time"
                     }
                   },
                   {
@@ -1160,7 +1160,7 @@
     {
       "type": 1,
       "content": {
-        "json": "* On each heatmap, a hexagon represents a managed instance replica.\r\n* A color dot next to instance name represents the replica type:\r\n\t* 🔵 -> Primary\r\n\t* 🔘 -> HA secondary\r\n* Up to {topHitters} top resource consuming instances are shown. Use name filters or the `Instances` grid to find other instances.\r\n* Click on the instance name in a hexagon to open a detailed dashboard for that instance.\r\n* Hexagons colors are described below. Instances with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Log write`, `Workers`|Each hexagon is colored depending on average utilization in the selected time range, by band: green (0%-49%), yellow (50%-69%), orange (70%-89%), and red (90%-100%).|\r\n|`Requests`|Each hexagon is colored depending on the average rate of batch requests in the selected time range, with lighter colors representing lower rates, and darker colors representing higher rates.|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait categories and time range, using the green-to-orange color palette. Green represents minimal waits, orange represents higher waits compared to other instances on the same heatmap. Each wait category [maps](https://go.microsoft.com/fwlink/?linkid=2238095) to one or more individual wait types. Click on an instance name to see a chart of top wait types for that instance over time.|\r\n|`Storage IO`|Each hexagon is colored to reflect the magnitude of selected IO metric (average latency, total IO operations, total bytes) in the selected time range for either read or write IO, with colder colors such as blue representing lower rates, and warmer colors such as orange representing higher rates.|\r\n|`Connectivity`|Each hexagon is colored green if every connectivity probe for that instance in selected time range was successful. Otherwise, it is colored red, and the number of failed connectivity probes is shown at the bottom.|"
+        "json": "* On each heatmap, a hexagon represents a managed instance replica.\r\n* A color dot next to instance name represents the replica type:\r\n\t* 🔵 -> Primary\r\n\t* 🔘 -> HA secondary\r\n* Up to {topHitters} top resource consuming instances are shown. Use name filters or the `Instances` grid to find other instances.\r\n* Click on the instance name in a hexagon to open a detailed dashboard for that instance.\r\n* Hexagons colors are described below. Instances with insufficient data are colored gray.\r\n\r\n|Heatmap|Description|\r\n|:-|:-|\r\n|`CPU`, `Log write`, `Workers`|Each hexagon is colored depending on average utilization in the selected time range, by band: green (0%-49%), yellow (50%-89%), and red (90%-100%).|\r\n|`Requests`|Each hexagon is colored depending on the average rate of batch requests in the selected time range, with lighter colors representing lower rates, and darker colors representing higher rates.|\r\n|`Waits`|Each hexagon is colored depending on the cumulative time of waits in the selected wait categories and time range, with lighter colors representing lower waits, and darker colors representing higher waits. Each wait category [maps](https://go.microsoft.com/fwlink/?linkid=2238095) to one or more individual wait types. Click on an instance name to see a chart of top wait types for that instance over time.|\r\n|`Storage IO`|Each hexagon is colored to reflect the magnitude of the selected IO metric (average latency, IOPS, and throughput) in the selected time range for either read or write IO, with lighter colors representing lower rates, and darker colors representing higher rates.|\r\n|`Connectivity`|Each hexagon is colored green if every connectivity probe for that instance in selected time range was successful. Otherwise, it is colored orange, and the number of failed connectivity probes is shown at the bottom.|"
       },
       "conditionalVisibilities": [
         {
@@ -1276,7 +1276,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let cpu_utilization = materialize (\\r\\nsqlmi_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsummarize cpu_percentage = avg(avg_instance_cpu_percent), count_samples = dcount(sample_time_utc) by managed_instance_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\ncpu_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet cpu_timeline = (\\r\\ncpu_utilization\\r\\n| make-series cpu_percentage_timeline = max(cpu_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name, replica_type\\r\\n| project cpu_percentage_timeline = series_fill_linear(cpu_percentage_timeline, int(null), false), managed_instance_name, replica_type\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\ncpu_utilization\\r\\n| lookup total_sample_count on managed_instance_name, replica_type\\r\\n| summarize cpu_percentage = sum(cpu_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter cpu_timeline on managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, cpu_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(cpu_percentage)), cpu_percentage_timeline,\\r\\ncolor = case(\\r\\ntoreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\ncpu_percentage >= 90, \\\"red\\\",\\r\\ncpu_percentage >= 70, \\\"orange\\\",\\r\\ncpu_percentage >= 50, \\\"yellow\\\",\\r\\ncpu_percentage >= 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, cpu_percentage, color, cpu_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by cpu_percentage desc\\r\\n| sort by cpu_percentage desc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let cpu_utilization = materialize (\\r\\nsqlmi_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsummarize cpu_percentage = avg(avg_instance_cpu_percent), count_samples = dcount(sample_time_utc) by managed_instance_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\ncpu_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet cpu_timeline = (\\r\\ncpu_utilization\\r\\n| make-series cpu_percentage_timeline = max(cpu_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name, replica_type\\r\\n| project cpu_percentage_timeline = series_fill_linear(cpu_percentage_timeline, int(null), false), managed_instance_name, replica_type\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\ncpu_utilization\\r\\n| lookup total_sample_count on managed_instance_name, replica_type\\r\\n| summarize cpu_percentage = sum(cpu_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter cpu_timeline on managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, cpu_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(cpu_percentage)), cpu_percentage_timeline,\\r\\ncolor = case(\\r\\ntoreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\ncpu_percentage >= 90, \\\"red\\\",\\r\\ncpu_percentage >= 50, \\\"yellow\\\",\\r\\ncpu_percentage >= 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, cpu_percentage, color, cpu_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by cpu_percentage desc\\r\\n| sort by cpu_percentage desc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
         "size": 3,
         "showAnalytics": true,
         "noDataMessage": "There is no data for specified parameters.",
@@ -1388,6 +1388,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -1414,11 +1419,6 @@
                 "operator": "==",
                 "thresholdValue": "red",
                 "representation": "red"
-              },
-              {
-                "operator": "==",
-                "thresholdValue": "orange",
-                "representation": "orange"
               },
               {
                 "operator": "==",
@@ -1468,7 +1468,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let log_write_utilization = materialize (\\r\\nsqlmi_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsummarize log_write_percentage = avg(avg_instance_log_write_percent), count_samples = dcount(sample_time_utc) by managed_instance_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nlog_write_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet log_write_timeline = (\\r\\nlog_write_utilization\\r\\n| make-series log_write_percentage_timeline = max(log_write_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name, replica_type\\r\\n| project log_write_percentage_timeline = series_fill_linear(log_write_percentage_timeline, int(null), false), managed_instance_name, replica_type\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\nlog_write_utilization\\r\\n| lookup total_sample_count on managed_instance_name, replica_type\\r\\n| summarize log_write_percentage = sum(log_write_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter log_write_timeline on managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, log_write_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(log_write_percentage)), log_write_percentage_timeline,\\r\\ncolor = case(\\r\\ntoreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\nlog_write_percentage >= 90, \\\"red\\\",\\r\\nlog_write_percentage >= 70, \\\"orange\\\",\\r\\nlog_write_percentage >= 50, \\\"yellow\\\",\\r\\nlog_write_percentage >= 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, log_write_percentage, color, log_write_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by log_write_percentage desc\\r\\n| sort by log_write_percentage desc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let log_write_utilization = materialize (\\r\\nsqlmi_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsummarize log_write_percentage = avg(avg_instance_log_write_percent), count_samples = dcount(sample_time_utc) by managed_instance_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nlog_write_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet log_write_timeline = (\\r\\nlog_write_utilization\\r\\n| make-series log_write_percentage_timeline = max(log_write_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name, replica_type\\r\\n| project log_write_percentage_timeline = series_fill_linear(log_write_percentage_timeline, int(null), false), managed_instance_name, replica_type\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\nlog_write_utilization\\r\\n| lookup total_sample_count on managed_instance_name, replica_type\\r\\n| summarize log_write_percentage = sum(log_write_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter log_write_timeline on managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, log_write_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(log_write_percentage)), log_write_percentage_timeline,\\r\\ncolor = case(\\r\\ntoreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\nlog_write_percentage >= 90, \\\"red\\\",\\r\\nlog_write_percentage >= 50, \\\"yellow\\\",\\r\\nlog_write_percentage >= 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, log_write_percentage, color, log_write_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by log_write_percentage desc\\r\\n| sort by log_write_percentage desc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
         "size": 3,
         "showAnalytics": true,
         "noDataMessage": "There is no data for specified parameters.",
@@ -1580,6 +1580,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -1606,11 +1611,6 @@
                 "operator": "==",
                 "thresholdValue": "red",
                 "representation": "red"
-              },
-              {
-                "operator": "==",
-                "thresholdValue": "orange",
-                "representation": "orange"
               },
               {
                 "operator": "==",
@@ -1660,7 +1660,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let worker_utilization = materialize (\\r\\nsqlmi_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsummarize worker_percentage = avg(instance_worker_percent), count_samples = dcount(sample_time_utc) by managed_instance_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nworker_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet worker_timeline = (\\r\\nworker_utilization\\r\\n| make-series worker_percentage_timeline = max(worker_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name, replica_type\\r\\n| project worker_percentage_timeline = series_fill_linear(worker_percentage_timeline, int(null), false), managed_instance_name, replica_type\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\nworker_utilization\\r\\n| lookup total_sample_count on managed_instance_name, replica_type\\r\\n| summarize worker_percentage = sum(worker_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter worker_timeline on managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, worker_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(worker_percentage)), worker_percentage_timeline,\\r\\ncolor = case(\\r\\ntoreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\nworker_percentage >= 90, \\\"red\\\",\\r\\nworker_percentage >= 70, \\\"orange\\\",\\r\\nworker_percentage >= 50, \\\"yellow\\\",\\r\\nworker_percentage >= 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, worker_percentage, color, worker_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by worker_percentage desc\\r\\n| sort by worker_percentage desc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let worker_utilization = materialize (\\r\\nsqlmi_resource_utilization\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| partition hint.strategy = shuffle by managed_instance_name\\r\\n(\\r\\nsummarize worker_percentage = avg(instance_worker_percent), count_samples = dcount(sample_time_utc) by managed_instance_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nworker_utilization\\r\\n| summarize total_count_samples = sum(count_samples) by managed_instance_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet worker_timeline = (\\r\\nworker_utilization\\r\\n| make-series worker_percentage_timeline = max(worker_percentage) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by managed_instance_name, replica_type\\r\\n| project worker_percentage_timeline = series_fill_linear(worker_percentage_timeline, int(null), false), managed_instance_name, replica_type\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\nworker_utilization\\r\\n| lookup total_sample_count on managed_instance_name, replica_type\\r\\n| summarize worker_percentage = sum(worker_percentage * toreal(count_samples) / toreal(total_count_samples)), // weighted average\\r\\n            count_samples = sum(count_samples)\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter worker_timeline on managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, worker_percentage = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), toreal(worker_percentage)), worker_percentage_timeline,\\r\\ncolor = case(\\r\\ntoreal(count_samples)/expected_sample_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\nworker_percentage >= 90, \\\"red\\\",\\r\\nworker_percentage >= 50, \\\"yellow\\\",\\r\\nworker_percentage >= 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, worker_percentage, color, worker_percentage_timeline, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by worker_percentage desc\\r\\n| sort by worker_percentage desc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
         "size": 3,
         "showAnalytics": true,
         "noDataMessage": "There is no data for specified parameters.",
@@ -1772,6 +1772,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -1798,11 +1803,6 @@
                 "operator": "==",
                 "thresholdValue": "red",
                 "representation": "red"
-              },
-              {
-                "operator": "==",
-                "thresholdValue": "orange",
-                "representation": "orange"
               },
               {
                 "operator": "==",
@@ -1960,6 +1960,11 @@
             "formatOptions": {
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
+                {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
                 {
                   "operator": "Default",
                   "thresholdValue": null,
@@ -2198,6 +2203,11 @@
                     "thresholdsOptions": "icons",
                     "thresholdsGrid": [
                       {
+                        "operator": "is Empty",
+                        "representation": "Blank",
+                        "text": "{0}{1}"
+                      },
+                      {
                         "operator": "Default",
                         "thresholdValue": null,
                         "representation": "ResourceFlat",
@@ -2214,7 +2224,7 @@
                 "colorSettings": {
                   "nodeColorField": "wait_ms_per_second",
                   "type": 4,
-                  "heatmapPalette": "blueOrange",
+                  "heatmapPalette": "greenBlue",
                   "heatmapMin": null,
                   "heatmapMax": null,
                   "emptyValueColor": "gray"
@@ -2287,7 +2297,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server name to target instance name\\r\\nlet connection_server_target = materialize (\\r\\nsqlmi_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, managed_instance_name, replica_type) by connection_server_name, connection_application_intent\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nlet expected_probe_count = toscalar(\\r\\nsqlmi_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize count_samples = dcount(probe_time_utc) by managed_instance_name, replica_type\\r\\n| summarize percentile(count_samples, 90)\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\nsqlmi_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_target on connection_server_name, connection_application_intent // A failed probe has empty managed_instance_name. Look it up for the most recent successful probe with the same connection server name.\\r\\n| extend managed_instance_name = iif(isempty(managed_instance_name), managed_instance_name1, managed_instance_name),\\r\\n         replica_type = iif(isempty(replica_type), replica_type1, replica_type)\\r\\n{managedInstanceNameFilter}\\r\\n| summarize count_failed_probes = countif(probe_return_value != 1),\\r\\n            count_successful_probes = countif(probe_return_value == 1),\\r\\n            count_probes = count()\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, health_ratio = iif(toreal(count_probes)/expected_probe_count < 0.5, real(null), toreal(count_successful_probes) / toreal(count_probes)), count_failed_probes = iif(count_failed_probes > 0, count_failed_probes, int(null)),\\r\\ncolor = case(\\r\\ntoreal(count_probes)/expected_probe_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\ncount_failed_probes > 0, \\\"red\\\",\\r\\ncount_successful_probes > 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, health_ratio, count_failed_probes, color, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by health_ratio asc\\r\\n| sort by health_ratio asc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// Map connection server name to target instance name\\r\\nlet connection_server_target = materialize (\\r\\nsqlmi_connectivity\\r\\n| where probe_time_utc between (({timeRange:start} - 1h) .. ({timeRange:end} + 1h))\\r\\n| where probe_return_value == 1\\r\\n| summarize arg_max(probe_time_utc, managed_instance_name, replica_type) by connection_server_name, connection_application_intent\\r\\n| project-away probe_time_utc\\r\\n);\\r\\nlet expected_probe_count = toscalar(\\r\\nsqlmi_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize count_samples = dcount(probe_time_utc) by managed_instance_name, replica_type\\r\\n| summarize percentile(count_samples, 90)\\r\\n);\\r\\nlet instance_properties = (\\r\\nsqlmi_instance_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{managedInstanceNameFilter}\\r\\n| summarize arg_max(sample_time_utc, service_tier = case(service_tier =~ \\\"GeneralPurpose\\\", \\\"General Purpose\\\", service_tier =~ \\\"BusinessCritical\\\", \\\"Business Critical\\\", service_tier)) by managed_instance_name, replica_type\\r\\n);\\r\\nsqlmi_connectivity\\r\\n| where probe_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n| lookup connection_server_target on connection_server_name, connection_application_intent // A failed probe has empty managed_instance_name. Look it up for the most recent successful probe with the same connection server name.\\r\\n| extend managed_instance_name = iif(isempty(managed_instance_name), managed_instance_name1, managed_instance_name),\\r\\n         replica_type = iif(isempty(replica_type), replica_type1, replica_type)\\r\\n{managedInstanceNameFilter}\\r\\n| summarize count_failed_probes = countif(probe_return_value != 1),\\r\\n            count_successful_probes = countif(probe_return_value == 1),\\r\\n            count_probes = count()\\r\\n            by managed_instance_name, replica_type\\r\\n| join kind=leftouter instance_properties on managed_instance_name, replica_type\\r\\n| project managed_instance_name, replica_type, service_tier, health_ratio = iif(toreal(count_probes)/expected_probe_count < 0.5, real(null), toreal(count_successful_probes) / toreal(count_probes)), count_failed_probes = iif(count_failed_probes > 0, count_failed_probes, int(null)),\\r\\ncolor = case(\\r\\ntoreal(count_probes)/expected_probe_count < 0.5, \\\"gray\\\", // show color as grey (unknown) if the number of samples is much less than the representative number across all instances\\r\\ncount_failed_probes > 0, \\\"orange\\\",\\r\\ncount_successful_probes > 0, \\\"green\\\",\\r\\n\\\"\\\"\\r\\n),\\r\\ngrouper = case(\\r\\n\\\"{HeatmapGroupBy}\\\" == \\\"service_tier\\\", service_tier,\\r\\nmanaged_instance_name\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project managed_instance_name, decorated_managed_instance_name = strcat(replica_type_indicator, managed_instance_name), replica_type, health_ratio, count_failed_probes, color, grouper = iif(\\\"{HeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(managed_instance_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by health_ratio asc\\r\\n| sort by health_ratio asc, tolower(grouper) asc, tolower(managed_instance_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
         "size": 3,
         "showAnalytics": true,
         "noDataMessage": "There is no data for specified parameters.",
@@ -2398,6 +2408,11 @@
               "thresholdsOptions": "icons",
               "thresholdsGrid": [
                 {
+                  "operator": "is Empty",
+                  "representation": "Blank",
+                  "text": "{0}{1}"
+                },
+                {
                   "operator": "Default",
                   "thresholdValue": null,
                   "representation": "ResourceFlat",
@@ -2422,8 +2437,8 @@
               },
               {
                 "operator": "==",
-                "thresholdValue": "red",
-                "representation": "red"
+                "thresholdValue": "orange",
+                "representation": "orange"
               },
               {
                 "operator": "==",
@@ -2793,7 +2808,7 @@
                   {
                     "operator": ">",
                     "thresholdValue": "360",
-                    "representation": "2",
+                    "representation": "Clock",
                     "text": "{0}{1}"
                   },
                   {
@@ -2811,7 +2826,7 @@
                 }
               },
               "tooltipFormat": {
-                "tooltip": "Time difference between the last workbook refresh and the last sample in the managed instance properties dataset"
+                "tooltip": "Time difference between the last dashboard refresh and the last sample in the managed instance properties dataset"
               }
             }
           ],
