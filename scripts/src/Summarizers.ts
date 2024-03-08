@@ -1,30 +1,44 @@
 import { BestPracticeSummarizer } from "./Interfaces";
 
 const queryTypeToDisplayName: { [n: string]: string; } = {
+    ["-1"]: "sample data",
     ["0"]: "logs",
     ["1"]: "arg",
     ["2"]: "parameters",
+    ["3"]: "alerts (unsupported)",
     ["4"]: "azure health",
-    ["7"]: "merge",
+    ["5"]: "guest health (unsupported)",
     ["6"]: "custom rp",
-    ["10"]: "custom endpoint",
+    ["7"]: "merge",
     ["8"]: "json",
     ["9"]: "adx",
+    ["10"]: "custom endpoint",
     ["11"]: "intune",
     ["12"]: "arm",
     ["13"]: "changes",
     ["14"]: "msgraph",
     ["15"]: "permissions",
     ["16"]: "prom",
+    ["17"]: "gpt",
 };
 
 const stepTypesToName: { [n: string]: string; } = { 
     "1": "text", 
+    "2": "users (unsupported)", 
     "3": "query", 
+    "4": "funnels (unsupported)", 
+    "5": "retention (unsupported)", 
+    "6": "sessions (unsupported)", 
+    "7": "events (unsupported)", 
+    "8": "old parameters (unsupported)", 
     "9": "parameters", 
     "10": "metrics", 
     "11": "links/actions", 
-    "12": "groups" 
+    "12": "groups",
+    "13": "view repeater",
+    "14": "data repeater",
+    "15": "data source",
+    "16": "visualization",
 };
 
 const visualizationNames: { [n: string]: string; } = { 

@@ -66,7 +66,7 @@ directories.forEach(f => {
     
     logMessage(`Processing file/folder ${f}...`);
     if (fs.statSync(f).isDirectory()) {
-        const dirFiles = fs.readdirSync(f).filter(x => x.toLowerCase().endsWith(".workbook"));
+        const dirFiles = fs.readdirSync(f).filter(x => x.toLowerCase().endsWith(".workbook") || x.toLowerCase().endsWith(".json"));
         if (dirFiles || dirFiles?.length > 0) {
             files.push( ... dirFiles.map( df => f.concat("\\", df)))
         };

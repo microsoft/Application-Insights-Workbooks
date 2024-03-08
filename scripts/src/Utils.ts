@@ -50,7 +50,7 @@ export function testPath(path) : boolean {
         const data = fs.readFileSync(file, Encoding);
         return JSON.parse(data);
     } catch (err) {
-        logError("Cannot open file: " + file + " Error: " + err, true);
+        logError("Cannot open file: " + file + " Error: " + err);
     }
 }
 

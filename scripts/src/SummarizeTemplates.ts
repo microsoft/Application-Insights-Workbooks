@@ -30,7 +30,7 @@ const directories = getDirectoriesRecursive(directoryPath);
 const promises: Promise<BestPracticeResults>[] = [];
 directories.forEach(folder => {
     logMessage(`Processing folder ${folder}...`);
-    const files = fs.readdirSync(folder).filter(x => x.toLowerCase().endsWith(".workbook"));
+    const files = fs.readdirSync(folder).filter(x => x.toLowerCase().endsWith(".workbook") || x.toLowerCase().endsWith(".json"));
     if (!files || files.length === 0) {
       return;
     };
