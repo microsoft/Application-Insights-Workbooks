@@ -6,9 +6,10 @@ const fs = require('fs');
 const BestPractices = require('./BestPracticesAnalyzer');
 
 function usage(message: string) {
-    console.log("usage: analyzetemplates --severity:value [one or more files/folders]")
+    console.log("usage: analyzetemplates --severity:value -ignore:a,b,c [one or more files/folders]")
     console.log(" all .workbook files on the command line or in folders on the command line will be analyzed")
     console.log(" severity: 0=critical, 1=error, 2=warning, 3=information, 4=verbose (default). All severities below threshold will be output");
+    console.log(" ignore: comma separated list of rule ids to ignore");
     console.log(`\n${message}`);
     process.exit(1);
 }
@@ -40,6 +41,14 @@ if (settings.hasOwnProperty("severity")) {
         usage(`invalid severity level ${sevValue}.  Settings were ${JSON.stringify(settings)}`);
     }
 }
+// look for ones to ignore
+const ignoreSet = new Set<string>();
+if (settings.hasOwnProperty("ignore")) {
+    const ignoreList = settings["ignore"].split(",");
+    ignoreList.forEach( x => ignoreSet.add(x));
+    console.log(`Ignoring rules ${ignoreList.join(", ")}`);
+}
+
 
 const filesAndDirectories = args.filter(x=> !x.startsWith("--"));
 const directories = [];
@@ -93,6 +102,12 @@ Promise.allSettled(promises).then(results => {
             const ruleResults = result.value.ruleResults;
             const path = result.value.filePath;
             ruleResults?.forEach( ruleResult => {
+
+                // if this is in the ignore set, skip it
+                if (ignoreSet.has(ruleResult.ruleId)) {
+                    return;
+                }
+
                 let consoleWrite: (s) => void;
                 
                 switch (ruleResult.severity) {
