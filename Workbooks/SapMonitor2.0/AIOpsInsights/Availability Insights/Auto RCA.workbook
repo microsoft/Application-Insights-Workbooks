@@ -315,6 +315,12 @@
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces",
             "value": null
+          },
+          {
+            "id": "27979091-0f89-4823-865b-064fdc82ad1e",
+            "version": "KqlParameterItem/1.0",
+            "name": "SAPComponent",
+            "type": 1
           }
         ],
         "style": "pills",
@@ -366,7 +372,7 @@
             "multiSelect": true,
             "quote": "'",
             "delimiter": ",",
-            "query": "union isfuzzy = true(\r\n    SapNetweaver_GetSystemInstanceList_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct hostname_s\r\n    | project HOST_s = hostname_s\r\n),\r\n(\r\n    SapHana_SystemAvailability_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct HOST_s\r\n)",
+            "query": "union isfuzzy = true(\r\n    SapNetweaver_GetSystemInstanceList_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct hostname_s\r\n    | project HOST_s = hostname_s\r\n    | where \"{SAPComponent}\" == \"SAP NetWeaver\"\r\n),\r\n(\r\n    SapHana_SystemAvailability_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct HOST_s\r\n    | where \"{SAPComponent}\" == \"SAP Hana\"\r\n)",
             "crossComponentResources": [
               "{Workspace}"
             ],
@@ -377,19 +383,6 @@
               "showDefault": false
             },
             "defaultValue": "value::all",
-            "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces"
-          },
-          {
-            "id": "84afcc6c-4c47-4422-9bb1-99a94d242561",
-            "version": "KqlParameterItem/1.0",
-            "name": "SAPComponent",
-            "type": 1,
-            "query": "let vmList = split(\"{selVmName}\",\",\");\r\nSapHana_SystemAvailability_CL\r\n| summarize Count = countif(vmList has HOST_s)\r\n| project Result = iif(Count>0,\"SAP Hana\", \"SAP NetWeaver\")",
-            "crossComponentResources": [
-              "{Workspace}"
-            ],
-            "isHiddenWhenLocked": true,
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces"
           }
@@ -801,6 +794,13 @@
               "formatter": 5
             }
           ],
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "hostname_s"
+            ],
+            "expandTopLevel": true
+          },
           "labelSettings": [
             {
               "columnId": "description_s",
@@ -1999,8 +1999,8 @@
               },
               {
                 "parameterName": "vmIdsExist",
-                "comparison": "isNotEqualTo",
-                "value": "true"
+                "comparison": "isEqualTo",
+                "value": "false"
               }
             ],
             "name": "vmInsightsConfigure"
@@ -2018,18 +2018,25 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "VM2",
                   "type": 5,
-                  "query": "let vmList = split(\"{selVmName}\",\",\");\r\nCOMMON_VM_ArmId_Mapping_CL\r\n| where array_length(vmList) == 0 or vmList has vm_name_s\r\n| distinct VM_ARM_ID_s",
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "let vmList = split(\"{selVmName}\",\",\");\r\nCOMMON_VM_ArmId_Mapping_CL\r\n| where array_length(vmList) == 0 or vmList has vm_name_s\r\n| where isnotempty(VM_ARM_ID_s)\r\n| extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n| distinct VM_ARM_ID_s",
                   "crossComponentResources": [
                     "{Workspace}"
                   ],
                   "isHiddenWhenLocked": true,
                   "typeSettings": {
                     "additionalResourceOptions": [
-                      "value::1"
+                      "value::all"
                     ],
                     "showDefault": false
                   },
-                  "defaultValue": "value::1",
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "TimeRange",
+                  "defaultValue": "value::all",
                   "queryType": 0,
                   "resourceType": "microsoft.operationalinsights/workspaces"
                 },
@@ -2038,9 +2045,13 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "healthData",
                   "type": 1,
-                  "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{VM2}/providers/Microsoft.ResourceHealth/availabilityStatuses\",\"urlParams\":[{\"key\":\"api-version\",\"value\":\"2018-07-01\"},{\"key\":\"$filter\",\"value\":\"properties/availabilityState ne 'Available'\"}],\"batchDisabled\":true,\"transformers\":null}",
+                  "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| where id has '{SID}'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| extend vmName = split(vmId, '/')[-1]\r\n| distinct tostring(vmName)\r\n| extend vmList = split(\"{selVmName}\",\",\")\r\n| where array_length(vmList) == 0 or vmList has vmName\r\n| project vmName",
+                  "crossComponentResources": [
+                    "value::all"
+                  ],
                   "isHiddenWhenLocked": true,
-                  "queryType": 12
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
                 }
               ],
               "style": "pills",
@@ -2101,77 +2112,89 @@
             "name": "vmAvailabilityMetric"
           },
           {
-            "type": 10,
+            "type": 12,
             "content": {
-              "chartId": "workbook109e8457-0ebd-41b2-ab4a-be21f9b89323",
-              "version": "MetricsItem/2.0",
-              "size": 1,
-              "chartType": 2,
-              "resourceType": "microsoft.compute/virtualmachines",
-              "metricScope": 0,
-              "resourceParameter": "VM2",
-              "resourceIds": [
-                "{VM2}"
-              ],
-              "timeContextFromParameter": "TimeRange",
-              "timeContext": {
-                "durationMs": 3600000
-              },
-              "metrics": [
-                {
-                  "namespace": "microsoft.compute/virtualmachines",
-                  "metric": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
-                  "aggregation": 4,
-                  "splitBy": null,
-                  "columnName": "VM availability"
-                }
-              ],
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
               "title": "VM availability ({TimeRange:label})",
-              "gridSettings": {
-                "rowLimit": 10000
-              }
+              "items": [
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "No data available for the selected VM(s).",
+                    "style": "info"
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "VM2",
+                    "comparison": "isEqualTo"
+                  },
+                  "name": "nodata-message"
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook109e8457-0ebd-41b2-ab4a-be21f9b89323",
+                    "version": "MetricsItem/2.0",
+                    "size": 1,
+                    "chartType": 2,
+                    "resourceType": "microsoft.compute/virtualmachines",
+                    "metricScope": 0,
+                    "resourceParameter": "VM2",
+                    "resourceIds": [
+                      "{VM2}"
+                    ],
+                    "timeContextFromParameter": "TimeRange",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
+                        "aggregation": 4,
+                        "columnName": "VM availability"
+                      }
+                    ],
+                    "gridSettings": {
+                      "rowLimit": 10000
+                    }
+                  },
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "IsFixedGranularity",
+                      "comparison": "isEqualTo",
+                      "value": "false"
+                    },
+                    {
+                      "parameterName": "vmIdsExist",
+                      "comparison": "isEqualTo",
+                      "value": "true"
+                    },
+                    {
+                      "parameterName": "VM2",
+                      "comparison": "isNotEqualTo"
+                    }
+                  ],
+                  "name": "vmAvailabilityMetric - Auto Granularity"
+                }
+              ]
             },
-            "conditionalVisibilities": [
-              {
-                "parameterName": "IsFixedGranularity",
-                "comparison": "isEqualTo",
-                "value": "false"
-              },
-              {
-                "parameterName": "vmIdsExist",
-                "comparison": "isEqualTo",
-                "value": "true"
-              }
-            ],
-            "name": "vmAvailabilityMetric - Auto Granularity"
+            "name": "vmAvailabilityMetric"
           },
           {
             "type": 12,
             "content": {
               "version": "NotebookGroup/1.0",
               "groupType": "editable",
-              "title": "VM Health Events ({TimeRange:label})",
+              "title": "VM Health Events (Last 14 days)",
               "items": [
-                {
-                  "type": 1,
-                  "content": {
-                    "json": "No health events have been logged in this time period.",
-                    "style": "info"
-                  },
-                  "conditionalVisibility": {
-                    "parameterName": "healthData",
-                    "comparison": "isEqualTo",
-                    "value": "{\"value\":[],\"defaultVisualization\":\"raw\"}"
-                  },
-                  "name": "noInsightsNotice"
-                },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "print input = parse_json(\"{healthData:escapejson}\").value\r\n| mv-apply input to typeof(dynamic) on (\r\n    project properties=input.properties\r\n)\r\n| extend VM=\"{VM2}\"\r\n| evaluate bag_unpack(properties) : (VM: string, occuredTime: datetime, title: string, reasonType: string, summary: string, availabilityState: string, healthEventType: string, resolutionETA: datetime)\r\n| where occuredTime {TimeRange}\r\n| order by occuredTime desc",
-                    "size": 3,
-                    "noDataMessage": "No health events have been logged in this time period.",
+                    "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| where id has '{SID}'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| extend vmName = split(vmId, '/')[-1]\r\n| distinct vmId, visId, subscriptionId, tostring(vmName)\r\n| extend vmList = split(\"{selVmName}\",\",\")\r\n| where array_length(vmList) == 0 or vmList has vmName\r\n| join kind = inner (\r\n    healthresourcechanges\r\n    | where type == \"microsoft.resources/changes\"\r\n    | where properties.targetResourceType =~ \"microsoft.resourcehealth/resourceannotations\"\r\n    | extend Id = tolower(split(properties.targetResourceId, '/providers/Microsoft.ResourceHealth/resourceAnnotations/current')[0]),\r\n    Timestamp = todatetime(properties.changeAttributes.timestamp), AnnotationName = properties['changes']['properties.annotationName']['newValue'], Reason = properties['changes']['properties.reason']['newValue'], \r\n    Context = iff(isempty(properties['changes']['properties.context']['newValue']), \"-\", properties['changes']['properties.context']['newValue']),\r\n    Category = iff(isempty(properties['changes']['properties.category']['newValue']), \"-\", properties['changes']['properties.category']['newValue'])\r\n    | where isnotempty(AnnotationName)\r\n    | where Timestamp > ago(14d)) on $left.vmId == $right.Id\r\n| project subscriptionId, vmId, visId, Timestamp, Reason, AnnotationName, PreviousAnnotation = properties['changes']['properties.annotationName']['previousValue'], Context, Category \r\n| order by Timestamp desc\r\n| extend Timestamp = format_datetime(Timestamp, 'dd/MM/yyyy, hh:mm:ss tt')",
+                    "size": 0,
+                    "noDataMessage": "No health events have been logged in last 14 days.",
                     "exportedParameters": [
                       {
                         "fieldName": "availabilityState",
@@ -2204,106 +2227,89 @@
                         "parameterType": 1
                       }
                     ],
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
                     "crossComponentResources": [
-                      "{Workspace}"
+                      "value::all"
                     ],
-                    "visualization": "table",
                     "gridSettings": {
                       "formatters": [
                         {
-                          "columnMatch": "VM",
+                          "columnMatch": "$gen_group",
                           "formatter": 13,
                           "formatOptions": {
-                            "linkTarget": null,
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "subscriptionId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "vmId",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth"
+                          }
+                        },
+                        {
+                          "columnMatch": "visId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
                             "showIcon": true,
-                            "customColumnWidthSetting": "3%"
+                            "customColumnWidthSetting": "15ch"
                           }
                         },
                         {
-                          "columnMatch": "occuredTime",
-                          "formatter": 6,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "5%"
-                          },
-                          "dateFormat": {
-                            "showUtcTime": null,
-                            "formatName": "shortDateTimePattern"
-                          }
-                        },
-                        {
-                          "columnMatch": "title",
-                          "formatter": 1,
-                          "tooltipFormat": {
-                            "tooltip": "Click on this row to view more details on root cause."
-                          }
-                        },
-                        {
-                          "columnMatch": "reasonType",
-                          "formatter": 1,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "5%"
-                          }
-                        },
-                        {
-                          "columnMatch": "summary",
+                          "columnMatch": "Timestamp",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "availabilityState",
-                          "formatter": 5
+                          "columnMatch": "Reason",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "healthEventType",
-                          "formatter": 5
+                          "columnMatch": "AnnotationName",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "resolutionETA",
-                          "formatter": 5
+                          "columnMatch": "PreviousAnnotation",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "reasonChronicity",
-                          "formatter": 5
+                          "columnMatch": "Context",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "rootCauseAttributionTime",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "healthEventCause",
-                          "formatter": 5
+                          "columnMatch": "Category",
+                          "formatter": 1
                         }
                       ],
                       "filter": true,
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "vmId"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "Timestamp"
+                      },
                       "labelSettings": [
                         {
-                          "columnId": "occuredTime",
-                          "label": "Occured Time"
-                        },
-                        {
-                          "columnId": "title",
-                          "label": "Root Cause"
-                        },
-                        {
-                          "columnId": "reasonType",
-                          "label": "Reason Type"
+                          "columnId": "vmId",
+                          "label": "Virtual machine"
                         }
                       ]
                     }
                   },
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo"
-                    },
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo",
-                      "value": "{\"value\":[],\"defaultVisualization\":\"raw\"}"
-                    }
-                  ],
-                  "name": "vmHealthEvents"
+                  "name": "query - VM Health Changes (Last 14 days)",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
                 },
                 {
                   "type": 1,
@@ -2311,17 +2317,10 @@
                     "json": "These insights are only provided for SAP downtimes caused by Azure VM health events. Root causes provided by Health events does not cover 100% of VM downtimes",
                     "style": "warning"
                   },
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo"
-                    },
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo",
-                      "value": "{\"value\":[],\"defaultVisualization\":\"raw\"}"
-                    }
-                  ],
+                  "conditionalVisibility": {
+                    "parameterName": "healthData",
+                    "comparison": "isNotEqualTo"
+                  },
                   "name": "disclaimer"
                 },
                 {
