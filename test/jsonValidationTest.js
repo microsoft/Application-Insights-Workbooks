@@ -181,7 +181,7 @@ function validateJsonStringAndGetObject(file) {
         });
     }
 
-    if (!TrailingWhitespaceSlashRegex.test(file)) {
+    if (TrailingWhitespaceSlashRegex.test(file)) {
         assert.fail("Invalid file path: " + file + ". Trailing whitespace found before or after '/' or '\\'.");
     }
 
