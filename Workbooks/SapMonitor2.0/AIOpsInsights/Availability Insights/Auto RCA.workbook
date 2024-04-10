@@ -315,6 +315,12 @@
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces",
             "value": null
+          },
+          {
+            "id": "27979091-0f89-4823-865b-064fdc82ad1e",
+            "version": "KqlParameterItem/1.0",
+            "name": "SAPComponent",
+            "type": 1
           }
         ],
         "style": "pills",
@@ -360,33 +366,23 @@
             "id": "38856def-f524-46ed-a612-217dabaccaa1",
             "version": "KqlParameterItem/1.0",
             "name": "selVmName",
+            "label": "VM",
             "type": 2,
             "isRequired": true,
-            "query": "union isfuzzy = true(\r\n    SapNetweaver_GetSystemInstanceList_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct hostname_s\r\n    | project HOST_s = hostname_s\r\n),\r\n(\r\n    SapHana_SystemAvailability_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct HOST_s\r\n)",
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "union isfuzzy = true(\r\n    SapNetweaver_GetSystemInstanceList_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct hostname_s\r\n    | project HOST_s = hostname_s\r\n    | where \"{SAPComponent}\" == \"SAP NetWeaver\"\r\n),\r\n(\r\n    SapHana_SystemAvailability_CL\r\n    | where \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n    | distinct HOST_s\r\n    | where \"{SAPComponent}\" == \"SAP Hana\"\r\n)",
             "crossComponentResources": [
               "{Workspace}"
             ],
             "typeSettings": {
               "additionalResourceOptions": [
-                "value::1"
+                "value::all"
               ],
               "showDefault": false
             },
-            "defaultValue": "value::1",
-            "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces",
-            "label": "VM"
-          },
-          {
-            "id": "84afcc6c-4c47-4422-9bb1-99a94d242561",
-            "version": "KqlParameterItem/1.0",
-            "name": "SAPComponent",
-            "type": 1,
-            "query": "SapHana_SystemAvailability_CL\r\n| summarize Count = countif(HOST_s == \"{selVmName}\")\r\n| project Result = iif(Count>0,\"SAP Hana\", \"SAP NetWeaver\")",
-            "crossComponentResources": [
-              "{Workspace}"
-            ],
-            "isHiddenWhenLocked": true,
+            "defaultValue": "value::all",
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces"
           }
@@ -536,7 +532,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet binSize=tolong(\"{MinutesBin}\")*1m;\r\nlet hundredBin=datetime_diff(\"minute\", endTime, startTime);\r\n\r\nlet ParentAvailTable=SapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s =~ \"{SID}\" and hostname_s =~ \"{selVmName}\"\r\n| project description_s, SID_s, hostname_s, dispstatus_s, serverTimestamp_t, ApplicationServer=strcat(hostname_s, \"_\", iff(toint(instanceNr_d)<10, strcat(\"0\", toint(instanceNr_d)), tostring(toint(instanceNr_d))));\r\n\r\nParentAvailTable\r\n| make-series AvailabilityTrend=iff(count() > 0, round(toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, 1), real(null)) default=real(null) on serverTimestamp_t step binSize  by SID_s, hostname_s, description_s, ApplicationServer\r\n| project Availability=toreal(series_stats_dynamic(series_fill_const(AvailabilityTrend, 0.0)).avg), SID_s, hostname_s, description_s, ApplicationServer \r\n| join kind=inner (\r\n    ParentAvailTable\r\n        | make-series AvailabilityTrend=iff(count() > 0, round(toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, 1), real(null)) default=real(null) on serverTimestamp_t step iff(hundredBin<100, 1m, hundredBin/100*1m) by SID_s, hostname_s, description_s\r\n        | project AvailabilityTrend=series_fill_const(AvailabilityTrend, 0.0), SID_s, hostname_s, description_s\r\n) on hostname_s, description_s, SID_s\r\n| where hostname_s=~\"{selVmName}\"\r\n| project description_s, SID_s, ApplicationServer, hostname_s, Availability, AvailabilityTrend\r\n| extend Action=\"View\", Action2=\"View\", SAPComponent='SAP NetWeaver'",
+        "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\nlet vmList = split(\"{selVmName}\",\",\");\r\nlet binSize=tolong(\"{MinutesBin}\")*1m;\r\nlet hundredBin=datetime_diff(\"minute\", endTime, startTime);\r\n\r\nlet ParentAvailTable=SapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s =~ \"{SID}\" and \"{selProvider}\" contains PROVIDER_INSTANCE_s\r\n| where array_length(vmList) == 0 or vmList has hostname_s\r\n| project description_s, SID_s, hostname_s, dispstatus_s, serverTimestamp_t, ApplicationServer=strcat(hostname_s, \"_\", iff(toint(instanceNr_d)<10, strcat(\"0\", toint(instanceNr_d)), tostring(toint(instanceNr_d))));\r\n\r\nParentAvailTable\r\n| make-series AvailabilityTrend=iff(count() > 0, round(toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, 1), real(null)) default=real(null) on serverTimestamp_t step binSize  by SID_s, hostname_s, description_s, ApplicationServer\r\n| project Availability=toreal(series_stats_dynamic(series_fill_const(AvailabilityTrend, 0.0)).avg), SID_s, hostname_s, description_s, ApplicationServer \r\n| join kind=inner (\r\n    ParentAvailTable\r\n        | make-series AvailabilityTrend=iff(count() > 0, round(toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, 1), real(null)) default=real(null) on serverTimestamp_t step iff(hundredBin<100, 1m, hundredBin/100*1m) by SID_s, hostname_s, description_s\r\n        | project AvailabilityTrend=series_fill_const(AvailabilityTrend, 0.0), SID_s, hostname_s, description_s\r\n) on hostname_s, description_s, SID_s\r\n| where array_length(vmList) == 0 or vmList has hostname_s\r\n| project description_s, SID_s, ApplicationServer, hostname_s, Availability, AvailabilityTrend\r\n| extend Action=\"View\", Action2=\"View\", SAPComponent='SAP NetWeaver'",
         "size": 3,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
@@ -798,6 +794,13 @@
               "formatter": 5
             }
           ],
+          "hierarchySettings": {
+            "treeType": 1,
+            "groupBy": [
+              "hostname_s"
+            ],
+            "expandTopLevel": true
+          },
           "labelSettings": [
             {
               "columnId": "description_s",
@@ -862,7 +865,7 @@
             "version": "KqlParameterItem/1.0",
             "name": "param_database",
             "type": 1,
-            "query": "SapHana_size01_CL\r\n| where TimeGenerated > ago(1d)\r\n| where PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n| order by Time_Generated_t desc\r\n| take 1\r\n| project DATABASE_NAME_s",
+            "query": "SapHana_size01_CL\r\n| where TimeGenerated > ago(1d)\r\n| where \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n| order by Time_Generated_t desc\r\n| take 1\r\n| project DATABASE_NAME_s",
             "crossComponentResources": [
               "{Workspace}"
             ],
@@ -885,7 +888,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet binSize=iff(bin < 60, 60m, bin*1m);\r\nlet hundredBin=datetime_diff(\"hour\", endTime, startTime);\r\n\r\nlet availability_table = SapHana_SystemAvailability_CL\r\n| where Time_Generated_t between (startTime .. endTime)\r\n| where PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n| where HOST_s =~ \"{selVmName}\"\r\n| where SERVICE_NAME_s != \"\"\r\n| where DATABASE_NAME_s == \"{param_database}\"\r\n| extend service_event = iff(SERVICE_NAME_s == '', EVENT_NAME_s, SERVICE_NAME_s)\r\n| extend Status = case(SERVICE_ACTIVE_s == 'YES', 0,\r\n                       SERVICE_ACTIVE_s == 'STARTING', 1,\r\n                       SERVICE_ACTIVE_s == 'STOPPING', 2,                        \r\n                       SERVICE_ACTIVE_s == 'UNKNOWN', 3,\r\n                       4) //NO\r\n| project service_event, SERVICE_NAME_s, SERVICE_ACTIVE_s, Status, HOST_s, HOST_STATUS_s, HOST_ACTIVE_s, PORT_d, TimeGenerated, PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n;\r\nlet services_table = SapHana_Services_CL\r\n| where TimeGenerated > ago(24h)\r\n| where PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n| where HOST_s =~ \"{selVmName}\"\r\n| extend Status = case(ACTIVE_STATUS_s == 'YES', 0,\r\n                       ACTIVE_STATUS_s == 'STARTING', 1,\r\n                       ACTIVE_STATUS_s == 'STOPPING', 2,                        \r\n                       ACTIVE_STATUS_s == 'UNKNOWN', 3,\r\n                       4) //NO\r\n| project SERVICE_NAME_s, HOST_s, PORT_d, Status, ACTIVE_STATUS_s, TimeGenerated, PROVIDER_INSTANCE_s\r\n;\r\nlet finalTable = availability_table\r\n| union services_table\r\n| summarize total=count(), failureCount=countif(Status != 0) by service_event, SERVICE_NAME_s, HOST_s, PORT_d, SERVICE_ACTIVE_s, PROVIDER_INSTANCE_s\r\n| extend Availability = round(((toreal(total) - toreal(failureCount)) / toreal(total)) * 100, 2)\r\n| summarize Availability = round(avg(Availability), 2), AvailabilityTrend = make_list(Availability) by PORT_d, SERVICE_NAME_s, HOST_s, PROVIDER_INSTANCE_s\r\n| extend Database = \"{param_database}\", id=strcat(HOST_s, \"_\", SERVICE_NAME_s), Action = \"\", Action2 = \"\", parentid=HOST_s\r\n;\r\nunion(finalTable),\r\n(finalTable\r\n| distinct HOST_s\r\n| extend id=HOST_s, Action = \"View\", Action2 = \"View\", Display=HOST_s)",
+        "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet binSize=iff(bin < 60, 60m, bin*1m);\r\nlet hundredBin=datetime_diff(\"hour\", endTime, startTime);\r\nlet vmList = split(\"{selVmName}\",\",\");\r\n\r\nlet availability_table = SapHana_SystemAvailability_CL\r\n| where Time_Generated_t between (startTime .. endTime)\r\n| where \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n| where array_length(vmList) == 0 or vmList has HOST_s\r\n| where SERVICE_NAME_s != \"\"\r\n| where DATABASE_NAME_s == \"{param_database}\"\r\n| extend service_event = iff(SERVICE_NAME_s == '', EVENT_NAME_s, SERVICE_NAME_s)\r\n| extend Status = case(SERVICE_ACTIVE_s == 'YES', 0,\r\n                       SERVICE_ACTIVE_s == 'STARTING', 1,\r\n                       SERVICE_ACTIVE_s == 'STOPPING', 2,                        \r\n                       SERVICE_ACTIVE_s == 'UNKNOWN', 3,\r\n                       4) //NO\r\n| project service_event, SERVICE_NAME_s, SERVICE_ACTIVE_s, Status, HOST_s, HOST_STATUS_s, HOST_ACTIVE_s, PORT_d, TimeGenerated, PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n;\r\nlet services_table = SapHana_Services_CL\r\n| where TimeGenerated > ago(24h)\r\n| where \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n| where array_length(vmList) == 0 or vmList has HOST_s\r\n| extend Status = case(ACTIVE_STATUS_s == 'YES', 0,\r\n                       ACTIVE_STATUS_s == 'STARTING', 1,\r\n                       ACTIVE_STATUS_s == 'STOPPING', 2,                        \r\n                       ACTIVE_STATUS_s == 'UNKNOWN', 3,\r\n                       4) //NO\r\n| project SERVICE_NAME_s, HOST_s, PORT_d, Status, ACTIVE_STATUS_s, TimeGenerated, PROVIDER_INSTANCE_s\r\n;\r\nlet finalTable = availability_table\r\n| union services_table\r\n| summarize total=count(), failureCount=countif(Status != 0) by service_event, SERVICE_NAME_s, HOST_s, PORT_d, SERVICE_ACTIVE_s, PROVIDER_INSTANCE_s\r\n| extend Availability = round(((toreal(total) - toreal(failureCount)) / toreal(total)) * 100, 2)\r\n| summarize Availability = round(avg(Availability), 2), AvailabilityTrend = make_list(Availability) by PORT_d, SERVICE_NAME_s, HOST_s, PROVIDER_INSTANCE_s\r\n| extend Database = \"{param_database}\", id=strcat(HOST_s, \"_\", SERVICE_NAME_s), Action = \"\", Action2 = \"\", parentid=HOST_s\r\n;\r\nunion(finalTable),\r\n(finalTable\r\n| distinct HOST_s\r\n| extend id=HOST_s, Action = \"View\", Action2 = \"View\", Display=HOST_s)",
         "size": 3,
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
@@ -1234,8 +1237,7 @@
             "version": "KqlParameterItem/1.0",
             "name": "Process",
             "type": 2,
-            "isRequired": true,
-            "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nSapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\"\r\n| where hostname_s == \"{selVmName}\"\r\n| distinct description_s",
+            "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\nlet vmList = split(\"{selVmName}\",\",\");\r\nSapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\"\r\n| where array_length(vmList) == 0 or vmList has hostname_s\r\n| distinct description_s",
             "crossComponentResources": [
               "{Workspace}"
             ],
@@ -1283,7 +1285,7 @@
             "name": "Database",
             "type": 2,
             "isRequired": true,
-            "query": "SapHana_size01_CL \r\n| where SYSTEM_ID_s == \"{SID}\"\r\n| where PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n| distinct DATABASE_NAME_s",
+            "query": "SapHana_size01_CL \r\n| where SYSTEM_ID_s == \"{SID}\"\r\n| where \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n| distinct DATABASE_NAME_s",
             "crossComponentResources": [
               "{Workspace}"
             ],
@@ -1306,7 +1308,7 @@
             "multiSelect": true,
             "quote": "",
             "delimiter": ",",
-            "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nSapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where provider =~ \"{selProvider}\"\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_SystemAvailability_CL\r\n    | where Time_Generated_t between (startTime .. endTime)\r\n    | where PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s=~\"{Database}\"\r\n| extend Service=strcat(SERVICE_NAME_s, \" (:\", toint(PORT_d), \")\")\r\n| distinct Service",
+            "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nSapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where \"{selProvider}\" has provider\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_SystemAvailability_CL\r\n    | where Time_Generated_t between (startTime .. endTime)\r\n    | where \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s=~\"{Database}\"\r\n| extend Service=strcat(SERVICE_NAME_s, \" (:\", toint(PORT_d), \")\")\r\n| distinct Service",
             "crossComponentResources": [
               "{Workspace}"
             ],
@@ -1349,7 +1351,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet binSize = tolong(\"{MinutesBin}\");\r\n\r\nunion isfuzzy=true \r\n(SapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and hostname_s==\"{selVmName}\" and description_s==\"{Process}\"\r\n| project description_s, SID_s, hostname_s, dispstatus_s, TimeGenerated=serverTimestamp_t\r\n| make-series AvailabilityTrend=round(iff(count() > 0, toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, real(null)), 1) default=real(null) on TimeGenerated step binSize*1m\r\n| project Value=strcat(round(toreal(series_stats_dynamic(series_fill_const(AvailabilityTrend, 0.0)).avg), 1), \"%\"), Type=\"Availability\", Selection=\"Availability\", Tab=\"\", Order = 1),\r\n(SapNetweaver_SysLogs_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and hostname_s==\"{selVmName}\" and E2E_SEVERITY_s==1\r\n| distinct E2E_SEVERITY_s, E2E_HOST_s, Problem_Class_s, Application_Comp_s, Program_s, Msg_area_Msd_Id_s, Description_s, timestamp_t, E2E_USER_s\r\n| summarize Value=tostring(count())\r\n| extend Type=\"Error Messages SM21\", Selection=\"Application\", Tab=\"SysLogs\", Order = 2),\r\n(SapNetweaver_EnqueueRead_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and hostname_s==\"{selVmName}\"\r\n| summarize GTNAME = dcount(GNAME_s) by GMODE_s, GOBJ_s, GUNAME_s, GTWP_s, hostname_s, serverTimestamp_t\r\n| summarize Value=tostring(count())\r\n| extend Type=\"Lock Entries SM12\", Selection=\"Application\", Tab=\"LockEntries\", Order = 3),\r\n(SapNetweaver_BatchJobs_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and hostname_s==\"{selVmName}\"\r\n| distinct STATUS_s, STRTDATE_s, STRTTIME_s, SDLSTRTDT_s, SDLSTRTTM_s, JOBNAME_s, ENDDATE_s, ENDTIME_s \r\n| summarize Value=tostring(countif(STATUS_s == 'A' or STATUS_s == 'X'))\r\n| extend Type=\"Cancelled Jobs SM37\", Selection=\"Application\", Tab=\"BatchJob\", Order = 4)\r\n\r\n",
+              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\nlet vmList = split(\"{selVmName}\",\",\");\r\nlet binSize = tolong(\"{MinutesBin}\");\r\n\r\nunion isfuzzy=true \r\n(SapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and array_length(vmList) == 0 or vmList has hostname_s and description_s==\"{Process}\"\r\n| project description_s, SID_s, hostname_s, dispstatus_s, TimeGenerated=serverTimestamp_t\r\n| make-series AvailabilityTrend=round(iff(count() > 0, toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, real(null)), 1) default=real(null) on TimeGenerated step binSize*1m\r\n| project Value=strcat(round(toreal(series_stats_dynamic(series_fill_const(AvailabilityTrend, 0.0)).avg), 1), \"%\"), Type=\"Availability\", Selection=\"Availability\", Tab=\"\", Order = 1),\r\n(SapNetweaver_SysLogs_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and array_length(vmList) == 0 or vmList has hostname_s and E2E_SEVERITY_s==1\r\n| distinct E2E_SEVERITY_s, E2E_HOST_s, Problem_Class_s, Application_Comp_s, Program_s, Msg_area_Msd_Id_s, Description_s, timestamp_t, E2E_USER_s\r\n| summarize Value=tostring(count())\r\n| extend Type=\"Error Messages SM21\", Selection=\"Application\", Tab=\"SysLogs\", Order = 2),\r\n(SapNetweaver_EnqueueRead_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and array_length(vmList) == 0 or vmList has hostname_s\r\n| summarize GTNAME = dcount(GNAME_s) by GMODE_s, GOBJ_s, GUNAME_s, GTWP_s, hostname_s, serverTimestamp_t\r\n| summarize Value=tostring(count())\r\n| extend Type=\"Lock Entries SM12\", Selection=\"Application\", Tab=\"LockEntries\", Order = 3),\r\n(SapNetweaver_BatchJobs_CL\r\n| where serverTimestamp_t between (startTime .. endTime) and SID_s==\"{SID}\" and array_length(vmList) == 0 or vmList has hostname_s\r\n| distinct STATUS_s, STRTDATE_s, STRTTIME_s, SDLSTRTDT_s, SDLSTRTTM_s, JOBNAME_s, ENDDATE_s, ENDTIME_s \r\n| summarize Value=tostring(countif(STATUS_s == 'A' or STATUS_s == 'X'))\r\n| extend Type=\"Cancelled Jobs SM37\", Selection=\"Application\", Tab=\"BatchJob\", Order = 4)\r\n\r\n",
               "size": 4,
               "title": "{Process} Availability Insights",
               "queryType": 0,
@@ -1415,7 +1417,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet binSize=iff(bin < 60, 60, bin*1);\r\n\r\nlet insightsTable=SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where provider =~ \"{selProvider}\"\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_LoadHistory_CL\r\n    | where Time_Generated_t between (startTime .. endTime) and PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n) on PROVIDER_INSTANCE_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s==\"{Database}\";\r\n\r\nunion \r\n(insightsTable\r\n| make-series Trend=round(max(MEMORY_USED_d / MEMORY_SIZE_d * 100), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['max']), Trend, Type=\"Highest Memory Usage\", Order = 1),\r\n(insightsTable\r\n| make-series Trend=round(max(CPU_d), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['max']), Trend, Type=\"Highest CPU Usage\", Order = 2),\r\n(insightsTable\r\n| make-series Trend=round(avg(MEMORY_USED_d / MEMORY_SIZE_d * 100), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['avg']), Trend, Type=\"Average Memory Usage\", Order = 3),\r\n(insightsTable\r\n| make-series Trend=round(avg(CPU_d), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['avg']), Trend, Type=\"Average CPU Usage\", Order = 4)\r\n\r\n",
+              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet binSize=iff(bin < 60, 60, bin*1);\r\n\r\nlet insightsTable=SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where \"{selProvider}\" has provider\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_LoadHistory_CL\r\n    | where Time_Generated_t between (startTime .. endTime) and \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s==\"{Database}\";\r\n\r\nunion \r\n(insightsTable\r\n| make-series Trend=round(max(MEMORY_USED_d / MEMORY_SIZE_d * 100), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['max']), Trend, Type=\"Highest Memory Usage\", Order = 1),\r\n(insightsTable\r\n| make-series Trend=round(max(CPU_d), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['max']), Trend, Type=\"Highest CPU Usage\", Order = 2),\r\n(insightsTable\r\n| make-series Trend=round(avg(MEMORY_USED_d / MEMORY_SIZE_d * 100), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['avg']), Trend, Type=\"Average Memory Usage\", Order = 3),\r\n(insightsTable\r\n| make-series Trend=round(avg(CPU_d), 1) default=real(null) on Time_Generated_t step binSize*1m\r\n| project Value=todouble(series_stats_dynamic(Trend)['avg']), Trend, Type=\"Average CPU Usage\", Order = 4)\r\n\r\n",
               "size": 3,
               "title": "{Database} Server Load",
               "queryType": 0,
@@ -1496,7 +1498,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet binSize=iff(bin < 60, 60, bin*1);\r\n\r\nlet disksData = SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where provider == \"{selProvider}\"\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_Disks_CL\r\n    | where Time_Generated_t between (startTime .. endTime) and PROVIDER_INSTANCE_s == \"{selProvider}\"\r\n) on PROVIDER_INSTANCE_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s==\"{Database}\" and USAGE_TYPE_s !has \"LOG\";\r\n\r\nunion\r\n(disksData\r\n| summarize Value=round(max(toreal(USED_SIZE_d)/toreal(TOTAL_SIZE_d)*100), 1)\r\n| extend Type=\"Used\"),\r\n(disksData\r\n| summarize Value=round(100 - max(toreal(USED_SIZE_d)/toreal(TOTAL_SIZE_d)*100), 1)\r\n| extend Type=\"Free\")\r\n\r\n",
+              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet binSize=iff(bin < 60, 60, bin*1);\r\n\r\nlet disksData = SapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where \"{selProvider}\" has provider\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_Disks_CL\r\n    | where Time_Generated_t between (startTime .. endTime) and \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s==\"{Database}\" and USAGE_TYPE_s !has \"LOG\";\r\n\r\nunion\r\n(disksData\r\n| summarize Value=round(max(toreal(USED_SIZE_d)/toreal(TOTAL_SIZE_d)*100), 1)\r\n| extend Type=\"Used\"),\r\n(disksData\r\n| summarize Value=round(100 - max(toreal(USED_SIZE_d)/toreal(TOTAL_SIZE_d)*100), 1)\r\n| extend Type=\"Free\")\r\n\r\n",
               "size": 1,
               "title": "Disk Usage",
               "queryType": 0,
@@ -1747,7 +1749,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet binSize = tolong(\"{MinutesBin}\");\r\n\r\nSapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime)\r\n| where SID_s==\"{SID}\" and description_s==\"{Process}\" and hostname_s==\"{selVmName}\"\r\n| project description_s, SID_s, hostname_s, dispstatus_s, TimeGenerated=serverTimestamp_t\r\n| summarize Availability=round(iff(count() > 0, toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, toreal(0)), 1) by bin(TimeGenerated, binSize * 1m)",
+              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\nlet vmList = split(\"{selVmName}\",\",\");\r\nlet binSize = tolong(\"{MinutesBin}\");\r\n\r\nSapNetweaver_GetProcessList_CL\r\n| where serverTimestamp_t between (startTime .. endTime)\r\n| where SID_s==\"{SID}\" and description_s==\"{Process}\" and array_length(vmList) == 0 or vmList has hostname_s\r\n| project description_s, SID_s, hostname_s, dispstatus_s, TimeGenerated=serverTimestamp_t\r\n| summarize Availability=round(iff(count() > 0, toreal(countif(dispstatus_s == 'SAPControl-GREEN')) / toreal(count()) * 100, toreal(0)), 1) by bin(TimeGenerated, binSize * 1m)",
               "size": 1,
               "aggregation": 3,
               "title": "{Process} Availability Status Trend",
@@ -1787,7 +1789,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet hundredBin=datetime_diff(\"hour\", endTime, startTime);\r\n\r\nSapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where provider =~ \"{selProvider}\"\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_SystemAvailability_CL\r\n    | where Time_Generated_t between (startTime .. endTime)\r\n    | where PROVIDER_INSTANCE_s =~ \"{selProvider}\"\r\n) on PROVIDER_INSTANCE_s\r\n| project-away DATABASE_NAME_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s == \"{Database}\"\r\n| project HOST_ACTIVE_s, TimeGenerated=Time_Generated_t\r\n| summarize Availability=round(iff(count() > 0, toreal(countif(HOST_ACTIVE_s == 'YES')) / toreal(count()) * 100, real(null)), 1) by bin(TimeGenerated, iff(hundredBin<100, 1h, hundredBin/100*1h))",
+              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet hundredBin=datetime_diff(\"hour\", endTime, startTime);\r\n\r\nSapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where \"{selProvider}\" has provider\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| join kind=inner (SapHana_SystemAvailability_CL\r\n    | where Time_Generated_t between (startTime .. endTime)\r\n    | where \"{selProvider}\" has PROVIDER_INSTANCE_s\r\n) on PROVIDER_INSTANCE_s\r\n| project-away DATABASE_NAME_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s == \"{Database}\"\r\n| project HOST_ACTIVE_s, TimeGenerated=Time_Generated_t\r\n| summarize Availability=round(iff(count() > 0, toreal(countif(HOST_ACTIVE_s == 'YES')) / toreal(count()) * 100, real(null)), 1) by bin(TimeGenerated, iff(hundredBin<100, 1h, hundredBin/100*1h))",
               "size": 1,
               "aggregation": 3,
               "title": "{Database} Availability Status Trend",
@@ -1827,7 +1829,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet hundredBin=datetime_diff(\"hour\", endTime, startTime);\r\n\r\nlet services=split(\"{Service}\", \",\");\r\n\r\nSapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where provider =~ \"{selProvider}\"\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| mv-expand bagexpansion=array Service=services to typeof(string)\r\n| extend service_name=iff(isnotempty(Service), tostring(split(Service, \" (:\")[0]), \"\"), service_port=toreal(iff(isnotempty(Service), replace_string(tostring(split(Service, \" (:\")[1]), \")\", \"\"), \"\"))\r\n| join kind=inner (SapHana_SystemAvailability_CL\r\n    | where Time_Generated_t between (startTime .. endTime)\r\n    | where PROVIDER_INSTANCE_s =~ \"{selProvider}\" and HOST_s==\"{selVmName}\"\r\n) on PROVIDER_INSTANCE_s, $right.SERVICE_NAME_s==$left.service_name and $right.PORT_d==$left.service_port\r\n| project-away DATABASE_NAME_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s == \"{Database}\"\r\n| project SERVICE_ACTIVE_s, TimeGenerated=Time_Generated_t, Service\r\n| summarize Availability=round(iff(count() > 0, toreal(countif(SERVICE_ACTIVE_s == 'YES')) / toreal(count()) * 100, real(null)), 1) by bin(TimeGenerated, iff(hundredBin<100, 1h, hundredBin/100*1h)), Service",
+              "query": "let startTime = todatetime(\"{StartTime}\");\r\nlet endTime = todatetime(\"{EndTime}\");\r\n\r\nlet bin = tolong(\"{MinutesBin}\");\r\nlet hundredBin=datetime_diff(\"hour\", endTime, startTime);\r\n\r\nlet services=split(\"{Service}\", \",\");\r\n\r\nSapHana_SystemOverview_CL \r\n| extend sid = tostring(VALUE_s)\r\n| extend provider = tostring(PROVIDER_INSTANCE_s)\r\n| where \"{selProvider}\" has provider\r\n| where NAME_s == \"Instance ID\" and sid == \"{SID}\"\r\n| distinct SID_s = sid, PROVIDER_INSTANCE_s=provider\r\n| mv-expand bagexpansion=array Service=services to typeof(string)\r\n| extend service_name=iff(isnotempty(Service), tostring(split(Service, \" (:\")[0]), \"\"), service_port=toreal(iff(isnotempty(Service), replace_string(tostring(split(Service, \" (:\")[1]), \")\", \"\"), \"\"))\r\n| join kind=inner (SapHana_SystemAvailability_CL\r\n    | where Time_Generated_t between (startTime .. endTime)\r\n    | where \"{selProvider}\" has PROVIDER_INSTANCE_s and array_length(vmList) == 0 or vmList has HOST_s\r\n) on PROVIDER_INSTANCE_s, $right.SERVICE_NAME_s==$left.service_name and $right.PORT_d==$left.service_port\r\n| project-away DATABASE_NAME_s\r\n| join kind=inner (SapHana_size01_CL \r\n    | where SYSTEM_ID_s == \"{SID}\"\r\n    | distinct PROVIDER_INSTANCE_s, DATABASE_NAME_s\r\n    ) on PROVIDER_INSTANCE_s\r\n| where DATABASE_NAME_s == \"{Database}\"\r\n| project SERVICE_ACTIVE_s, TimeGenerated=Time_Generated_t, Service\r\n| summarize Availability=round(iff(count() > 0, toreal(countif(SERVICE_ACTIVE_s == 'YES')) / toreal(count()) * 100, real(null)), 1) by bin(TimeGenerated, iff(hundredBin<100, 1h, hundredBin/100*1h)), Service",
               "size": 1,
               "aggregation": 3,
               "title": "Service Availability Status Trend for {Database}",
@@ -1997,8 +1999,8 @@
               },
               {
                 "parameterName": "vmIdsExist",
-                "comparison": "isNotEqualTo",
-                "value": "true"
+                "comparison": "isEqualTo",
+                "value": "false"
               }
             ],
             "name": "vmInsightsConfigure"
@@ -2016,18 +2018,25 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "VM2",
                   "type": 5,
-                  "query": "COMMON_VM_ArmId_Mapping_CL\r\n| where vm_name_s == \"{selVmName}\"\r\n| distinct VM_ARM_ID_s",
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "let vmList = split(\"{selVmName}\",\",\");\r\nCOMMON_VM_ArmId_Mapping_CL\r\n| where array_length(vmList) == 0 or vmList has vm_name_s\r\n| where isnotempty(VM_ARM_ID_s)\r\n| extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n| distinct VM_ARM_ID_s",
                   "crossComponentResources": [
                     "{Workspace}"
                   ],
                   "isHiddenWhenLocked": true,
                   "typeSettings": {
                     "additionalResourceOptions": [
-                      "value::1"
+                      "value::all"
                     ],
                     "showDefault": false
                   },
-                  "defaultValue": "value::1",
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "TimeRange",
+                  "defaultValue": "value::all",
                   "queryType": 0,
                   "resourceType": "microsoft.operationalinsights/workspaces"
                 },
@@ -2036,9 +2045,13 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "healthData",
                   "type": 1,
-                  "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":null,\"headers\":[],\"method\":\"GET\",\"path\":\"{VM2}/providers/Microsoft.ResourceHealth/availabilityStatuses\",\"urlParams\":[{\"key\":\"api-version\",\"value\":\"2018-07-01\"},{\"key\":\"$filter\",\"value\":\"properties/availabilityState ne 'Available'\"}],\"batchDisabled\":true,\"transformers\":null}",
+                  "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| where id has '{SID}'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| extend vmName = split(vmId, '/')[-1]\r\n| distinct tostring(vmName)\r\n| extend vmList = split(\"{selVmName}\",\",\")\r\n| where array_length(vmList) == 0 or vmList has vmName\r\n| project vmName",
+                  "crossComponentResources": [
+                    "value::all"
+                  ],
                   "isHiddenWhenLocked": true,
-                  "queryType": 12
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
                 }
               ],
               "style": "pills",
@@ -2051,6 +2064,21 @@
               "value": "true"
             },
             "name": "vmInsightParams"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "No data available for the selected VM(s).",
+              "style": "info"
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "vmIdsExist",
+                "comparison": "isNotEqualTo",
+                "value": "true"
+              }
+            ],
+            "name": "nodata-message"
           },
           {
             "type": 10,
@@ -2148,28 +2176,15 @@
             "content": {
               "version": "NotebookGroup/1.0",
               "groupType": "editable",
-              "title": "VM Health Events ({TimeRange:label})",
+              "title": "VM Health Events (Last 14 days)",
               "items": [
-                {
-                  "type": 1,
-                  "content": {
-                    "json": "No health events have been logged in this time period.",
-                    "style": "info"
-                  },
-                  "conditionalVisibility": {
-                    "parameterName": "healthData",
-                    "comparison": "isEqualTo",
-                    "value": "{\"value\":[],\"defaultVisualization\":\"raw\"}"
-                  },
-                  "name": "noInsightsNotice"
-                },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "print input = parse_json(\"{healthData:escapejson}\").value\r\n| mv-apply input to typeof(dynamic) on (\r\n    project properties=input.properties\r\n)\r\n| extend VM=\"{VM2}\"\r\n| evaluate bag_unpack(properties) : (VM: string, occuredTime: datetime, title: string, reasonType: string, summary: string, availabilityState: string, healthEventType: string, resolutionETA: datetime)\r\n| where occuredTime {TimeRange}\r\n| order by occuredTime desc",
-                    "size": 3,
-                    "noDataMessage": "No health events have been logged in this time period.",
+                    "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| where id has '{SID}'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| extend vmName = split(vmId, '/')[-1]\r\n| distinct vmId, visId, subscriptionId, tostring(vmName)\r\n| extend vmList = split(\"{selVmName}\",\",\")\r\n| where array_length(vmList) == 0 or vmList has vmName\r\n| join kind = inner (\r\n    healthresourcechanges\r\n    | where type == \"microsoft.resources/changes\"\r\n    | where properties.targetResourceType =~ \"microsoft.resourcehealth/resourceannotations\"\r\n    | extend Id = tolower(split(properties.targetResourceId, '/providers/Microsoft.ResourceHealth/resourceAnnotations/current')[0]),\r\n    Timestamp = todatetime(properties.changeAttributes.timestamp), AnnotationName = properties['changes']['properties.annotationName']['newValue'], Reason = properties['changes']['properties.reason']['newValue'], \r\n    Context = iff(isempty(properties['changes']['properties.context']['newValue']), \"-\", properties['changes']['properties.context']['newValue']),\r\n    Category = iff(isempty(properties['changes']['properties.category']['newValue']), \"-\", properties['changes']['properties.category']['newValue'])\r\n    | where isnotempty(AnnotationName)\r\n    | where Timestamp > ago(14d)) on $left.vmId == $right.Id\r\n| project subscriptionId, vmId, visId, Timestamp, Reason, AnnotationName, PreviousAnnotation = properties['changes']['properties.annotationName']['previousValue'], Context, Category \r\n| order by Timestamp desc\r\n| extend Timestamp = format_datetime(Timestamp, 'dd/MM/yyyy, hh:mm:ss tt')",
+                    "size": 0,
+                    "noDataMessage": "No health events have been logged in last 14 days.",
                     "exportedParameters": [
                       {
                         "fieldName": "availabilityState",
@@ -2202,106 +2217,89 @@
                         "parameterType": 1
                       }
                     ],
-                    "queryType": 0,
-                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
                     "crossComponentResources": [
-                      "{Workspace}"
+                      "value::all"
                     ],
-                    "visualization": "table",
                     "gridSettings": {
                       "formatters": [
                         {
-                          "columnMatch": "VM",
+                          "columnMatch": "$gen_group",
                           "formatter": 13,
                           "formatOptions": {
-                            "linkTarget": null,
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "subscriptionId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "vmId",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth"
+                          }
+                        },
+                        {
+                          "columnMatch": "visId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
                             "showIcon": true,
-                            "customColumnWidthSetting": "3%"
+                            "customColumnWidthSetting": "15ch"
                           }
                         },
                         {
-                          "columnMatch": "occuredTime",
-                          "formatter": 6,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "5%"
-                          },
-                          "dateFormat": {
-                            "showUtcTime": null,
-                            "formatName": "shortDateTimePattern"
-                          }
-                        },
-                        {
-                          "columnMatch": "title",
-                          "formatter": 1,
-                          "tooltipFormat": {
-                            "tooltip": "Click on this row to view more details on root cause."
-                          }
-                        },
-                        {
-                          "columnMatch": "reasonType",
-                          "formatter": 1,
-                          "formatOptions": {
-                            "customColumnWidthSetting": "5%"
-                          }
-                        },
-                        {
-                          "columnMatch": "summary",
+                          "columnMatch": "Timestamp",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "availabilityState",
-                          "formatter": 5
+                          "columnMatch": "Reason",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "healthEventType",
-                          "formatter": 5
+                          "columnMatch": "AnnotationName",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "resolutionETA",
-                          "formatter": 5
+                          "columnMatch": "PreviousAnnotation",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "reasonChronicity",
-                          "formatter": 5
+                          "columnMatch": "Context",
+                          "formatter": 1
                         },
                         {
-                          "columnMatch": "rootCauseAttributionTime",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "healthEventCause",
-                          "formatter": 5
+                          "columnMatch": "Category",
+                          "formatter": 1
                         }
                       ],
                       "filter": true,
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "vmId"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "Timestamp"
+                      },
                       "labelSettings": [
                         {
-                          "columnId": "occuredTime",
-                          "label": "Occured Time"
-                        },
-                        {
-                          "columnId": "title",
-                          "label": "Root Cause"
-                        },
-                        {
-                          "columnId": "reasonType",
-                          "label": "Reason Type"
+                          "columnId": "vmId",
+                          "label": "Virtual machine"
                         }
                       ]
                     }
                   },
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo"
-                    },
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo",
-                      "value": "{\"value\":[],\"defaultVisualization\":\"raw\"}"
-                    }
-                  ],
-                  "name": "vmHealthEvents"
+                  "name": "query - VM Health Changes (Last 14 days)",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
                 },
                 {
                   "type": 1,
@@ -2309,17 +2307,10 @@
                     "json": "These insights are only provided for SAP downtimes caused by Azure VM health events. Root causes provided by Health events does not cover 100% of VM downtimes",
                     "style": "warning"
                   },
-                  "conditionalVisibilities": [
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo"
-                    },
-                    {
-                      "parameterName": "healthData",
-                      "comparison": "isNotEqualTo",
-                      "value": "{\"value\":[],\"defaultVisualization\":\"raw\"}"
-                    }
-                  ],
+                  "conditionalVisibility": {
+                    "parameterName": "healthData",
+                    "comparison": "isNotEqualTo"
+                  },
                   "name": "disclaimer"
                 },
                 {
