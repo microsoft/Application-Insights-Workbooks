@@ -26,6 +26,7 @@ const LocKeys = [
     "markDown" // specific to cohorts
 ];
 
+const TrailingAndLeadingWhitespaceSlashRegex = /\s\/|\/\s|\s\\|\\\s/;
 
 const GallerySchema = "https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/master/schema/gallery.json";
 const GalleryVersion = "TemplateGallery/1.0";
@@ -169,6 +170,7 @@ function validateJsonStringAndGetObject(file) {
     // also validate the file name. 
     // * it can have either / or \ but not both.
     // * it cannnot have & or ? or #
+    // * it cannot have a trailing or leading whitespace from the slash
     if (file.indexOf("/") !== -1 && file.indexOf("\\") !== -1) {
         assert.fail("Filename contains both '/' and '\\' characters: '" + file + "'")
     } else {
@@ -177,6 +179,10 @@ function validateJsonStringAndGetObject(file) {
                 assert.fail("Filename contains invalid '" + c + "' character: '" + file + "'");
             }
         });
+    }
+
+    if (TrailingAndLeadingWhitespaceSlashRegex.test(file)) {
+        assert.fail("Invalid file path: " + file + ". Trailing whitespace found before or after '/' or '\\'.");
     }
 
     let json = fs.readFileSync(file, 'utf8');
