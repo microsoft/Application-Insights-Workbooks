@@ -48,6 +48,13 @@ If you are adding new items to a gallery, or adding new gallery entirely, you ca
    If it works correctly, you'll see a banner in the gallery:
    ![Gallery Redirect Banner](Images/GalleryRedirect.png)
 
+> [!NOTE]
+> When you access the Package in your browser, you must not put a / (slash) at the end of the Package parameter.
+> - Correct:<br>
+>   `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
+> - In correct:<br>
+>   `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package/`
+
 ### Uploading package content
 There are 2 ways to host your built packages. Choose one of them.
 
