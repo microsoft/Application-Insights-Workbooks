@@ -58,16 +58,6 @@
                   "resourceType": "microsoft.operationalinsights/workspaces"
                 },
                 {
-                  "id": "220d856b-31a6-4caa-9dc4-60c1e7733d5f",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "param_check_tables",
-                  "type": 1,
-                  "query": "let checktable = (tb:string, columnName:string)\r\n{\r\n// 0 = no error\r\n// 1 = table does not exist\r\n// 2 = table exists, but column v1 does not (or) column v1 exists but no data in the table (need to wait)\r\nlet dummy = \"unmÃ¶glicher-wert!\";\r\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\r\nlet checkRecords =\r\n  union\r\n    isfuzzy=true MissingTable,\r\n    (table(tb)\r\n      | summarize records = count()\r\n    )\r\n  | project records\r\n  | top 1 by records desc\r\n;\r\nlet checkTableExists =\r\n  union\r\n    isfuzzy=true MissingTable,\r\n    (table(tb)\r\n      | count\r\n      | extend miss = 0\r\n    )\r\n  | project miss\r\n  | limit 2\r\n  | top 1 by miss asc\r\n;\r\nlet checkColumnExists =\r\n  union\r\n    isfuzzy=true MissingTable,\r\n    (table(tb)\r\n      | extend miss = 0\r\n      | extend columnV1 = column_ifexists(columnName, dummy)\r\n    )\r\n  | project miss, columnV1\r\n  | limit 2\r\n  | top 1 by miss asc\r\n ;\r\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != 1);\r\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\r\nlet tableRecords = toscalar(checkRecords | summarize max(records));\r\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\r\ntoscalar(x)\r\n};\r\nlet locksAndBlocks = checktable(\"DB2_LocksAndBlocks_CL\", \"sapsid_s\");\r\n\r\nprint strcat('DB2_LocksAndBlocks_CL:',locksAndBlocks)",
-                  "isHiddenWhenLocked": true,
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                },
-                {
                   "id": "dbcc133e-be14-41d5-ad46-27ac24d31526",
                   "version": "KqlParameterItem/1.0",
                   "name": "oracleProviderExist",
@@ -254,7 +244,7 @@
                           "allowCustom": false
                         },
                         "value": {
-                          "durationMs": 5184000000
+                          "durationMs": 900000
                         }
                       },
                       {
@@ -379,6 +369,11 @@
                     "json": "## Azure Monitor for SAP solutions on Oracle Database\n---\n\n<b style=\"color:DodgerBlue;\">Oracle Instance:</b> {OracleSID} </br>\n<b style=\"color:DodgerBlue;\">Oracle Version:</b> {OracleVersion} Edition {OracleEdition} </br>\n<b style=\"color:DodgerBlue;\">SAP Instance:</b> {SAPSid} </br>\n<b style=\"color:DodgerBlue;\">OS Platform:</b> {OsPlatform}\n"
                   },
                   "customWidth": "50",
+                  "conditionalVisibility": {
+                    "parameterName": "Visual",
+                    "comparison": "isEqualTo",
+                    "value": "true"
+                  },
                   "name": "text - 2"
                 },
                 {
@@ -450,63 +445,202 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project INSTANCE_NAME_s, DATABASE_STATUS_s, TimeGenerated ,PROVIDER_INSTANCE_s\r\n| summarize z=countif(DATABASE_STATUS_s == 'ACTIVE'), nz=countif(DATABASE_STATUS_s != 'ACTIVE')\r\n| project AvailPerc = toreal((z/(nz+z))*100)\r\n\r\n",
-                          "size": 0,
-                          "title": "Availability",
+                          "query": "ORA_SystemAvailability_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| extend Status = iff(ACTIVE_STATE_s == 'NORMAL', 0, 1)\r\n| summarize availability=countif(Status == 0), total=count() by PROVIDER_INSTANCE_s\r\n| extend availability = round((availability / total) * 100, 2)| extend Title = \"DB Availability\"\r\n",
+                          "size": 4,
                           "timeContextFromParameter": "TimeFrame",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
-                          "visualization": "graph",
-                          "graphSettings": {
-                            "type": 2,
-                            "topContent": {},
-                            "centerContent": {
-                              "columnMatch": "AvailPerc",
-                              "formatter": 0,
+                          "visualization": "tiles",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Title",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "availability",
+                              "formatter": 18,
+                              "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                  {
+                                    "operator": "<",
+                                    "thresholdValue": "100",
+                                    "representation": "4",
+                                    "text": "{0}{1}%"
+                                  },
+                                  {
+                                    "operator": "Default",
+                                    "thresholdValue": null,
+                                    "representation": "success",
+                                    "text": "{0}{1}%"
+                                  }
+                                ]
+                              }
+                            },
+                            "secondaryContent": {
+                              "columnMatch": "Status",
+                              "formatter": 1
+                            },
+                            "showBorder": true,
+                            "size": "full"
+                          }
+                        },
+                        "customWidth": "25",
+                        "name": "query - 4"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "ORA_CPU_Overview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project Time_Generated_t, CAPTURE_TIME_s, CPU_FREE_PERCENTAGE_d\r\n| summarize avg(CPU_FREE_PERCENTAGE_d)\r\n| extend Title = \"CPU Free %\", text = \"Free CPU %\"",
+                          "size": 4,
+                          "timeContextFromParameter": "TimeFrame",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "tiles",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Title",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "avg_CPU_FREE_PERCENTAGE_d",
+                              "formatter": 18,
+                              "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                  {
+                                    "operator": "<",
+                                    "thresholdValue": "75",
+                                    "representation": "4",
+                                    "text": "{0}{1}%"
+                                  },
+                                  {
+                                    "operator": "Default",
+                                    "thresholdValue": null,
+                                    "representation": "success",
+                                    "text": "{0}{1}%"
+                                  }
+                                ]
+                              },
                               "numberFormat": {
-                                "unit": 1,
+                                "unit": 0,
+                                "options": {
+                                  "style": "decimal",
+                                  "maximumFractionDigits": 5
+                                }
+                              }
+                            },
+                            "secondaryContent": {
+                              "columnMatch": "Status",
+                              "formatter": 1
+                            },
+                            "showBorder": true,
+                            "size": "full"
+                          }
+                        },
+                        "customWidth": "25",
+                        "name": "query - 4 - Copy"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "ORA_Alert_Logs_CL\r\n| where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n| order by Time_Generated_t\r\n| project Time_Generated_t,TO_CHAR_ORIGINATING_TIMESTAMP_YYYY_MM_DDHH24_MI_SS_MESSAGE_TEXT_s\r\n| summarize count = count()\r\n| extend Title = \"Alert logs\"",
+                          "size": 4,
+                          "timeContextFromParameter": "TimeFrame",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "tiles",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Title",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "count",
+                              "formatter": 18,
+                              "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                  {
+                                    "operator": ">",
+                                    "thresholdValue": "0",
+                                    "representation": "4",
+                                    "text": "{0}{1}"
+                                  },
+                                  {
+                                    "operator": "Default",
+                                    "thresholdValue": null,
+                                    "representation": "success",
+                                    "text": "{0}{1}"
+                                  }
+                                ]
+                              }
+                            },
+                            "secondaryContent": {
+                              "columnMatch": "text",
+                              "formatter": 1
+                            },
+                            "showBorder": true,
+                            "size": "full"
+                          }
+                        },
+                        "customWidth": "25",
+                        "name": "query - 4 - Copy - Copy"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "ORA_ConnectionTimeinSeconds_CL\r\n| where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n| summarize AverageConnectionTime = avg(AVERAGE_CONNECTION_TIME_SECONDS_d)\r\n| extend Title = \"Avg. Connection Time\"\r\n",
+                          "size": 4,
+                          "timeContextFromParameter": "TimeFrame",
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "tiles",
+                          "tileSettings": {
+                            "titleContent": {
+                              "columnMatch": "Title",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "AverageConnectionTime",
+                              "formatter": 18,
+                              "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                  {
+                                    "operator": ">",
+                                    "thresholdValue": "10",
+                                    "representation": "4",
+                                    "text": "{0}{1}"
+                                  },
+                                  {
+                                    "operator": "Default",
+                                    "thresholdValue": null,
+                                    "representation": "success",
+                                    "text": "{0}{1}"
+                                  }
+                                ]
+                              },
+                              "numberFormat": {
+                                "unit": 24,
                                 "options": {
                                   "style": "decimal"
                                 }
                               }
                             },
-                            "nodeIdField": "AvailPerc",
-                            "graphOrientation": 3,
-                            "showOrientationToggles": false,
-                            "nodeSize": null,
-                            "staticNodeSize": 100,
-                            "colorSettings": {
-                              "nodeColorField": "AvailPerc",
-                              "type": 3,
-                              "thresholdsGrid": [
-                                {
-                                  "operator": "==",
-                                  "thresholdValue": "100",
-                                  "representation": "green"
-                                },
-                                {
-                                  "operator": ">=",
-                                  "thresholdValue": "90",
-                                  "representation": "yellow"
-                                },
-                                {
-                                  "operator": "<",
-                                  "thresholdValue": "90",
-                                  "representation": "redBright"
-                                },
-                                {
-                                  "operator": "Default",
-                                  "thresholdValue": null,
-                                  "representation": "lightBlue"
-                                }
-                              ]
+                            "secondaryContent": {
+                              "columnMatch": "Status",
+                              "formatter": 1
                             },
-                            "hivesMargin": 5,
-                            "edgeColorSettings": null
+                            "showBorder": true,
+                            "size": "full"
                           }
                         },
-                        "customWidth": "50",
-                        "name": "%Availability"
+                        "customWidth": "25",
+                        "name": "Avg. Connection Time"
                       },
                       {
                         "type": 3,
@@ -516,6 +650,7 @@
                           "size": 0,
                           "aggregation": 3,
                           "title": "Availability Status Trend",
+                          "timeContextFromParameter": "TimeFrame",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "visualization": "linechart",
@@ -599,6 +734,116 @@
                         "customWidth": "50",
                         "showPin": true,
                         "name": "System Availability Query"
+                      },
+                      {
+                        "type": 3,
+                        "content": {
+                          "version": "KqlItem/1.0",
+                          "query": "ORA_MemoryOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by COMPONENT_s\r\n| project Time_Generated_t,COMPONENT_s, SIZE_GB_d",
+                          "size": 0,
+                          "aggregation": 3,
+                          "title": "Memory Service Usage",
+                          "timeContext": {
+                            "durationMs": 86400000
+                          },
+                          "queryType": 0,
+                          "resourceType": "microsoft.operationalinsights/workspaces",
+                          "visualization": "piechart",
+                          "gridSettings": {
+                            "sortBy": [
+                              {
+                                "itemKey": "COMPONENT_s",
+                                "sortOrder": 2
+                              }
+                            ]
+                          },
+                          "sortBy": [
+                            {
+                              "itemKey": "COMPONENT_s",
+                              "sortOrder": 2
+                            }
+                          ],
+                          "tileSettings": {
+                            "titleContent": {
+                              "formatter": 1
+                            },
+                            "subtitleContent": {
+                              "columnMatch": "AvailPerc",
+                              "formatter": 1
+                            },
+                            "leftContent": {
+                              "columnMatch": "TGMin",
+                              "formatter": 6
+                            },
+                            "rightContent": {
+                              "columnMatch": "TGMax",
+                              "formatter": 6
+                            },
+                            "showBorder": false
+                          },
+                          "graphSettings": {
+                            "type": 2,
+                            "topContent": {},
+                            "centerContent": {
+                              "columnMatch": "INSTANCE_NAME_s"
+                            },
+                            "bottomContent": {
+                              "columnMatch": "provider"
+                            },
+                            "nodeIdField": "OracleStatus",
+                            "graphOrientation": 3,
+                            "showOrientationToggles": false,
+                            "nodeSize": null,
+                            "staticNodeSize": 85,
+                            "colorSettings": {
+                              "nodeColorField": "OracleStatus",
+                              "type": 3,
+                              "thresholdsGrid": [
+                                {
+                                  "operator": "==",
+                                  "thresholdValue": "Available",
+                                  "representation": "green"
+                                },
+                                {
+                                  "operator": "==",
+                                  "thresholdValue": "Offline",
+                                  "representation": "gray"
+                                },
+                                {
+                                  "operator": "==",
+                                  "thresholdValue": "Non Functional",
+                                  "representation": "yellow"
+                                },
+                                {
+                                  "operator": "Default",
+                                  "thresholdValue": null
+                                }
+                              ]
+                            },
+                            "hivesMargin": 5,
+                            "edgeColorSettings": null
+                          },
+                          "chartSettings": {
+                            "xAxis": "Time_Generated_t",
+                            "yAxis": [
+                              "SIZE_GB_d"
+                            ],
+                            "ySettings": {
+                              "numberFormatSettings": {
+                                "unit": 5,
+                                "options": {
+                                  "style": "decimal",
+                                  "useGrouping": true
+                                }
+                              },
+                              "min": 0,
+                              "max": 100
+                            }
+                          }
+                        },
+                        "customWidth": "50",
+                        "showPin": true,
+                        "name": "Memory Service Usage"
                       },
                       {
                         "type": 3,
@@ -692,6 +937,12 @@
                               }
                             ],
                             "filter": true,
+                            "sortBy": [
+                              {
+                                "itemKey": "DATABASE_ROLE_s",
+                                "sortOrder": 2
+                              }
+                            ],
                             "labelSettings": [
                               {
                                 "columnId": "CREATED_s",
@@ -715,7 +966,12 @@
                               }
                             ]
                           },
-                          "sortBy": [],
+                          "sortBy": [
+                            {
+                              "itemKey": "DATABASE_ROLE_s",
+                              "sortOrder": 2
+                            }
+                          ],
                           "chartSettings": {
                             "seriesLabelSettings": [
                               {
@@ -744,7 +1000,7 @@
                         "content": {
                           "version": "KqlItem/1.0",
                           "query": "ORA_InstanceOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(TimeGenerated, *) by PROVIDER_INSTANCE_s\r\n| project INSTANCE_NAME_s, HOST_NAME_s, INSTANCE_NUMBER_d, STARTUP_TIME_s, STATUS_s, ARCHIVER_s, DATABASE_STATUS_s, INSTANCE_ROLE_s, ACTIVE_STATE_s, DATABASE_TYPE_s\r\n",
-                          "size": 0,
+                          "size": 3,
                           "title": "Instance Overview",
                           "color": "grayBlue",
                           "queryType": 0,
@@ -1012,9 +1268,11 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let instanceOverview = ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s;\r\nORA_MemoryOverview_CL \r\n| where TimeGenerated {TimeFrame}\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| join kind = inner instanceOverview on PROVIDER_INSTANCE_s\r\n| project Time_Generated_t, INSTANCE_NAME_s, COMPONENT_s, SIZE_GB_d",
+                                "query": "let instanceOverview = ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s;\r\nORA_MemoryOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by COMPONENT_s\r\n| join kind = inner instanceOverview on PROVIDER_INSTANCE_s\r\n| project Time_Generated_t, INSTANCE_NAME_s, COMPONENT_s, SIZE_GB_d",
                                 "size": 3,
-                                "timeContextFromParameter": "TimeFrame",
+                                "timeContext": {
+                                  "durationMs": 86400000
+                                },
                                 "queryType": 0,
                                 "resourceType": "microsoft.operationalinsights/workspaces",
                                 "gridSettings": {
@@ -1050,7 +1308,118 @@
                                   ]
                                 }
                               },
+                              "customWidth": "50",
                               "name": "query - 0"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "ORA_MemoryOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by COMPONENT_s\r\n| project Time_Generated_t,COMPONENT_s, SIZE_GB_d",
+                                "size": 0,
+                                "aggregation": 3,
+                                "title": "Memory Service Usage",
+                                "timeContext": {
+                                  "durationMs": 86400000
+                                },
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "visualization": "piechart",
+                                "gridSettings": {
+                                  "sortBy": [
+                                    {
+                                      "itemKey": "COMPONENT_s",
+                                      "sortOrder": 2
+                                    }
+                                  ]
+                                },
+                                "sortBy": [
+                                  {
+                                    "itemKey": "COMPONENT_s",
+                                    "sortOrder": 2
+                                  }
+                                ],
+                                "tileSettings": {
+                                  "titleContent": {
+                                    "formatter": 1
+                                  },
+                                  "subtitleContent": {
+                                    "columnMatch": "AvailPerc",
+                                    "formatter": 1
+                                  },
+                                  "leftContent": {
+                                    "columnMatch": "TGMin",
+                                    "formatter": 6
+                                  },
+                                  "rightContent": {
+                                    "columnMatch": "TGMax",
+                                    "formatter": 6
+                                  },
+                                  "showBorder": false
+                                },
+                                "graphSettings": {
+                                  "type": 2,
+                                  "topContent": {},
+                                  "centerContent": {
+                                    "columnMatch": "INSTANCE_NAME_s"
+                                  },
+                                  "bottomContent": {
+                                    "columnMatch": "provider"
+                                  },
+                                  "nodeIdField": "OracleStatus",
+                                  "graphOrientation": 3,
+                                  "showOrientationToggles": false,
+                                  "nodeSize": null,
+                                  "staticNodeSize": 85,
+                                  "colorSettings": {
+                                    "nodeColorField": "OracleStatus",
+                                    "type": 3,
+                                    "thresholdsGrid": [
+                                      {
+                                        "operator": "==",
+                                        "thresholdValue": "Available",
+                                        "representation": "green"
+                                      },
+                                      {
+                                        "operator": "==",
+                                        "thresholdValue": "Offline",
+                                        "representation": "gray"
+                                      },
+                                      {
+                                        "operator": "==",
+                                        "thresholdValue": "Non Functional",
+                                        "representation": "yellow"
+                                      },
+                                      {
+                                        "operator": "Default",
+                                        "thresholdValue": null
+                                      }
+                                    ]
+                                  },
+                                  "hivesMargin": 5,
+                                  "edgeColorSettings": null
+                                },
+                                "chartSettings": {
+                                  "xAxis": "Time_Generated_t",
+                                  "yAxis": [
+                                    "SIZE_GB_d"
+                                  ],
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 5,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true
+                                      }
+                                    },
+                                    "min": 0,
+                                    "max": 100
+                                  }
+                                }
+                              },
+                              "customWidth": "50",
+                              "showPin": true,
+                              "name": "Memory Service Usage"
                             }
                           ]
                         },
@@ -1071,9 +1440,11 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let instanceOverview = ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s;\r\nORA_DiskFragmentation_CL \r\n| where TimeGenerated {TimeFrame}\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| join kind = inner instanceOverview on PROVIDER_INSTANCE_s\r\n| project TimeGenerated, HOST_NAME_s, FILE_NAME_s, SIZE_GB_s, FREE_SPACE_GB_s, USED_PERCENT_s",
+                                "query": "let instanceOverview = ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s;\r\nORA_DiskFragmentation_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by FILE_NAME_s\r\n| join kind = inner instanceOverview on PROVIDER_INSTANCE_s\r\n| project TimeGenerated, HOST_NAME_s, FILE_NAME_s, SIZE_GB_s, FREE_SPACE_GB_s, USED_PERCENT_s",
                                 "size": 0,
-                                "timeContextFromParameter": "TimeFrame",
+                                "timeContext": {
+                                  "durationMs": 86400000
+                                },
                                 "queryType": 0,
                                 "resourceType": "microsoft.operationalinsights/workspaces",
                                 "gridSettings": {
@@ -1184,11 +1555,9 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "ORA_TopWaitEvents_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s\r\n| project EVENT_NAME_s, TOTAL_WAITS_d, TIME_WAITED_SECONDS_d, AVERAGE_WAIT_SECONDS_d",
+                          "query": "ORA_TopWaitEvents_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n//| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s\r\n| project EVENT_NAME_s, TOTAL_WAITS_d, TIME_WAITED_SECONDS_d, AVERAGE_WAIT_SECONDS_d",
                           "size": 0,
-                          "timeContext": {
-                            "durationMs": 86400000
-                          },
+                          "timeContextFromParameter": "TimeFrame",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "gridSettings": {
@@ -1224,6 +1593,12 @@
                                 }
                               }
                             ],
+                            "sortBy": [
+                              {
+                                "itemKey": "$gen_number_AVERAGE_WAIT_SECONDS_d_3",
+                                "sortOrder": 2
+                              }
+                            ],
                             "labelSettings": [
                               {
                                 "columnId": "EVENT_NAME_s",
@@ -1243,7 +1618,13 @@
                                 "label": "Average Wait Time"
                               }
                             ]
-                          }
+                          },
+                          "sortBy": [
+                            {
+                              "itemKey": "$gen_number_AVERAGE_WAIT_SECONDS_d_3",
+                              "sortOrder": 2
+                            }
+                          ]
                         },
                         "name": "TopWaitEvents"
                       }
@@ -1314,12 +1695,10 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "ORA_Last_SuccessFul_Backup_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project START_TIME_s, END_TIME_s, ELAPSED_SECONDS_d, INPUT_BYTES_PER_SEC_d, STATUS_s, INPUT_TYPE_s, COMPRESSION_RATIO_d, INPUT_BYTES_d, OPTIMIZED_s",
-                                "size": 0,
+                                "query": "ORA_Last_SuccessFul_Backup_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(TimeGenerated, *) by PROVIDER_INSTANCE_s\r\n| project START_TIME_s, END_TIME_s, ELAPSED_SECONDS_d, INPUT_BYTES_PER_SEC_d, STATUS_s, INPUT_TYPE_s, COMPRESSION_RATIO_d, INPUT_BYTES_d, OPTIMIZED_s",
+                                "size": 4,
                                 "title": "Backup Status",
-                                "timeContext": {
-                                  "durationMs": 2592000000
-                                },
+                                "timeContextFromParameter": "TimeFrame",
                                 "queryType": 0,
                                 "resourceType": "microsoft.operationalinsights/workspaces",
                                 "gridSettings": {
@@ -1431,12 +1810,10 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "ORA_ArchiveLogs_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project ARCHIVE_INFO_s, Type",
+                                "query": "ORA_ArchiveLogs_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by ARCHIVE_INFO_s\r\n| project ARCHIVE_INFO_s",
                                 "size": 0,
                                 "title": "Archive Logs Information",
-                                "timeContext": {
-                                  "durationMs": 86400000
-                                },
+                                "timeContextFromParameter": "TimeFrame",
                                 "queryType": 0,
                                 "resourceType": "microsoft.operationalinsights/workspaces",
                                 "gridSettings": {
@@ -1469,14 +1846,17 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "ORA_ConnectionTimeinSeconds_CL\r\n|where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n|order by TimeGenerated\r\n|project TimeGenerated, AVERAGE_CONNECTION_TIME_SECONDS_d",
+                                "query": "ORA_ConnectionTimeinSeconds_CL\r\n|where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n|order by TimeGenerated\r\n|project TimeGenerated, ConnectionTime = AVERAGE_CONNECTION_TIME_SECONDS_d",
                                 "size": 0,
+                                "aggregation": 3,
                                 "title": "Avg.Connection Time",
+                                "timeContextFromParameter": "TimeFrame",
                                 "queryType": 0,
                                 "resourceType": "microsoft.operationalinsights/workspaces",
                                 "visualization": "linechart",
                                 "chartSettings": {
                                   "xAxis": "TimeGenerated",
+                                  "showLegend": true,
                                   "xSettings": {
                                     "label": "Time"
                                   },
@@ -1498,23 +1878,52 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "ORA_Alert_Logs_CL\r\n//| where MESSAGE_TIME_s >= ago(1h)\r\n| where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n| order by MESSAGE_TIME_s\r\n| project MESSAGE_TIME_s, MESSAGE_TEXT_d",
+                                "query": "ORA_CPU_Overview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project Time_Generated_t, FreeCPUUsage = CPU_FREE_PERCENTAGE_d",
+                                "size": 0,
+                                "aggregation": 3,
+                                "title": "Free CPU Usage%",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "visualization": "linechart",
+                                "chartSettings": {
+                                  "xAxis": "Time_Generated_t",
+                                  "yAxis": [
+                                    "FreeCPUUsage"
+                                  ],
+                                  "xSettings": {
+                                    "label": "Time"
+                                  },
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 1,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true
+                                      }
+                                    },
+                                    "min": 0,
+                                    "max": 100,
+                                    "label": "Fee CPU Percentage"
+                                  }
+                                }
+                              },
+                              "name": "CPU Free Usage"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "ORA_Alert_Logs_CL\r\n| where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n| order by Time_Generated_t\r\n| project TO_CHAR_ORIGINATING_TIMESTAMP_YYYY_MM_DDHH24_MI_SS_MESSAGE_TEXT_s",
                                 "size": 0,
                                 "title": "Alerts Log",
-                                "timeContext": {
-                                  "durationMs": 86400000
-                                },
+                                "timeContextFromParameter": "TimeFrame",
                                 "queryType": 0,
                                 "resourceType": "microsoft.operationalinsights/workspaces",
                                 "gridSettings": {
                                   "labelSettings": [
                                     {
-                                      "columnId": "MESSAGE_TIME_s",
-                                      "label": "Message Time"
-                                    },
-                                    {
-                                      "columnId": "MESSAGE_TEXT_d",
-                                      "label": "Message Text"
+                                      "columnId": "TO_CHAR_ORIGINATING_TIMESTAMP_YYYY_MM_DDHH24_MI_SS_MESSAGE_TEXT_s",
+                                      "label": "DB Alerts Log Messages"
                                     }
                                   ]
                                 }
@@ -1523,12 +1932,16 @@
                             }
                           ]
                         },
+                        "customWidth": "50",
                         "conditionalVisibility": {
                           "parameterName": "SystemCheckMenu",
                           "comparison": "isEqualTo",
                           "value": "Health"
                         },
-                        "name": "Health"
+                        "name": "Health",
+                        "styleSettings": {
+                          "maxWidth": "50"
+                        }
                       },
                       {
                         "type": 12,
@@ -1696,12 +2109,16 @@
                                   ]
                                 }
                               },
+                              "customWidth": "50",
                               "conditionalVisibility": {
                                 "parameterName": "SystemCheckMenu",
                                 "comparison": "isEqualTo",
                                 "value": "Configuration Parameters"
                               },
-                              "name": "Controlfiles Configuration"
+                              "name": "Controlfiles Configuration",
+                              "styleSettings": {
+                                "maxWidth": "50"
+                              }
                             },
                             {
                               "type": 3,
@@ -1725,12 +2142,16 @@
                                   ]
                                 }
                               },
+                              "customWidth": "50",
                               "conditionalVisibility": {
                                 "parameterName": "SystemCheckMenu",
                                 "comparison": "isEqualTo",
                                 "value": "Configuration Parameters"
                               },
-                              "name": "Hugepages Configuration"
+                              "name": "Hugepages Configuration",
+                              "styleSettings": {
+                                "maxWidth": "50"
+                              }
                             }
                           ]
                         },
@@ -1835,7 +2256,9 @@
                           "query": "ORA_TS_Summary_CL \r\n| where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n| summarize arg_max(TimeGenerated, *) by TABLESPACE_NAME_s\r\n| project TABLESPACE_NAME_s, CONTENT_TYPE_s, ALLOCATED_SIZE_GB_s, TOTAL_SIZE_GB_s, ALLOCATED_SIZE_USED_PERCENT_s,TOTAL_SIZE_USED_PERCENT_s,NUMBER_OF_DATA_FILES_s",
                           "size": 0,
                           "title": "Tablespaces",
-                          "timeContextFromParameter": "TimeFrame",
+                          "timeContext": {
+                            "durationMs": 86400000
+                          },
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "gridSettings": {
@@ -1942,7 +2365,7 @@
                           "size": 0,
                           "title": "Top5 Tablespaces",
                           "timeContext": {
-                            "durationMs": 2592000000
+                            "durationMs": 86400000
                           },
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
@@ -2092,7 +2515,7 @@
                         "content": {
                           "version": "KqlItem/1.0",
                           "query": "ORA_FlashbackDB_CL \r\n| where PROVIDER_INSTANCE_s == \"{Provider}\"\r\n| summarize arg_max(TimeGenerated, *) by FILE_TYPE_s\r\n| project FILE_TYPE_s, NUMBER_OF_FILES_d,FLASHBACK_RETENTION_TARGET_MINUTES_s, SPACE_LIMIT_MB_d, SPACE_USED_MB_d, SPACE_RECLAIMABLE_MB_d\r\n",
-                          "size": 0,
+                          "size": 4,
                           "title": "Fast Recovery Area",
                           "timeContextFromParameter": "TimeFrame",
                           "queryType": 0,
