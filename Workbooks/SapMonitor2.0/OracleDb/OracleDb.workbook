@@ -58,6 +58,16 @@
                   "resourceType": "microsoft.operationalinsights/workspaces"
                 },
                 {
+                  "id": "220d856b-31a6-4caa-9dc4-60c1e7733d5f",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "param_check_tables",
+                  "type": 1,
+                  "query": "let checktable = (tb:string, columnName:string)\r\n{\r\n// 0 = no error\r\n// 1 = table does not exist\r\n// 2 = table exists, but column v1 does not (or) column v1 exists but no data in the table (need to wait)\r\nlet dummy = \"unmÃ¶glicher-wert!\";\r\nlet MissingTable = view () { print miss = 1, columnV1 = dummy, records = -1 };\r\nlet checkRecords =\r\n  union\r\n    isfuzzy=true MissingTable,\r\n    (table(tb)\r\n      | summarize records = count()\r\n    )\r\n  | project records\r\n  | top 1 by records desc\r\n;\r\nlet checkTableExists =\r\n  union\r\n    isfuzzy=true MissingTable,\r\n    (table(tb)\r\n      | count\r\n      | extend miss = 0\r\n    )\r\n  | project miss\r\n  | limit 2\r\n  | top 1 by miss asc\r\n;\r\nlet checkColumnExists =\r\n  union\r\n    isfuzzy=true MissingTable,\r\n    (table(tb)\r\n      | extend miss = 0\r\n      | extend columnV1 = column_ifexists(columnName, dummy)\r\n    )\r\n  | project miss, columnV1\r\n  | limit 2\r\n  | top 1 by miss asc\r\n ;\r\nlet tableExists = toscalar(checkTableExists | summarize max(miss) != 1);\r\nlet columnV1Exists = toscalar(checkColumnExists | summarize max(columnV1) != dummy);\r\nlet tableRecords = toscalar(checkRecords | summarize max(records));\r\nlet x = iif(tableExists, iif(columnV1Exists, iif(tableRecords > 0, \"0\", \"2\"), \"2\"), \"1\");\r\ntoscalar(x)\r\n};\r\nlet locksAndBlocks = checktable(\"DB2_LocksAndBlocks_CL\", \"sapsid_s\");\r\n\r\nprint strcat('DB2_LocksAndBlocks_CL:',locksAndBlocks)",
+                  "isHiddenWhenLocked": true,
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                },
+                {
                   "id": "dbcc133e-be14-41d5-ad46-27ac24d31526",
                   "version": "KqlParameterItem/1.0",
                   "name": "oracleProviderExist",
@@ -81,6 +91,18 @@
                       }
                     }
                   ]
+                },
+                {
+                  "id": "10fb2997-89d2-4a11-a794-e9077e5cc285",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "param_alert_template",
+                  "type": 1,
+                  "isHiddenWhenLocked": true,
+                  "typeSettings": {
+                    "multiLineText": true,
+                    "editorLanguage": "text"
+                  },
+                  "value": "[\r\n   {\r\n      \"name\": \"Oracle Availability\",\r\n      \"description\": \"Fired when Oracle Instance Status is not active for the last 5 mins.\",\r\n      \"author\": \"Microsoft\",\r\n      \"templateId\": \"oracle-availability\",\r\n      \"severity\": \"1\",\r\n      \"alertTemplate\": {\r\n         \"query\": \"let StartTime=now(); ORA_SystemAvailability_CL | where PROVIDER_INSTANCE_s == '{ProviderInstance}' | summarize arg_max(Time_Generated_t, *) | extend AggregateValue = iff((StartTime - TimeGenerated > 5min), 1, 0) | summarize AggregatedValue = min(AggregateValue) by bin(TimeGenerated, 5m)\",\r\n         \"thresholdOperator\": \"GreaterThan\",\r\n         \"defaultThreshold\": \"0\",\r\n         \"metricMeasurement\": {\r\n            \"thresholdOperator\": \"GreaterThan\",\r\n            \"threshold\": \"0\",\r\n            \"metricTriggerType\": \"Consecutive\",\r\n            \"frequencyInMinutes\": \"5\",\r\n            \"timeWindowInMinutes\": \"15\"\r\n         }\r\n      }\r\n   },\r\n   {\r\n      \"name\": \"Oracle replication target is not in connected status\",\r\n      \"description\": \"Fired when any of the sync target is not in connected status.\",\r\n      \"author\": \"Microsoft\",\r\n      \"templateId\": \"oracle-ha-dr-disconnect\",\r\n      \"severity\": \"1\",\r\n      \"alertTemplate\": {\r\n         \"query\": \"ORA_DataGuard_Performance_CL | where PROVIDER_INSTANCE_s == '{ProviderInstance}' | extend AggregateValue = iff(VALUE_s == 'OK', 1, 0) | summarize AggregatedValue = max(AggregateValue) by bin(TimeGenerated, 5m)\",\r\n         \"thresholdOperator\": \"Equal\",\r\n         \"defaultThreshold\": \"0\",\r\n         \"metricMeasurement\": {\r\n            \"thresholdOperator\": \"GreaterThan\",\r\n            \"threshold\": \"0\",\r\n            \"metricTriggerType\": \"Consecutive\",\r\n            \"frequencyInMinutes\": \"5\",\r\n            \"timeWindowInMinutes\": \"30\"\r\n         }\r\n      }\r\n   },\r\n   {\r\n      \"name\": \"Oracle Last Backup\",\r\n      \"description\": \"Fired when the last successful backup is older than 2 days.\",\r\n      \"author\": \"Microsoft\",\r\n      \"templateId\": \"oracle-last-backup\",\r\n      \"severity\": \"1\",\r\n      \"alertTemplate\": {\r\n         \"query\": \"ORA_Last_SuccessFul_Backup_CL | where PROVIDER_INSTANCE_s == '{ProviderInstance}' | extend AggregateValue = iff(datetime_diff('day', todatetime(Time_Generated_t), todatetime(START_TIME_s)) > 2, 1, 0) | summarize AggregatedValue = max(AggregateValue) by bin(TimeGenerated, 5m)\",\r\n         \"thresholdOperator\": \"GreaterThan\",\r\n         \"defaultThreshold\": \"1\",\r\n         \"alertUnit\": \"days\",\r\n         \"metricMeasurement\": {\r\n            \"thresholdOperator\": \"GreaterThan\",\r\n            \"threshold\": \"1\",\r\n            \"metricTriggerType\": \"Consecutive\",\r\n            \"frequencyInMinutes\": \"10\",\r\n            \"timeWindowInMinutes\": \"45\"\r\n         }\r\n      }\r\n   },\r\n   {\r\n      \"name\": \"Oracle Data Disk filesystem utilization\",\r\n      \"description\": \"Fired when the Oracle data disk filesystem exceeds the percentage threshold.\",\r\n      \"author\": \"Microsoft\",\r\n      \"templateId\": \"oracle-disk-utilization\",\r\n      \"severity\": \"2\",\r\n      \"alertTemplate\": {\r\n         \"query\": \"ORA_DiskFragmentation_CL | where PROVIDER_INSTANCE_s == '{ProviderInstance}' | summarize AggregatedValue = max(toreal(USED_PERCENT_s)) by bin(TimeGenerated, 5m), FILE_NAME_s\",\r\n         \"thresholdOperator\": \"GreaterThan\",\r\n         \"defaultThreshold\": \"80\",\r\n         \"alertUnit\": \"percent\",\r\n         \"metricMeasurement\": {\r\n            \"thresholdOperator\": \"Equal\",\r\n            \"threshold\": \"1\",\r\n            \"metricTriggerType\": \"Consecutive\",\r\n\t    \"metricColumn\": \"FILE_NAME_s\",\r\n            \"frequencyInMinutes\": \"15\",\r\n            \"timeWindowInMinutes\": \"45\"\r\n         }\r\n      }\r\n   },\r\n   {\r\n      \"name\": \"Oracle Tablespace utilization\",\r\n      \"description\": \"Fired when the Tablespace utilization exceeds the percentage threshold.\",\r\n      \"author\": \"Microsoft\",\r\n      \"templateId\": \"oracle-tablespace-utilization\",\r\n      \"severity\": \"2\",\r\n      \"alertTemplate\": {\r\n         \"query\": \"ORA_TS_Summary_CL | where PROVIDER_INSTANCE_s == '{ProviderInstance}' | summarize AggregatedValue = max(toreal(TOTAL_SIZE_USED_PERCENT_s)) by bin(TimeGenerated, 5m), TABLESPACE_NAME_s\",\r\n         \"thresholdOperator\": \"GreaterThan\",\r\n         \"defaultThreshold\": \"90\",\r\n         \"alertUnit\": \"percent\",\r\n         \"metricMeasurement\": {\r\n            \"thresholdOperator\": \"GreaterThan\",\r\n            \"threshold\": \"1\",\r\n            \"metricTriggerType\": \"Consecutive\",\r\n\t    \"metricColumn\": \"TABLESPACE_NAME_s\",\r\n            \"frequencyInMinutes\": \"15\",\r\n            \"timeWindowInMinutes\": \"45\"\r\n         }\r\n      }\r\n   },\r\n   {\r\n      \"name\": \"Oracle CPU Usage\",\r\n      \"description\": \"Fired when CPU usage exceed the threshold.\",\r\n      \"author\": \"Microsoft\",\r\n      \"templateId\": \"oracle-cpu-usage\",\r\n      \"severity\": \"2\",\r\n      \"alertTemplate\": {\r\n         \"query\": \"ORA_CPU_Overview_CL | where PROVIDER_INSTANCE_s == '{Provider}' | extend CPUUsage = 100 - CPU_FREE_PERCENTAGE_d | summarize AggregatedValue = max(CPUUsage) by bin(TimeGenerated, 5m)\",\r\n         \"thresholdOperator\": \"GreaterThan\",\r\n         \"defaultThreshold\": \"80\",\r\n         \"alertUnit\": \"percent\",\r\n         \"metricMeasurement\": {\r\n            \"thresholdOperator\": \"GreaterThan\",\r\n            \"threshold\": \"3\",\r\n            \"metricTriggerType\": \"Consecutive\",\r\n            \"metricColumn\": \"\",\r\n            \"frequencyInMinutes\": \"5\",\r\n            \"timeWindowInMinutes\": \"60\"\r\n         }\r\n      }\r\n   }\r\n]"
                 }
               ],
               "style": "above",
@@ -137,7 +159,7 @@
               ]
             },
             "conditionalVisibility": {
-              "parameterName": "oracleProviderExist",
+              "parameterName": " oracleProviderExist",
               "comparison": "isEqualTo",
               "value": "false"
             },
@@ -244,7 +266,7 @@
                           "allowCustom": false
                         },
                         "value": {
-                          "durationMs": 900000
+                          "durationMs": 43200000
                         }
                       },
                       {
@@ -356,11 +378,6 @@
                     ]
                   },
                   "customWidth": "25",
-                  "conditionalVisibility": {
-                    "parameterName": "Visible",
-                    "comparison": "isEqualTo",
-                    "value": "true"
-                  },
                   "name": "AlertsButton"
                 },
                 {
@@ -492,7 +509,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "ORA_CPU_Overview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project Time_Generated_t, CAPTURE_TIME_s, CPU_FREE_PERCENTAGE_d\r\n| summarize avg(CPU_FREE_PERCENTAGE_d)\r\n| extend Title = \"CPU Free %\", text = \"Free CPU %\"",
+                          "query": "ORA_CPU_Overview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project Time_Generated_t, CAPTURE_TIME_s, CPUUsage = 100 - CPU_FREE_PERCENTAGE_d\r\n| summarize avg(CPUUsage)\r\n| extend Title = \"CPU Usage %\"",
                           "size": 4,
                           "timeContextFromParameter": "TimeFrame",
                           "queryType": 0,
@@ -504,13 +521,13 @@
                               "formatter": 1
                             },
                             "leftContent": {
-                              "columnMatch": "avg_CPU_FREE_PERCENTAGE_d",
+                              "columnMatch": "avg_CPUUsage",
                               "formatter": 18,
                               "formatOptions": {
                                 "thresholdsOptions": "icons",
                                 "thresholdsGrid": [
                                   {
-                                    "operator": "<",
+                                    "operator": ">",
                                     "thresholdValue": "75",
                                     "representation": "4",
                                     "text": "{0}{1}%"
@@ -646,7 +663,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let baseQuery = ORA_SystemAvailability_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| extend Status = iff(ACTIVE_STATE_s == 'NORMAL', 0, 1);\r\nlet timespanCount = baseQuery \r\n| summarize RecordCount=count()\r\n| extend Interval = iff(RecordCount <= 10000, timespan(1m), timespan(1m))\r\n| extend Interval = iff(RecordCount > 10000 and RecordCount < 50000, timespan(5m), Interval)\r\n| extend Interval = iff(RecordCount >= 50000 and RecordCount < 100000, timespan(10m), Interval)\r\n| extend Interval = iff(RecordCount >= 100000 and RecordCount < 150000, timespan(15m), Interval)\r\n| extend Interval = iff(RecordCount >= 150000, timespan(30m), Interval)\r\n| project Interval;\r\nlet timespanInterval = toscalar(timespanCount);\r\nbaseQuery\r\n| summarize availability=countif(Status == 0), total=count() by bin(TimeGenerated, timespanInterval), INSTANCE_NAME_s\r\n| extend availability = round((availability / total) * 100, 2)\r\n| project-away total",
+                          "query": "let baseQuery = ORA_SystemAvailability_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| extend Status = iff(ACTIVE_STATE_s == 'NORMAL', 0, 1);\r\nrange TimeGenerated from {TimeFrame:start} to {TimeFrame:end} step 1m\r\n| where datetime_part(\"minute\", TimeGenerated) % 2 != 0\r\n| extend TimeGenerated = todatetime(format_datetime(TimeGenerated, \"yyyy-MM-dd HH:mm\"))\r\n| join kind = fullouter ( baseQuery\r\n    | extend TimeGenerated = todatetime(format_datetime(TimeGenerated, \"yyyy-MM-dd HH:mm\")) \r\n) on TimeGenerated\r\n| where isnotempty(TimeGenerated)\r\n| summarize availability = countif(Status == 0), total = 1 by TimeGenerated, INSTANCE_NAME_s, PROVIDER_INSTANCE_s\r\n| extend availability = round((availability / total) * 100, 2)\r\n| extend availability = iff(availability > 100, 100.0, availability), PROVIDER_INSTANCE_s = '{Provider}'\r\n| project-away total, INSTANCE_NAME_s",
                           "size": 0,
                           "aggregation": 3,
                           "title": "Availability Status Trend",
@@ -654,6 +671,20 @@
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
                           "visualization": "linechart",
+                          "gridSettings": {
+                            "sortBy": [
+                              {
+                                "itemKey": "TimeGenerated",
+                                "sortOrder": 1
+                              }
+                            ]
+                          },
+                          "sortBy": [
+                            {
+                              "itemKey": "TimeGenerated",
+                              "sortOrder": 1
+                            }
+                          ],
                           "tileSettings": {
                             "titleContent": {
                               "formatter": 1
@@ -1268,57 +1299,10 @@
                               "type": 3,
                               "content": {
                                 "version": "KqlItem/1.0",
-                                "query": "let instanceOverview = ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s;\r\nORA_MemoryOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by COMPONENT_s\r\n| join kind = inner instanceOverview on PROVIDER_INSTANCE_s\r\n| project Time_Generated_t, INSTANCE_NAME_s, COMPONENT_s, SIZE_GB_d",
-                                "size": 3,
-                                "timeContext": {
-                                  "durationMs": 86400000
-                                },
-                                "queryType": 0,
-                                "resourceType": "microsoft.operationalinsights/workspaces",
-                                "gridSettings": {
-                                  "formatters": [
-                                    {
-                                      "columnMatch": "SIZE_GB_d",
-                                      "formatter": 0,
-                                      "numberFormat": {
-                                        "unit": 5,
-                                        "options": {
-                                          "style": "decimal"
-                                        }
-                                      }
-                                    }
-                                  ],
-                                  "labelSettings": [
-                                    {
-                                      "columnId": "Time_Generated_t",
-                                      "label": "Time Generated"
-                                    },
-                                    {
-                                      "columnId": "INSTANCE_NAME_s",
-                                      "label": "Instance Name"
-                                    },
-                                    {
-                                      "columnId": "COMPONENT_s",
-                                      "label": "Component"
-                                    },
-                                    {
-                                      "columnId": "SIZE_GB_d",
-                                      "label": "Size"
-                                    }
-                                  ]
-                                }
-                              },
-                              "customWidth": "50",
-                              "name": "query - 0"
-                            },
-                            {
-                              "type": 3,
-                              "content": {
-                                "version": "KqlItem/1.0",
                                 "query": "ORA_MemoryOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by COMPONENT_s\r\n| project Time_Generated_t,COMPONENT_s, SIZE_GB_d",
                                 "size": 0,
                                 "aggregation": 3,
-                                "title": "Memory Service Usage",
+                                "title": "Memory Service Usage Overview",
                                 "timeContext": {
                                   "durationMs": 86400000
                                 },
@@ -1420,6 +1404,53 @@
                               "customWidth": "50",
                               "showPin": true,
                               "name": "Memory Service Usage"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "let instanceOverview = ORA_InstanceOverview_CL\r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by PROVIDER_INSTANCE_s;\r\nORA_MemoryOverview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| summarize arg_max(Time_Generated_t, *) by COMPONENT_s\r\n| join kind = inner instanceOverview on PROVIDER_INSTANCE_s\r\n| project Time_Generated_t, INSTANCE_NAME_s, COMPONENT_s, SIZE_GB_d",
+                                "size": 3,
+                                "timeContext": {
+                                  "durationMs": 86400000
+                                },
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "gridSettings": {
+                                  "formatters": [
+                                    {
+                                      "columnMatch": "SIZE_GB_d",
+                                      "formatter": 0,
+                                      "numberFormat": {
+                                        "unit": 5,
+                                        "options": {
+                                          "style": "decimal"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "labelSettings": [
+                                    {
+                                      "columnId": "Time_Generated_t",
+                                      "label": "Time Generated"
+                                    },
+                                    {
+                                      "columnId": "INSTANCE_NAME_s",
+                                      "label": "Instance Name"
+                                    },
+                                    {
+                                      "columnId": "COMPONENT_s",
+                                      "label": "Component"
+                                    },
+                                    {
+                                      "columnId": "SIZE_GB_d",
+                                      "label": "Size"
+                                    }
+                                  ]
+                                }
+                              },
+                              "customWidth": "50",
+                              "name": "query - 0"
                             }
                           ]
                         },
@@ -1872,42 +1903,8 @@
                                   }
                                 }
                               },
+                              "customWidth": "50",
                               "name": "Avg.Connection Time"
-                            },
-                            {
-                              "type": 3,
-                              "content": {
-                                "version": "KqlItem/1.0",
-                                "query": "ORA_CPU_Overview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project Time_Generated_t, FreeCPUUsage = CPU_FREE_PERCENTAGE_d",
-                                "size": 0,
-                                "aggregation": 3,
-                                "title": "Free CPU Usage%",
-                                "queryType": 0,
-                                "resourceType": "microsoft.operationalinsights/workspaces",
-                                "visualization": "linechart",
-                                "chartSettings": {
-                                  "xAxis": "Time_Generated_t",
-                                  "yAxis": [
-                                    "FreeCPUUsage"
-                                  ],
-                                  "xSettings": {
-                                    "label": "Time"
-                                  },
-                                  "ySettings": {
-                                    "numberFormatSettings": {
-                                      "unit": 1,
-                                      "options": {
-                                        "style": "decimal",
-                                        "useGrouping": true
-                                      }
-                                    },
-                                    "min": 0,
-                                    "max": 100,
-                                    "label": "Fee CPU Percentage"
-                                  }
-                                }
-                              },
-                              "name": "CPU Free Usage"
                             },
                             {
                               "type": 3,
@@ -1928,20 +1925,52 @@
                                   ]
                                 }
                               },
+                              "customWidth": "50",
                               "name": "Alerts Log"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "ORA_CPU_Overview_CL \r\n| where PROVIDER_INSTANCE_s == '{Provider}'\r\n| project Time_Generated_t, CPUUsage = 100 - CPU_FREE_PERCENTAGE_d",
+                                "size": 0,
+                                "aggregation": 3,
+                                "title": "CPU Usage%",
+                                "queryType": 0,
+                                "resourceType": "microsoft.operationalinsights/workspaces",
+                                "visualization": "linechart",
+                                "chartSettings": {
+                                  "xAxis": "Time_Generated_t",
+                                  "yAxis": [
+                                    "CPUUsage"
+                                  ],
+                                  "xSettings": {
+                                    "label": "Time"
+                                  },
+                                  "ySettings": {
+                                    "numberFormatSettings": {
+                                      "unit": 1,
+                                      "options": {
+                                        "style": "decimal",
+                                        "useGrouping": true
+                                      }
+                                    },
+                                    "min": 0,
+                                    "max": 100,
+                                    "label": "Fee CPU Percentage"
+                                  }
+                                }
+                              },
+                              "name": "CPU Usage"
                             }
                           ]
                         },
-                        "customWidth": "50",
                         "conditionalVisibility": {
                           "parameterName": "SystemCheckMenu",
                           "comparison": "isEqualTo",
                           "value": "Health"
                         },
-                        "name": "Health",
-                        "styleSettings": {
-                          "maxWidth": "50"
-                        }
+                        "name": "Health"
                       },
                       {
                         "type": 12,
