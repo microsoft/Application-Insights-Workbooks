@@ -23,9 +23,7 @@ To test changes in an existing template without merging to master or altering ga
 ### Steps:
 
 1. **Make Changes to Your Branch**: Implement the desired modifications on your branch.
-   
 2. **Push to GitHub**: Once changes are made, push the branch to your GitHub repository.
-   
 3. **Update Portal URL**: Append `?feature.workbookGalleryBranch=[name of branch]` to the portal URL. For example: `https://portal.azure.com/?feature.workbookGalleryBranch=master`.
    
 If this worked, a banner will display in the gallery indicating the redirection.
