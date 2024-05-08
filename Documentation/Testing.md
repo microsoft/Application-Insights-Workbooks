@@ -1,52 +1,41 @@
 # How to test your changes
 
-There are 3 primary ways to test changes to a template, from simplest to more complicated but more powerful
-1. [Using advanced mode](#using-advanced-mode) - this will only work for you, locally in your browser
-2. [Redirecting the gallery to a github branch](#redirecting-the-gallery-to-a-github-branch) - can work for anyone with the url, as a short term testing solution
-3. [Deploying your own gallery](#deploying-your-own-gallery) - can work for anyone, can add/move items in galleries. most powerful but more setup
+Testing changes to a template can be done in two primary ways:
+
+1. [**Using Advanced Mode**](#using-advanced-mode): Works locally in your browser, exclusively for you.
+2. [**Redirecting to a GitHub Branch**](#redirecting-the-gallery-to-a-github-branch): Allows anyone with the URL to test changes temporarily; slightly more complicated but widely accessible.
 
 ## Using Advanced Mode
-It is possible to test your changes without merging your content to master.
-the simplest possible testing is by opening workbooks in the place you expect your template to work, 
-1. Create an empty workbook 
-2. Go to advanced mode
-3. Paste the contents of the `.workbook` template file into advanced mode
-4. Use the `Apply` button
+If you're only modifying a workbook, you can test your changes locally without any usage of Git. Follow these steps:
 
-   Assuming your template content is valid, your template will appear in the view. If the template content was not valid, you will get an error notification displaying why your content is not valid.
+1. **Create an empty workbook.**
+2. **Access Advanced Mode.**
+3. **Paste the contents of the `.workbook` template file into Advanced Mode.**
+4. **Click on the `Apply` button.**
 
-## Redirecting the gallery to a github branch
+> [!TIP]
+> If your template content is valid, it will appear in the view. If not, you'll receive an error notification explaining why your content is invalid.
 
-If you are only changing the contents of an existing template, not adding new templates or altering which galleries a template appears in, you can use the feature flag `feature.workbookGalleryBranch` setting to tell the Workbooks view to look in a specific published github branch for the new content. Doing testing this way will let other users also see the changes to the template.
+## Redirecting the Gallery to a GitHub Branch
 
-1. Make your changes to your branch
-2. Push the branch to github
-3. Add `?feature.workbookGalleryBranch=[name of branch]` to the portal url, so your URL looks something like [https://portal.azure.com/?feature.workbookGalleryBranch=master](https://portal.azure.com/?feature.workbookGalleryBranch=master)
+To test changes in an existing template without merging to master or altering galleries, you can use the `feature.workbookGalleryBranch` setting. This setting instructs the Workbooks view to fetch content from a specific GitHub branch for testing purposes. Other users can also view these changes.
 
-   If it works correctly, you'll see a banner in the gallery:
-   ![Gallery Redirect Banner](Images/GalleryBranchRedirect.png)
+### Steps:
 
-> **Limitations**
-> 1. This only works for existing templates which are already exposed in a gallery, and which have `.workbook` file names that are the same as the parent directory.
-> 2. If templates are renamed, moved, or the branch is deleted, this method will stop working.
-> 3. This will cause your browser to read directly from `https://raw.githubusercontent.com/microsoft/Application-Insights-Workbooks/`, which may be slower and may cause throttling errors if you attempt to load too many items too quickly. 
->
-> This feature flag is intended only for short term test usage, and should not be used as a long term solution.
+1. **Make Changes to Your Branch**: Implement the desired modifications on your branch.
+   
+2. **Push to GitHub**: Once changes are made, push the branch to your GitHub repository.
+   
+3. **Update Portal URL**: Append `?feature.workbookGalleryBranch=[name of branch]` to the portal URL. For example: `https://portal.azure.com/?feature.workbookGalleryBranch=master`.
+   
+If this worked, a banner will display in the gallery indicating the redirection.
 
-## Deploying your own gallery
-If you are adding new items to a gallery, or adding new gallery entirely, you can use the feature flag `feature.workbookGalleryRedirect` to redirect the entire workbook gallery to a url that you control.
+### Limitations:
 
-1. Clone the repo, create your local branch, and make your changes locally
-2. From the `scripts` folder of the repo, run `processDevPackageOnly.cmd` (ideally from a command prompt so you can see any output/errors)
-	- note: repeated runs of this script may generate error lines that files already exist and are being overwritten
-
-   You should now have an `outputs\package` folder in the repo that contains the built package of content, but only the en-us version.
-3. Every time you update any content, re-run the `processDevPackageOnly` script to repackage your changes.
-4. Copy/upload your package content (see below)
-5. Add `?feature.workbookGalleryRedirect=[url to your package]` to the portal url and reload the portal (if you already have other query parameters on the portal url)
-
-   If it works correctly, you'll see a banner in the gallery:
-   ![Gallery Redirect Banner](Images/GalleryRedirect.png)
+- **Performance**: Loading workbooks from GitHub may slow down loading times and lead to throttling errors if too many items are loaded in a short succession of time.
+  
+> [!IMPORTANT]
+> This feature flag is intended for short-term testing and not as a permanent solution.
 
 ### Uploading package content
 There are 2 ways to host your built packages. Choose one of them.
