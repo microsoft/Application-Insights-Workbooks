@@ -1,0 +1,273 @@
+{
+    "type": 12,
+    "content": {
+      "version": "NotebookGroup/1.0",
+      "groupType": "editable",
+      "items": [
+        {
+          "type": 9,
+          "content": {
+            "version": "KqlParameterItem/1.0",
+            "parameters": [
+              {
+                "id": "b697dfff-fd3a-45c5-81c4-e0b01146a53d",
+                "version": "KqlParameterItem/1.0",
+                "name": "parambag_tabledata",
+                "type": 1,
+                "description": "Data derived from log analytics used across the workbook",
+                "query": "//---------------------------------------------------------\r\n// Data derived from log analytics used across the workbook\r\n//---------------------------------------------------------\r\n// inputs\r\n// Input\r\n// •\tSapHana_size01_CL\r\n// •\tSapHana_LoadHistory_CL\r\n// Output\r\n// •\tData size series, gaps linear filled\r\n// •\tmeasured data growth\r\n// •\tInterception\r\n// •\tGAL\r\n// •\tIn-mem series\r\n// •\tUsed-mem series\r\n\r\n\r\n/////////////////////// Common components////////////////////////////////////////////////\r\n// Find the first and last date for the timeframe\r\nlet startdate=todatetime(format_datetime({param_timeframe:start},'yyyy-MM-dd'));\r\nlet enddate=todatetime(format_datetime({param_timeframe:end},'yyyy-MM-dd'));\r\n// Create an array of all of the days in the timeframe\r\nlet array_allthedays=range(startdate, enddate, 1d);\r\n\r\n///////////////Total Memory Usage and Global Allocation Unit////////////////////////////////////////////////\r\n// Create a table for the GAL and total memory usage that only has data for the selected provider and timeframe\r\nlet table_loadsource=materialize(SapHana_LoadHistory_CL\r\n| where PROVIDER_INSTANCE_s ==\"{param_provider}\"\r\n| where TimeGenerated {param_timeframe}\r\n);\r\n// Get the global Allocation limit \"GAL\" for the cluster (sum of participating node GAL's)\r\nlet GAL=toscalar(table_loadsource\r\n| summarize arg_max(TimeGenerated, *) by HOST_s\r\n| summarize GAL=sum(MEMORY_ALLOCATION_LIMIT_d)/1024\r\n);\r\n/// Create a table with the total memory used sizes over time padded with nulls for missing history and a slope/intercept for bestfit line\r\nlet table_memused=table_loadsource\r\n| summarize MEMORY_USED_GiB_d=avg(MEMORY_USED_d/1024)\r\n  by PROVIDER_INSTANCE_s, HOST_s , bin(TimeGenerated, 1d)\r\n| make-series  series_memused=sum(MEMORY_USED_GiB_d) default=double(null) on TimeGenerated  step 1d\r\n| extend memsize_firstdate=TimeGenerated[0]\r\n| extend series_memused=series_fill_linear(series_memused)\r\n| extend (rsquare,memsize_slope,variance,rvariance,memsize_interception,bestline)=series_fit_line(series_memused)\r\n| extend lgap=datetime_diff('day',todatetime(TimeGenerated[0]),startdate)\r\n| extend leadingnulls=repeat(long(null),lgap )\r\n| project id=0, series_memused=array_concat(leadingnulls,series_memused), memsize_slope, memsize_interception, memsize_firstdate, memsize_firstpos=lgap\r\n;\r\n///////////END-Total Memory Usage and Global Allocation Unit-END ////////////////////////////////////\r\n\r\n\r\n/////////////////////// Column Store Values /////////////////////////////////////////////////\r\n// Create a table to the total column store size for the selected time period, instance and tenant(s)\r\nlet table_cs_tables=materialize(SapHana_size01_CL\r\n| where TABLE_NAME_s == \"ALL_TABLES\"\r\n| where TimeGenerated {param_timeframe}\r\n);\r\n// Check for db name may have to return currently removing\r\n//| where DATABASE_NAME_s in param_tenants\r\n\r\n// Create a table for the Get the sizes of column data held in memory, with a straight line trend over time padded with nulls for missing history\r\nlet series_csinmemsize=toscalar(table_cs_tables\r\n| summarize MEMORY_SIZE_IN_TOTAL_GIB_d=avg(MEMORY_SIZE_IN_TOTAL_GIB_d)\r\n  by DATABASE_NAME_s, bin(TimeGenerated, 1d) \r\n| make-series  series_csinmemsize=sum(MEMORY_SIZE_IN_TOTAL_GIB_d) default=double(null) on TimeGenerated  step 1d\r\n| project TimeGenerated, series_csinmemsize=series_fill_linear(series_csinmemsize)\r\n| extend lgap=datetime_diff('day',todatetime(TimeGenerated[0]),startdate)\r\n| extend leadingnulls=repeat(long(null),lgap )\r\n| extend series_csinmemsize=array_concat(leadingnulls,series_csinmemsize)\r\n| project series_csinmemsize\r\n);\r\n\r\n// Get the total size of cs tables and project all of the above metrics as a single object for use across the workbook\r\ntable_cs_tables\r\n| summarize ESTIMATED_MAX_MEMORY_SIZE_IN_TOTAL_GIB_d=avg(ESTIMATED_MAX_MEMORY_SIZE_IN_TOTAL_GIB_d)\r\n    by DATABASE_NAME_s, bin(TimeGenerated, 1d) \r\n| make-series  series_datasize=sum(ESTIMATED_MAX_MEMORY_SIZE_IN_TOTAL_GIB_d) default=double(null) on TimeGenerated  step 1d\r\n| extend series_datasize=series_fill_linear(series_datasize)\r\n| extend (rsquare,datasize_slope,variance,rvariance,datasize_interception,bestline)=series_fit_line(series_datasize)\r\n| extend datasize_firstdate=TimeGenerated[0]\r\n| extend lgap=datetime_diff('day',todatetime(TimeGenerated[0]),startdate)\r\n| extend leadingnulls=repeat(long(null),lgap )\r\n| extend series_datasize=array_concat(leadingnulls,series_datasize)\r\n| project id=0, array_allthedays, series_datasize, series_csinmemsize, datasize_slope, datasize_interception, datasize_firstdate, datasize_firstpos=lgap, GAL\r\n| join table_memused on id\r\n| extend series_memused, memsize_slope, memsize_interception, datasize_firstdate, datasize_firstpos\r\n| project-away id1, id\r\n| project packed=pack_all()",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "f09d6c38-dfd3-42c8-8166-9d1c20d977c6",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_datapredoffset",
+                "label": "Prediction offset GiB",
+                "type": 1,
+                "description": "Adjust this value to change the prediction to adjust the prediction to take account for a planned reduction or increase in size e.g. house-keeping activity",
+                "query": "print myvalue=\"0\"\r\n",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "value": "3"
+              },
+              {
+                "id": "12fb0a54-b982-4df6-bc88-5e8815202b4c",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_datapredgrowth",
+                "label": "Data growth rate GiB/day",
+                "type": 1,
+                "description": "The growth rate calculated from the best-fit straight line. Adjust this value to change the prediction to allow for a different growth rate e.g. one that takes into account a new data lifecycle policy or planned increase in workload",
+                "query": "let myparambag=parse_json('{parambag_tabledata:escapejson}');\r\nprint Slope=round(todouble(myparambag.datasize_slope),4)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "value": "1"
+              },
+              {
+                "id": "ed81536f-5bd1-4b25-aa9b-3c491ddb0c6a",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_gal",
+                "label": "Global Allocation Limit GiB",
+                "type": 1,
+                "description": "The Global Allocation is the maximum memory available to HANA, which is normall ~97% of the VM size.  Adjust this value to see projections based on different VM sizes",
+                "query": "// bring in the calculated values from parambag_tabledata\r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\n\r\nprint GAL=round(todouble(myparambag.GAL),3)",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "5d7d3bbc-6442-4e08-b4a8-4bedf9e127ff",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_percentofgal",
+                "label": "Projected Limit line %",
+                "type": 1,
+                "description": "Sets the limit line on th graph for the growth line to plot to, typically between 50 and 75% of GAL depending on workload",
+                "query": "{\"version\":\"1.0.0\",\"content\":\"[\\\"50\\\"]\",\"transformers\":null}",
+                "queryType": 8,
+                "value": "1"
+              },
+              {
+                "id": "7b65508a-0b0a-4fa2-be05-450c0858e2b8",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_csdaysfromnow",
+                "type": 1,
+                "query": "//param_daysfromnow:\r\n// Handle null values\r\nlet arr_param_datapredgrowth = dynamic([{param_datapredgrowth}]);\r\nlet temp_isempty=isempty(tostring(arr_param_datapredgrowth));\r\nlet slope = todouble(iff(temp_isempty,0.0,arr_param_datapredgrowth[0]));\r\n\r\nlet arr_param_datapredoffset = dynamic([{param_datapredoffset}]);\r\nlet param_datapredoffset_isempty=isempty(tostring(arr_param_datapredoffset));\r\nlet offset = todouble(iff(param_datapredoffset_isempty,0.0,arr_param_datapredoffset[0]));\r\n\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n\r\nlet arr_param_percentofgal = dynamic([{param_percentofgal}]);\r\nlet param_percentofgal_isempty=isempty(tostring(arr_param_percentofgal));\r\nlet param_percentofgal_handled = todouble(iff(param_percentofgal_isempty,0.0,arr_param_percentofgal[0]));\r\n\r\n// bring in the calculated values \r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\nlet predfirstdate=todatetime(myparambag.datasize_firstdate);\r\n\r\n// bring in user entered values\r\nlet chosendatalimit=todouble(param_percentofgal_handled)*todouble(param_gal_handled)/100;\r\n\r\nlet intercept=todouble(myparambag.datasize_interception)+offset;\r\nlet gap=chosendatalimit - intercept;\r\nlet daystofull=toint(bin(gap/slope,1));\r\nlet systemfulldate=datetime_add('day',daystofull,predfirstdate);\r\nlet daysfromnow=datetime_diff('day',systemfulldate,now());\r\nprint daysfromnow",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "4edef144-99db-45ea-b505-11ada9a8d56a",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_chosendatalimit",
+                "type": 1,
+                "query": "//handle null value\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n\r\nlet arr_param_percentofgal = dynamic([{param_percentofgal}]);\r\nlet param_percentofgal_isempty=isempty(tostring(arr_param_percentofgal));\r\nlet param_percentofgal_handled = todouble(iff(param_percentofgal_isempty,0.0,arr_param_percentofgal[0]));\r\n\r\n//Parameter for chosen limit\r\nlet chosendatalimit=todouble(param_percentofgal_handled)*todouble(param_gal_handled)/100;\r\nprint round(chosendatalimit,3)",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "9fe7a7d7-e990-482e-ab5b-a9a177833e46",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_csfulldate",
+                "type": 1,
+                "query": "//param_datasystemfull\r\n\r\n// handle null values\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n\r\nlet arr_param_datapredgrowth = dynamic([{param_datapredgrowth}]);\r\nlet temp_isempty=isempty(tostring(arr_param_datapredgrowth[0]));\r\nlet slope = todouble(iff(temp_isempty,0.0,arr_param_datapredgrowth[0]));\r\n\r\nlet arr_param_datapredoffset = dynamic([{param_datapredoffset}]);\r\nlet param_datapredoffset_isempty=isempty(tostring(arr_param_datapredoffset));\r\nlet offset = todouble(iff(param_datapredoffset_isempty,0.0,arr_param_datapredoffset[0]));\r\n\r\nlet arr_param_percentofgal = dynamic([{param_percentofgal}]);\r\nlet param_percentofgal_isempty=isempty(tostring(arr_param_percentofgal));\r\nlet param_percentofgal_handled = todouble(iff(param_percentofgal_isempty,0.0,arr_param_percentofgal[0]));\r\n\r\n// bring in the calculated values \r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\nlet predfirstdate=todatetime(myparambag.datasize_firstdate);\r\n// bring in user entered values\r\nlet chosendatalimit=todouble(param_percentofgal_handled)*todouble(param_gal_handled)/100;\r\n\r\nlet intercept=todouble(myparambag.datasize_interception)+offset;\r\nlet gap=chosendatalimit - intercept;\r\nlet daystofull=toint(bin(gap/slope,1));\r\nlet systemfulldate=format_datetime(datetime_add('day',daystofull,predfirstdate),'MM-yyyy');\r\nprint systemfulldate",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "29241abb-67dc-49a9-839d-a250ba6f53d7",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_memdaysfromnow",
+                "type": 1,
+                "query": "//handle null value\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n// bring in the calculated values from parambag_tabledata\r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\nlet daysintimegrame={param_timeframe:seconds}/60/60/24;\r\nlet gal=todouble(param_gal_handled);\r\nlet slope=todouble(myparambag.memsize_slope);\r\nlet intercept=todouble(myparambag.memsize_interception);\r\nlet firstpos=toint(myparambag.memsize_firstpos);\r\nlet leadingnulls=repeat(long(null),firstpos );\r\n// Make the bestfit line based on the slope and intercept\r\nlet predfirstdate=todatetime(myparambag.memsize_firstdate);\r\nlet gap=gal - intercept;\r\nlet daystofullfromorigin=toint(bin(gap/slope,1));\r\nlet systemfulldate=datetime_add('day',daystofullfromorigin,predfirstdate);\r\nlet daysfromnow=datetime_diff('day',systemfulldate,now());\r\nprint daysfromnow",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "71e4876b-9d75-46a1-a95d-e98d0a9d8bc6",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_memfulldate",
+                "type": 1,
+                "query": "//handle null value\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n// bring in the calculated values from parambag_tabledata\r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\nlet daysintimegrame={param_timeframe:seconds}/60/60/24;\r\nlet gal=todouble(param_gal_handled);\r\nlet slope=todouble(myparambag.memsize_slope);\r\nlet intercept=todouble(myparambag.memsize_interception);\r\nlet firstpos=toint(myparambag.memsize_firstpos);\r\nlet leadingnulls=repeat(long(null),firstpos );\r\n// Make the bestfit line based on the slope and intercept\r\nlet predfirstdate=todatetime(myparambag.memsize_firstdate);\r\nlet gap=gal - intercept;\r\nlet daystofullfromorigin=toint(bin(gap/slope,1));\r\nlet systemfulldate=datetime_add('day',daystofullfromorigin,predfirstdate);\r\nlet daysfromnow=datetime_diff('day',systemfulldate,now());\r\nprint format_datetime(systemfulldate,'MM-yyyy')",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              },
+              {
+                "id": "8ea7d1f9-2750-4a2f-a704-0ce28cb7062d",
+                "version": "KqlParameterItem/1.0",
+                "name": "param_capacity_prediction_empty_inputs",
+                "type": 1,
+                "query": "let arr_param_datapredoffset = dynamic([{param_datapredoffset}]);\r\nlet param_datapredoffset_gal_isempty=tostring(arr_param_datapredoffset) == \"[]\";\r\n\r\nlet arr_param_datapredgrowth = dynamic([{param_datapredgrowth}]);\r\nlet param_datapredgrowth_isempty=tostring(arr_param_datapredgrowth) == \"[]\";\r\n\r\nlet arr_param_percentofgal = dynamic([{param_percentofgal}]);\r\nlet param_percentofgal_isempty=tostring(arr_param_percentofgal) == \"[]\";\r\n\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=tostring(arr_param_gal) == \"[]\";\r\n\r\nlet capacity_prediction_filled_inpts = param_datapredoffset_gal_isempty or param_gal_isempty or param_datapredgrowth_isempty or param_percentofgal_isempty;\r\n\r\nprint tostring(capacity_prediction_filled_inpts);",
+                "isHiddenWhenLocked": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces"
+              }
+            ],
+            "style": "formHorizontal",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          "customWidth": "70",
+          "name": "UserParams",
+          "styleSettings": {
+            "margin": "0px",
+            "padding": "0px",
+            "showBorder": true
+          }
+        },
+        {
+          "type": 12,
+          "content": {
+            "version": "NotebookGroup/1.0",
+            "groupType": "editable",
+            "items": [
+              {
+                "type": 1,
+                "content": {
+                  "json": "\r\n## <b style=\"color:DodgerBlue;\"> Columnar data will reach chosen limit in </b> {param_csdaysfromnow} days, on {param_csfulldate} </b>",
+                  "style": "info"
+                },
+                "customWidth": "50",
+                "name": "CSdataPreditcionText",
+                "styleSettings": {
+                  "padding": "0px"
+                }
+              },
+              {
+                "type": 1,
+                "content": {
+                  "json": "## <b style=\"color:DodgerBlue;\"> Total Memory consumption will reach global allocation limit in </b>{param_memdaysfromnow} days, on ({param_memfulldate})",
+                  "style": "info"
+                },
+                "customWidth": "50",
+                "name": "MemoryPredictionText"
+              },
+              {
+                "type": 3,
+                "content": {
+                  "version": "KqlItem/1.0",
+                  "query": "// bring in the calculated values from parambag_tabledata\r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\n\r\n// fix the problem when there is empty input from user side\r\nlet arr_param_datapredgrowth = dynamic([{param_datapredgrowth}]);\r\nlet temp_isempty=isempty(tostring(arr_param_datapredgrowth));\r\nlet slope = todouble(iff(temp_isempty,0.0,arr_param_datapredgrowth[0]));\r\n\r\nlet arr_param_datapredoffset = dynamic([{param_datapredoffset}]);\r\nlet param_datapredoffset_isempty=isempty(tostring(arr_param_datapredoffset));\r\nlet offset = todouble(iff(param_datapredoffset_isempty,0.0,arr_param_datapredoffset[0]));\r\n\r\nlet arr_param_percentofgal = dynamic([{param_percentofgal}]);\r\nlet param_percentofgal_isempty=isempty(tostring(arr_param_percentofgal));\r\nlet param_percentofgal_handled = todouble(iff(param_percentofgal_isempty,0.0,arr_param_percentofgal[0]));\r\n\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n\r\nlet daysintimeframe={param_timeframe:seconds}/60/60/24;\r\nlet chosendatalimit=todouble(param_percentofgal_handled)*todouble(param_gal_handled)/100;\r\nlet series_csdatasize_nopad=myparambag.series_datasize;\r\nlet intercept=todouble(myparambag.datasize_interception)+offset;\r\nlet timestamps=myparambag.array_allthedays ;\r\nlet firstpos=toint(myparambag.datasize_firstpos);\r\nlet lastpos=daysintimeframe-firstpos;\r\nlet leadingnulls=repeat(long(null),daysintimeframe );\r\n// Make the bestfit line based on the slope and intercept\r\nlet predfirstdate=todatetime(myparambag.datasize_firstdate);\r\nlet gap=chosendatalimit - intercept;\r\nlet daystofull_uncapped=toint(bin(gap/slope,1));\r\nlet daystofull=min_of(daystofull_uncapped,toint(datetime_diff('day',now(183d),predfirstdate)));\r\nlet systemfulldate=datetime_add('day',daystofull,predfirstdate);\r\nlet lastdatetoplot=todatetime(timestamps[array_length(timestamps) -1]);\r\nlet datestoaddd=range(datetime_add('day',1,lastdatetoplot), systemfulldate, 1d);\r\nlet sampledates=array_concat(timestamps,datestoaddd);\r\n// Create lists as long as the prediction\r\nlet series_gal=repeat(todouble(param_gal_handled),array_length(sampledates));\r\nlet series_chosendatalimit=repeat(chosendatalimit,array_length(sampledates));\r\nlet rpadding=repeat(long(null), array_length(datestoaddd));\r\nlet series_csdatasize=array_concat(series_csdatasize_nopad,rpadding);\r\nlet plotfrom=daysintimeframe-firstpos;\r\n\r\n//print firstpos, daystofull, plotfrom, daysintimeframe\r\n//create prediction line and plot others against it\r\nrange x from lastpos to daystofull step 1\r\n| project bestfit=slope*x+intercept\r\n| summarize make_list(bestfit)\r\n| project \r\n    sampledates,\r\n    ColumnDataSize=series_csdatasize, \r\n    ColumnDataPrediction=array_concat(leadingnulls,list_bestfit),\r\n    GlobalAllocationLimit=series_gal, \r\n    PredictionLimitLine=series_chosendatalimit",
+                  "size": 0,
+                  "aggregation": 2,
+                  "title": "Column Data Size",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces",
+                  "visualization": "timechart",
+                  "chartSettings": {
+                    "xAxis": "sampledates",
+                    "showLegend": true,
+                    "ySettings": {
+                      "numberFormatSettings": {
+                        "unit": 5,
+                        "options": {
+                          "style": "decimal",
+                          "useGrouping": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "customWidth": "50",
+                "showPin": true,
+                "name": "query - 9"
+              },
+              {
+                "type": 3,
+                "content": {
+                  "version": "KqlItem/1.0",
+                  "query": "// bring in the calculated values from parambag_tabledata\r\nlet myparambag=parse_json('{parambag_tabledata:escapejson}');\r\n\r\nlet arr_param_datapredoffset = dynamic([{param_datapredoffset}]);\r\nlet param_datapredoffset_isempty=isempty(tostring(arr_param_datapredoffset));\r\nlet offset = todouble(iff(param_datapredoffset_isempty,0.0,arr_param_datapredoffset[0]));\r\n\r\nlet arr_param_gal = dynamic([{param_gal}]);\r\nlet param_gal_isempty=isempty(tostring(arr_param_gal));\r\nlet param_gal_handled = todouble(iff(param_gal_isempty,0.0,arr_param_gal[0]));\r\n\r\nlet daysintimeframe={param_timeframe:seconds}/60/60/24;\r\nlet gal=todouble(param_gal_handled);\r\n\r\nlet arr_param_datapredgrowth = dynamic([{param_datapredgrowth}]);\r\nlet temp_isempty=isempty(tostring(arr_param_datapredgrowth));\r\nlet slope = todouble(iff(temp_isempty,0,arr_param_datapredgrowth[0]));\r\n\r\nlet series_memsize_nopad=myparambag.series_memsize;\r\nlet intercept=todouble(myparambag.memsize_interception);\r\nlet timestamps=myparambag.array_allthedays ;\r\nlet firstpos=toint(myparambag.memsize_firstpos);\r\nlet lastpos=daysintimeframe-firstpos;\r\nlet leadingnulls=repeat(long(null),daysintimeframe );\r\n// Make the bestfit line based on the slope and intercept\r\nlet predfirstdate=todatetime(myparambag.memsize_firstdate);\r\nlet gap=gal - intercept;\r\nlet daystofull_uncapped=toint(bin(gap/slope,1));\r\nlet daystofull=min_of(daystofull_uncapped,toint(datetime_diff('day',now(183d),predfirstdate)));\r\nlet systemfulldate=datetime_add('day',daystofull,predfirstdate);\r\nlet lastdatetoplot=todatetime(timestamps[array_length(timestamps) -1]);\r\nlet datestoaddd=range(datetime_add('day',1,lastdatetoplot), systemfulldate, 1d);\r\nlet sampledates=array_concat(timestamps,datestoaddd);\r\n// Create lists as long as the prediction\r\nlet series_gal=repeat(gal,array_length(sampledates));\r\nlet rpadding=repeat(long(null), array_length(datestoaddd));\r\nlet plotfrom=daysintimeframe-firstpos;\r\n\r\n//create prediction line and plot others against it\r\nrange x from lastpos to daystofull step 1\r\n| project bestfit=slope*x+intercept\r\n| summarize make_list(bestfit)\r\n| project sampledates,\r\n          GlobalAllocationLimitForInstance=series_gal,\r\n          ColumnDataSizeForTenantSelection=array_concat(myparambag.series_datasize,rpadding),\r\n          ColumnsLoadedForTenantSelection=array_concat(myparambag.series_csinmemsize,rpadding),\r\n          TotalMemoryUsedByInstance=array_concat(myparambag.series_memused,rpadding),\r\n          PredictedMemoryUseByInstance=array_concat(leadingnulls,list_bestfit)",
+                  "size": 0,
+                  "aggregation": 2,
+                  "title": "Memory statistics (Sum of all nodes in system)",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces",
+                  "visualization": "linechart",
+                  "chartSettings": {
+                    "showLegend": true,
+                    "ySettings": {
+                      "numberFormatSettings": {
+                        "unit": 5,
+                        "options": {
+                          "style": "decimal",
+                          "useGrouping": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "customWidth": "50",
+                "showPin": true,
+                "name": "query - 5"
+              }
+            ]
+          },
+          "conditionalVisibility": {
+            "parameterName": "param_capacity_prediction_empty_inputs",
+            "comparison": "isEqualTo",
+            "value": "False"
+          },
+          "name": "Group capacity prediction - graphs"
+        },
+        {
+          "type": 12,
+          "content": {
+            "version": "NotebookGroup/1.0",
+            "groupType": "editable",
+            "items": [
+              {
+                "type": 1,
+                "content": {
+                  "json": "Please fill all inputs to get valid graphs.",
+                  "style": "info"
+                },
+                "name": "Group capacity prediction - no input message"
+              }
+            ]
+          },
+          "conditionalVisibility": {
+            "parameterName": "param_capacity_prediction_empty_inputs",
+            "comparison": "isEqualTo",
+            "value": "True"
+          },
+          "name": "Group capacity prediction - no input"
+        },
+        {
+          "type": 1,
+          "content": {
+            "json": "<div style=\"float: right\">\r\n\tUpdated every 24 hours.\r\n</div>"
+          },
+          "name": "text - 5"
+        }
+      ]
+    },
+    "conditionalVisibility": {
+      "parameterName": "selectedMenu",
+      "comparison": "isEqualTo",
+      "value": "CapacityPrediction"
+    },
+    "name": "Group capacity prediction"
+  }
