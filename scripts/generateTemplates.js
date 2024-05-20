@@ -214,9 +214,9 @@ function processTemplateFile(fileData, cohortIndexEntries, workbookIndexEntries,
     }
 }
 
-function processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData, languages) {
+function processARMTemplateFile(templatePath, rootDirectory, fileName, armTemplateData, languages, armTemplateIndexEntries) {
     try {
-        var path = getPackageOutputPath(templatePath, rootDirectory);
+        var path = getPackageOutputPath(templatePath, rootDirectory, null, null, armTemplateIndexEntries, fileName);
         path = path.replace(".json", "");
         path = path.concat("-", fileName, ".json");
         languages.forEach(lang => {
@@ -457,7 +457,7 @@ function assignFileName(templatePath, rootDirectory, templateData) {
 }
 
 /** Returns the path of where the translated template should be dropped */
-function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, workbooksIndexMap) {
+function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, workbooksIndexMap, armTemplateIndexMap, armTemplateFileName) {
     var result = rootDirectory;
     if (result.endsWith("\\")) {
         result = result.substring(0, result.length - 1);
@@ -491,6 +491,10 @@ function getPackageOutputPath(templatePath, rootDirectory, cohortsIndexMap, work
         } else {
             workbooksIndexMap[indexKey] = indexEntry;
         }
+    } else if (armTemplateIndexMap) {
+        const indexKey = "community-".concat(removedIndex.split("\\").join("/"), "/", armTemplateFileName);
+        const indexEntry = workbookName.concat("-", armTemplateFileName, ".json");
+        armTemplateIndexMap[indexKey] = indexEntry;
     }
     return result;
 }
@@ -530,6 +534,7 @@ const languages = generateEnUsOnly ? [DefaultLang] : Object.keys(LanguagesMap);
 
 var cohortIndexEntries = {}; // Map for generating cohort index files
 var workbookIndexEntries = {}; // Map for generating workbook index files
+var armTemplateIndexEntries = {}; // Map for generating ARM template index files
 var rootDirectory;
 
 directories.forEach(filePath => {
@@ -555,7 +560,7 @@ directories.forEach(filePath => {
 
         switch (fileType) {
             case WorkbookFileType.ARMTemplate:
-                processARMTemplateFile(filePath, rootDirectory, fileName, fileData, languages);
+                processARMTemplateFile(filePath, rootDirectory, fileName, fileData, languages, armTemplateIndexEntries);
                 break;
             case WorkbookFileType.Gallery:
                 processGalleryFile(filePath, rootDirectory, fileName, fileData);
@@ -568,9 +573,8 @@ directories.forEach(filePath => {
 });
 
 const outputFolder = rootDirectory.concat(rootDirectory.startsWith("\\") ? PackageOutputFolder.substring(1) : PackageOutputFolder);
-
 generateIndexFiles(cohortIndexEntries, outputFolder.concat(LangOutputSpecifier, CohortsTemplateFolder, IndexFile), languages);
-generateIndexFiles(workbookIndexEntries, outputFolder.concat(LangOutputSpecifier, WorkbookTemplateFolder, IndexFile), languages);
+generateIndexFiles(ObjectAssign(workbookIndexEntries, armTemplateIndexEntries), outputFolder.concat(LangOutputSpecifier, WorkbookTemplateFolder, IndexFile), languages);
 
 // copy package.json into the output/package directory
 fs.copyFile(rootDirectory.concat("\\scripts\\package.json"), outputFolder.concat("package.json"), (err) => {
