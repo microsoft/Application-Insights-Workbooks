@@ -5,6 +5,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "value::all"
+        ],
         "parameters": [
           {
             "id": "accb80c7-9c54-47b5-a316-f83c860ad6ff",
@@ -63,7 +66,7 @@
               "allowCustom": true
             },
             "value": {
-              "durationMs": 7776000000
+              "durationMs": 1209600000
             },
             "label": "Time range"
           },
@@ -82,6 +85,21 @@
             "name": "Apim",
             "type": 5,
             "query": "project id,name,type\r\n| where type == \"microsoft.apimanagement/service\"",
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "4d8f9311-bd24-43c8-a692-f111a957be67",
+            "version": "KqlParameterItem/1.0",
+            "name": "ApplicationInsights",
+            "type": 5,
+            "query": "resources\r\n| where type == \"microsoft.insights/components\"",
+            "crossComponentResources": [
+              "value::all"
+            ],
             "typeSettings": {
               "additionalResourceOptions": []
             },
@@ -145,14 +163,14 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let apiFilter = dynamic([{API}]);\r\nApiManagementGatewayLogs\r\n| where ApiId in (apiFilter)\r\n| summarize count() by tostring(ResponseCode), bin(TimeGenerated, {TimeRange:grain})\r\n| render timechart",
+              "query": "let apiFilter = dynamic([{API}]);\r\nrequests\r\n| where tostring(customDimensions[\"Service Type\"]) == \"API Management\"\r\n| where isnotnull(customDimensions[\"API Name\"]) and isnotnull(customDimensions[\"Operation Name\"])\r\n| extend APIName = tostring(customDimensions[\"API Name\"])\r\n| extend OperationName = tostring(customDimensions[\"Operation Name\"])\r\n| where APIName in (apiFilter)\r\n| summarize count(tostring(resultCode)) by bin(timestamp, {TimeRange:grain}), APIName\r\n| render timechart",
               "size": 0,
               "title": "Requests",
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
-              "resourceType": "microsoft.apimanagement/service",
+              "resourceType": "microsoft.insights/components",
               "crossComponentResources": [
-                "{Apim}"
+                "{ApplicationInsights}"
               ]
             },
             "name": "requests"
@@ -161,50 +179,18 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let apiFilter = dynamic([{API}]);\r\nApiManagementGatewayLogs\r\n| where ApiId in (apiFilter)\r\n| summarize ['Data Transfer'] = sum(iif(isempty(RequestSize), 0, RequestSize) + iif(isempty(ResponseSize), 0, ResponseSize)) by bin(TimeGenerated, {TimeRange:grain})\r\n| render barchart",
-              "size": 0,
-              "title": "Data transfer",
-              "timeContextFromParameter": "TimeRange",
-              "queryType": 0,
-              "resourceType": "microsoft.apimanagement/service",
-              "crossComponentResources": [
-                "{Apim}"
-              ]
-            },
-            "name": "data transfer"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let apiFilter = dynamic([{API}]);\r\nApiManagementGatewayLogs\r\n| where ApiId in (apiFilter)\r\n| summarize ['Response Time'] = avg(TotalTime), ['Service Time'] = avg(BackendTime) by bin(TimeGenerated, {TimeRange:grain})\r\n| render timechart",
+              "query": "let apiFilter = dynamic([{API}]);\r\nrequests\r\n| where tostring(customDimensions[\"Service Type\"]) == \"API Management\"\r\n| where isnotnull(customDimensions[\"API Name\"]) and isnotnull(customDimensions[\"Operation Name\"])\r\n| extend APIName = tostring(customDimensions[\"API Name\"])\r\n| extend OperationName = tostring(customDimensions[\"Operation Name\"])\r\n| where APIName in (apiFilter)\r\n| summarize avg(duration) by bin(timestamp, {TimeRange:grain})\r\n| render timechart",
               "size": 0,
               "aggregation": 3,
               "title": "Response time",
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
-              "resourceType": "microsoft.apimanagement/service",
+              "resourceType": "microsoft.insights/components",
               "crossComponentResources": [
-                "{Apim}"
+                "{ApplicationInsights}"
               ]
             },
             "name": "response time"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let apiFilter = dynamic([{API}]);\r\nApiManagementGatewayLogs\r\n| where ApiId in (apiFilter)\r\n| summarize ['Cache Hits'] = countif(Cache =~ 'hit'), ['Cache Misses'] = countif(Cache =~ 'miss') by Cache, bin(TimeGenerated, {TimeRange:grain})\r\n| render timechart",
-              "size": 0,
-              "title": "Cache",
-              "timeContextFromParameter": "TimeRange",
-              "queryType": 0,
-              "resourceType": "microsoft.apimanagement/service",
-              "crossComponentResources": [
-                "{Apim}"
-              ]
-            },
-            "name": "cache"
           }
         ]
       },
@@ -225,13 +211,13 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "ApiManagementGatewayLogs\r\n| summarize \r\n    SuccessfullRequests = countif(ResponseCode < 400), \r\n    FailedRequests = countif(ResponseCode == 400 or (ResponseCode >= 500 and ResponseCode < 600)),\r\n    UnauthorizedRequests = countif(ResponseCode == 401 or ResponseCode == 403 or ResponseCode == 429),\r\n    OtherRequests = countif((ResponseCode > 401 and ResponseCode < 500 and ResponseCode != 401 and ResponseCode != 403 and ResponseCode != 429) or ResponseCode > 599 or isempty(ResponseCode)),\r\n    TotalRequests = count(),\r\n    AverageResponseTime = avg(TotalTime),\r\n    AverageServiceResponseTime = avg(BackendTime),\r\n    DataTransfer = sum(RequestSize) + sum(ResponseSize)\r\n  by\r\n    Api = coalesce(ApiId, 'None'),\r\n    ApiId = iif(isempty(ApiId), 'None', strcat('/apis/', ApiId))\r\n| extend\r\n    AverageResponseTime = iff(isnan(AverageResponseTime), 0.0, AverageResponseTime),\r\n    AverageServiceResponseTime = iff(isnan(AverageServiceResponseTime), 0.0, AverageResponseTime)\r\n| where Api in (dynamic([{API}]))",
+              "query": "let apiFilter = dynamic([{API}]);\r\nrequests\r\n| where tostring(customDimensions[\"Service Type\"]) == \"API Management\"\r\n| where isnotnull(customDimensions[\"API Name\"]) and isnotnull(customDimensions[\"Operation Name\"])\r\n| extend APIName = tostring(customDimensions[\"API Name\"])\r\n| extend OperationName = tostring(customDimensions[\"Operation Name\"])\r\n| extend ResponseCode = tolong(resultCode)\r\n| where APIName in (apiFilter)\r\n| summarize \r\n    SuccessfullRequests = countif(ResponseCode < 400), \r\n    FailedRequests = countif(ResponseCode == 400 or (ResponseCode >= 500 and ResponseCode < 600)),\r\n    UnauthorizedRequests = countif(ResponseCode == 401 or ResponseCode == 403 or ResponseCode == 429),\r\n    OtherRequests = countif((ResponseCode > 401 and ResponseCode < 500 and ResponseCode != 401 and ResponseCode != 403 and ResponseCode != 429) or ResponseCode > 599 or isempty(ResponseCode)),\r\n    TotalRequests = count(),\r\n    Duration = avg(duration)\r\n  by\r\n    Api = coalesce(APIName, 'None')\r\n| extend\r\n    AverageDuration = iff(isnan(Duration), 0.0, Duration)\r\n| project-away Duration",
               "size": 2,
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
-              "resourceType": "microsoft.apimanagement/service",
+              "resourceType": "microsoft.insights/components",
               "crossComponentResources": [
-                "{Apim}"
+                "{ApplicationInsights}"
               ],
               "visualization": "table",
               "gridSettings": {
@@ -347,62 +333,9 @@
                     "columnMatch": "TimeGenerated",
                     "formatter": 5
                   }
-                ],
-                "sortBy": [
-                  {
-                    "itemKey": "Api",
-                    "sortOrder": 1
-                  }
-                ],
-                "labelSettings": [
-                  {
-                    "columnId": "Api",
-                    "label": "API"
-                  },
-                  {
-                    "columnId": "ApiId",
-                    "label": "API ID"
-                  },
-                  {
-                    "columnId": "SuccessfullRequests",
-                    "label": "Successful Requests"
-                  },
-                  {
-                    "columnId": "FailedRequests",
-                    "label": "Failed Requests"
-                  },
-                  {
-                    "columnId": "UnauthorizedRequests",
-                    "label": "Unauthorized Requests"
-                  },
-                  {
-                    "columnId": "OtherRequests",
-                    "label": "Other Requests"
-                  },
-                  {
-                    "columnId": "TotalRequests",
-                    "label": "Total Requests"
-                  },
-                  {
-                    "columnId": "AverageResponseTime",
-                    "label": "Response Time (Avg)"
-                  },
-                  {
-                    "columnId": "AverageServiceResponseTime",
-                    "label": "Service Response Time (Avg)"
-                  },
-                  {
-                    "columnId": "DataTransfer",
-                    "label": "Data Transfer"
-                  }
                 ]
               },
-              "sortBy": [
-                {
-                  "itemKey": "Api",
-                  "sortOrder": 1
-                }
-              ],
+              "sortBy": [],
               "tileSettings": {
                 "showBorder": false
               },
@@ -431,13 +364,13 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "ApiManagementGatewayLogs\r\n| summarize\r\n    SuccessfullRequests = countif(ResponseCode < 400), \r\n    FailedRequests = countif(ResponseCode == 400 or (ResponseCode >= 500 and ResponseCode < 600)),\r\n    UnauthorizedRequests = countif(ResponseCode == 401 or ResponseCode == 403 or ResponseCode == 429),\r\n    OtherRequests = countif((ResponseCode > 401 and ResponseCode < 500 and ResponseCode != 401 and ResponseCode != 403 and ResponseCode != 429) or ResponseCode > 599 or isempty(ResponseCode)),\r\n    TotalRequests = count(),\r\n    AverageResponseTime = avg(TotalTime),\r\n    AverageServiceResponseTime = avg(BackendTime),\r\n    DataTransfer=sum(RequestSize) + sum(ResponseSize)\r\n  by\r\n    Api = coalesce(ApiId, 'None'),\r\n    Operation = coalesce(OperationId, 'None'),\r\n    OperationId = iif(isempty(ApiId) or isempty(OperationId), 'None', strcat('/apis/', ApiId, '/operations/', OperationId))\r\n| extend\r\n    AverageResponseTime = iff(isnan(AverageResponseTime), 0.0, AverageResponseTime),\r\n    AverageServiceResponseTime = iff(isnan(AverageServiceResponseTime), 0.0, AverageResponseTime)\r\n| where Api in (dynamic([{API}]));",
+              "query": "let apiFilter = dynamic([{API}]);\r\nrequests\r\n| where tostring(customDimensions[\"Service Type\"]) == \"API Management\"\r\n| where isnotnull(customDimensions[\"API Name\"])\r\n| extend APIName = tostring(customDimensions[\"API Name\"])\r\n| extend OperationName = tostring(customDimensions[\"Operation Name\"])\r\n| extend ResponseCode = tolong(resultCode)\r\n| where APIName in (apiFilter)\r\n| summarize \r\n    SuccessfullRequests = countif(ResponseCode < 400), \r\n    FailedRequests = countif(ResponseCode == 400 or (ResponseCode >= 500 and ResponseCode < 600)),\r\n    UnauthorizedRequests = countif(ResponseCode == 401 or ResponseCode == 403 or ResponseCode == 429),\r\n    OtherRequests = countif((ResponseCode > 401 and ResponseCode < 500 and ResponseCode != 401 and ResponseCode != 403 and ResponseCode != 429) or ResponseCode > 599 or isempty(ResponseCode)),\r\n    TotalRequests = count(),\r\n    Duration = avg(duration)\r\n  by\r\n    Api = coalesce(APIName, 'None'),\r\n    OperationName = coalesce(OperationName, 'None')\r\n| extend\r\n    AverageDuration = iff(isnan(Duration), 0.0, Duration)\r\n| project-away Duration",
               "size": 2,
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
-              "resourceType": "microsoft.apimanagement/service",
+              "resourceType": "microsoft.insights/components",
               "crossComponentResources": [
-                "{Apim}"
+                "{ApplicationInsights}"
               ],
               "visualization": "table",
               "gridSettings": {
@@ -547,28 +480,10 @@
                     }
                   }
                 ],
-                "sortBy": [
-                  {
-                    "itemKey": "Api",
-                    "sortOrder": 1
-                  },
-                  {
-                    "itemKey": "Operation",
-                    "sortOrder": 2
-                  }
-                ],
                 "labelSettings": [
                   {
                     "columnId": "Api",
                     "label": "API"
-                  },
-                  {
-                    "columnId": "Operation",
-                    "label": "Operation"
-                  },
-                  {
-                    "columnId": "OperationId",
-                    "label": "Operation ID"
                   },
                   {
                     "columnId": "SuccessfullRequests",
@@ -589,31 +504,10 @@
                   {
                     "columnId": "TotalRequests",
                     "label": "Total Requests"
-                  },
-                  {
-                    "columnId": "AverageResponseTime",
-                    "label": "Response Time (Avg)"
-                  },
-                  {
-                    "columnId": "AverageServiceResponseTime",
-                    "label": "Service Response Time (Avg)"
-                  },
-                  {
-                    "columnId": "DataTransfer",
-                    "label": "Data Transfer"
                   }
                 ]
               },
-              "sortBy": [
-                {
-                  "itemKey": "Api",
-                  "sortOrder": 1
-                },
-                {
-                  "itemKey": "Operation",
-                  "sortOrder": 2
-                }
-              ]
+              "sortBy": []
             },
             "name": "OperationsQuery"
           }
