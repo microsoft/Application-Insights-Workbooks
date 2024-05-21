@@ -150,7 +150,7 @@
                   "version": "KqlParameterItem/1.0",
                   "name": "HostPoolDetails",
                   "type": 1,
-                  "query": "resources \r\n| where id in ({HostPools})\r\n| extend id = tolower(id)\r\n| join (desktopvirtualizationresources\r\n| extend hpId = tolower(trim_end(\"/sessionhosts/.+\", id) ), vmRsourceId = tolower(properties.resourceId) \r\n| summarize  vmRsourceId=any(vmRsourceId),shCount = count() by hpId ) on $left.id == $right.hpId\r\n| join (resources \r\n    | extend sku = tostring(properties.hardwareProfile.vmSize)\r\n    | project id=tolower(id), cores = toint(extract(\"_[[:alpha:]]+([0-9]+)\",1, sku))\r\n    | extend cores=coalesce(cores,0)\r\n    ) on $left.vmRsourceId == $right.id\r\n| extend sessionLimit = toint(properties.maxSessionLimit)\r\n| extend sessionLimit = iff(sessionLimit<=1000, sessionLimit, cores*4)  \r\n| project bag=pack(\"id\", id,\"resourceGroup\", resourceGroup, \"sessionLimit\", sessionLimit, \"shCount\", shCount, \"cores\", cores) \r\n| summarize tostring(make_list(bag))",
+                  "query": "resources \r\n| where id in ({HostPools})\r\n| extend id = tolower(id)\r\n| join (desktopvirtualizationresources\r\n| extend hpId = tolower(trim_end(\"/sessionhosts/.+\", id) ), vmRsourceId = tolower(properties.resourceId) \r\n| summarize  vmRsourceId=any(vmRsourceId),shCount = count() by hpId ) on $left.id == $right.hpId\r\n| join (resources \r\n    | extend sku = tostring(properties.hardwareProfile.vmSize)\r\n    | project id=tolower(id), cores = toint(extract(\"_[[:alpha:]]+([0-9]+)\",1, sku)), arcCores = toint(properties.detectedProperties.logicalCoreCount)\r\n    | extend cores=coalesce(cores,arcCores,0)\r\n    ) on $left.vmRsourceId == $right.id\r\n| extend sessionLimit = toint(properties.maxSessionLimit)\r\n| extend sessionLimit = iff(sessionLimit<=1000, sessionLimit, cores*4)  \r\n| project bag=pack(\"id\", id,\"resourceGroup\", resourceGroup, \"sessionLimit\", sessionLimit, \"shCount\", shCount, \"cores\", cores) \r\n| summarize tostring(make_list(bag))",
                   "crossComponentResources": [
                     "{Subscriptions}"
                   ],
@@ -183,19 +183,6 @@
             "name": "parameters - 4"
           },
           {
-            "type": 1,
-            "content": {
-              "json": "The charts with information on users per core do not include host pools using session hosts on Azure Stack HCI",
-              "style": "info"
-            },
-            "conditionalVisibility": {
-              "parameterName": "HasHCI",
-              "comparison": "isNotEqualTo",
-              "value": "0"
-            },
-            "name": "text - 4"
-          },
-          {
             "type": 12,
             "content": {
               "version": "NotebookGroup/1.0",
@@ -212,7 +199,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "WVDAgentHealthStatus\r\n| summarize\r\n    Sessions= max(toint(ActiveSessions) + toint(InactiveSessions)),\r\n    InactiveSessions=max(toint(InactiveSessions))\r\n    by bin(TimeGenerated, 1m), SessionHostName, _ResourceId\r\n| summarize Sessions= sum(Sessions), InactiveSessions = sum(InactiveSessions) by TimeGenerated, _ResourceId\r\n| make-series\r\n    Sessions = max(Sessions), [\"Idle Sessions\"] = max(InactiveSessions)\r\n    on TimeGenerated\r\n    step 1h by _ResourceId    \r\n| extend series_stats(Sessions)\r\n| project Sessions, TimeGenerated, Average=series_stats_Sessions_avg, _ResourceId\r\n| mvexpand Sessions, TimeGenerated\r\n| project Sessions=todouble(Sessions), TimeGenerated= todatetime(TimeGenerated), Average, _ResourceId\r\n| summarize\r\n    arg_max(MaxSessions=Sessions, MaxTime=TimeGenerated),\r\n    arg_min(MinSessions=Sessions, MinTime=TimeGenerated),\r\n    Average =any(Average) by _ResourceId\r\n| project [\"Res. group\"]= trim_end(\"/providers/.*\", _ResourceId),[\"Host pool\"]=_ResourceId, [\"Max\"]= MaxSessions, MaxTime, [\"Min\"]= MinSessions, MinTime, Average, Metric=\"Sessions\"    ",
+                          "query": "WVDAgentHealthStatus\r\n| summarize\r\n    Sessions= max(toint(ActiveSessions) + toint(InactiveSessions)),\r\n    InactiveSessions=max(toint(InactiveSessions))\r\n    by bin(TimeGenerated, 1m), SessionHostName, _ResourceId\r\n| summarize Sessions= sum(Sessions), InactiveSessions = sum(InactiveSessions) by TimeGenerated, _ResourceId\r\n| make-series\r\n    Sessions = max(Sessions), [\"Idle Sessions\"] = max(InactiveSessions)\r\n    on TimeGenerated\r\n    step 1h by _ResourceId    \r\n| extend series_stats(Sessions)\r\n| project Sessions, TimeGenerated, Average=series_stats_Sessions_avg, _ResourceId\r\n| mvexpand Sessions, TimeGenerated\r\n| project Sessions=todouble(Sessions), TimeGenerated= todatetime(TimeGenerated), Average, _ResourceId\r\n| summarize\r\n    arg_max(MaxSessions=Sessions, MaxTime=TimeGenerated),\r\n    arg_min(MinSessions=Sessions, MinTime=TimeGenerated),\r\n    Average =any(Average) by _ResourceId\r\n| project [\"Res. group\"]= trim_end(\"/providers/.*\", _ResourceId),[\"Host pool\"]=_ResourceId, [\"Max\"]= MaxSessions, MaxTime, [\"Min\"]= MinSessions, MinTime, Average, Metric=\"Sessions\" \r\n| order by  tolower( [\"Res. group\"]) asc, tolower([\"Host pool\"]) asc",
                           "size": 1,
                           "title": "Sessions summary",
                           "timeContextFromParameter": "TimeRange",
@@ -378,7 +365,7 @@
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nWVDAgentHealthStatus\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| join hpProps on $left._ResourceId == $right.id\r\n| where cores > 0\r\n| make-series [\"Users/cores\"] = max(Sessions/cores) on TimeGenerated step {TimeRange:grain} by _ResourceId\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"], _ResourceId\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average) by _ResourceId\r\n| project [\"Res. group\"]= trim_end(\"/providers/.*\", _ResourceId), [\"Host pool\"]=_ResourceId, [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n\r\n",
+                          "query": "let hpProps =  materialize(datatable(row:string) ['{HostPoolDetails}']\r\n| project row = todynamic(row)\r\n| mv-expand  row\r\n| evaluate bag_unpack(row));\r\nWVDAgentHealthStatus\r\n| extend Sessions= todouble(ActiveSessions) + todouble(InactiveSessions)\r\n| join kind=inner hpProps on $left._ResourceId == $right.id\r\n| where cores > 0\r\n| make-series [\"Users/cores\"] = max(Sessions/cores) on TimeGenerated step {TimeRange:grain} by _ResourceId\r\n| extend series_stats([\"Users/cores\"])\r\n| project [\"Users/cores\"], TimeGenerated, Average = [\"series_stats_Users/cores_avg\"], _ResourceId\r\n| mv-expand [\"Users/cores\"], TimeGenerated\r\n| extend TimeGenerated = todatetime(TimeGenerated)\r\n| summarize arg_max(MaxSessions=todouble([\"Users/cores\"]), MaxTime=TimeGenerated), arg_min(MinSessions=todouble([\"Users/cores\"]), MinTime=TimeGenerated), Average=any(Average) by _ResourceId\r\n| project [\"Res. group\"]= trim_end(\"/providers/.*\", _ResourceId), [\"Host pool\"]=_ResourceId, [\"Max User/Cores\"]= MaxSessions, MaxTime, [\"Min User/Coures\"]= MinSessions, MinTime, Average\r\n| order by tolower([\"Res. group\"]) asc, tolower([\"Host pool\"]) asc\r\n\r\n",
                           "size": 1,
                           "title": "User per core summary",
                           "timeContextFromParameter": "TimeRange",
@@ -437,12 +424,6 @@
                                 }
                               }
                             ],
-                            "sortBy": [
-                              {
-                                "itemKey": "Max User/Cores",
-                                "sortOrder": 1
-                              }
-                            ],
                             "labelSettings": [
                               {
                                 "columnId": "Max User/Cores",
@@ -466,12 +447,6 @@
                               }
                             ]
                           },
-                          "sortBy": [
-                            {
-                              "itemKey": "Max User/Cores",
-                              "sortOrder": 1
-                            }
-                          ],
                           "chartSettings": {
                             "group": null,
                             "createOtherGroup": 0
