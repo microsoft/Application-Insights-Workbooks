@@ -1,0 +1,140 @@
+{
+    "type": 12,
+    "content": {
+      "version": "NotebookGroup/1.0",
+      "groupType": "editable",
+      "items": [
+        {
+          "type": 3,
+          "content": {
+            "version": "KqlItem/1.0",
+            "query": "resources\r\n| where type =~ 'microsoft.insights/activitylogalerts'\r\n          or type =~ 'microsoft.alertsmanagement/smartdetectoralertrules'\r\n          or type =~ 'microsoft.insights/scheduledqueryrules'\r\n          or type =~ 'microsoft.insights/alertrules'\r\n          or type =~ 'microsoft.insights/metricalerts'\r\n| extend Enabled = iff(isnotnull(properties.state), properties.state, properties.enabled),\r\n                Severity = properties.severity,\r\n                AutoResolve = properties.autoMitigate,\r\n                Query = properties.source.query\r\n| extend Enabled = case(Enabled == \"Enabled\", \"true\", Enabled == \"Disabled\", \"false\", Enabled)\r\n| extend Condition = properties.criteria.allOf\r\n| extend Condition = properties.criteria.allOf\r\n| mv-expand Condition\r\n| extend AlertTarget = case(\r\n                properties.criteria contains 'Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria', 'App Insights',\r\n                type =~ 'microsoft.insights/activitylogalerts', 'ActivityLog',\r\n                type =~ 'microsoft.insights/components', 'App Insights',\r\n                type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics', \r\n                type =~ 'microsoft.insights/scheduledqueryrules', 'Log Analytics',\r\n                type =~ 'microsoft.alertsmanagement/smartdetectoralertrules', 'App Insights',\r\n                type =~ 'microsoft.insights/components', 'App Insights',\r\n                Condition.metricNamespace =~ 'microsoft.insights/components', 'App Insights',\r\n                Condition.metricNamespace =~ 'Microsoft.OperationalInsights/workspaces', 'Log Analytics',\r\n                tolower(Condition.metricNamespace))\r\n| join kind=leftouter(\r\n              alertsmanagementresources \r\n                    | extend FireTime = todatetime(properties.essentials.startDateTime), \r\n                                    LastModifiedTime = todatetime(properties.essentials.lastModifiedDateTime),\r\n                                    MonitorCondition = tostring(properties.essentials.monitorCondition)\r\n                     | extend TimeOpen = iff(MonitorCondition == \"Resolved\", datetime_diff('minute', LastModifiedTime, FireTime), datetime_diff('minute', now(), FireTime))\r\n                     | where FireTime {TimeRange}\r\n                     | summarize count(), avg(TimeOpen) by name) \r\n              on name\r\n| extend TimesFired = iff(isnull(count_), 0, count_)\r\n| project-away name1, count_\r\n| extend Scopes = properties.scopes\r\n| extend TargetResource = todynamic(case(\r\n                 type =~ 'microsoft.insights/scheduledqueryrules', properties.source.dataSourceId,\r\n                 type =~ 'microsoft.alertsmanagement/smartdetectoralertrules', properties.scope, properties.scopes))\r\n| extend TargetResource = iff(isnull(TargetResource), Scopes, TargetResource)\r\n| mv-expand TargetResource\r\n| extend ActionGroup = todynamic(case( \r\n                 type =~ 'microsoft.alertsmanagement/smartdetectoralertrules', properties.actionGroups.groupIds, \r\n                 type =~ 'microsoft.insights/metricalerts', properties.actions, \r\n                 type =~ 'microsoft.insights/scheduledqueryrules', properties.action.aznsAction.actionGroup, \r\n                 type =~ 'microsoft.insights/activitylogalerts', properties.actions.actionGroups, '')) \r\n| mv-expand ActionGroup \r\n| extend ActionGroup = case(\r\n                 isnull(ActionGroup), 'No Action Group Assigned', \r\n                 isnotnull(ActionGroup.actionGroupId), tolower(ActionGroup.actionGroupId), \r\n                 tolower(ActionGroup)) \r\n| join kind=leftouter ( \r\n                 resources \r\n                       | where type =~ 'microsoft.insights/actiongroups'\r\n                       | extend Email = properties.emailReceivers \r\n                       | mv-expand Email = Email \r\n                       | summarize EmailList=make_list(Email.emailAddress) by ActionGroup=tolower(id)) \r\n                 on ActionGroup\r\n| extend AutoResolve = iff(isnull(AutoResolve), \"N/A\", AutoResolve),\r\nDetails = pack_all()\r\n| project id, name, AlertTarget, avg_TimeOpen, TimesFired, TargetResource, subscriptionId, Enabled, Severity, AutoResolve, Query, EmailList, Details\r\n| sort by TimesFired desc\r\n",
+            "size": 2,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "gridSettings": {
+              "formatters": [
+                {
+                  "columnMatch": "$gen_group",
+                  "formatter": 15,
+                  "formatOptions": {
+                    "linkTarget": null,
+                    "showIcon": true
+                  }
+                },
+                {
+                  "columnMatch": "Group",
+                  "formatter": 15,
+                  "formatOptions": {
+                    "linkTarget": null,
+                    "showIcon": true
+                  }
+                },
+                {
+                  "columnMatch": "id",
+                  "formatter": 5
+                },
+                {
+                  "columnMatch": "name",
+                  "formatter": 5
+                },
+                {
+                  "columnMatch": "avg_TimeOpen",
+                  "formatter": 8,
+                  "formatOptions": {
+                    "palette": "greenRed"
+                  },
+                  "numberFormat": {
+                    "unit": 25,
+                    "options": {
+                      "style": "decimal"
+                    }
+                  }
+                },
+                {
+                  "columnMatch": "TimesFired",
+                  "formatter": 8,
+                  "formatOptions": {
+                    "palette": "greenRed"
+                  }
+                },
+                {
+                  "columnMatch": "TargetResource",
+                  "formatter": 13,
+                  "formatOptions": {
+                    "linkTarget": null,
+                    "showIcon": true
+                  }
+                },
+                {
+                  "columnMatch": "subscriptionId",
+                  "formatter": 15,
+                  "formatOptions": {
+                    "linkTarget": null,
+                    "showIcon": true
+                  }
+                },
+                {
+                  "columnMatch": "Enabled",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "true",
+                        "representation": "success",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "disabled",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "columnMatch": "Details",
+                  "formatter": 7,
+                  "formatOptions": {
+                    "linkTarget": "CellDetails",
+                    "linkLabel": "🔍 View Details",
+                    "linkIsContextBlade": true
+                  }
+                }
+              ],
+              "hierarchySettings": {
+                "treeType": 1,
+                "groupBy": [
+                  "subscriptionId"
+                ],
+                "expandTopLevel": true,
+                "finalBy": "name"
+              },
+              "labelSettings": [
+                {
+                  "columnId": "avg_TimeOpen",
+                  "label": "OpenTime"
+                }
+              ]
+            }
+          },
+          "name": "query - 0"
+        }
+      ]
+    },
+    "conditionalVisibility": {
+      "parameterName": "tab",
+      "comparison": "isEqualTo",
+      "value": "inventory"
+    },
+    "name": "group - Alert Inventory",
+    "styleSettings": {
+      "showBorder": true
+    }
+  }
