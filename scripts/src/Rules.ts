@@ -9,8 +9,7 @@ const JsonPath = require('jsonpath');
 /** regex for finding params in brackets, including any format specifiers, like :escape, which can be used in query steps */
 const ValidSpecifierRegex = "[_a-zA-Z0-9\xA0-\uFFFF\\-\\$\\@\\.\\[\\]\\*\\?\\(\\)\\<\\>\\=\\,\\:]*";
 const ValidParameterNameRegex = "[_a-zA-Z\xA0-\uFFFF][_a-zA-Z0-9\xA0-\uFFFF]*";
-//const ParameterRegex = new RegExp("\{" + ValidParameterNameRegex + "(:"+ ValidSpecifierRegex + ")?\}", "g");
-const OnlyParameterRegex = new RegExp("^\{" + ValidParameterNameRegex + "(:"+ ValidSpecifierRegex + ")?\}$", "g");
+const OnlyParameterRegex = new RegExp("^{" + ValidParameterNameRegex + "(:"+ ValidSpecifierRegex + ")?}$", "g");
 
 function resourceIdCheck(rule:BestPracticeRule, workbook: SerializedNotebook, entry: any, index: number, pathResult: any[], paths: string[]) : BestPracticeRuleResult[] {
     if (!isEmpty(pathResult)) {
