@@ -9,6 +9,13 @@
       "name": "text - 0"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "### This report provides detailed sign-in information for your applications. Azure Active Directory Authentication Library (ADAL) has been deprecated. Use the Microsoft Authentication Library (MSAL) to avoid putting your app's security at risk. If you have existing applications that use ADAL, be sure to migrate them to MSAL. This article provides guidance on how to use Azure Monitor workbooks to obtain a list of all apps that use ADAL in your tenant. [Learn more about the migration steps here](https://learn.microsoft.com/en-us/entra/identity-platform/msal-migration)."
+      },
+      "name": "text - 14 - Copy - Copy"
+    },
+    {
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
@@ -20,7 +27,7 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 14400000
+              "durationMs": 2592000000
             },
             "typeSettings": {
               "selectableValues": [
@@ -174,14 +181,268 @@
       "name": "parameters - 1"
     },
     {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Apps using Active Directory Authentication Libraries (ADAL) ",
+        "items": [
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let nonInteractive = AADNonInteractiveUserSignInLogs\r\n    | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    | extend Key = ParsedFields.key\r\n    | extend Value = ParsedFields.value\r\n    | where Key contains \"AD App\"\r\n    | where Value contains \"ADAL\"\r\n    | extend details = split(Value, \" \")\r\n    | extend Version = strcat(details[3],\" \",details[4])\r\n    | project TimeGenerated, ['App Name'] = AppDisplayName, ['App ID'] = AppId,  ['ADAL Version'] = Version,['IP Address'] = IPAddress,['Identity type'] = Identity, ResultType;\r\n\r\nlet interactive = SigninLogs\r\n    | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    | extend Key = ParsedFields.key\r\n    | extend Value = ParsedFields.value\r\n    | where Key contains \"AD App\"\r\n    | where Value contains \"ADAL\"\r\n    | extend details = split(Value, \" \")\r\n    | extend Version = strcat(details[3],\" \",details[4])\r\n    | project TimeGenerated, ['App Name'] = AppDisplayName, ['App ID'] = AppId, ['ADAL Version'] = Version,['IP Address'] = IPAddress,['Identity type'] = Identity, ResultType;\r\n\r\nlet spLogIns = AADServicePrincipalSignInLogs\r\n    | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    | extend Key = ParsedFields.key\r\n    | extend Value = ParsedFields.value\r\n    | where Key contains \"AD App\"\r\n    | where Value contains \"ADAL\"\r\n    | extend details = split(Value, \" \")\r\n    | extend Version = strcat(details[3], \" \", details[4])\r\n    | project TimeGenerated, ['App Name'] = ServicePrincipalName, ['App ID'] = AppId, ['ADAL Version'] = Version,['IP Address'] = IPAddress,['Identity type'] = Identity, ResultType;\r\n\r\nlet data = union interactive, nonInteractive, spLogIns\r\n    | extend errorCode = ResultType\r\n   |extend SigninStatus = case(errorCode == 0, \"Success\", errorCode == 50058, \"Pending user action\",errorCode == 50140, \"Pending user action\", errorCode == 51006, \"Pending user action\", errorCode == 50059, \"Pending user action\",errorCode == 65001, \"Pending user action\", errorCode == 52004, \"Pending user action\", errorCode == 50055, \"Pending user action\", errorCode == 50144, \"Pending user action\", errorCode == 50072, \"Pending user action\", errorCode == 50074, \"Pending user action\", errorCode == 16000, \"Pending user action\", errorCode == 16001, \"Pending user action\", errorCode == 16003, \"Pending user action\", errorCode == 50127, \"Pending user action\", errorCode == 50125, \"Pending user action\", errorCode == 50129, \"Pending user action\", errorCode == 50143, \"Pending user action\", errorCode == 81010, \"Pending user action\", errorCode == 81014, \"Pending user action\", errorCode == 81012 ,\"Pending user action\", errorCode == 29200 ,\"Pending user action\", errorCode == 50019 ,\"Pending user action\", errorCode == 50076 ,\"Pending user action\",  errorCode == 50097 ,\"Pending user action\",  errorCode == 50158 ,\"Pending user action\",  errorCode == 165100 ,\"Pending user action\", \"Failure\");\r\n\r\n// Counting unique ADAL App IDs\r\nlet uniqueADALAppsCount = data\r\n    | summarize UniqueADALAppsCount = dcount(['App ID']);\r\n\r\ndata\r\n| summarize Count = count() by SigninStatus\r\n| join kind = fullouter (datatable(SigninStatus:string)['Success', 'Pending action (Interrupts)', 'Failure']) on SigninStatus\r\n| project SigninStatus = iff(SigninStatus == '', SigninStatus1, SigninStatus), Count = iff(SigninStatus == '', 0, Count)\r\n| join kind = inner (\r\n    data\r\n    | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SigninStatus\r\n    ) on SigninStatus\r\n| project-away SigninStatus1, TimeGenerated\r\n| extend Status = SigninStatus\r\n| union (\r\n    data \r\n    | summarize Count = count() \r\n    | extend jkey = 1\r\n    | join kind=inner (\r\n        data\r\n        | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n        | extend jkey = 1) on jkey\r\n    | extend SigninStatus = 'ADAL Sign-ins', Status = '*'\r\n)\r\n| union (\r\n    uniqueADALAppsCount\r\n    | extend SigninStatus = 'Unique ADAL Apps', Status = '*', Count = UniqueADALAppsCount\r\n)",
+                    "size": 3,
+                    "timeContextFromParameter": "TimeRange",
+                    "exportFieldName": "Status",
+                    "exportParameterName": "SigninStatus",
+                    "exportDefaultValue": "*",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "tiles",
+                    "tileSettings": {
+                      "titleContent": {
+                        "columnMatch": "SigninStatus",
+                        "formatter": 1,
+                        "formatOptions": {
+                          "showIcon": true
+                        }
+                      },
+                      "leftContent": {
+                        "columnMatch": "Count",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "palette": "blue",
+                          "showIcon": true
+                        },
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "style": "decimal",
+                            "maximumFractionDigits": 2,
+                            "maximumSignificantDigits": 3
+                          }
+                        }
+                      },
+                      "secondaryContent": {
+                        "columnMatch": "Trend",
+                        "formatter": 9,
+                        "formatOptions": {
+                          "min": 0,
+                          "palette": "blue",
+                          "showIcon": true
+                        }
+                      },
+                      "showBorder": false
+                    }
+                  },
+                  "name": "query - 5"
+                }
+              ]
+            },
+            "name": "group - 14"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let nonInteractive = AADNonInteractiveUserSignInLogs\r\n|mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    |extend Key = ParsedFields.key\r\n    |extend Value = ParsedFields.value\r\n    |where Key contains \"AD App\"\r\n    |where Value contains \"ADAL\"\r\n    |extend details = split(Value, \" \")\r\n    |extend Version = strcat(details[3],\" \",details[4])\r\n|project TimeGenerated,\r\n['App Name'] = AppDisplayName,\r\n['App ID'] = AppId, \r\n ['ADAL Version'] = Version,\r\n['IP Address'] = IPAddress,\r\n['Identity type'] = Identity\r\n|summarize ['Sign-in Count'] = dcount(TimeGenerated, 4) by ['App Name'], ['App ID'], ['ADAL Version'], ['IP Address'],['Identity type'];\r\nlet interactive = SigninLogs\r\n|mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    |extend Key = ParsedFields.key\r\n    |extend Value = ParsedFields.value\r\n    |where Key contains \"AD App\"\r\n    |where Value contains \"ADAL\"\r\n    |extend details = split(Value, \" \")\r\n    |extend Version = strcat(details[3],\" \",details[4])\r\n|project TimeGenerated, \r\n['App Name'] = AppDisplayName, \r\n['App ID'] = AppId, \r\n['ADAL Version'] = Version,\r\n['IP Address'] = IPAddress,\r\n['Identity type'] = Identity\r\n|summarize ['Sign-in Count'] = dcount(TimeGenerated, 4) by ['App Name'], ['App ID'], ['ADAL Version'], ['IP Address'],['Identity type'];\r\n//updated  section to add SP Signin to address inconsistency \r\n let spLogIns = AADServicePrincipalSignInLogs\r\n     | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n     | extend Key = ParsedFields.key\r\n     | extend Value = ParsedFields.value\r\n     | where Key contains \"AD App\"\r\n     | where Value contains \"ADAL\"\r\n     | extend details = split(Value, \" \")\r\n     | extend Version = strcat(details[3], \" \", details[4])\r\n     | project TimeGenerated,\r\n         ['App Name'] = ServicePrincipalName,\r\n         ['App ID'] = AppId,\r\n         ['ADAL Version'] = Version,\r\n         ['IP Address'] = IPAddress,\r\n         ['Identity type'] = Identity\r\n     | summarize ['Sign-in Count'] = dcount(TimeGenerated, 4) by ['App Name'], ['App ID'], ['ADAL Version'],['IP Address'],['Identity type'];\r\nunion interactive, nonInteractive,spLogIns",
+              "size": 0,
+              "timeContextFromParameter": "TimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "query - 0"
+          }
+        ]
+      },
+      "name": "Apps using Active Directory Authentication Libraries (ADAL) signing in users"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### ALL Sign-in Data"
+      },
+      "name": "text - 14"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "099f038d-32aa-4ecd-ac11-2fbadab2c167",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 300000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000,
+                  "createdTime": "2018-11-13T19:33:10.162Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 900000,
+                  "createdTime": "2018-11-13T19:33:10.164Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 1800000,
+                  "createdTime": "2018-11-13T19:33:10.164Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 3600000,
+                  "createdTime": "2018-11-13T19:33:10.164Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 14400000,
+                  "createdTime": "2018-11-13T19:33:10.164Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 43200000,
+                  "createdTime": "2018-11-13T19:33:10.164Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 86400000,
+                  "createdTime": "2018-11-13T19:33:10.165Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 172800000,
+                  "createdTime": "2018-11-13T19:33:10.166Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 259200000,
+                  "createdTime": "2018-11-13T19:33:10.166Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 604800000,
+                  "createdTime": "2018-11-13T19:33:10.166Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 1209600000,
+                  "createdTime": "2018-11-13T19:33:10.166Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                },
+                {
+                  "durationMs": 2592000000,
+                  "createdTime": "2018-11-13T19:33:10.167Z",
+                  "isInitialTime": false,
+                  "grain": 1,
+                  "useDashboardTimeRange": false
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "8df1c663-1414-4fdb-9ef8-d96f67d4e809",
+            "version": "KqlParameterItem/1.0",
+            "name": "Apps",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "SigninLogs\r\n| summarize Count = count() by AppDisplayName\r\n| order by Count desc, AppDisplayName asc\r\n| project Value = AppDisplayName, Label = strcat(AppDisplayName, ' - ', Count, ' sign-ins'), Selected = false\r\n",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "limitSelectTo": 10,
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "*"
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "1d80c5d5-7092-4580-aa10-305769e70bea",
+            "version": "KqlParameterItem/1.0",
+            "name": "Users",
+            "type": 2,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "SigninLogs\r\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n| summarize Count = count() by UserDisplayName\r\n| order by Count desc, UserDisplayName asc\r\n| project Value = UserDisplayName, Label = strcat(UserDisplayName, ' - ', Count, ' sign-ins'), Selected = false\r\n",
+            "value": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "limitSelectTo": 20,
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "*"
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - 1 - Copy"
+    },
+    {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let data = SigninLogs\r\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n|where UserDisplayName in ({Users}) or '*' in ({Users})\r\n|extend errorCode = Status.errorCode\r\n|extend SigninStatus = case(errorCode == 0, \"Success\", errorCode == 50058, \"Pending user action\",errorCode == 50140, \"Pending user action\", errorCode == 51006, \"Pending user action\", errorCode == 50059, \"Pending user action\",errorCode == 65001, \"Pending user action\", errorCode == 52004, \"Pending user action\", errorCode == 50055, \"Pending user action\", errorCode == 50144, \"Pending user action\", errorCode == 50072, \"Pending user action\", errorCode == 50074, \"Pending user action\", errorCode == 16000, \"Pending user action\", errorCode == 16001, \"Pending user action\", errorCode == 16003, \"Pending user action\", errorCode == 50127, \"Pending user action\", errorCode == 50125, \"Pending user action\", errorCode == 50129, \"Pending user action\", errorCode == 50143, \"Pending user action\", errorCode == 81010, \"Pending user action\", errorCode == 81014, \"Pending user action\", errorCode == 81012 ,\"Pending user action\", errorCode == 29200 ,\"Pending user action\", errorCode == 50019 ,\"Pending user action\", errorCode == 50076 ,\"Pending user action\",  errorCode == 50097 ,\"Pending user action\",  errorCode == 50158 ,\"Pending user action\",  errorCode == 165100 ,\"Pending user action\", \"Failure\");\r\ndata\r\n| summarize Count = count() by SigninStatus\r\n| join kind = fullouter (datatable(SigninStatus:string)['Success', 'Pending action (Interrupts)', 'Failure']) on SigninStatus\r\n| project SigninStatus = iff(SigninStatus == '', SigninStatus1, SigninStatus), Count = iff(SigninStatus == '', 0, Count)\r\n| join kind = inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SigninStatus)\r\n    on SigninStatus\r\n| project-away SigninStatus1, TimeGenerated\r\n| extend Status = SigninStatus\r\n| union (\r\n    data \r\n    | summarize Count = count() \r\n    | extend jkey = 1\r\n    | join kind=inner (data\r\n        | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n        | extend jkey = 1) on jkey\r\n    | extend SigninStatus = 'All Sign-ins', Status = '*'    \r\n)\r\n| order by Count desc\r\n\r\n\r\n\r\n",
+        "query": "let ALLnonInteractive = AADNonInteractiveUserSignInLogs\r\n    | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    | extend Key = ParsedFields.key\r\n    | extend Value = ParsedFields.value\r\n    | extend details = split(Value, \" \")\r\n    | extend Version = strcat(details[3], \" \", details[4])\r\n    | project TimeGenerated, ['App Name'] = AppDisplayName, ['App ID'] = AppId;\r\n\r\nlet ALLinteractive = SigninLogs\r\n    | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    | extend Key = ParsedFields.key\r\n    | extend Value = ParsedFields.value\r\n    | extend details = split(Value, \" \")\r\n    | extend Version = strcat(details[3], \" \", details[4])\r\n    | project TimeGenerated, ['App Name'] = AppDisplayName, ['App ID'] = AppId, ResultType;\r\n\r\nlet AllSPLogIn = AADServicePrincipalSignInLogs\r\n    | mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    | extend Key = ParsedFields.key\r\n    | extend Value = ParsedFields.value\r\n    | extend details = split(Value, \" \")\r\n    | extend Version = strcat(details[3], \" \", details[4])\r\n    | project TimeGenerated, ['App Name'] = ServicePrincipalName, ['App ID'] = AppId, ResultType;\r\n\r\nlet data = union ALLnonInteractive, ALLinteractive, AllSPLogIn\r\n    | extend errorCode = ResultType\r\n |extend SigninStatus = case(errorCode == 0, \"Success\", errorCode == 50058, \"Pending user action\",errorCode == 50140, \"Pending user action\", errorCode == 51006, \"Pending user action\", errorCode == 50059, \"Pending user action\",errorCode == 65001, \"Pending user action\", errorCode == 52004, \"Pending user action\", errorCode == 50055, \"Pending user action\", errorCode == 50144, \"Pending user action\", errorCode == 50072, \"Pending user action\", errorCode == 50074, \"Pending user action\", errorCode == 16000, \"Pending user action\", errorCode == 16001, \"Pending user action\", errorCode == 16003, \"Pending user action\", errorCode == 50127, \"Pending user action\", errorCode == 50125, \"Pending user action\", errorCode == 50129, \"Pending user action\", errorCode == 50143, \"Pending user action\", errorCode == 81010, \"Pending user action\", errorCode == 81014, \"Pending user action\", errorCode == 81012 ,\"Pending user action\", errorCode == 29200 ,\"Pending user action\", errorCode == 50019 ,\"Pending user action\", errorCode == 50076 ,\"Pending user action\",  errorCode == 50097 ,\"Pending user action\",  errorCode == 50158 ,\"Pending user action\",  errorCode == 165100 ,\"Pending user action\", \"Failure\");\r\n\r\n// Counting unique Apps\r\nlet uniqueAppsCount = data\r\n    | summarize UniqueAppsCount = dcount(['App ID']);\r\n\r\ndata\r\n    | summarize Count = count() by SigninStatus\r\n    | join kind = fullouter (datatable(SigninStatus:string)['Success', 'Pending action (Interrupts)', 'Failure']) on SigninStatus\r\n    | project SigninStatus = iff(SigninStatus == '', SigninStatus1, SigninStatus), Count = iff(SigninStatus == '', 0, Count)\r\n    | join kind = inner (\r\n        data\r\n        | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SigninStatus\r\n    ) on SigninStatus\r\n    | project-away SigninStatus1, TimeGenerated\r\n    | extend Status = SigninStatus\r\n    | union (\r\n        data \r\n        | summarize Count = count() \r\n        | extend jkey = 1\r\n        | join kind=inner (\r\n            data\r\n            | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n            | extend jkey = 1\r\n        ) on jkey\r\n        | extend SigninStatus = 'All Sign-ins', Status = '*'    \r\n    )\r\n    | union (\r\n        uniqueAppsCount\r\n        | extend SigninStatus = 'Total Unique Apps', Status = '*', Count = UniqueAppsCount\r\n    )\r\n",
         "size": 3,
-        "timeContext": {
-          "durationMs": 1209600000
-        },
         "timeContextFromParameter": "TimeRange",
         "exportFieldName": "Status",
         "exportParameterName": "SigninStatus",
@@ -242,9 +503,6 @@
         "size": 1,
         "showAnalytics": true,
         "title": "Sign-ins by Location",
-        "timeContext": {
-          "durationMs": 1209600000
-        },
         "timeContextFromParameter": "TimeRange",
         "exportParameterName": "LocationDetail",
         "exportDefaultValue": "{ \"Name\":\"\", \"Type\":\"*\"}",
@@ -349,9 +607,6 @@
         "size": 1,
         "showAnalytics": true,
         "title": "Location Sign-in details",
-        "timeContext": {
-          "durationMs": 1209600000
-        },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
@@ -492,9 +747,6 @@
         "size": 2,
         "showAnalytics": true,
         "title": "Sign-ins Heatmap",
-        "timeContext": {
-          "durationMs": 0
-        },
         "timeContextFromParameter": "TimeRange",
         "exportParameterName": "LocationDetail",
         "exportDefaultValue": "{ \"Name\":\"\", \"Type\":\"*\"}",
@@ -624,9 +876,6 @@
         "size": 1,
         "showAnalytics": true,
         "title": "Sign-ins by Device",
-        "timeContext": {
-          "durationMs": 1209600000
-        },
         "timeContextFromParameter": "TimeRange",
         "exportParameterName": "DeviceDetail",
         "exportDefaultValue": "{ \"Name\":\"\", \"Type\":\"*\"}",
@@ -737,9 +986,6 @@
         "size": 1,
         "showAnalytics": true,
         "title": "Device Sign-in details",
-        "timeContext": {
-          "durationMs": 1209600000
-        },
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces",
@@ -866,7 +1112,7 @@
       "name": "query - 8 - Copy"
     },
     {
-            "type": 3,
+      "type": 3,
       "content": {
         "version": "KqlItem/1.0",
         "query": "let data = SigninLogs\r\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\r\n|where UserDisplayName in ({Users}) or '*' in ({Users})\r\n| extend errorCode = Status.errorCode\r\n| extend SigninStatus = case(errorCode == 0, \"Success\", errorCode == 50058, \"Pending user action\",errorCode == 50140, \"Pending user action\", errorCode == 51006, \"Pending user action\", errorCode == 50059, \"Pending user action\",errorCode == 65001, \"Pending user action\", errorCode == 52004, \"Pending user action\", errorCode == 50055, \"Pending user action\", errorCode == 50144, \"Pending user action\", errorCode == 50072, \"Pending user action\", errorCode == 50074, \"Pending user action\", errorCode == 16000, \"Pending user action\", errorCode == 16001, \"Pending user action\", errorCode == 16003, \"Pending user action\", errorCode == 50127, \"Pending user action\", errorCode == 50125, \"Pending user action\", errorCode == 50129, \"Pending user action\", errorCode == 50143, \"Pending user action\", errorCode == 81010, \"Pending user action\", errorCode == 81014, \"Pending user action\", errorCode == 81012 ,\"Pending user action\", \"Failure\")\r\n| where SigninStatus == '{SigninStatus}' or '{SigninStatus}' == '*' or '{SigninStatus}' == 'All Sign-ins';\r\nlet appData = data\r\n| summarize TotalCount = count(), SuccessCount = countif(SigninStatus == \"Success\"), FailureCount = countif(SigninStatus == \"Failure\"), InterruptCount = countif(SigninStatus == \"Pending user action\") by IPAddress\r\n| where IPAddress has \":\"\r\n| join kind=inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by IPAddress\r\n    | project-away TimeGenerated) on IPAddress\r\n| order by TotalCount desc, IPAddress asc\r\n| project IPAddress, TotalCount, SuccessCount, FailureCount, InterruptCount, Trend\r\n| serialize Id = row_number();\r\ndata\r\n| summarize TotalCount = count(), SuccessCount = countif(SigninStatus == \"Success\"), FailureCount = countif(SigninStatus == \"Failure\"), InterruptCount = countif(SigninStatus == \"Pending user action\") by IPAddress\r\n| join kind=inner (data\r\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by IPAddress\r\n    | project-away TimeGenerated) on IPAddress\r\n| order by TotalCount desc, IPAddress asc\r\n| where IPAddress has \":\"\r\n| project IPAddress, TotalCount, SuccessCount, FailureCount, InterruptCount, Trend\r\n| serialize Id = row_number(1000000)\r\n| join kind=inner (appData) on IPAddress\r\n| project Id, Name = IPAddress, ['Sign-in Count'] = TotalCount, Trend, ['Failure Count'] = FailureCount, ['Interrupt Count'] = InterruptCount, ['Success Rate'] = 1.0 * SuccessCount / TotalCount, ParentId = Id1\r\n//| union (appData \r\n    //| project Id, Name = IPAddress, ['Sign-in Count'] = TotalCount, Trend, ['Failure Count'] = FailureCount, ['Interrupt Count'] = InterruptCount, ['Success Rate'] = 1.0 * SuccessCount / TotalCount, ParentId = -1)\r\n//| order by ['Sign-in Count'] desc, Name asc",
@@ -1107,42 +1353,7 @@
       },
       "customWidth": "33",
       "name": "IPv6 sign-in details"
-    },
-    {
-      "type": 12,
-      "content": {
-        "version": "NotebookGroup/1.0",
-        "groupType": "editable",
-        "title": "Apps using Active Directory Authentication Libraries (ADAL) signing in users",
-        "items": [
-          {
-            "type": 1,
-            "content": {
-              "json": "We've released the newer Microsoft Authentication Library (MSAL), thus the older Active Directory Authentication Library (ADAL) is being retired on June 30th, 2022. We are no longer adding new features to ADAL and will no longer add any security patches starting June 30th, 2022. We recommend updating the following apps to MSAL by making changes to the app source code. [Learn more about the migration steps here.](https://aka.ms/msal-migration)"
-            },
-            "name": "text - 1"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let nonInteractive = AADNonInteractiveUserSignInLogs\r\n|mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    |extend Key = ParsedFields.key\r\n    |extend Value = ParsedFields.value\r\n    |where Key contains \"AD App\"\r\n    |where Value contains \"ADAL\"\r\n    |extend details = split(Value, \" \")\r\n    |extend Version = strcat(details[3],\" \",details[4])\r\n|project TimeGenerated, ['App Name'] = AppDisplayName, ['App ID'] = AppId, ['ADAL Version'] = Version\r\n|summarize ['Sign-in Count'] = dcount(TimeGenerated, 4) by ['App Name'], ['App ID'], ['ADAL Version'];\r\nlet interactive = SigninLogs\r\n|mv-expand ParsedFields=parse_json(AuthenticationProcessingDetails)\r\n    |extend Key = ParsedFields.key\r\n    |extend Value = ParsedFields.value\r\n    |where Key contains \"AD App\"\r\n    |where Value contains \"ADAL\"\r\n    |extend details = split(Value, \" \")\r\n    |extend Version = strcat(details[3],\" \",details[4])\r\n|project TimeGenerated, ['App Name'] = AppDisplayName, ['App ID'] = AppId, ['ADAL Version'] = Version\r\n|summarize ['Sign-in Count'] = dcount(TimeGenerated, 4) by ['App Name'], ['App ID'], ['ADAL Version'];\r\nunion interactive, nonInteractive",
-              "size": 0,
-              "timeContext": {
-                "durationMs": 1209600000
-              },
-              "timeContextFromParameter": "TimeRange",
-              "showExportToExcel": true,
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces"
-            },
-            "name": "query - 0"
-          }
-        ]
-      },
-      "name": "Apps using Active Directory Authentication Libraries (ADAL) signing in users"
     }
   ],
-
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
