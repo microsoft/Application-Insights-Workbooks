@@ -7,509 +7,1061 @@
         "version": "KqlParameterItem/1.0",
         "parameters": [
           {
-            "id": "3bf03c31-f68a-4ebf-b8be-d191353b24b8",
+            "id": "374da694-3c53-4aa8-b67d-a1de4cd44f3b",
             "version": "KqlParameterItem/1.0",
-            "name": "ioDirection",
-            "label": "IO direction",
+            "name": "storageIoWorkloadType",
+            "label": "Workload",
             "type": 10,
-            "description": "Select the type of IO to show: reads from database files or writes to database files",
+            "description": "Select the type of workload to show on the heatmap. \"User\" shows only storage IO in the user resource pool. \"User and system\" shows all storage IO.",
             "isRequired": true,
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
             },
-            "jsonData": "[{\"value\":\"read\",\"label\":\"Read\"},{\"value\":\"write\",\"label\":\"Write\"}]",
-            "value": "read"
-          },
-          {
-            "id": "9f5cce7e-986c-4be7-a62d-d0af1cf35b10",
-            "version": "KqlParameterItem/1.0",
-            "name": "ioMetric",
-            "label": "Metric",
-            "type": 10,
-            "description": "Select an IO metric to show on the heatmap. \"Latency\" uses the average latency of read or write IO operations; \"IO operations\" uses the total number of read or write IO operations (aka IOs); \"Bytes\" uses the total number of read or written bytes.",
-            "isRequired": true,
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
+            "jsonData": "[\r\n    {\"value\":\"user\",\"label\":\"User\"},\r\n    {\"value\":\"all\",\"label\":\"User and system\"}\r\n]",
+            "timeContext": {
+              "durationMs": 86400000
             },
-            "jsonData": "[\r\n    {\"value\":\"latency\",\"label\":\"Latency\"},\r\n    {\"value\":\"ios\",\"label\":\"IO operations\"},\r\n    {\"value\":\"bytes\",\"label\":\"Bytes\"}\r\n]",
-            "value": "latency"
-          },
-          {
-            "id": "8c906d60-0b93-46ac-852c-c23b638aaeb9",
-            "version": "KqlParameterItem/1.0",
-            "name": "ioFileType",
-            "label": "Database files",
-            "type": 10,
-            "description": "Select \"All\" to include IO against all types of database files; select \"Data\" or \"Transaction log\" to include IO against these database files types only",
-            "isRequired": true,
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
-            "jsonData": "[\r\n    {\"value\":\"All\",\"label\":\"All\"},\r\n    {\"value\":\"Data\",\"label\":\"Data\"},\r\n    {\"value\":\"Log\",\"label\":\"Transaction log\"}\r\n]",
-            "value": "All"
-          },
-          {
-            "version": "KqlParameterItem/1.0",
-            "name": "ioDatabaseType",
-            "label": "Databases",
-            "type": 10,
-            "description": "\"User databases\" includes IO against all user databases; \"tempdb\" includes IO against the tempdb database only",
-            "isRequired": true,
-            "typeSettings": {
-              "additionalResourceOptions": [],
-              "showDefault": false
-            },
-            "jsonData": "[\r\n    {\"value\":\"all\",\"label\":\"All\"},\r\n    {\"value\":\"user\",\"label\":\"User\"},\r\n    {\"value\":\"tempdb\",\"label\":\"tempdb\"}\r\n]",
-            "value": "all",
-            "id": "5d91ad00-7271-476f-882c-719ea8b20bb6"
+            "value": "user"
           }
         ],
-        "style": "above",
+        "style": "formHorizontal",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
-      "name": "io_parameters"
+      "name": "storage_io_workload_parameters"
     },
     {
-      "type": 3,
+      "type": 12,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and io_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and io_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, database_name, replica_type, replica_id, file_id, io_database_id, io_snapshot_sample_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by io_database_id asc, replica_type asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and io_database_id == prev(io_database_id) and replica_type == prev(replica_type) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and io_database_id == prev(io_database_id) and replica_type == prev(replica_type) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_writes - prev(num_of_writes), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", total_reads,\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", total_writes,\\r\\n                         long(null)\\r\\n                         )\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series ios_timeline = max(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(ios_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize ios = sum(total_ios),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, ios = iif(toreal(count_samples)/expected_sample_count < 0.5, long(null), ios), ios_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, ios, ios_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by ios desc\\r\\n| sort by ios desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-        "size": 3,
-        "showAnalytics": true,
-        "noDataMessage": "There is no data for specified parameters.",
-        "showExportToExcel": true,
-        "queryType": 9,
-        "visualization": "graph",
-        "graphSettings": {
-          "type": 2,
-          "topContent": {
-            "columnMatch": "decorated_database_name",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "WorkbookTemplate",
-              "workbookContext": {
-                "componentIdSource": "workbook",
-                "resourceIdsSource": "workbook",
-                "templateIdSource": "static",
-                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
-                "typeSource": "workbook",
-                "gallerySource": "default",
-                "locationSource": "workbook",
-                "workbookName": "Azure SQL database",
-                "passSpecificParams": true,
-                "templateParameters": [
-                  {
-                    "name": "databaseName",
-                    "source": "column",
-                    "value": "database_name"
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "075c5da1-8cd7-4f01-a867-bfc94eceea72",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ioMetric",
+                  "label": "Metric",
+                  "type": 10,
+                  "description": "Select an IO metric to show on the heatmap",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "serverName",
-                    "source": "column",
-                    "value": "logical_server_name"
+                  "jsonData": "[\r\n    {\"value\":\"latency\",\"label\":\"Latency\"},\r\n    {\"value\":\"iops\",\"label\":\"IOPS\"},\r\n    {\"value\":\"bps\",\"label\":\"Throughput\"}\r\n]",
+                  "value": "latency"
+                },
+                {
+                  "id": "4ca53b22-6b0e-4084-a653-25f8f4113513",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ioDirection",
+                  "label": "IO direction",
+                  "type": 10,
+                  "description": "Select the direction of IO to show: all database file IO, reads, or writes",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "timeRange",
-                    "source": "parameter",
-                    "value": "timeRange"
+                  "jsonData": "[\r\n    {\"value\":\"all\",\"label\":\"All\"},\r\n    {\"value\":\"read\",\"label\":\"Read\"},\r\n    {\"value\":\"write\",\"label\":\"Write\"}\r\n]",
+                  "value": "all"
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "user_io_parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\n// Storage IO counters are in sqldb_database_performance_counters_common for single databases and \\r\\n// in sqldb_elastic_pool_performance_counters_common for pooled databases. Use both as the source.\\r\\n// For single databases, use the user resource pool IO stats. For pooled databases, use workload group (database-level) IO stats.\\r\\nunion isfuzzy=true // sqldb_elastic_pool_performance_counters_common may not exist\\r\\n(\\r\\nsqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where object_name == \\\"Resource Pool Stats\\\"\\r\\n| where (\\\"{ioDirection}\\\" == \\\"read\\\" and counter_name == \\\"Read IOs completed\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"write\\\" and counter_name == \\\"Write IOs completed\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"all\\\" and counter_name in (\\\"Read IOs completed\\\",\\\"Write IOs completed\\\"))\\r\\n| project-away database_id, logical_database_id, physical_database_id\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by logical_server_name asc, replica_type asc, replica_id asc, instance_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and logical_server_name == prev(logical_server_name) and replica_type == prev(replica_type) and replica_id == prev(replica_id) and instance_name == prev(instance_name) and counter_name == prev(counter_name), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| project-away cntr_type, cntr_value\\r\\n| summarize total_ios = sum(toreal(delta_cntr_value)),\\r\\n            total_ms = sum(toreal(delta_sample_time_utc)),\\r\\n            count_samples = dcount(sample_time_utc),\\r\\n            min_sample_time_utc = min(sample_time_utc),\\r\\n            max_sample_time_utc = max(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n),\\r\\n(\\r\\nsqldb_elastic_pool_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where object_name == \\\"Workload Group Stats\\\"\\r\\n| where (\\\"{ioDirection}\\\" == \\\"read\\\" and counter_name == \\\"Total data read IOs\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"write\\\" and counter_name == \\\"Total data write IOs\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"all\\\" and counter_name in (\\\"Total data read IOs\\\",\\\"Total data write IOs\\\"))\\r\\n| project-away database_id, anchor_logical_database_id, anchor_physical_database_id\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by logical_server_name asc, replica_type asc, anchor_database_replica_id asc, instance_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and logical_server_name == prev(logical_server_name) and replica_type == prev(replica_type) and anchor_database_replica_id == prev(anchor_database_replica_id) and instance_name == prev(instance_name), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| project-away cntr_type, cntr_value\\r\\n| summarize total_ios = sum(toreal(delta_cntr_value)),\\r\\n            total_ms = sum(toreal(delta_sample_time_utc)),\\r\\n            count_samples = dcount(sample_time_utc),\\r\\n            min_sample_time_utc = min(sample_time_utc),\\r\\n            max_sample_time_utc = max(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series ios_timeline = max(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(ios_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize iops = toreal(sum(total_ios)) / datetime_diff(\\\"millisecond\\\", max(max_sample_time_utc), min(min_sample_time_utc)) * 1000,\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, iops = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), iops), ios_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, iops, ios_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by iops desc\\r\\n| sort by iops desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "decorated_database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "parameter",
+                      "componentId": "watcherResourceId",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "static",
+                      "gallery": "microsoft.database-watcher",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "column",
+                          "value": "ha_secondary"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ],
+                      "viewerMode": true
+                    }
                   },
-                  {
-                    "name": "linkAdxClusterUri",
-                    "source": "parameter",
-                    "value": "adxClusterUri"
-                  },
-                  {
-                    "name": "linkAdxDatabase",
-                    "source": "parameter",
-                    "value": "adxDatabase"
-                  },
-                  {
-                    "name": "tabName",
-                    "source": "static",
-                    "value": "Overview"
-                  },
-                  {
-                    "name": "haReplica",
-                    "source": "column",
-                    "value": "ha_secondary"
-                  },
-                  {
-                    "name": "showDescriptions",
-                    "source": "parameter",
-                    "value": "showDescriptions"
+                  "tooltipFormat": {
+                    "tooltip": "[\"top_tooltip\"]"
                   }
-                ],
-                "viewerMode": true
+                },
+                "centerContent": {
+                  "columnMatch": "iops",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 31,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write IOPS for the selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "ios_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "purple"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Total read or write IOs over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "ResourceFlat",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "iops",
+                  "type": 4,
+                  "heatmapPalette": "greenBlue",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5,
+                "edgeColorSettings": null
               }
             },
-            "tooltipFormat": {
-              "tooltip": "[\"top_tooltip\"]"
-            }
-          },
-          "centerContent": {
-            "columnMatch": "ios",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "none"
+            "conditionalVisibility": {
+              "parameterName": "ioMetric",
+              "comparison": "isEqualTo",
+              "value": "iops"
             },
-            "numberFormat": {
-              "unit": 17,
-              "options": {
-                "style": "decimal",
-                "useGrouping": true,
-                "maximumFractionDigits": 1
-              },
-              "emptyValCustomText": "N/A"
+            "name": "user_storage_io_ios_heatmap"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\n// Storage IO counters are in sqldb_database_performance_counters_common for single databases and \\r\\n// in sqldb_elastic_pool_performance_counters_common for pooled databases. Use both as the source.\\r\\n// For single databases, use the user resource pool IO stats. For pooled databases, use workload group (database-level) IO stats.\\r\\nunion isfuzzy=true // sqldb_elastic_pool_performance_counters_common may not exist\\r\\n(\\r\\nsqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where object_name == \\\"Resource Pool Stats\\\"\\r\\n| where (\\\"{ioDirection}\\\" == \\\"read\\\" and counter_name == \\\"Read bytes\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"write\\\" and counter_name == \\\"Write bytes\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"all\\\" and counter_name in (\\\"Read bytes\\\",\\\"Write bytes\\\"))\\r\\n| project-away database_id, logical_database_id, physical_database_id\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by logical_server_name asc, replica_type asc, replica_id asc, instance_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and logical_server_name == prev(logical_server_name) and replica_type == prev(replica_type) and replica_id == prev(replica_id) and instance_name == prev(instance_name) and counter_name == prev(counter_name), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| project-away cntr_type, cntr_value\\r\\n| summarize total_bytes = sum(toreal(delta_cntr_value)),\\r\\n            total_ms = sum(toreal(delta_sample_time_utc)),\\r\\n            count_samples = dcount(sample_time_utc),\\r\\n            min_sample_time_utc = min(sample_time_utc),\\r\\n            max_sample_time_utc = max(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n),\\r\\n(\\r\\nsqldb_elastic_pool_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where object_name == \\\"Workload Group Stats\\\"\\r\\n| where (\\\"{ioDirection}\\\" == \\\"read\\\" and counter_name == \\\"Total data read bytes\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"write\\\" and counter_name == \\\"Total data write bytes\\\")\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"all\\\" and counter_name in (\\\"Total data read bytes\\\",\\\"Total data write bytes\\\"))\\r\\n| project-away database_id, anchor_logical_database_id, anchor_physical_database_id\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by logical_server_name asc, replica_type asc, anchor_database_replica_id asc, instance_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and logical_server_name == prev(logical_server_name) and replica_type == prev(replica_type) and anchor_database_replica_id == prev(anchor_database_replica_id) and instance_name == prev(instance_name), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| project-away cntr_type, cntr_value\\r\\n| summarize total_bytes = sum(toreal(delta_cntr_value)),\\r\\n            total_ms = sum(toreal(delta_sample_time_utc)),\\r\\n            count_samples = dcount(sample_time_utc),\\r\\n            min_sample_time_utc = min(sample_time_utc),\\r\\n            max_sample_time_utc = max(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series bytes_timeline = max(total_bytes) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(bytes_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize bps = toreal(sum(total_bytes)) / datetime_diff(\\\"millisecond\\\", max(max_sample_time_utc), min(min_sample_time_utc)) * 1000,\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, bps = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), bps), bytes_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, bps, bytes_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by bps desc\\r\\n| sort by bps desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "decorated_database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "parameter",
+                      "componentId": "watcherResourceId",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "static",
+                      "gallery": "microsoft.database-watcher",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "column",
+                          "value": "ha_secondary"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ],
+                      "viewerMode": true
+                    }
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "[\"top_tooltip\"]"
+                  }
+                },
+                "centerContent": {
+                  "columnMatch": "bps",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 11,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write throughput for the selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "bytes_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "purple"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Total read or write bytes over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "ResourceFlat",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "bps",
+                  "type": 4,
+                  "heatmapPalette": "greenBlue",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5,
+                "edgeColorSettings": null
+              }
             },
-            "tooltipFormat": {
-              "tooltip": "Total read or write IOs for selected time range. Shows \"N/A\" if the number of samples is insufficient."
-            }
-          },
-          "bottomContent": {
-            "columnMatch": "ios_timeline",
-            "formatter": 21,
-            "formatOptions": {
-              "palette": "purple"
+            "conditionalVisibility": {
+              "parameterName": "ioMetric",
+              "comparison": "isEqualTo",
+              "value": "bps"
             },
-            "tooltipFormat": {
-              "tooltip": "Total read or write IOs over selected time range"
-            }
+            "name": "user_storage_io_bytes_heatmap"
           },
-          "hivesContent": {
-            "columnMatch": "grouper",
-            "formatter": 18,
-            "formatOptions": {
-              "thresholdsOptions": "icons",
-              "thresholdsGrid": [
-                {
-                  "operator": "Default",
-                  "thresholdValue": null,
-                  "representation": "ResourceFlat",
-                  "text": "{0}{1}"
-                }
-              ]
-            }
-          },
-          "nodeIdField": "database_name",
-          "graphOrientation": 3,
-          "showOrientationToggles": false,
-          "nodeSize": null,
-          "staticNodeSize": 150,
-          "colorSettings": {
-            "nodeColorField": "ios",
-            "type": 4,
-            "heatmapPalette": "coldHot",
-            "heatmapMin": null,
-            "heatmapMax": null,
-            "emptyValueColor": "gray"
-          },
-          "groupByField": "grouper",
-          "hivesMargin": 5,
-          "edgeColorSettings": null
-        }
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\n// Storage IO counters are in sqldb_database_performance_counters_common for single databases and \\r\\n// in sqldb_elastic_pool_performance_counters_common for pooled databases. Use both as the source.\\r\\n// For single databases, use the user resource pool IO stats. For pooled databases, use workload group (database-level) IO stats.\\r\\nunion isfuzzy=true // sqldb_elastic_pool_performance_counters_common may not exist\\r\\n(\\r\\nsqldb_database_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where object_name == \\\"Resource Pool Stats\\\"\\r\\n| where (\\\"{ioDirection}\\\" == \\\"read\\\" and counter_name in (\\\"Read IOs completed\\\",\\\"Read stall (ms)\\\"))\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"write\\\" and counter_name in (\\\"Write IOs completed\\\",\\\"Write stall (ms)\\\"))\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"all\\\" and counter_name in (\\\"Read IOs completed\\\",\\\"Write IOs completed\\\",\\\"Read stall (ms)\\\",\\\"Write stall (ms)\\\"))\\r\\n| project-away database_id, logical_database_id, physical_database_id\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by logical_server_name asc, replica_type asc, replica_id asc, counter_name asc, instance_name asc, counter_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and logical_server_name == prev(logical_server_name) and replica_type == prev(replica_type) and replica_id == prev(replica_id) and counter_name == prev(counter_name) and instance_name == prev(instance_name) and counter_name == prev(counter_name), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| project-away cntr_type, cntr_value\\r\\n| summarize total_ios = sumif(toreal(delta_cntr_value), counter_name endswith \\\"IOs completed\\\"),\\r\\n            total_stall_time = sumif(toreal(delta_cntr_value), counter_name endswith \\\"stall (ms)\\\"),\\r\\n            total_ms = sum(toreal(delta_sample_time_utc)),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n),\\r\\n(\\r\\nsqldb_elastic_pool_performance_counters_common\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where object_name == \\\"Workload Group Stats\\\"\\r\\n| where (\\\"{ioDirection}\\\" == \\\"read\\\" and counter_name in (\\\"Total data read IOs\\\",\\\"Total data read stall (ms)\\\"))\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"write\\\" and counter_name in (\\\"Total data write IOs\\\",\\\"Total data write stall (ms)\\\"))\\r\\n        or\\r\\n        (\\\"{ioDirection}\\\" == \\\"all\\\" and counter_name in (\\\"Total data read IOs\\\",\\\"Total data write IOs\\\",\\\"Total data read stall (ms)\\\",\\\"Total data write stall (ms)\\\"))\\r\\n| project-away database_id, anchor_logical_database_id, anchor_physical_database_id\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by logical_server_name asc, replica_type asc, anchor_database_replica_id asc, counter_name asc, instance_name asc, sample_time_utc asc\\r\\n| extend delta_cntr_value = iif(cntr_value >= prev(cntr_value) and logical_server_name == prev(logical_server_name) and replica_type == prev(replica_type) and anchor_database_replica_id == prev(anchor_database_replica_id) and counter_name == prev(counter_name) and instance_name == prev(instance_name), cntr_value - prev(cntr_value), real(null)),\\r\\n         delta_sample_time_utc = iif(sample_time_utc >= prev(sample_time_utc), datetime_diff(\\\"Millisecond\\\", sample_time_utc, prev(sample_time_utc)), long(null))\\r\\n| where isnotempty(delta_sample_time_utc)\\r\\n| project-away cntr_type, cntr_value\\r\\n| summarize total_ios = sumif(toreal(delta_cntr_value), counter_name endswith \\\"IOs\\\"),\\r\\n            total_stall_time = sumif(toreal(delta_cntr_value), counter_name endswith \\\"stall (ms)\\\"),\\r\\n            total_ms = sum(toreal(delta_sample_time_utc)),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n)\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series latency_timeline = sum(total_stall_time)/sum(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(latency_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize latency = iif(sum(total_ios) > 0, sum(total_stall_time)/sum(total_ios), real(null)),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, latency = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), latency), latency_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, latency, latency_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by latency desc\\r\\n| sort by latency desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "decorated_database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "parameter",
+                      "componentId": "watcherResourceId",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "static",
+                      "gallery": "microsoft.database-watcher",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "column",
+                          "value": "ha_secondary"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ],
+                      "viewerMode": true
+                    }
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "[\"top_tooltip\"]"
+                  }
+                },
+                "centerContent": {
+                  "columnMatch": "latency",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write IO latency for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "latency_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "purple"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write IO latency over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "ResourceFlat",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "latency",
+                  "type": 4,
+                  "heatmapPalette": "greenBlue",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5,
+                "edgeColorSettings": null
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "ioMetric",
+              "comparison": "isEqualTo",
+              "value": "latency"
+            },
+            "name": "user_storage_io_latency_heatmap"
+          }
+        ]
       },
       "conditionalVisibility": {
-        "parameterName": "ioMetric",
+        "parameterName": "storageIoWorkloadType",
         "comparison": "isEqualTo",
-        "value": "ios"
+        "value": "user"
       },
-      "name": "storage_io_ios_heatmap"
+      "name": "user_workloads_group"
     },
     {
-      "type": 3,
+      "type": 12,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and io_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and io_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, database_name, replica_type, replica_id, file_id, io_database_id, io_snapshot_sample_ms, num_of_bytes_read, num_of_bytes_written\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by io_database_id asc, replica_type asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_bytes_read = iif(num_of_bytes_read >= prev(num_of_bytes_read) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_bytes_read - prev(num_of_bytes_read), long(null)),\\r\\n         delta_num_of_bytes_written = iif(num_of_bytes_written >= prev(num_of_bytes_written) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_bytes_written - prev(num_of_bytes_written), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_read_bytes = sum(delta_num_of_bytes_read),\\r\\n            total_written_bytes = sum(delta_num_of_bytes_written),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_bytes = case(\\r\\n                           \\\"{ioDirection}\\\" == \\\"read\\\", total_read_bytes,\\r\\n                           \\\"{ioDirection}\\\" == \\\"write\\\", total_written_bytes,\\r\\n                           long(null)\\r\\n                           )\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series bytes_timeline = max(total_bytes) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(bytes_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize bytes = sum(total_bytes),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, bytes = iif(toreal(count_samples)/expected_sample_count < 0.5, long(null), bytes), bytes_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, bytes, bytes_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by bytes desc\\r\\n| sort by bytes desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-        "size": 3,
-        "showAnalytics": true,
-        "noDataMessage": "There is no data for specified parameters.",
-        "showExportToExcel": true,
-        "queryType": 9,
-        "visualization": "graph",
-        "graphSettings": {
-          "type": 2,
-          "topContent": {
-            "columnMatch": "decorated_database_name",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "WorkbookTemplate",
-              "workbookContext": {
-                "componentIdSource": "workbook",
-                "resourceIdsSource": "workbook",
-                "templateIdSource": "static",
-                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
-                "typeSource": "workbook",
-                "gallerySource": "default",
-                "locationSource": "workbook",
-                "workbookName": "Azure SQL database",
-                "passSpecificParams": true,
-                "templateParameters": [
-                  {
-                    "name": "databaseName",
-                    "source": "column",
-                    "value": "database_name"
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "9f5cce7e-986c-4be7-a62d-d0af1cf35b10",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ioMetric",
+                  "label": "Metric",
+                  "type": 10,
+                  "description": "Select an IO metric to show on the heatmap",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "serverName",
-                    "source": "column",
-                    "value": "logical_server_name"
+                  "jsonData": "[\r\n    {\"value\":\"latency\",\"label\":\"Latency\"},\r\n    {\"value\":\"iops\",\"label\":\"IOPS\"},\r\n    {\"value\":\"bps\",\"label\":\"Throughput\"}\r\n]",
+                  "value": "latency"
+                },
+                {
+                  "id": "3bf03c31-f68a-4ebf-b8be-d191353b24b8",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ioDirection",
+                  "label": "IO direction",
+                  "type": 10,
+                  "description": "Select the direction of IO to show: all database file IO, reads, or writes",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "timeRange",
-                    "source": "parameter",
-                    "value": "timeRange"
+                  "jsonData": "[\r\n    {\"value\":\"all\",\"label\":\"All\"},\r\n    {\"value\":\"read\",\"label\":\"Read\"},\r\n    {\"value\":\"write\",\"label\":\"Write\"}\r\n]",
+                  "value": "all"
+                },
+                {
+                  "id": "8c906d60-0b93-46ac-852c-c23b638aaeb9",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ioFileType",
+                  "label": "Database files",
+                  "type": 10,
+                  "description": "Select \"All\" to include IO against all types of database files; select \"Data\" or \"Transaction log\" to include IO against these database files types only",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "linkAdxClusterUri",
-                    "source": "parameter",
-                    "value": "adxClusterUri"
+                  "jsonData": "[\r\n    {\"value\":\"All\",\"label\":\"All\"},\r\n    {\"value\":\"Data\",\"label\":\"Data\"},\r\n    {\"value\":\"Log\",\"label\":\"Transaction log\"}\r\n]",
+                  "value": "All"
+                },
+                {
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ioDatabaseType",
+                  "label": "Databases",
+                  "type": 10,
+                  "description": "\"User databases\" includes IO against all user databases; \"tempdb\" includes IO against the tempdb database only",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
                   },
-                  {
-                    "name": "linkAdxDatabase",
-                    "source": "parameter",
-                    "value": "adxDatabase"
+                  "jsonData": "[\r\n    {\"value\":\"all\",\"label\":\"All\"},\r\n    {\"value\":\"user\",\"label\":\"User\"},\r\n    {\"value\":\"tempdb\",\"label\":\"tempdb\"}\r\n]",
+                  "value": "all",
+                  "id": "5d91ad00-7271-476f-882c-719ea8b20bb6"
+                }
+              ],
+              "style": "above",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "io_parameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and io_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and io_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, database_name, replica_type, replica_id, file_id, io_database_id, io_snapshot_sample_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by io_database_id asc, replica_type asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and io_database_id == prev(io_database_id) and replica_type == prev(replica_type) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and io_database_id == prev(io_database_id) and replica_type == prev(replica_type) and file_id == prev(file_id) and replica_id == prev(replica_id), num_of_writes - prev(num_of_writes), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            count_samples = dcount(sample_time_utc),\\r\\n            min_sample_time_utc = min(sample_time_utc),\\r\\n            max_sample_time_utc = max(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"all\\\", total_reads + total_writes,\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", total_reads,\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", total_writes,\\r\\n                         long(null)\\r\\n                         )\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series ios_timeline = max(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(ios_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize iops = toreal(sum(total_ios)) / datetime_diff(\\\"millisecond\\\", max(max_sample_time_utc), min(min_sample_time_utc)) * 1000,\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, iops = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), iops), ios_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, iops, ios_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by iops desc\\r\\n| sort by iops desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "decorated_database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "parameter",
+                      "componentId": "watcherResourceId",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "static",
+                      "gallery": "microsoft.database-watcher",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "column",
+                          "value": "ha_secondary"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ],
+                      "viewerMode": true
+                    }
                   },
-                  {
-                    "name": "tabName",
-                    "source": "static",
-                    "value": "Overview"
-                  },
-                  {
-                    "name": "haReplica",
-                    "source": "column",
-                    "value": "ha_secondary"
-                  },
-                  {
-                    "name": "showDescriptions",
-                    "source": "parameter",
-                    "value": "showDescriptions"
+                  "tooltipFormat": {
+                    "tooltip": "[\"top_tooltip\"]"
                   }
-                ],
-                "viewerMode": true
+                },
+                "centerContent": {
+                  "columnMatch": "iops",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 31,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write IOPS for the selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "ios_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "purple"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Total read or write IOs over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "ResourceFlat",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "iops",
+                  "type": 4,
+                  "heatmapPalette": "greenBlue",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5,
+                "edgeColorSettings": null
               }
             },
-            "tooltipFormat": {
-              "tooltip": "[\"top_tooltip\"]"
-            }
-          },
-          "centerContent": {
-            "columnMatch": "bytes",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "none"
+            "conditionalVisibility": {
+              "parameterName": "ioMetric",
+              "comparison": "isEqualTo",
+              "value": "iops"
             },
-            "numberFormat": {
-              "unit": 2,
-              "options": {
-                "style": "decimal",
-                "useGrouping": true,
-                "maximumFractionDigits": 1
-              },
-              "emptyValCustomText": "N/A"
-            },
-            "tooltipFormat": {
-              "tooltip": "Total read or written bytes for selected time range. Shows \"N/A\" if the number of samples is insufficient."
-            }
+            "name": "storage_io_ios_heatmap"
           },
-          "bottomContent": {
-            "columnMatch": "bytes_timeline",
-            "formatter": 21,
-            "formatOptions": {
-              "palette": "purple"
-            },
-            "tooltipFormat": {
-              "tooltip": "Total read or write bytes over selected time range"
-            }
-          },
-          "hivesContent": {
-            "columnMatch": "grouper",
-            "formatter": 18,
-            "formatOptions": {
-              "thresholdsOptions": "icons",
-              "thresholdsGrid": [
-                {
-                  "operator": "Default",
-                  "thresholdValue": null,
-                  "representation": "ResourceFlat",
-                  "text": "{0}{1}"
-                }
-              ]
-            }
-          },
-          "nodeIdField": "database_name",
-          "graphOrientation": 3,
-          "showOrientationToggles": false,
-          "nodeSize": null,
-          "staticNodeSize": 150,
-          "colorSettings": {
-            "nodeColorField": "bytes",
-            "type": 4,
-            "heatmapPalette": "coldHot",
-            "heatmapMin": null,
-            "heatmapMax": null,
-            "emptyValueColor": "gray"
-          },
-          "groupByField": "grouper",
-          "hivesMargin": 5,
-          "edgeColorSettings": null
-        }
-      },
-      "conditionalVisibility": {
-        "parameterName": "ioMetric",
-        "comparison": "isEqualTo",
-        "value": "bytes"
-      },
-      "name": "storage_io_bytes_heatmap"
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and io_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and io_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, database_name, replica_type, replica_id, file_id, io_database_id, io_snapshot_sample_ms, io_stall_read_ms, io_stall_write_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by io_database_id asc, replica_type asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_writes - prev(num_of_writes), long(null)),\\r\\n         delta_io_stall_read_ms = iif(io_stall_read_ms >= prev(io_stall_read_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), io_stall_read_ms - prev(io_stall_read_ms), long(null)),\\r\\n         delta_io_stall_write_ms = iif(io_stall_write_ms >= prev(io_stall_write_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), io_stall_write_ms - prev(io_stall_write_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            total_read_stall_time = sum(delta_io_stall_read_ms),\\r\\n            total_write_stall_time = sum(delta_io_stall_write_ms),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_stall_time = case(\\r\\n                                \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_read_stall_time),\\r\\n                                \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_write_stall_time),\\r\\n                                real(null)\\r\\n                                ),\\r\\n         total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_reads),\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_writes),\\r\\n                         real(null)\\r\\n                         )\\r\\n| project-away total_read_stall_time, total_write_stall_time, total_reads, total_writes\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series latency_timeline = sum(total_stall_time)/sum(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(latency_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize latency = iif(sum(total_ios) > 0, sum(total_stall_time)/sum(total_ios), real(null)),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, latency = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), latency), latency_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, latency, latency_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by latency desc\\r\\n| sort by latency desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
-        "size": 3,
-        "showAnalytics": true,
-        "noDataMessage": "There is no data for specified parameters.",
-        "showExportToExcel": true,
-        "queryType": 9,
-        "visualization": "graph",
-        "graphSettings": {
-          "type": 2,
-          "topContent": {
-            "columnMatch": "decorated_database_name",
-            "formatter": 1,
-            "formatOptions": {
-              "linkTarget": "WorkbookTemplate",
-              "workbookContext": {
-                "componentIdSource": "workbook",
-                "resourceIdsSource": "workbook",
-                "templateIdSource": "static",
-                "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
-                "typeSource": "workbook",
-                "gallerySource": "default",
-                "locationSource": "workbook",
-                "workbookName": "Azure SQL database",
-                "passSpecificParams": true,
-                "templateParameters": [
-                  {
-                    "name": "databaseName",
-                    "source": "column",
-                    "value": "database_name"
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and io_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and io_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, database_name, replica_type, replica_id, file_id, io_database_id, io_snapshot_sample_ms, num_of_bytes_read, num_of_bytes_written\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by io_database_id asc, replica_type asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_bytes_read = iif(num_of_bytes_read >= prev(num_of_bytes_read) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_bytes_read - prev(num_of_bytes_read), long(null)),\\r\\n         delta_num_of_bytes_written = iif(num_of_bytes_written >= prev(num_of_bytes_written) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_bytes_written - prev(num_of_bytes_written), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_read_bytes = sum(delta_num_of_bytes_read),\\r\\n            total_written_bytes = sum(delta_num_of_bytes_written),\\r\\n            count_samples = dcount(sample_time_utc),\\r\\n            min_sample_time_utc = min(sample_time_utc),\\r\\n            max_sample_time_utc = max(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_bytes = case(\\r\\n                           \\\"{ioDirection}\\\" == \\\"all\\\", total_read_bytes + total_written_bytes,\\r\\n                           \\\"{ioDirection}\\\" == \\\"read\\\", total_read_bytes,\\r\\n                           \\\"{ioDirection}\\\" == \\\"write\\\", total_written_bytes,\\r\\n                           long(null)\\r\\n                           )\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series bytes_timeline = max(total_bytes) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(bytes_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize bps = toreal(sum(total_bytes)) / datetime_diff(\\\"millisecond\\\", max(max_sample_time_utc), min(min_sample_time_utc)) * 1000,\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, bps = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), bps), bytes_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, bps, bytes_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by bps desc\\r\\n| sort by bps desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "decorated_database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "parameter",
+                      "componentId": "watcherResourceId",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "static",
+                      "gallery": "microsoft.database-watcher",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "column",
+                          "value": "ha_secondary"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ],
+                      "viewerMode": true
+                    }
                   },
-                  {
-                    "name": "serverName",
-                    "source": "column",
-                    "value": "logical_server_name"
-                  },
-                  {
-                    "name": "timeRange",
-                    "source": "parameter",
-                    "value": "timeRange"
-                  },
-                  {
-                    "name": "linkAdxClusterUri",
-                    "source": "parameter",
-                    "value": "adxClusterUri"
-                  },
-                  {
-                    "name": "linkAdxDatabase",
-                    "source": "parameter",
-                    "value": "adxDatabase"
-                  },
-                  {
-                    "name": "tabName",
-                    "source": "static",
-                    "value": "Overview"
-                  },
-                  {
-                    "name": "haReplica",
-                    "source": "column",
-                    "value": "ha_secondary"
-                  },
-                  {
-                    "name": "showDescriptions",
-                    "source": "parameter",
-                    "value": "showDescriptions"
+                  "tooltipFormat": {
+                    "tooltip": "[\"top_tooltip\"]"
                   }
-                ],
-                "viewerMode": true
+                },
+                "centerContent": {
+                  "columnMatch": "bps",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 11,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write throughput for the selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "bytes_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "purple"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Total read or write bytes over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "ResourceFlat",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "bps",
+                  "type": 4,
+                  "heatmapPalette": "greenBlue",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5,
+                "edgeColorSettings": null
               }
             },
-            "tooltipFormat": {
-              "tooltip": "[\"top_tooltip\"]"
-            }
-          },
-          "centerContent": {
-            "columnMatch": "latency",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "none"
+            "conditionalVisibility": {
+              "parameterName": "ioMetric",
+              "comparison": "isEqualTo",
+              "value": "bps"
             },
-            "numberFormat": {
-              "unit": 23,
-              "options": {
-                "style": "decimal",
-                "useGrouping": true,
-                "maximumFractionDigits": 1
-              },
-              "emptyValCustomText": "N/A"
+            "name": "storage_io_bytes_heatmap"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"let io = materialize (\\r\\nsqldb_database_storage_io\\r\\n| where sample_time_utc between (({timeRange:start} - {timeRange:grain}) .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| where \\\"{ioFileType}\\\" == \\\"All\\\" or (\\\"{ioFileType}\\\" != \\\"All\\\" and file_type == \\\"{ioFileType}\\\")\\r\\n| where \\\"{ioDatabaseType}\\\" == \\\"all\\\" or (\\\"{ioDatabaseType}\\\" == \\\"user\\\" and io_database_id != 2) or (\\\"{ioDatabaseType}\\\" == \\\"tempdb\\\" and io_database_id == 2)\\r\\n| project sample_time_utc, logical_server_name, database_name, replica_type, replica_id, file_id, io_database_id, io_snapshot_sample_ms, io_stall_read_ms, io_stall_write_ms, num_of_reads, num_of_writes\\r\\n| partition hint.strategy = shuffle by database_name\\r\\n(\\r\\nsort by io_database_id asc, replica_type asc, replica_id asc, file_id asc, sample_time_utc asc, io_snapshot_sample_ms asc\\r\\n| extend delta_io_snapshot_sample_ms = iif(io_snapshot_sample_ms >= prev(io_snapshot_sample_ms), io_snapshot_sample_ms - prev(io_snapshot_sample_ms), long(null)),\\r\\n         delta_num_of_reads = iif(num_of_reads >= prev(num_of_reads) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_reads - prev(num_of_reads), long(null)),\\r\\n         delta_num_of_writes = iif(num_of_writes >= prev(num_of_writes) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), num_of_writes - prev(num_of_writes), long(null)),\\r\\n         delta_io_stall_read_ms = iif(io_stall_read_ms >= prev(io_stall_read_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), io_stall_read_ms - prev(io_stall_read_ms), long(null)),\\r\\n         delta_io_stall_write_ms = iif(io_stall_write_ms >= prev(io_stall_write_ms) and io_database_id == prev(io_database_id) and file_id == prev(file_id) and replica_type == prev(replica_type) and replica_id == prev(replica_id), io_stall_write_ms - prev(io_stall_write_ms), long(null))\\r\\n| where isnotempty(delta_io_snapshot_sample_ms)\\r\\n| summarize total_reads = sum(delta_num_of_reads),\\r\\n            total_writes = sum(delta_num_of_writes),\\r\\n            total_read_stall_time = sum(delta_io_stall_read_ms),\\r\\n            total_write_stall_time = sum(delta_io_stall_write_ms),\\r\\n            count_samples = dcount(sample_time_utc)\\r\\n            by logical_server_name, database_name, replica_type, binned_sample_time_utc = bin(sample_time_utc, {timeRange:grain})\\r\\n| extend total_stall_time = case(\\r\\n                                \\\"{ioDirection}\\\" == \\\"all\\\", toreal(total_read_stall_time) + toreal(total_write_stall_time),\\r\\n                                \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_read_stall_time),\\r\\n                                \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_write_stall_time),\\r\\n                                real(null)\\r\\n                                ),\\r\\n         total_ios = case(\\r\\n                         \\\"{ioDirection}\\\" == \\\"all\\\", toreal(total_reads) + toreal(total_writes),\\r\\n                         \\\"{ioDirection}\\\" == \\\"read\\\", toreal(total_reads),\\r\\n                         \\\"{ioDirection}\\\" == \\\"write\\\", toreal(total_writes),\\r\\n                         real(null)\\r\\n                         )\\r\\n| project-away total_read_stall_time, total_write_stall_time, total_reads, total_writes\\r\\n)\\r\\n);\\r\\nlet total_sample_count = (\\r\\nio\\r\\n| summarize total_count_samples = sum(count_samples) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet expected_sample_count = toscalar(\\r\\ntotal_sample_count\\r\\n| summarize percentile(total_count_samples, 90)\\r\\n);\\r\\nlet io_timeline = \\r\\n(\\r\\nio\\r\\n| make-series latency_timeline = sum(total_stall_time)/sum(total_ios) default = long(null) on binned_sample_time_utc from {timeRange:start} to {timeRange:end} step {timeRange:grain} by logical_server_name, database_name, replica_type\\r\\n| project series_fill_linear(latency_timeline, int(null), false), logical_server_name, database_name, replica_type\\r\\n);\\r\\nlet database_properties = (\\r\\nsqldb_database_properties\\r\\n| where sample_time_utc between ({timeRange:start} .. {timeRange:end})\\r\\n{serverNameFilter}\\r\\n{databaseNameFilter}\\r\\n| summarize arg_max(sample_time_utc, elastic_pool_name) by logical_server_name, database_name, replica_type\\r\\n);\\r\\nio\\r\\n| lookup total_sample_count on logical_server_name, database_name, replica_type\\r\\n| summarize latency = iif(sum(total_ios) > 0, sum(total_stall_time)/sum(total_ios), real(null)),\\r\\n            count_samples = sum(count_samples)\\r\\n            by logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter io_timeline on logical_server_name, database_name, replica_type\\r\\n| join kind=leftouter database_properties on logical_server_name, database_name, replica_type\\r\\n| project logical_server_name, database_name, replica_type, elastic_pool_name, latency = iif(toreal(count_samples)/expected_sample_count < 0.5, real(null), latency), latency_timeline,\\r\\ngrouper = case(\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server\\\", logical_server_name,\\r\\n\\\"{databaseHeatmapGroupBy}\\\" == \\\"server_and_pool\\\", strcat(logical_server_name, \\\" | \\\", iif(isempty(elastic_pool_name), \\\"(None)\\\", elastic_pool_name)),\\r\\nstrcat(logical_server_name, \\\" | \\\", database_name)\\r\\n),\\r\\nreplica_type_indicator = case(\\r\\nreplica_type == \\\"Primary\\\", \\\"🔵\\\",\\r\\nreplica_type == \\\"HA secondary\\\", \\\"🔘\\\",\\r\\nreplica_type == \\\"Geo-replication forwarder\\\", \\\"🟣\\\",\\r\\nreplica_type == \\\"Named secondary\\\", \\\"🟢\\\",\\r\\n\\\"\\\"\\r\\n)\\r\\n| project logical_server_name, database_name, decorated_database_name = strcat(replica_type_indicator, database_name), replica_type, elastic_pool_name, latency, latency_timeline, grouper = iif(\\\"{databaseHeatmapGroupBy}\\\" == \\\"none\\\", \\\"\\\", grouper), top_tooltip = strcat(database_name, \\\" | \\\", replica_type_indicator, replica_type), ha_secondary = tolower(tostring(replica_type == \\\"HA secondary\\\"))\\r\\n| top {topHitters} by latency desc\\r\\n| sort by latency desc, tolower(grouper) asc, tolower(logical_server_name) asc, tolower(elastic_pool_name) asc, tolower(database_name) asc, iif(replica_type == \\\"HA secondary\\\", 1, 0) asc\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+              "size": 3,
+              "showAnalytics": true,
+              "noDataMessage": "There is no data for specified parameters.",
+              "showExportToExcel": true,
+              "queryType": 9,
+              "visualization": "graph",
+              "graphSettings": {
+                "type": 2,
+                "topContent": {
+                  "columnMatch": "decorated_database_name",
+                  "formatter": 1,
+                  "formatOptions": {
+                    "linkTarget": "WorkbookTemplate",
+                    "workbookContext": {
+                      "componentIdSource": "parameter",
+                      "componentId": "watcherResourceId",
+                      "resourceIdsSource": "workbook",
+                      "templateIdSource": "static",
+                      "templateId": "Community-Workbooks/Database watcher/Azure SQL Database/database",
+                      "typeSource": "workbook",
+                      "gallerySource": "static",
+                      "gallery": "microsoft.database-watcher",
+                      "locationSource": "workbook",
+                      "workbookName": "Azure SQL database",
+                      "passSpecificParams": true,
+                      "templateParameters": [
+                        {
+                          "name": "databaseName",
+                          "source": "column",
+                          "value": "database_name"
+                        },
+                        {
+                          "name": "serverName",
+                          "source": "column",
+                          "value": "logical_server_name"
+                        },
+                        {
+                          "name": "timeRange",
+                          "source": "parameter",
+                          "value": "timeRange"
+                        },
+                        {
+                          "name": "linkAdxClusterUri",
+                          "source": "parameter",
+                          "value": "adxClusterUri"
+                        },
+                        {
+                          "name": "linkAdxDatabase",
+                          "source": "parameter",
+                          "value": "adxDatabase"
+                        },
+                        {
+                          "name": "tabName",
+                          "source": "static",
+                          "value": "Overview"
+                        },
+                        {
+                          "name": "haReplica",
+                          "source": "column",
+                          "value": "ha_secondary"
+                        },
+                        {
+                          "name": "showDescriptions",
+                          "source": "parameter",
+                          "value": "showDescriptions"
+                        }
+                      ],
+                      "viewerMode": true
+                    }
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "[\"top_tooltip\"]"
+                  }
+                },
+                "centerContent": {
+                  "columnMatch": "latency",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 23,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 1
+                    },
+                    "emptyValCustomText": "N/A"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write IO latency for selected time range. Shows \"N/A\" if the number of samples is insufficient."
+                  }
+                },
+                "bottomContent": {
+                  "columnMatch": "latency_timeline",
+                  "formatter": 21,
+                  "formatOptions": {
+                    "palette": "purple"
+                  },
+                  "tooltipFormat": {
+                    "tooltip": "Average read or write IO latency over selected time range"
+                  }
+                },
+                "hivesContent": {
+                  "columnMatch": "grouper",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "ResourceFlat",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "nodeIdField": "database_name",
+                "graphOrientation": 3,
+                "showOrientationToggles": false,
+                "nodeSize": null,
+                "staticNodeSize": 150,
+                "colorSettings": {
+                  "nodeColorField": "latency",
+                  "type": 4,
+                  "heatmapPalette": "greenBlue",
+                  "heatmapMin": null,
+                  "heatmapMax": null,
+                  "emptyValueColor": "gray"
+                },
+                "groupByField": "grouper",
+                "hivesMargin": 5,
+                "edgeColorSettings": null
+              }
             },
-            "tooltipFormat": {
-              "tooltip": "Average read or write IO latency for selected time range. Shows \"N/A\" if the number of samples is insufficient."
-            }
-          },
-          "bottomContent": {
-            "columnMatch": "latency_timeline",
-            "formatter": 21,
-            "formatOptions": {
-              "palette": "purple"
+            "conditionalVisibility": {
+              "parameterName": "ioMetric",
+              "comparison": "isEqualTo",
+              "value": "latency"
             },
-            "tooltipFormat": {
-              "tooltip": "Average read or write IO latency over selected time range"
-            }
-          },
-          "hivesContent": {
-            "columnMatch": "grouper",
-            "formatter": 18,
-            "formatOptions": {
-              "thresholdsOptions": "icons",
-              "thresholdsGrid": [
-                {
-                  "operator": "Default",
-                  "thresholdValue": null,
-                  "representation": "ResourceFlat",
-                  "text": "{0}{1}"
-                }
-              ]
-            }
-          },
-          "nodeIdField": "database_name",
-          "graphOrientation": 3,
-          "showOrientationToggles": false,
-          "nodeSize": null,
-          "staticNodeSize": 150,
-          "colorSettings": {
-            "nodeColorField": "latency",
-            "type": 4,
-            "heatmapPalette": "coldHot",
-            "heatmapMin": null,
-            "heatmapMax": null,
-            "emptyValueColor": "gray"
-          },
-          "groupByField": "grouper",
-          "hivesMargin": 5,
-          "edgeColorSettings": null
-        }
+            "name": "storage_io_latency_heatmap"
+          }
+        ]
       },
       "conditionalVisibility": {
-        "parameterName": "ioMetric",
+        "parameterName": "storageIoWorkloadType",
         "comparison": "isEqualTo",
-        "value": "latency"
+        "value": "all"
       },
-      "name": "storage_io_latency_heatmap"
+      "name": "all_workloads_group"
     }
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
