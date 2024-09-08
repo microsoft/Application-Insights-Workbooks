@@ -1,0 +1,407 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+      {
+        "type": 12,
+        "content": {
+          "version": "NotebookGroup/1.0",
+          "groupType": "editable",
+          "items": [
+            {
+              "type": 3,
+              "content": {
+                "version": "KqlItem/1.0",
+                "query": "let appServerList = dynamic([{ApplicationServer}]);\r\nlet baseQuery = SapNetweaver_GetSystemInstanceList_CL\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where SID_s == '{SID}'| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = case(dispstatus_s == 'SAPControl-GREEN', 0,\r\n                        dispstatus_s == 'SAPControl-YELLOW', 1,\r\n                        dispstatus_s == 'SAPControl-RED', 2,3 );\r\nlet timespanCount = baseQuery \r\n| summarize RecordCount=count()\r\n| extend Interval = iff(RecordCount <= 10000, timespan(1m), timespan(1m))\r\n| extend Interval = iff(RecordCount > 10000 and RecordCount < 50000, timespan(5m), Interval)\r\n| extend Interval = iff(RecordCount >= 50000 and RecordCount < 100000, timespan(10m), Interval)\r\n| extend Interval = iff(RecordCount >= 100000 and RecordCount < 150000, timespan(15m), Interval)\r\n| extend Interval = iff(RecordCount >= 150000, timespan(30m), Interval)\r\n| project Interval;\r\nlet timespanInterval = toscalar(timespanCount);\r\nbaseQuery\r\n| summarize availability=countif(Status == 0), total=count() by bin(serverTimestamp_t, timespanInterval), appServer\r\n| extend availability = (availability / total) * 100\r\n| project-away total",
+                "size": 0,
+                "aggregation": 3,
+                "title": "Availability Status Trend",
+                "color": "green",
+                "timeBrushParameterName": "timebrush_availability",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "linechart",
+                "chartSettings": {
+                  "xAxis": "serverTimestamp_t",
+                  "yAxis": [
+                    "availability"
+                  ],
+                  "ySettings": {
+                    "numberFormatSettings": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true
+                      }
+                    },
+                    "min": 0,
+                    "max": 100
+                  }
+                }
+              },
+              "name": "AvailabilityTrend"
+            },
+            {
+              "type": 3,
+              "content": {
+                "version": "KqlItem/1.0",
+                "query": "let appServerList = dynamic([{ApplicationServer}]);\r\nSapNetweaver_GetProcessList_CL\r\n| project Instance_Process = description_s, SID_s, hostname_s, instanceNr_d, dispstatus_s, serverTimestamp_t\r\n//| where serverTimestamp_t {timebrush_availability}\r\n//commented as part of incoporating timebrush\r\n| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where SID_s == '{SID}'| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, 1)\r\n| summarize total=count(), failureCount=countif(Status != 0) by Instance_Process, serverTimestamp_t, SID_s, appServer, instanceNr_d, hostname_s\r\n| extend Availability = round(((toreal(total) - toreal(failureCount)) / toreal(total)) * 100, 2)\r\n| summarize Availability = round(avg(Availability), 3), AvailabilityTrend = make_list(Availability) by Instance_Process, SID_s,hostname_s,instanceNr_d,appServer",
+                "size": 0,
+                "showAnalytics": true,
+                "title": "Instance Process Availability Status",
+                "showRefreshButton": true,
+                "showExportToExcel": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "showExpandCollapseGrid": true,
+                "gridSettings": {
+                  "formatters": [
+                    {
+                      "columnMatch": "Instance_Process",
+                      "formatter": 0,
+                      "formatOptions": {
+                        "customColumnWidthSetting": "10%"
+                      }
+                    },
+                    {
+                      "columnMatch": "hostname_s",
+                      "formatter": 5
+                    },
+                    {
+                      "columnMatch": "appServer",
+                      "formatter": 7,
+                      "formatOptions": {
+                        "linkTarget": "WorkbookTemplate",
+                        "linkIsContextBlade": true,
+                        "workbookContext": {
+                          "componentIdSource": "workbook",
+                          "resourceIdsSource": "workbook",
+                          "templateIdSource": "static",
+                          "templateId": "Community-Workbooks/SapMonitor2.0/SapNetWeaver/ApplicationServerInsights",
+                          "typeSource": "workbook",
+                          "gallerySource": "workbook",
+                          "locationSource": "default",
+                          "passSpecificParams": true,
+                          "templateParameters": [
+                            {
+                              "name": "ApplicationServer",
+                              "source": "cell",
+                              "value": "ApplicationServer"
+                            },
+                            {
+                              "name": "TimeRange",
+                              "source": "parameter",
+                              "value": "TimeRange"
+                            },
+                            {
+                              "name": "SID",
+                              "source": "parameter",
+                              "value": "SID"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "columnMatch": "Availability",
+                      "formatter": 8,
+                      "formatOptions": {
+                        "min": 0,
+                        "max": 100,
+                        "palette": "redGreen",
+                        "customColumnWidthSetting": "15%"
+                      },
+                      "numberFormat": {
+                        "unit": 1,
+                        "options": {
+                          "style": "decimal",
+                          "useGrouping": false,
+                          "maximumFractionDigits": 3
+                        }
+                      }
+                    },
+                    {
+                      "columnMatch": "AvailabilityTrend",
+                      "formatter": 9,
+                      "formatOptions": {
+                        "min": 0,
+                        "max": 100,
+                        "palette": "redGreen",
+                        "customColumnWidthSetting": "100%"
+                      },
+                      "tooltipFormat": {
+                        "tooltip": "[\"Availability\"]"
+                      }
+                    }
+                  ],
+                  "rowLimit": 1000,
+                  "filter": true,
+                  "hierarchySettings": {
+                    "treeType": 1,
+                    "groupBy": [
+                      "hostname_s"
+                    ],
+                    "expandTopLevel": true
+                  },
+                  "labelSettings": [
+                    {
+                      "columnId": "Instance_Process",
+                      "label": "Instance Process"
+                    },
+                    {
+                      "columnId": "SID_s",
+                      "label": "SID"
+                    },
+                    {
+                      "columnId": "hostname_s",
+                      "label": "Instance Hostname"
+                    },
+                    {
+                      "columnId": "instanceNr_d",
+                      "label": "Instance Number"
+                    },
+                    {
+                      "columnId": "appServer",
+                      "label": "Application Server"
+                    },
+                    {
+                      "columnId": "Availability",
+                      "label": "Availability %"
+                    },
+                    {
+                      "columnId": "AvailabilityTrend",
+                      "label": "Availability Trend"
+                    }
+                  ]
+                },
+                "sortBy": []
+              },
+              "customWidth": "100",
+              "conditionalVisibility": {
+                "parameterName": "param_check_aiops",
+                "comparison": "isNotEqualTo",
+                "value": "0"
+              },
+              "showPin": true,
+              "name": "Instance Process Availability By SID"
+            },
+            {
+              "type": 3,
+              "content": {
+                "version": "KqlItem/1.0",
+                "query": "let appServerList = dynamic([{ApplicationServer}]);\r\nSapNetweaver_GetProcessList_CL\r\n| project Instance_Process = description_s, SID_s, hostname_s, instanceNr_d, dispstatus_s, serverTimestamp_t\r\n| where serverTimestamp_t {timebrush_availability}\r\n//commented as part of incoporating timebrush\r\n//| where serverTimestamp_t between (todatetime({TimeRange:start}) .. todatetime({TimeRange:end}))\r\n| where SID_s == '{SID}'| extend instanceNr_s = tostring(toint(instanceNr_d))\r\n| extend instanceNr_s = iff(strlen(instanceNr_s) == 2, instanceNr_s, strcat( \"0\", instanceNr_s))\r\n| extend appServer = strcat(hostname_s, \"_\", instanceNr_s)\r\n| where array_length(appServerList) == 0 or appServer in (appServerList)\r\n| extend Status = iff(dispstatus_s == 'SAPControl-GREEN', 0, 1)\r\n| summarize total=count(), failureCount=countif(Status != 0) by Instance_Process, serverTimestamp_t, SID_s, appServer, instanceNr_d, hostname_s\r\n| extend Availability = round(((toreal(total) - toreal(failureCount)) / toreal(total)) * 100, 2)\r\n| summarize Availability = round(avg(Availability), 3), AvailabilityTrend = make_list(Availability) by Instance_Process, SID_s,hostname_s,instanceNr_d,appServer",
+                "size": 0,
+                "showAnalytics": true,
+                "title": "Instance Process Availability Status",
+                "showRefreshButton": true,
+                "showExportToExcel": true,
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "showExpandCollapseGrid": true,
+                "gridSettings": {
+                  "formatters": [
+                    {
+                      "columnMatch": "Instance_Process",
+                      "formatter": 0,
+                      "formatOptions": {
+                        "customColumnWidthSetting": "10%"
+                      }
+                    },
+                    {
+                      "columnMatch": "hostname_s",
+                      "formatter": 5
+                    },
+                    {
+                      "columnMatch": "appServer",
+                      "formatter": 7,
+                      "formatOptions": {
+                        "linkTarget": "WorkbookTemplate",
+                        "linkIsContextBlade": true,
+                        "workbookContext": {
+                          "componentIdSource": "workbook",
+                          "resourceIdsSource": "workbook",
+                          "templateIdSource": "static",
+                          "templateId": "Community-Workbooks/SapMonitor2.0/SapNetWeaver/ApplicationServerInsights",
+                          "typeSource": "workbook",
+                          "gallerySource": "workbook",
+                          "locationSource": "default",
+                          "passSpecificParams": true,
+                          "templateParameters": [
+                            {
+                              "name": "ApplicationServer",
+                              "source": "cell",
+                              "value": "ApplicationServer"
+                            },
+                            {
+                              "name": "TimeRange",
+                              "source": "parameter",
+                              "value": "TimeRange"
+                            },
+                            {
+                              "name": "SID",
+                              "source": "parameter",
+                              "value": "SID"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "columnMatch": "Availability",
+                      "formatter": 8,
+                      "formatOptions": {
+                        "min": 0,
+                        "max": 100,
+                        "palette": "redGreen",
+                        "linkTarget": "WorkbookTemplate",
+                        "linkIsContextBlade": true,
+                        "workbookContext": {
+                          "componentIdSource": "workbook",
+                          "resourceIdsSource": "workbook",
+                          "templateIdSource": "static",
+                          "templateId": "Community-Workbooks/SapMonitor2.0/SapNetWeaver/Insights - Auto RCA",
+                          "typeSource": "workbook",
+                          "gallerySource": "workbook",
+                          "locationSource": "default",
+                          "passSpecificParams": true,
+                          "templateParameters": [
+                            {
+                              "name": "SID",
+                              "source": "column",
+                              "value": "SID_s"
+                            },
+                            {
+                              "name": "TimeRange",
+                              "source": "parameter",
+                              "value": "TimeRange"
+                            },
+                            {
+                              "name": "ApplicationServer",
+                              "source": "column",
+                              "value": "appServer"
+                            }
+                          ]
+                        },
+                        "customColumnWidthSetting": "15%"
+                      },
+                      "numberFormat": {
+                        "unit": 1,
+                        "options": {
+                          "style": "decimal",
+                          "useGrouping": false,
+                          "maximumFractionDigits": 3
+                        }
+                      },
+                      "tooltipFormat": {
+                        "tooltip": "Click to view Insights - Auto RCA"
+                      }
+                    },
+                    {
+                      "columnMatch": "AvailabilityTrend",
+                      "formatter": 9,
+                      "formatOptions": {
+                        "min": 0,
+                        "max": 100,
+                        "palette": "redGreen",
+                        "linkTarget": "WorkbookTemplate",
+                        "linkIsContextBlade": true,
+                        "workbookContext": {
+                          "componentIdSource": "workbook",
+                          "resourceIdsSource": "workbook",
+                          "templateIdSource": "static",
+                          "templateId": "Community-Workbooks/SapMonitor2.0/SapNetWeaver/Insights - Auto RCA",
+                          "typeSource": "workbook",
+                          "gallerySource": "workbook",
+                          "locationSource": "default",
+                          "passSpecificParams": true,
+                          "templateParameters": [
+                            {
+                              "name": "SID",
+                              "source": "column",
+                              "value": "SID_s"
+                            },
+                            {
+                              "name": "TimeRange",
+                              "source": "parameter",
+                              "value": "TimeRange"
+                            },
+                            {
+                              "name": "ApplicationServer",
+                              "source": "column",
+                              "value": "appServer"
+                            }
+                          ]
+                        },
+                        "customColumnWidthSetting": "100%"
+                      },
+                      "tooltipFormat": {
+                        "tooltip": "Click to view Insights - Auto RCA"
+                      }
+                    }
+                  ],
+                  "rowLimit": 1000,
+                  "filter": true,
+                  "hierarchySettings": {
+                    "treeType": 1,
+                    "groupBy": [
+                      "hostname_s"
+                    ],
+                    "expandTopLevel": true
+                  },
+                  "labelSettings": [
+                    {
+                      "columnId": "Instance_Process",
+                      "label": "Instance Process"
+                    },
+                    {
+                      "columnId": "SID_s",
+                      "label": "SID"
+                    },
+                    {
+                      "columnId": "hostname_s",
+                      "label": "Instance Hostname"
+                    },
+                    {
+                      "columnId": "instanceNr_d",
+                      "label": "Instance Number"
+                    },
+                    {
+                      "columnId": "appServer",
+                      "label": "Application Server"
+                    },
+                    {
+                      "columnId": "Availability",
+                      "label": "Availability %"
+                    },
+                    {
+                      "columnId": "AvailabilityTrend",
+                      "label": "Availability Trend"
+                    }
+                  ]
+                },
+                "sortBy": []
+              },
+              "customWidth": "100",
+              "conditionalVisibility": {
+                "parameterName": "param_check_aiops",
+                "comparison": "isEqualTo",
+                "value": "0"
+              },
+              "showPin": true,
+              "name": "Instance Process Availability By SID - AIOps"
+            },
+            {
+              "type": 1,
+              "content": {
+                "json": "<div style=\"float: right\">\r\nUpdated every 60 seconds.\r\n</div>"
+              },
+              "name": "AvailabilityFreq"
+            }
+          ]
+        },
+        "name": "group - 0"
+      }
+    ],
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+  }
