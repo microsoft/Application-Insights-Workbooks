@@ -293,14 +293,20 @@
               "showDefault": false
             },
             "queryType": 0,
-            "resourceType": "microsoft.operationalinsights/workspaces",
-            "value": null
+            "resourceType": "microsoft.operationalinsights/workspaces"
           },
           {
             "id": "27979091-0f89-4823-865b-064fdc82ad1e",
             "version": "KqlParameterItem/1.0",
             "name": "SAPComponent",
             "type": 1
+          },
+          {
+            "id": "6371e85e-f268-42b7-a0db-5bb51a15b665",
+            "version": "KqlParameterItem/1.0",
+            "name": "subscription",
+            "type": 1,
+            "isHiddenWhenLocked": true
           }
         ],
         "style": "pills",
@@ -346,7 +352,7 @@
             "id": "38856def-f524-46ed-a612-217dabaccaa1",
             "version": "KqlParameterItem/1.0",
             "name": "selVmName",
-            "label": "VM",
+            "label": "Hostname",
             "type": 2,
             "isRequired": true,
             "multiSelect": true,
@@ -531,7 +537,7 @@
             },
             {
               "columnMatch": "ApplicationServer",
-              "formatter": 1,
+              "formatter": 5,
               "formatOptions": {
                 "linkTarget": "WorkbookTemplate",
                 "linkIsContextBlade": true,
@@ -796,7 +802,7 @@
             },
             {
               "columnId": "hostname_s",
-              "label": "VM Name"
+              "label": "Host Name"
             },
             {
               "columnId": "Availability",
@@ -1979,8 +1985,8 @@
               },
               {
                 "parameterName": "vmIdsExist",
-                "comparison": "isEqualTo",
-                "value": "false"
+                "comparison": "isNotEqualTo",
+                "value": "true"
               }
             ],
             "name": "vmInsightsConfigure"
@@ -2001,7 +2007,7 @@
                   "multiSelect": true,
                   "quote": "'",
                   "delimiter": ",",
-                  "query": "let vmList = split(\"{selVmName}\",\",\");\r\nCOMMON_VM_ArmId_Mapping_CL\r\n| where array_length(vmList) == 0 or vmList has vm_name_s\r\n| where isnotempty(VM_ARM_ID_s)\r\n| extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n| distinct VM_ARM_ID_s",
+                  "query": "let vmList = split(\"{selVmName}\", \",\");\r\nlet containsErs = countof(\"{selVmName}\", \"ers\") > 0;\r\nlet containsScs = countof(\"{selVmName}\", \"scs\") > 0;\r\nlet ascsVms = COMMON_VM_ArmId_Mapping_CL\r\n    | where vm_name_s contains \"scs\"\r\n    | where isnotempty(VM_ARM_ID_s)\r\n    | extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n    | distinct VM_ARM_ID_s\r\n    | where containsErs or containsScs;\r\nlet directMappings = COMMON_VM_ArmId_Mapping_CL\r\n| where array_length(vmList) == 0 or vmList has vm_name_s\r\n| where isnotempty(VM_ARM_ID_s)\r\n| extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n| distinct VM_ARM_ID_s;\r\ndirectMappings\r\n| union ascsVms",
                   "crossComponentResources": [
                     "{Workspace}"
                   ],
@@ -2116,6 +2122,11 @@
                 }
               ]
             },
+            "conditionalVisibility": {
+              "parameterName": "vmIdsExist",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
             "name": "VMAvailability-Group"
           },
           {
@@ -2129,8 +2140,8 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| where id has '{SID}'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| extend vmName = split(vmId, '/')[-1]\r\n| distinct vmId, visId, subscriptionId, tostring(vmName)\r\n| extend vmList = split(\"{selVmName}\",\",\")\r\n| where array_length(vmList) == 0 or vmList has vmName\r\n| join kind = inner (\r\n    healthresourcechanges\r\n    | where type == \"microsoft.resources/changes\"\r\n    | where properties.targetResourceType =~ \"microsoft.resourcehealth/resourceannotations\"\r\n    | extend Id = tolower(split(properties.targetResourceId, '/providers/Microsoft.ResourceHealth/resourceAnnotations/current')[0]),\r\n    Timestamp = todatetime(properties.changeAttributes.timestamp), AnnotationName = properties['changes']['properties.annotationName']['newValue'], Reason = properties['changes']['properties.reason']['newValue'], \r\n    Context = iff(isempty(properties['changes']['properties.context']['newValue']), \"-\", properties['changes']['properties.context']['newValue']),\r\n    Category = iff(isempty(properties['changes']['properties.category']['newValue']), \"-\", properties['changes']['properties.category']['newValue'])\r\n    | where isnotempty(AnnotationName)\r\n    | where Timestamp > ago(14d)) on $left.vmId == $right.Id\r\n| project subscriptionId, vmId, visId, Timestamp, Reason, AnnotationName, PreviousAnnotation = properties['changes']['properties.annotationName']['previousValue'], Context, Category \r\n| order by Timestamp desc\r\n| extend Timestamp = format_datetime(Timestamp, 'dd/MM/yyyy, hh:mm:ss tt')",
-                    "size": 0,
+                    "query": "healthresourcechanges\r\n    | where type == \"microsoft.resources/changes\"\r\n    | where properties.targetResourceType =~ \"microsoft.resourcehealth/resourceannotations\"\r\n    | where (isempty(\"{subscription}\") or isempty(split(\"{subscription}\", \"/\")[-1])) or subscriptionId == split(\"{subscription}\", \"/\")[-1]\r\n    | extend Id = tolower(split(properties.targetResourceId, '/providers/Microsoft.ResourceHealth/resourceAnnotations/current')[0]),\r\n    Timestamp = todatetime(properties.changeAttributes.timestamp), AnnotationName = properties['changes']['properties.annotationName']['newValue'], Reason = properties['changes']['properties.reason']['newValue'], \r\n    Context = iff(isempty(properties['changes']['properties.context']['newValue']), \"-\", properties['changes']['properties.context']['newValue']),\r\n    Category = iff(isempty(properties['changes']['properties.category']['newValue']), \"-\", properties['changes']['properties.category']['newValue']),\r\n    Summary = iff(isempty(properties['changes']['properties.summary']['newValue']), \"-\", properties['changes']['properties.summary']['newValue'])\r\n    | where isnotempty(AnnotationName)\r\n    | where Timestamp > ago(14d)\r\n    | project subscriptionId, vmId = Id, Timestamp, Reason, AnnotationName, PreviousAnnotation = properties['changes']['properties.annotationName']['previousValue'], Context, Category, Summary\r\n    | order by Timestamp desc\r\n    | extend Timestamp = format_datetime(Timestamp, 'dd/MM/yyyy, hh:mm:ss tt')",
+                    "size": 4,
                     "noDataMessage": "No health events have been logged in last 14 days.",
                     "exportedParameters": [
                       {
@@ -2172,6 +2183,91 @@
                     "gridSettings": {
                       "formatters": [
                         {
+                          "columnMatch": "subscriptionId",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "vmId",
+                          "formatter": 1,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth"
+                          }
+                        },
+                        {
+                          "columnMatch": "Timestamp",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "Reason",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "AnnotationName",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "PreviousAnnotation",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "Context",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "Category",
+                          "formatter": 1
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "vmId",
+                          "label": "Virtual machine"
+                        }
+                      ]
+                    }
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "ShowHealthChangesQuery",
+                    "comparison": "isEqualTo",
+                    "value": "true"
+                  },
+                  "name": "query1-healthresourcechangesQuery",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "let vmList = split(\"{selVmName}\", \",\");\r\nlet containsErs = countof(\"{selVmName}\", \"ers\") > 0;\r\nlet containsScs = countof(\"{selVmName}\", \"scs\") > 0;\r\nlet ascsVms = COMMON_VM_ArmId_Mapping_CL\r\n    | where vm_name_s contains \"scs\"\r\n    | where isnotempty(VM_ARM_ID_s)\r\n    | extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n    | distinct VM_ARM_ID_s\r\n    | where containsErs or containsScs;\r\nlet directMappings = COMMON_VM_ArmId_Mapping_CL\r\n| where array_length(vmList) == 0 or vmList has vm_name_s\r\n| where isnotempty(VM_ARM_ID_s)\r\n| extend VM_ARM_ID_s = tolower(VM_ARM_ID_s)\r\n| distinct VM_ARM_ID_s;\r\ndirectMappings\r\n| union ascsVms",
+                    "size": 0,
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "crossComponentResources": [
+                      "{Workspace}"
+                    ]
+                  },
+                  "conditionalVisibility": {
+                    "parameterName": "ShowHealthChangesQuery",
+                    "comparison": "isEqualTo",
+                    "value": "true"
+                  },
+                  "name": "query2-Common_VM_ARM_ID_Mapping"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\",\"mergeType\":\"inner\",\"leftTable\":\"query1-healthresourcechangesQuery\",\"rightTable\":\"query2-Common_VM_ARM_ID_Mapping\",\"leftColumn\":\"vmId\",\"rightColumn\":\"VM_ARM_ID_s\"}],\"projectRename\":[{\"originalName\":\"[query - VM Health Changes (Last 14 days)].Summary\",\"mergedName\":\"Summary\",\"fromId\":\"unknown\"},{\"originalName\":\"[query1-healthresourcechangesQuery].subscriptionId\",\"mergedName\":\"subscriptionId\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].vmId\",\"mergedName\":\"Virtual machine\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].Timestamp\",\"mergedName\":\"Timestamp\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].Reason\",\"mergedName\":\"Reason\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].AnnotationName\",\"mergedName\":\"AnnotationName\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].PreviousAnnotation\",\"mergedName\":\"PreviousAnnotation\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].Context\",\"mergedName\":\"Context\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].Category\",\"mergedName\":\"Category\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query1-healthresourcechangesQuery].Summary\",\"mergedName\":\"Summary\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query2-Common_VM_ARM_ID_Mapping].VM_ARM_ID_s\",\"mergedName\":\"VM_ARM_ID_s\",\"fromId\":\"1a331a7f-317f-4945-b17a-b75dfbc60c5a\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].tags\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].subscriptionId1\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].id\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].name\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].tenantId\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].kind\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].location\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].managedBy\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].sku\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].plan\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].identity\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].zones\"},{\"originalName\":\"[query - VM Health Changes (Last 14 days)].extendedLocation\"}]}",
+                    "size": 0,
+                    "noDataMessage": "No health events found for the selected VM(s).",
+                    "queryType": 7,
+                    "gridSettings": {
+                      "formatters": [
+                        {
                           "columnMatch": "$gen_group",
                           "formatter": 13,
                           "formatOptions": {
@@ -2185,21 +2281,8 @@
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "vmId",
-                          "formatter": 5,
-                          "formatOptions": {
-                            "linkTarget": "Resource",
-                            "subTarget": "resourcehealth"
-                          }
-                        },
-                        {
-                          "columnMatch": "visId",
-                          "formatter": 13,
-                          "formatOptions": {
-                            "linkTarget": "Resource",
-                            "showIcon": true,
-                            "customColumnWidthSetting": "15ch"
-                          }
+                          "columnMatch": "Virtual machine",
+                          "formatter": 5
                         },
                         {
                           "columnMatch": "Timestamp",
@@ -2224,25 +2307,73 @@
                         {
                           "columnMatch": "Category",
                           "formatter": 1
+                        },
+                        {
+                          "columnMatch": "VM_ARM_ID_s",
+                          "formatter": 5
                         }
                       ],
-                      "filter": true,
                       "hierarchySettings": {
                         "treeType": 1,
                         "groupBy": [
-                          "vmId"
+                          "Virtual machine"
                         ],
                         "expandTopLevel": true,
                         "finalBy": "Timestamp"
                       },
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_link_$gen_group_0",
+                          "sortOrder": 1
+                        }
+                      ],
                       "labelSettings": [
                         {
-                          "columnId": "vmId",
-                          "label": "Virtual machine"
+                          "columnId": "subscriptionId",
+                          "label": "Subscription Id"
+                        },
+                        {
+                          "columnId": "Virtual machine",
+                          "label": "Virtual Machine"
+                        },
+                        {
+                          "columnId": "Timestamp",
+                          "label": "Timestamp"
+                        },
+                        {
+                          "columnId": "Reason",
+                          "label": "Reason"
+                        },
+                        {
+                          "columnId": "AnnotationName",
+                          "label": "Annotation Name"
+                        },
+                        {
+                          "columnId": "PreviousAnnotation",
+                          "label": "Previous Annotation"
+                        },
+                        {
+                          "columnId": "Context",
+                          "label": "Context"
+                        },
+                        {
+                          "columnId": "Category",
+                          "label": "Category"
+                        },
+                        {
+                          "columnId": "Summary",
+                          "label": "Summary"
                         }
                       ]
-                    }
+                    },
+                    "sortBy": [
+                      {
+                        "itemKey": "$gen_link_$gen_group_0",
+                        "sortOrder": 1
+                      }
+                    ]
                   },
+                  "showPin": false,
                   "name": "query - VM Health Changes (Last 14 days)",
                   "styleSettings": {
                     "padding": "5px"
@@ -2273,17 +2404,11 @@
                 }
               ]
             },
-            "conditionalVisibilities": [
-              {
-                "parameterName": "healthData",
-                "comparison": "isNotEqualTo"
-              },
-              {
-                "parameterName": "vmIdsExist",
-                "comparison": "isEqualTo",
-                "value": "true"
-              }
-            ],
+            "conditionalVisibility": {
+              "parameterName": "vmIdsExist",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
             "name": "healthEventGroup"
           }
         ]
