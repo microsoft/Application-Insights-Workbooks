@@ -37,6 +37,13 @@ If this worked, a banner will display in the gallery indicating the redirection:
 
 - **Performance**: Loading workbooks from GitHub may slow down loading times and lead to throttling errors if too many items are loaded in a short succession of time.
 
+> [!NOTE]
+> When you access the Package in your browser, you must not put a / (slash) at the end of the Package parameter.
+> - Correct:<br>
+>   `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package`
+> - In correct:<br>
+>   `https://portal.azure.com/?feature.workbookGalleryRedirect=https://[yourblob].blob.core.windows.net/azure_monitor_workbook_templates/package/`
+
 ### Uploading package content
 > [!WARNING]
 > As of June 2024, this previously available method is no longer supported. Passing the `feature.workbookGalleryRedirect` feature flag will be ignored.
