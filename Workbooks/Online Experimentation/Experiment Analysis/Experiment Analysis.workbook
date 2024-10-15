@@ -167,7 +167,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let variants = AEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc\r\n;\r\nlet tea_lite = AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == \"{ScorecardId}\"\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| summarize\r\n    MetricCount = count(),\r\n    StatSigMetricCount = countif(PValue <= 0.05)\r\n    by TreatmentVariant\r\n| project\r\n    Variant = TreatmentVariant,\r\n    MetricSummary = strcat(toint(round(100. * StatSigMetricCount / MetricCount)), '% conclusive metrics (', StatSigMetricCount, ' of ', MetricCount, ')')\r\n;\r\nvariants\r\n| join kind=leftouter tea_lite on Variant\r\n| project-away Variant1\r\n| extend MetricSummary = iff(Type == 'Control', 'n/a', MetricSummary)\r\n",
+              "query": "let variants = AEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc\r\n;\r\nlet tea_lite = AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == \"{ScorecardId}\"\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where TreatmentEffect !in ('Zero samples', 'Too few samples')\r\n| where TreatmentStandardErrorNormalized > 0 and ControlStandardErrorNormalized > 0 and PValue < 1 and PValue >= 0\r\n| summarize\r\n    MetricCount = count(),\r\n    StatSigMetricCount = countif(PValue <= 0.05)\r\n    by TreatmentVariant\r\n| project\r\n    Variant = TreatmentVariant,\r\n    MetricSummary = strcat(toint(round(100. * StatSigMetricCount / MetricCount)), '% metrics are conclusive (', StatSigMetricCount, ' of ', MetricCount, ')')\r\n;\r\nvariants\r\n| join kind=leftouter tea_lite on Variant\r\n| project-away Variant1\r\n| extend MetricSummary = iff(Type == 'Control', 'n/a', MetricSummary)\r\n",
               "size": 3,
               "noDataMessage": "Zero variants were found in this experiment analysis",
               "noDataMessageStyle": 4,
@@ -238,7 +238,7 @@
                     "columnMatch": "MetricSummary",
                     "formatter": 0,
                     "tooltipFormat": {
-                      "tooltip": "We expect roughly 5% by random chance"
+                      "tooltip": "We expect roughly 5% by random chance. Note: Filtering applied so metric count does not correspond to table below."
                     }
                   }
                 ],
@@ -379,7 +379,7 @@
                 {
                   "id": "7d7c98e9-833f-4695-87a2-c02df6aa8d90",
                   "version": "KqlParameterItem/1.0",
-                  "name": "AlphaThreshold",
+                  "name": "MinimalConfidence",
                   "label": "Confidence",
                   "type": 10,
                   "description": "Select the minimum strength of evidence for the treatment effect",
@@ -388,7 +388,7 @@
                     "additionalResourceOptions": [],
                     "showDefault": false
                   },
-                  "jsonData": "[{\"label\":\"High\", \"value\": 0.001}, {\"label\": \"Marginal\", \"value\": 0.05, \"selected\": true}, {\"label\": \"All metrics\", \"value\": 1}]",
+                  "jsonData": "[{\"label\": \"High\", \"value\": \"High\"}, {\"label\": \"Marginal\", \"value\": \"Marginal\", \"selected\": true}, {\"label\": \"All metrics\", \"value\": \"All metrics\"}]",
                   "timeContext": {
                     "durationMs": 86400000
                   }
@@ -446,7 +446,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where MetricId in ({SelectedMetrics})\r\n| where PValue <= {AlphaThreshold}\r\n| project\r\n    MetricDisplayName,\r\n    TreatmentVariant = strcat(TreatmentVariant, ' 💊'),\r\n    TreatmentEffect,\r\n    PValue,\r\n    PValueFormatted = case(\r\n        PValue == 0, '≈0',\r\n        PValue < 0.001, strcat('<1e', tostring(toint(ceiling(log10(PValue))))),\r\n        tostring(round(PValue, 3))\r\n    ),\r\n    RelativeDifference,\r\n    ControlMetricValue,\r\n    TreatmentMetricValue,\r\n    Details = bag_pack(\r\n        \"MetricId\", MetricId,\r\n        \"MetricDisplayName\", MetricDisplayName,\r\n        \"MetricDescription\", MetricDescription,\r\n        \"MetricKind\", MetricKind,\r\n        \"MetricLifecycle\", MetricLifecycle,\r\n        \"MetricTags\", strcat_array(MetricTags, ', '),\r\n        \"DesiredDirection\", DesiredDirection,\r\n        \"ControlVariant\", ControlVariant,\r\n        \"ControlCount\", ControlCount,\r\n        \"ControlMetricValue\", ControlMetricValue,\r\n        \"ControlMetricValueNormalized\", ControlMetricValueNormalized,\r\n        \"ControlStandardErrorNormalized\", ControlStandardErrorNormalized,\r\n        \"TreatmentVariant\", TreatmentVariant,\r\n        \"TreatmentCount\", TreatmentCount,\r\n        \"TreatmentMetricValue\", TreatmentMetricValue,\r\n        \"TreatmentMetricValueNormalized\", TreatmentMetricValueNormalized,\r\n        \"TreatmentStandardErrorNormalized\", TreatmentStandardErrorNormalized,\r\n        \"RelativeDifference\", RelativeDifference,\r\n        \"PValue\", PValue,\r\n        \"TreatmentEffect\", TreatmentEffect\r\n    )\r\n| order by MetricDisplayName asc\r\n",
+              "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where MetricId in ({SelectedMetrics})\r\n| project\r\n    MetricDisplayName,\r\n    TreatmentVariant = strcat(TreatmentVariant, ' 💊'),\r\n    TreatmentEffect,\r\n    Confidence = case(\r\n        TreatmentEffect in ('Zero samples', 'Too few samples'), '',\r\n        PValue <= 0.001, 'High',\r\n        PValue <= 0.05, 'Merginal',\r\n        PValue > 0.05, 'Not stat sig',\r\n        'Unknown'\r\n    ),\r\n    PValue = case(\r\n        PValue == 0, '≈0',\r\n        PValue < 0.001, strcat('<1e', tostring(toint(ceiling(log10(PValue))))),\r\n        tostring(round(PValue, 3))\r\n    ),\r\n    RelativeDifference,\r\n    ControlMetricValue,\r\n    TreatmentMetricValue,\r\n    Details = bag_pack(\r\n        \"MetricId\", MetricId,\r\n        \"MetricDisplayName\", MetricDisplayName,\r\n        \"MetricDescription\", MetricDescription,\r\n        \"MetricKind\", MetricKind,\r\n        \"MetricLifecycle\", MetricLifecycle,\r\n        \"MetricTags\", strcat_array(MetricTags, ', '),\r\n        \"DesiredDirection\", DesiredDirection,\r\n        \"ControlVariant\", ControlVariant,\r\n        \"ControlCount\", ControlCount,\r\n        \"ControlMetricValue\", ControlMetricValue,\r\n        \"ControlMetricValueNormalized\", ControlMetricValueNormalized,\r\n        \"ControlStandardErrorNormalized\", ControlStandardErrorNormalized,\r\n        \"TreatmentVariant\", TreatmentVariant,\r\n        \"TreatmentCount\", TreatmentCount,\r\n        \"TreatmentMetricValue\", TreatmentMetricValue,\r\n        \"TreatmentMetricValueNormalized\", TreatmentMetricValueNormalized,\r\n        \"TreatmentStandardErrorNormalized\", TreatmentStandardErrorNormalized,\r\n        \"RelativeDifference\", RelativeDifference,\r\n        \"PValue\", PValue,\r\n        \"TreatmentEffect\", TreatmentEffect\r\n    )\r\n| where case(\r\n    '{MinimalConfidence}' == 'High', Confidence == 'High',\r\n    '{MinimalConfidence}' == 'Marginal', Confidence in ('High', 'Marginal'),\r\n    true\r\n)\r\n| order by MetricDisplayName asc\r\n",
               "size": 2,
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
@@ -542,65 +542,49 @@
                     }
                   },
                   {
-                    "columnMatch": "PValue",
+                    "columnMatch": "Confidence",
                     "formatter": 18,
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
                         {
-                          "sourceColumn": "TreatmentEffect",
                           "operator": "==",
-                          "thresholdValue": "Too few samples",
-                          "text": ""
-                        },
-                        {
-                          "sourceColumn": "TreatmentEffect",
-                          "operator": "==",
-                          "thresholdValue": "Zero samples",
-                          "text": ""
-                        },
-                        {
-                          "operator": "<=",
-                          "thresholdValue": "0.001",
+                          "thresholdValue": "High",
                           "representation": "DoubleChevron",
-                          "text": "High",
+                          "text": "{0}{1}",
                           "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
+                            "tooltip": "p-value: [\"PValue\"]"
                           }
                         },
                         {
-                          "operator": "<=",
-                          "thresholdValue": "0.05",
+                          "operator": "==",
+                          "thresholdValue": "Marginal",
                           "representation": "CaretUp",
-                          "text": "Marginal",
+                          "text": "{0}{1}",
                           "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
+                            "tooltip": "p-value: [\"PValue\"]"
                           }
                         },
                         {
-                          "operator": ">",
-                          "thresholdValue": "0.05",
+                          "operator": "==",
+                          "thresholdValue": "Not stat sig",
                           "representation": "Subtract",
-                          "text": "Not stat sig",
+                          "text": "{0}{1}",
                           "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
+                            "tooltip": "p-value: [\"PValue\"]"
                           }
                         },
                         {
                           "operator": "Default",
                           "thresholdValue": null,
                           "representation": "Blank",
-                          "text": "Unknown",
-                          "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
-                          }
+                          "text": "{0}{1}"
                         }
-                      ],
-                      "customColumnWidthSetting": "15ch"
+                      ]
                     }
                   },
                   {
-                    "columnMatch": "PValueFormatted",
+                    "columnMatch": "PValue",
                     "formatter": 5
                   },
                   {
@@ -629,52 +613,6 @@
                     "formatOptions": {
                       "customColumnWidthSetting": "70ch"
                     }
-                  },
-                  {
-                    "columnMatch": "InterpretationRisk",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Severe",
-                          "representation": "Sev0",
-                          "text": "{0}{1}",
-                          "tooltipFormat": {
-                            "tooltip": "Severe issues: higher quantity of data is required to trust this metric for decision."
-                          }
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Moderate",
-                          "representation": "Sev2",
-                          "text": "{0}{1}",
-                          "tooltipFormat": {
-                            "tooltip": "Metric has some issues that may impact it's interpretability. This may include: moderately low sample size, imbalance of sample size between variants, unexpectedly high or low variance."
-                          }
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Low",
-                          "representation": "Sev4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "Detected danger level of misleading metric result, based on insufficient data quality or quantity."
-                    }
-                  },
-                  {
-                    "columnMatch": "MetricTag",
-                    "formatter": 5
                   }
                 ],
                 "hierarchySettings": {
@@ -693,10 +631,6 @@
                   {
                     "columnId": "TreatmentEffect",
                     "label": "Treatment effect"
-                  },
-                  {
-                    "columnId": "PValue",
-                    "label": "Confidence"
                   },
                   {
                     "columnId": "RelativeDifference",
@@ -724,7 +658,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where MetricId in ({SelectedMetrics})\r\n| where PValue <= {AlphaThreshold}\r\n| project\r\n    MetricDisplayName,\r\n    TreatmentVariant = strcat(TreatmentVariant, ' 💊'),\r\n    TreatmentEffect,\r\n    PValue,\r\n    PValueFormatted = case(\r\n        PValue == 0, '≈0',\r\n        PValue < 0.001, strcat('<1e', tostring(toint(ceiling(log10(PValue))))),\r\n        tostring(round(PValue, 3))\r\n    ),\r\n    RelativeDifference,\r\n    ControlMetricValue,\r\n    TreatmentMetricValue,\r\n    Details = bag_pack(\r\n        \"MetricId\", MetricId,\r\n        \"MetricDisplayName\", MetricDisplayName,\r\n        \"MetricDescription\", MetricDescription,\r\n        \"MetricKind\", MetricKind,\r\n        \"MetricLifecycle\", MetricLifecycle,\r\n        \"MetricTags\", strcat_array(MetricTags, ', '),\r\n        \"DesiredDirection\", DesiredDirection,\r\n        \"ControlVariant\", ControlVariant,\r\n        \"ControlCount\", ControlCount,\r\n        \"ControlMetricValue\", ControlMetricValue,\r\n        \"ControlMetricValueNormalized\", ControlMetricValueNormalized,\r\n        \"ControlStandardErrorNormalized\", ControlStandardErrorNormalized,\r\n        \"TreatmentVariant\", TreatmentVariant,\r\n        \"TreatmentCount\", TreatmentCount,\r\n        \"TreatmentMetricValue\", TreatmentMetricValue,\r\n        \"TreatmentMetricValueNormalized\", TreatmentMetricValueNormalized,\r\n        \"TreatmentStandardErrorNormalized\", TreatmentStandardErrorNormalized,\r\n        \"RelativeDifference\", RelativeDifference,\r\n        \"PValue\", PValue,\r\n        \"TreatmentEffect\", TreatmentEffect\r\n    )\r\n| order by MetricDisplayName asc\r\n",
+              "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where MetricId in ({SelectedMetrics})\r\n| project\r\n    MetricDisplayName,\r\n    TreatmentVariant = strcat(TreatmentVariant, ' 💊'),\r\n    TreatmentEffect,\r\n    Confidence = case(\r\n        TreatmentEffect in ('Zero samples', 'Too few samples'), '',\r\n        PValue <= 0.001, 'High',\r\n        PValue <= 0.05, 'Merginal',\r\n        PValue > 0.05, 'Not stat sig',\r\n        'Unknown'\r\n    ),\r\n    PValue = case(\r\n        PValue == 0, '≈0',\r\n        PValue < 0.001, strcat('<1e', tostring(toint(ceiling(log10(PValue))))),\r\n        tostring(round(PValue, 3))\r\n    ),\r\n    RelativeDifference,\r\n    ControlMetricValue,\r\n    TreatmentMetricValue,\r\n    Details = bag_pack(\r\n        \"MetricId\", MetricId,\r\n        \"MetricDisplayName\", MetricDisplayName,\r\n        \"MetricDescription\", MetricDescription,\r\n        \"MetricKind\", MetricKind,\r\n        \"MetricLifecycle\", MetricLifecycle,\r\n        \"MetricTags\", strcat_array(MetricTags, ', '),\r\n        \"DesiredDirection\", DesiredDirection,\r\n        \"ControlVariant\", ControlVariant,\r\n        \"ControlCount\", ControlCount,\r\n        \"ControlMetricValue\", ControlMetricValue,\r\n        \"ControlMetricValueNormalized\", ControlMetricValueNormalized,\r\n        \"ControlStandardErrorNormalized\", ControlStandardErrorNormalized,\r\n        \"TreatmentVariant\", TreatmentVariant,\r\n        \"TreatmentCount\", TreatmentCount,\r\n        \"TreatmentMetricValue\", TreatmentMetricValue,\r\n        \"TreatmentMetricValueNormalized\", TreatmentMetricValueNormalized,\r\n        \"TreatmentStandardErrorNormalized\", TreatmentStandardErrorNormalized,\r\n        \"RelativeDifference\", RelativeDifference,\r\n        \"PValue\", PValue,\r\n        \"TreatmentEffect\", TreatmentEffect\r\n    )\r\n| where case(\r\n    '{MinimalConfidence}' == 'High', Confidence == 'High',\r\n    '{MinimalConfidence}' == 'Marginal', Confidence in ('High', 'Marginal'),\r\n    true\r\n)\r\n| order by MetricDisplayName asc\r\n",
               "size": 2,
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
@@ -809,65 +743,49 @@
                     }
                   },
                   {
-                    "columnMatch": "PValue",
+                    "columnMatch": "Confidence",
                     "formatter": 18,
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
                         {
-                          "sourceColumn": "TreatmentEffect",
                           "operator": "==",
-                          "thresholdValue": "Too few samples",
-                          "text": ""
-                        },
-                        {
-                          "sourceColumn": "TreatmentEffect",
-                          "operator": "==",
-                          "thresholdValue": "Zero samples",
-                          "text": ""
-                        },
-                        {
-                          "operator": "<=",
-                          "thresholdValue": "0.001",
+                          "thresholdValue": "High",
                           "representation": "DoubleChevron",
-                          "text": "High",
+                          "text": "{0}{1}",
                           "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
+                            "tooltip": "p-value: [\"PValue\"]"
                           }
                         },
                         {
-                          "operator": "<=",
-                          "thresholdValue": "0.05",
+                          "operator": "==",
+                          "thresholdValue": "Marginal",
                           "representation": "CaretUp",
-                          "text": "Marginal",
+                          "text": "{0}{1}",
                           "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
+                            "tooltip": "p-value: [\"PValue\"]"
                           }
                         },
                         {
-                          "operator": ">",
-                          "thresholdValue": "0.05",
+                          "operator": "==",
+                          "thresholdValue": "Not stat sig",
                           "representation": "Subtract",
-                          "text": "Not stat sig",
+                          "text": "{0}{1}",
                           "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
+                            "tooltip": "p-value: [\"PValue\"]"
                           }
                         },
                         {
                           "operator": "Default",
                           "thresholdValue": null,
                           "representation": "Blank",
-                          "text": "Unknown",
-                          "tooltipFormat": {
-                            "tooltip": "p-value: [\"PValueFormatted\"]"
-                          }
+                          "text": "{0}{1}"
                         }
-                      ],
-                      "customColumnWidthSetting": "15ch"
+                      ]
                     }
                   },
                   {
-                    "columnMatch": "PValueFormatted",
+                    "columnMatch": "PValue",
                     "formatter": 5
                   },
                   {
@@ -889,52 +807,6 @@
                       "linkLabel": "Details",
                       "linkIsContextBlade": true
                     }
-                  },
-                  {
-                    "columnMatch": "InterpretationRisk",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Severe",
-                          "representation": "Sev0",
-                          "text": "{0}{1}",
-                          "tooltipFormat": {
-                            "tooltip": "Severe issues: higher quantity of data is required to trust this metric for decision."
-                          }
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Moderate",
-                          "representation": "Sev2",
-                          "text": "{0}{1}",
-                          "tooltipFormat": {
-                            "tooltip": "Metric has some issues that may impact it's interpretability. This may include: moderately low sample size, imbalance of sample size between variants, unexpectedly high or low variance."
-                          }
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Low",
-                          "representation": "Sev4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    },
-                    "tooltipFormat": {
-                      "tooltip": "Detected danger level of misleading metric result, based on insufficient data quality or quantity."
-                    }
-                  },
-                  {
-                    "columnMatch": "MetricTag",
-                    "formatter": 5
                   }
                 ],
                 "labelSettings": [
@@ -945,14 +817,6 @@
                   {
                     "columnId": "TreatmentEffect",
                     "label": "Treatment effect"
-                  },
-                  {
-                    "columnId": "PValue",
-                    "label": "Confidence"
-                  },
-                  {
-                    "columnId": "PValueFormatted",
-                    "label": "Confidence"
                   },
                   {
                     "columnId": "RelativeDifference",
