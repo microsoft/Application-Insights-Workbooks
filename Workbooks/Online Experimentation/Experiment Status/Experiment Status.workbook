@@ -1,356 +1,301 @@
 {
-    "version": "Notebook/1.0",
-    "items": [
-      {
-        "type": 1,
-        "content": {
-          "json": "Use this workbook to monitor the status and activity of your feature experiments. Expand rows in the table below to browse the hierarchy of feature flags, experiments and variants.",
-          "style": "info"
-        },
-        "name": "Intro"
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "**Monitor activity** of feature experiments running in the selected time range. **Expand rows** to navigate the hierarchy of feature flags, experiments and variants.",
+        "style": "info"
       },
-      {
-        "type": 9,
-        "content": {
-          "version": "KqlParameterItem/1.0",
-          "crossComponentResources": [
-            "{Workspace}"
-          ],
-          "parameters": [
-            {
-              "id": "f8faca65-a2fb-4809-9403-b7201691c7bd",
-              "version": "KqlParameterItem/1.0",
-              "name": "Workspace",
-              "label": "Log Analytics workspace",
-              "type": 5,
-              "description": "Select the log analytics workspace containing your application experiment data",
-              "isRequired": true,
-              "query": "where type == \"microsoft.operationalinsights/workspaces\"\r\n| project value = id, label = id, selected = false, group = resourceGroup",
-              "crossComponentResources": [
-                "value::selected"
+      "name": "Text - Introduction"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "parameters": [
+          {
+            "id": "f8faca65-a2fb-4809-9403-b7201691c7bd",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "description": "Select the log analytics workspace containing your application experiment data",
+            "isRequired": true,
+            "query": "where type == \"microsoft.operationalinsights/workspaces\"\r\n| project value = id, label = id, selected = false, group = resourceGroup",
+            "crossComponentResources": [
+              "value::selected"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "27148a8c-f028-4723-9cc0-735033a53ce7",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "description": "Select a time window to analyze assignment events",
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
               ],
-              "typeSettings": {
-                "additionalResourceOptions": []
-              },
-              "timeContext": {
-                "durationMs": 86400000
-              },
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources"
+              "allowCustom": true
+            },
+            "value": {
+              "durationMs": 2592000000
+            }
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "Parameters - Select data source"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let LatestSummaryTime = AEWExperimentAssignmentSummary\r\n| summarize BinStartTime = max(BinStartTime), BinSize = take_any(BinSize)\r\n| project coalesce(BinStartTime + make_timespan(0, BinSize), bin(now(), 30m));\r\nlet FinalSummary = AppEvents\r\n| where TimeGenerated between (max_of({TimeRange:start}, toscalar(LatestSummaryTime)) .. {TimeRange:end})\r\n| where Name == 'FeatureEvaluation'\r\n| where tostring(Properties.VariantAssignmentReason) == 'Percentile'\r\n| project\r\n    TimeGenerated,\r\n    ItemCount,\r\n    FeatureFlagReference = tostring(Properties.FeatureFlagReference),\r\n    FeatureName = tostring(Properties.FeatureName),\r\n    AllocationId = tostring(Properties.AllocationId),\r\n    Variant = tostring(Properties.Variant),\r\n    VariantAssignmentPercentage = toreal(Properties.VariantAssignmentPercentage),\r\n    IsControlVariant = tostring(Properties.DefaultWhenEnabled) == tostring(Properties.Variant)\r\n| summarize\r\n    TimeGenerated = {TimeRange:end},\r\n    VariantAssignmentPercentage = take_any(VariantAssignmentPercentage),\r\n    IsControlVariant = take_any(IsControlVariant),\r\n    AssignmentEventCount = tolong(sum(ItemCount)),\r\n    MinTimeGenerated = min(TimeGenerated),\r\n    MaxTimeGenerated = max(TimeGenerated)\r\n    by FeatureFlagReference, FeatureName, AllocationId, Variant\r\n;\r\nlet variant_ts = AEWExperimentAssignmentSummary\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| union FinalSummary\r\n| make-series\r\n    AssignmentCountSeries = sum(AssignmentEventCount) default=0\r\n    on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n    by FeatureName, AllocationId, Variant\r\n| project-away TimeGenerated\r\n;\r\nlet allocation_ts = variant_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by FeatureName, AllocationId, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by FeatureName, AllocationId\r\n;\r\nlet feature_ts = allocation_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by FeatureName, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by FeatureName\r\n;\r\nlet scorecards = AEWExperimentScorecards\r\n| where TimeGenerated > {TimeRange:start} - 7d\r\n| distinct FeatureName, AllocationId\r\n| project FeatureName, AllocationId\r\n;\r\nlet variants = AEWExperimentAssignmentSummary\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| union FinalSummary\r\n| summarize\r\n    Kind = strcat(\r\n        iff(take_any(IsControlVariant), 'Control', 'Treatment'),\r\n        ' (', toint(take_any(VariantAssignmentPercentage)), ' %)'\r\n    ),\r\n    EarliestAssignment = min(MinTimeGenerated),\r\n    LatestAssignment = max(MaxTimeGenerated),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName, AllocationId, Variant\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(FeatureName, '-', AllocationId, '-', Variant),\r\n    PARENT = strcat(FeatureName, '-', AllocationId),\r\n    Name = strcat('💊 ', Variant)\r\n// join to time series\r\n| join kind=leftouter variant_ts on FeatureName, AllocationId, Variant\r\n| project-away FeatureName1, AllocationId1, Variant1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away FeatureName1, AllocationId1\r\n;\r\nlet allocations = variants\r\n| summarize\r\n    Kind = 'Experiment',\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName, AllocationId\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(FeatureName, '-', AllocationId),\r\n    PARENT = FeatureName\r\n| order by PARENT, EarliestAssignment asc\r\n| extend Name = strcat('🔬 Iteration ', row_number(1, prev(PARENT) != PARENT), ' (', AllocationId, ')')\r\n// join to time series\r\n| join kind=leftouter allocation_ts on FeatureName, AllocationId\r\n| project-away FeatureName1, AllocationId1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away FeatureName1, AllocationId1\r\n;\r\nlet features = allocations\r\n| summarize\r\n    Kind = 'Feature',\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestIteration = arg_max(EarliestAssignment, AllocationId),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName\r\n| project-away LatestIteration\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = FeatureName,\r\n    PARENT = '',\r\n    Name = strcat('✨ ', FeatureName)\r\n| order by LatestAssignment desc\r\n| extend FeatureOrder = row_number()\r\n// join to time series\r\n| join kind=leftouter feature_ts on FeatureName\r\n| project-away FeatureName1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(FeatureName1), 'Available', 'Pending')\r\n| project-away FeatureName1\r\n;\r\nvariants\r\n| union allocations\r\n| union features\r\n| order by FeatureOrder asc, Kind startswith 'Control' desc, Variant asc\r\n| extend TimeSinceActivity = iff(AssignmentEventCount > 0, now() - LatestAssignment, timespan(null))\r\n| project\r\n    ID, PARENT, Name, Kind,\r\n    FeatureName, AllocationId, Variant,\r\n    DaysSinceActivity = TimeSinceActivity / 1d,\r\n    TimeSinceActivityFormatted = case(\r\n        abs(TimeSinceActivity) > 1d, strcat(round(TimeSinceActivity / 1d, 1), ' days'),\r\n        abs(TimeSinceActivity) > 1h, strcat(round(TimeSinceActivity / 1h, 1), ' hours'),\r\n        isnotnull(TimeSinceActivity), strcat(round(TimeSinceActivity / 1m, 1), ' mins'),\r\n        ''\r\n    ),\r\n    AssignmentEventCount, AssignmentCountSeries,\r\n    Analysis,\r\n    EarliestAssignment = format_datetime(EarliestAssignment, 'MM/dd/yyyy h:mm tt'),\r\n    LatestAssignment = format_datetime(LatestAssignment, 'MM/dd/yyyy h:mm tt')",
+        "size": 2,
+        "noDataMessage": "No experiments found",
+        "noDataMessageStyle": 4,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "ID",
+              "formatter": 5
             },
             {
-              "id": "27148a8c-f028-4723-9cc0-735033a53ce7",
-              "version": "KqlParameterItem/1.0",
-              "name": "TimeRange",
-              "label": "Time range",
-              "type": 4,
-              "description": "Select a time window to analyze assignment events",
-              "isRequired": true,
-              "typeSettings": {
-                "selectableValues": [
-                  {
-                    "durationMs": 86400000
-                  },
-                  {
-                    "durationMs": 259200000
-                  },
-                  {
-                    "durationMs": 604800000
-                  },
-                  {
-                    "durationMs": 2592000000
-                  },
-                  {
-                    "durationMs": 7776000000
-                  }
-                ],
-                "allowCustom": true
-              },
-              "value": {
-                "durationMs": 2592000000
+              "columnMatch": "PARENT",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Name",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "50ch"
               }
             },
             {
-              "id": "545edcfb-657d-4272-adaa-03c38fd5a0b2",
-              "version": "KqlParameterItem/1.0",
-              "name": "LatestSummaryEndTime",
-              "type": 1,
-              "description": "Facilitates querying both summary and raw data tables.",
-              "isRequired": true,
-              "query": "AEWExperimentAssignmentSummary_CL\r\n| summarize _BinStartTime = max(_BinStartTime), _BinSize = take_any(_BinSize)\r\n| project coalesce(_BinStartTime + make_timespan(0, _BinSize), bin(now(), 30m))",
-              "crossComponentResources": [
-                "{Workspace}"
-              ],
-              "isHiddenWhenLocked": true,
-              "timeContext": {
-                "durationMs": 2592000000
-              },
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces"
+              "columnMatch": "FeatureName",
+              "formatter": 5
             },
             {
-              "id": "ad717ea8-f454-4b34-96fb-fafcc785b9cc",
-              "version": "KqlParameterItem/1.0",
-              "name": "AppConfigStore",
-              "label": "App Configuration store",
-              "type": 2,
-              "description": "[Optional] Select the App Configuration store",
-              "multiSelect": true,
-              "quote": "'",
-              "delimiter": ",",
-              "query": "let FinalSummary = AppEvents\r\n| where TimeGenerated between (todatetime('{LatestSummaryEndTime}') .. {TimeRange:end})\r\n| where Name == 'FeatureEvaluation'\r\n| where tostring(Properties.VariantAssignmentReason) == 'Percentile'\r\n| project FeatureFlagReference = tostring(Properties.FeatureFlagReference)\r\n| distinct FeatureFlagReference\r\n;\r\nAEWExperimentAssignmentSummary_CL\r\n| distinct FeatureFlagReference\r\n| union FinalSummary\r\n| distinct FeatureFlagReference\r\n| parse FeatureFlagReference with 'https://' AppConfigStore: string '.azconfig.io/kv/.appconfig.featureflag/' *\r\n| distinct AppConfigStore\r\n| order by AppConfigStore",
-              "crossComponentResources": [
-                "{Workspace}"
-              ],
-              "typeSettings": {
-                "additionalResourceOptions": [
-                  "value::all"
-                ],
-                "selectAllValue": "[]",
-                "showDefault": false
-              },
-              "timeContext": {
-                "durationMs": 0
-              },
-              "timeContextFromParameter": "TimeRange",
-              "defaultValue": "value::all",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces"
-            }
-          ],
-          "style": "above",
-          "queryType": 0,
-          "resourceType": "microsoft.operationalinsights/workspaces"
-        },
-        "name": "Parameters - Select data source"
-      },
-      {
-        "type": 3,
-        "content": {
-          "version": "KqlItem/1.0",
-          "query": "let SelectedAppConfigStores = dynamic([{AppConfigStore}]);\r\nlet ExperimentStatus = (LatestAssignment: datetime) {\r\n    iff(now() - LatestAssignment <= 1d, 'Active', 'Inactive')\r\n};\r\nlet FinalSummary = AppEvents\r\n| where TimeGenerated between (max_of({TimeRange:start}, todatetime('{LatestSummaryEndTime}')) .. {TimeRange:end})\r\n| where Name == 'FeatureEvaluation'\r\n| where tostring(Properties.VariantAssignmentReason) == 'Percentile'\r\n| project\r\n    TimeGenerated,\r\n    ItemCount,\r\n    FeatureFlagReference = tostring(Properties.FeatureFlagReference),\r\n    FeatureName = tostring(Properties.FeatureName),\r\n    AllocationId = tostring(Properties.AllocationId),\r\n    Variant = tostring(Properties.Variant),\r\n    AllocationPercentage = toreal(Properties.VariantAssignmentPercentage),\r\n    IsControlVariant = tostring(Properties.DefaultWhenEnabled) == tostring(Properties.Variant)\r\n| summarize\r\n    TimeGenerated = {TimeRange:end},\r\n    AllocationPercentage = take_any(AllocationPercentage),\r\n    IsControlVariant = take_any(IsControlVariant),\r\n    AssignmentEventCount = tolong(sum(ItemCount)),\r\n    MinTimeGenerated = min(TimeGenerated),\r\n    MaxTimeGenerated = max(TimeGenerated)\r\n    by FeatureFlagReference, FeatureName, AllocationId, Variant\r\n;\r\nlet variant_ts = AEWExperimentAssignmentSummary_CL\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| union FinalSummary\r\n| make-series\r\n    AssignmentCountSeries = sum(AssignmentEventCount) default=0\r\n    on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n    by FeatureFlagReference, FeatureName, AllocationId, Variant\r\n| parse FeatureFlagReference with 'https://' AppConfigStore: string '.azconfig.io/kv/.appconfig.featureflag/' *\r\n| where array_length(SelectedAppConfigStores) == 0 or AppConfigStore in (SelectedAppConfigStores)\r\n| project-away FeatureFlagReference, TimeGenerated\r\n;\r\nlet allocation_ts = variant_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by AppConfigStore, FeatureName, AllocationId, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by AppConfigStore, FeatureName, AllocationId\r\n;\r\nlet feature_ts = allocation_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by AppConfigStore, FeatureName, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by AppConfigStore, FeatureName\r\n;\r\nlet scorecards = TestScorecardMetadataTable1_CL\r\n| where TimeGenerated > {TimeRange:start} - 7d\r\n| distinct FeatureFlagReference, FeatureName, AllocationId\r\n| parse FeatureFlagReference with 'https://' AppConfigStore: string '.azconfig.io/kv/.appconfig.featureflag/' *\r\n| project AppConfigStore, FeatureName, AllocationId\r\n;\r\nlet variants = AEWExperimentAssignmentSummary_CL\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| union FinalSummary\r\n| summarize\r\n    Kind = iff(take_any(IsControlVariant), 'Control', 'Treatment'),\r\n    AllocationPercentage = take_any(AllocationPercentage),\r\n    Status = ExperimentStatus(max(MaxTimeGenerated)),\r\n    EarliestAssignment = min(MinTimeGenerated),\r\n    LatestAssignment = max(MaxTimeGenerated),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureFlagReference, FeatureName, AllocationId, Variant\r\n// filter App Config store\r\n| parse FeatureFlagReference with 'https://' AppConfigStore: string '.azconfig.io/kv/.appconfig.featureflag/' *\r\n| where array_length(SelectedAppConfigStores) == 0 or AppConfigStore in (SelectedAppConfigStores)\r\n| project-away FeatureFlagReference\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(AppConfigStore, '-', FeatureName, '-', AllocationId, '-', Variant),\r\n    PARENT = strcat(AppConfigStore, '-', FeatureName, '-', AllocationId),\r\n    Name = strcat('💊 ', Variant)\r\n// join to time series\r\n| join kind=leftouter variant_ts on AppConfigStore, FeatureName, AllocationId, Variant\r\n| project-away AppConfigStore1, FeatureName1, AllocationId1, Variant1\r\n// join to scorecards\r\n| extend AnalysisLink = ''\r\n;\r\nlet allocations = variants\r\n| summarize\r\n    Kind = 'Experiment',\r\n    Status = ExperimentStatus(max(LatestAssignment)),\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by AppConfigStore, FeatureName, AllocationId\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(AppConfigStore, '-', FeatureName, '-', AllocationId),\r\n    PARENT = strcat(AppConfigStore, '-', FeatureName)\r\n| order by PARENT, EarliestAssignment asc\r\n| extend Name = strcat('🔬 Iteration ', row_number(1, prev(PARENT) != PARENT), ' (', AllocationId, ')')\r\n// join to time series\r\n| join kind=leftouter allocation_ts on AppConfigStore, FeatureName, AllocationId\r\n| project-away AppConfigStore1, FeatureName1, AllocationId1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on AppConfigStore, FeatureName, AllocationId\r\n| extend AnalysisLink = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away AppConfigStore1, FeatureName1, AllocationId1\r\n;\r\nlet features = allocations\r\n| summarize\r\n    Kind = 'Feature',\r\n    Status = ExperimentStatus(max(LatestAssignment)),\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by AppConfigStore, FeatureName\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(AppConfigStore, '-', FeatureName),\r\n    PARENT = '',\r\n    Name = strcat('✨ ', FeatureName)\r\n| order by LatestAssignment desc\r\n| extend FeatureOrder = row_number()\r\n// join to time series\r\n| join kind=leftouter feature_ts on AppConfigStore, FeatureName\r\n| project-away AppConfigStore1, FeatureName1\r\n// join to scorecards\r\n| join kind=leftouter (scorecards | distinct AppConfigStore, FeatureName) on AppConfigStore, FeatureName\r\n| extend AnalysisLink = iff(isnotempty(FeatureName1), 'Available', 'Pending')\r\n| project-away AppConfigStore1, FeatureName1\r\n;\r\nvariants\r\n| union allocations\r\n| union features\r\n| order by FeatureOrder asc, Kind == 'Control' desc, Variant asc\r\n| project-away FeatureOrder\r\n\r\n",
-          "size": 2,
-          "noDataMessageStyle": 4,
-          "queryType": 0,
-          "resourceType": "microsoft.operationalinsights/workspaces",
-          "crossComponentResources": [
-            "{Workspace}"
-          ],
-          "gridSettings": {
-            "formatters": [
-              {
-                "columnMatch": "FeatureName",
-                "formatter": 5
-              },
-              {
-                "columnMatch": "AllocationId",
-                "formatter": 5
-              },
-              {
-                "columnMatch": "Variant",
-                "formatter": 5
-              },
-              {
-                "columnMatch": "AllocationPercentage",
-                "formatter": 0,
-                "numberFormat": {
-                  "unit": 1,
-                  "options": {
-                    "style": "decimal"
-                  }
-                }
-              },
-              {
-                "columnMatch": "Status",
-                "formatter": 18,
-                "formatOptions": {
-                  "thresholdsOptions": "icons",
-                  "thresholdsGrid": [
-                    {
-                      "operator": "==",
-                      "thresholdValue": "Inactive",
-                      "representation": "stopped",
-                      "text": "{0}{1}",
-                      "tooltipFormat": {
-                        "tooltip": "Zero assignment events observed in the last 24 hours"
-                      }
-                    },
-                    {
-                      "operator": "==",
-                      "thresholdValue": "Active",
-                      "representation": "pending",
-                      "text": "{0}{1}",
-                      "tooltipFormat": {
-                        "tooltip": "Assignment events observed in the last 24 hours"
-                      }
-                    },
-                    {
-                      "operator": "Default",
-                      "thresholdValue": null,
-                      "representation": "Blank",
-                      "text": "{0}{1}"
+              "columnMatch": "AllocationId",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Variant",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "DaysSinceActivity",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "sourceColumn": "AssignmentEventCount",
+                    "operator": "==",
+                    "thresholdValue": "0",
+                    "representation": "stopped",
+                    "text": "Inactive",
+                    "tooltipFormat": {
+                      "tooltip": "Inactive: Zero assignment events observed in selected time range"
                     }
-                  ]
-                }
-              },
-              {
-                "columnMatch": "EarliestAssignment",
-                "formatter": 6,
-                "dateFormat": {
-                  "formatName": "shortDateTimeNoMsPattern"
-                }
-              },
-              {
-                "columnMatch": "LatestAssignment",
-                "formatter": 6,
-                "dateFormat": {
-                  "formatName": "shortDateTimeNoMsPattern"
-                }
-              },
-              {
-                "columnMatch": "AssignmentEventCount",
-                "formatter": 4,
-                "formatOptions": {
-                  "min": 0,
-                  "palette": "blue",
-                  "customColumnWidthSetting": "24ch"
-                },
-                "numberFormat": {
-                  "unit": 0,
-                  "options": {
-                    "style": "decimal",
-                    "useGrouping": true
+                  },
+                  {
+                    "operator": "<=",
+                    "thresholdValue": "1",
+                    "representation": "pending",
+                    "text": "Active: [\"TimeSinceActivityFormatted\"]",
+                    "tooltipFormat": {
+                      "tooltip": "Active: Assignment events observed in the last 24 hours"
+                    }
+                  },
+                  {
+                    "operator": ">",
+                    "thresholdValue": "1",
+                    "representation": "stopped",
+                    "text": "Inactive: [\"TimeSinceActivityFormatted\"]",
+                    "tooltipFormat": {
+                      "tooltip": "Inactive: Zero assignment events observed in the last 24 hours"
+                    }
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
                   }
-                },
-                "tooltipFormat": {
-                  "tooltip": "Total number of feature flag assignment events (a user can contribute multiple events)"
+                ]
+              }
+            },
+            {
+              "columnMatch": "TimeSinceActivityFormatted",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "AssignmentEventCount",
+              "formatter": 4,
+              "formatOptions": {
+                "min": 0,
+                "palette": "blue",
+                "customColumnWidthSetting": "24ch"
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": true
                 }
               },
-              {
-                "columnMatch": "AppConfigStore",
-                "formatter": 5
+              "tooltipFormat": {
+                "tooltip": "Total number of feature flag assignment events (a user can contribute multiple events)"
+              }
+            },
+            {
+              "columnMatch": "AssignmentCountSeries",
+              "formatter": 10,
+              "formatOptions": {
+                "palette": "blue"
               },
-              {
-                "columnMatch": "ID",
-                "formatter": 5
-              },
-              {
-                "columnMatch": "PARENT",
-                "formatter": 5
-              },
-              {
-                "columnMatch": "Name",
-                "formatter": 0,
-                "formatOptions": {
-                  "customColumnWidthSetting": "50ch"
-                },
-                "tooltipFormat": {
-                  "tooltip": "[\"AppConfigStore\"]"
-                }
-              },
-              {
-                "columnMatch": "AssignmentCountSeries",
-                "formatter": 10,
-                "formatOptions": {
-                  "palette": "blue"
-                },
-                "tooltipFormat": {
-                  "tooltip": "Time series of the count of assignment events. The temporal resolution adjusts depending on the selected time range, but the minimum temporal resolution is 30 minutes."
-                }
-              },
-              {
-                "columnMatch": "AnalysisLink",
-                "formatter": 18,
-                "formatOptions": {
-                  "linkTarget": "WorkbookTemplate",
-                  "thresholdsOptions": "icons",
-                  "thresholdsGrid": [
+              "tooltipFormat": {
+                "tooltip": "Earliest assignment: [\"EarliestAssignment\"],  Latest assignment: [\"LatestAssignment\"]"
+              }
+            },
+            {
+              "columnMatch": "Analysis",
+              "formatter": 18,
+              "formatOptions": {
+                "linkTarget": "WorkbookTemplate",
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Available",
+                    "representation": "success",
+                    "text": "{0}{1}",
+                    "tooltipFormat": {
+                      "tooltip": "Click to view latest analysis results"
+                    }
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Pending",
+                    "representation": "pending",
+                    "text": "{0}{1}",
+                    "tooltipFormat": {
+                      "tooltip": "Awaiting initial analysis results"
+                    }
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ],
+                "workbookContext": {
+                  "componentIdSource": "workbook",
+                  "resourceIdsSource": "workbook",
+                  "templateIdSource": "static",
+                  "templateId": "Community-Workbooks/Online Experimentation/Experiment Analysis",
+                  "typeSource": "workbook",
+                  "gallerySource": "workbook",
+                  "locationSource": "default",
+                  "passSpecificParams": true,
+                  "templateParameters": [
                     {
-                      "operator": "==",
-                      "thresholdValue": "Available",
-                      "representation": "success",
-                      "text": "View latest"
+                      "name": "Workspace",
+                      "source": "parameter",
+                      "value": "Workspace"
                     },
                     {
-                      "operator": "==",
-                      "thresholdValue": "Pending",
-                      "representation": "pending",
-                      "text": "{0}{1}"
+                      "name": "FeatureName",
+                      "source": "column",
+                      "value": "FeatureName"
                     },
                     {
-                      "operator": "Default",
-                      "thresholdValue": null,
-                      "representation": "Blank",
-                      "text": "{0}{1}"
+                      "name": "AllocationId",
+                      "source": "column",
+                      "value": "AllocationId"
                     }
                   ],
-                  "workbookContext": {
-                    "componentIdSource": "workbook",
-                    "resourceIdsSource": "workbook",
-                    "templateIdSource": "static",
-                    "templateId": "Community-Workbooks/Online Experimentation/Experiment Analysis",
-                    "typeSource": "workbook",
-                    "gallerySource": "workbook",
-                    "locationSource": "default",
-                    "passSpecificParams": true,
-                    "templateParameters": [
-                      {
-                        "name": "Workspace",
-                        "source": "parameter",
-                        "value": "Workspace"
-                      },
-                      {
-                        "name": "FeatureName",
-                        "source": "column",
-                        "value": "FeatureName"
-                      },
-                      {
-                        "name": "AllocationId",
-                        "source": "column",
-                        "value": "AllocationId"
-                      }
-                    ],
-                    "viewerMode": true
-                  }
+                  "viewerMode": true
                 }
               }
-            ],
-            "hierarchySettings": {
-              "idColumn": "ID",
-              "parentColumn": "PARENT",
-              "treeType": 0,
-              "expanderColumn": "Name"
             },
-            "labelSettings": [
-              {
-                "columnId": "AllocationPercentage",
-                "label": "Allocation"
-              },
-              {
-                "columnId": "EarliestAssignment",
-                "label": "Earliest assignment"
-              },
-              {
-                "columnId": "LatestAssignment",
-                "label": "Latest assignment"
-              },
-              {
-                "columnId": "AssignmentEventCount",
-                "label": "Assignment events"
-              },
-              {
-                "columnId": "AssignmentCountSeries",
-                "label": "Assignment activity"
-              },
-              {
-                "columnId": "AnalysisLink",
-                "label": "Experiment analysis"
+            {
+              "columnMatch": "EarliestAssignment",
+              "formatter": 5,
+              "dateFormat": {
+                "formatName": "shortDateTimeNoMsPattern"
               }
-            ]
-          }
-        },
-        "name": "Experiment status results"
-      }
-    ],
-    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
-  }
+            },
+            {
+              "columnMatch": "LatestAssignment",
+              "formatter": 5,
+              "dateFormat": {
+                "formatName": "shortDateTimeNoMsPattern"
+              }
+            }
+          ],
+          "hierarchySettings": {
+            "idColumn": "ID",
+            "parentColumn": "PARENT",
+            "treeType": 0,
+            "expanderColumn": "Name"
+          },
+          "labelSettings": [
+            {
+              "columnId": "DaysSinceActivity",
+              "label": "Time since activity"
+            },
+            {
+              "columnId": "AssignmentEventCount",
+              "label": "Assignment events"
+            },
+            {
+              "columnId": "AssignmentCountSeries",
+              "label": "Assignment activity"
+            }
+          ]
+        }
+      },
+      "name": "Table - Experiment Status"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
