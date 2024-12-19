@@ -141,6 +141,33 @@
             "defaultValue": "value::all",
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "1984c556-9b6e-4daf-ab13-b3082b7a99c2",
+            "version": "KqlParameterItem/1.0",
+            "name": "vmIds",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\r\n| where type =~ 'Microsoft.Workloads/sapVirtualInstances/centralInstances' or type =~ 'Microsoft.Workloads/sapVirtualInstances/databaseInstances'\r\n| extend visId = split(split(id, '/centralInstances')[0], '/databaseInstances')[0] // getting the VIS id out of child resource\r\n| extend visList = split('{current_vis:id}', ', ') // split the selected vis list in array to search\r\n| where set_has_element(visList, tostring(visId)) == 1 //check if the running vis exists in selected vis id.\r\n| mv-expand properties.vmDetails\r\n| extend vmId = tostring(properties_vmDetails.virtualMachineId)\r\n| where strlen(vmId) > 0\r\n| extend vmRole = split(type, \"/\")[2]\r\n| project vmId\r\n| union(\r\n    resources\r\n    | where type =~ 'Microsoft.Workloads/sapVirtualInstances/applicationInstances'\r\n    | extend visId = split(id, '/applicationInstances')[0]\r\n    | extend visList = split('{current_vis:id}', ', ') // split the selected vis list in array to search\r\n    | where set_has_element(visList, tostring(visId)) == 1\r\n    | mv-expand properties.vmDetails\r\n    | extend vmId = iff(apiVersion in (\"2021-12-01-preview\", \"2022-10-15-preview\"), tolower(properties.virtualMachineId), tolower(properties_vmDetails.virtualMachineId))\r\n    | where strlen(vmId) > 0\r\n    | extend vmRole = split(type, \"/\")[2]\r\n    | project vmId\r\n)\r\n| distinct vmId",
+            "crossComponentResources": [
+              "{Subscriptions}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.compute/virtualmachines": true
+              },
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
           }
         ],
         "style": "pills",
@@ -342,7 +369,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/recommendations'\r\n| where properties.impactedField has \"databaseInstances\"\r\n| where properties.lastUpdated >=ago(1d)\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(id, '/databaseInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n| extend impactedField = properties.impactedField\r\n| extend impact = properties.impact\r\n| project resourceId, impact, visId, properties.shortDescription.solution, properties.category, properties.lastUpdated",
+              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/suppressions'\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(id, '/databaseInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| where isnull(properties.expirationTimeStamp) or  properties.expirationTimeStamp >= now()\r\n| extend recommendationId = tostring(extract(\"recommendations/([^/]+)/suppressions\", 1, id))\r\n| project recommendationId\r\n| join kind=fullouter (\r\n    advisorresources\r\n    | where type =~ 'microsoft.advisor/recommendations'\r\n    | where properties.impactedField has \"databaseInstances\"\r\n    | where properties.lastUpdated >=ago(1d)\r\n    | extend visList = split('{current_vis:id}', \", \")\r\n    | extend visId = split(id, '/databaseInstances')[0]\r\n    | where set_has_element(visList,tostring(visId)) == 1\r\n    | extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n    | extend impactedField = properties.impactedField\r\n    | extend impact = properties.impact\r\n    | project resourceId, impact, visId, properties.shortDescription.solution, properties.category, properties.lastUpdated, name\r\n) on $left.recommendationId == $right.name\r\n| where isempty( recommendationId)",
               "size": 3,
               "noDataMessage": "There are no recommendations to show for now. If this is a newly created Virtual Instance for SAP solutions (VIS), please check back here in 60 minutes to see if there are any quality-check recommendations for your SAP system.   Quality checks will continue to run on a 12 hour interval for all Virtual Instances. Please check here to see all the recommendations from the quality checks for your VIS",
               "showRefreshButton": true,
@@ -354,6 +381,10 @@
               ],
               "gridSettings": {
                 "formatters": [
+                  {
+                    "columnMatch": "recommendationId",
+                    "formatter": 5
+                  },
                   {
                     "columnMatch": "resourceId",
                     "formatter": 13,
@@ -418,6 +449,10 @@
                   {
                     "columnMatch": "properties_lastUpdated",
                     "formatter": 6
+                  },
+                  {
+                    "columnMatch": "name",
+                    "formatter": 5
                   }
                 ],
                 "sortBy": [
@@ -479,7 +514,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/recommendations'\r\n| where properties.lastUpdated >=ago(1d)\r\n| where properties.impactedField has \"applicationInstances\"\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(id, '/applicationInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n| extend impactedField = properties.impactedField\r\n| extend impact = properties.impact\r\n| project resourceId, impact, visId, properties.shortDescription.solution, properties.category, properties.lastUpdated",
+              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/suppressions'\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(id, '/applicationInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| where isnull(properties.expirationTimeStamp) or  properties.expirationTimeStamp >= now()\r\n| extend recommendationId = tostring(extract(\"recommendations/([^/]+)/suppressions\", 1, id))\r\n| project recommendationId\r\n| join kind=fullouter (\r\n    advisorresources\r\n    | where type =~ 'microsoft.advisor/recommendations'\r\n    | where properties.lastUpdated >=ago(1d)\r\n    | where properties.impactedField has \"applicationInstances\"\r\n    | extend visList = split('{current_vis:id}', \", \")\r\n    | extend visId = split(id, '/applicationInstances')[0]\r\n    | where set_has_element(visList,tostring(visId)) == 1\r\n    | extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n    | extend impactedField = properties.impactedField\r\n    | extend impact = properties.impact\r\n    | project resourceId, impact, visId, properties.shortDescription.solution, properties.category, properties.lastUpdated, name\r\n) on $left.recommendationId == $right.name\r\n| where isempty( recommendationId)",
               "size": 3,
               "noDataMessage": "There are no recommendations to show for now. If this is a newly created Virtual Instance for SAP solutions (VIS), please check back here in 60 minutes to see if there are any quality-check recommendations for your SAP system.   Quality checks will continue to run on a 12 hour interval for all Virtual Instances. Please check here to see all the recommendations from the quality checks for your VIS",
               "showRefreshButton": true,
@@ -491,6 +526,10 @@
               ],
               "gridSettings": {
                 "formatters": [
+                  {
+                    "columnMatch": "recommendationId",
+                    "formatter": 5
+                  },
                   {
                     "columnMatch": "resourceId",
                     "formatter": 13,
@@ -555,6 +594,10 @@
                   {
                     "columnMatch": "properties_lastUpdated",
                     "formatter": 6
+                  },
+                  {
+                    "columnMatch": "name",
+                    "formatter": 5
                   }
                 ],
                 "labelSettings": [
@@ -604,7 +647,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/recommendations'\r\n| where properties.lastUpdated >=ago(1d)\r\n| where properties.impactedField has \"centralInstances\"\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(id, '/centralInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n| extend impactedField = properties.impactedField\r\n| extend impact = properties.impact\r\n| project resourceId, impact, visId, properties.shortDescription.solution, properties.category, properties.lastUpdated",
+              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/suppressions'\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(id, '/centralInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| where isnull(properties.expirationTimeStamp) or  properties.expirationTimeStamp >= now()\r\n| extend recommendationId = tostring(extract(\"recommendations/([^/]+)/suppressions\", 1, id))\r\n| project recommendationId\r\n| join kind=fullouter (\r\n    advisorresources\r\n    | where type =~ 'microsoft.advisor/recommendations'\r\n    | where properties.lastUpdated >=ago(1d)\r\n    | where properties.impactedField has \"centralInstances\"\r\n    | extend visList = split('{current_vis:id}', \", \")\r\n    | extend visId = split(id, '/centralInstances')[0]\r\n    | where set_has_element(visList,tostring(visId)) == 1\r\n    | extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n    | extend impactedField = properties.impactedField\r\n    | extend impact = properties.impact\r\n    | project resourceId, impact, visId, properties.shortDescription.solution, properties.category, properties.lastUpdated, name\r\n) on $left.recommendationId == $right.name\r\n| where isempty( recommendationId)",
               "size": 3,
               "noDataMessage": "There are no recommendations to show for now. If this is a newly created Virtual Instance for SAP solutions (VIS), please check back here in 60 minutes to see if there are any quality-check recommendations for your SAP system.   Quality checks will continue to run on a 12 hour interval for all Virtual Instances. Please check here to see all the recommendations from the quality checks for your VIS",
               "showRefreshButton": true,
@@ -617,6 +660,10 @@
               "visualization": "table",
               "gridSettings": {
                 "formatters": [
+                  {
+                    "columnMatch": "recommendationId",
+                    "formatter": 5
+                  },
                   {
                     "columnMatch": "resourceId",
                     "formatter": 13,
@@ -681,6 +728,10 @@
                   {
                     "columnMatch": "properties_lastUpdated",
                     "formatter": 6
+                  },
+                  {
+                    "columnMatch": "name",
+                    "formatter": 5
                   }
                 ],
                 "labelSettings": [
@@ -730,7 +781,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/recommendations' \r\n| extend visList = split(\"{current_vis:id}\", ', ')\r\n| where properties.lastUpdated >=ago(1d)\r\n| extend visId = split(split(split(id, '/centralInstances')[0], '/applicationInstances')[0], '/databaseInstances')[0]\r\n| where set_has_element(visList, tostring(visId)) == 1\r\n| extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n| extend impactedField = properties.impactedField\r\n| extend resourceTypeName = \"Database\"\r\n| extend impact = properties.impact\r\n| extend resourceTypeName = iff(impactedField has \"centralInstances\", \"Central service instance\", resourceTypeName)\r\n| extend resourceTypeName = iff(impactedField has \"applicationInstances\", \"App server instance\", resourceTypeName)\r\n| project resourceId, resourceTypeName, visId, impact, properties.shortDescription.solution, properties.category, properties.lastUpdated\r\n\r\n",
+              "query": "advisorresources\r\n| where type =~ 'microsoft.advisor/suppressions'\r\n| extend visList = split('{current_vis:id}', \", \")\r\n| extend visId = split(split(split(id, '/centralInstances')[0], '/applicationInstances')[0], '/databaseInstances')[0]\r\n| where set_has_element(visList,tostring(visId)) == 1\r\n| where isnull(properties.expirationTimeStamp) or  properties.expirationTimeStamp >= now()\r\n| extend recommendationId = tostring(extract(\"recommendations/([^/]+)/suppressions\", 1, id))\r\n| project recommendationId\r\n| join kind=fullouter (\r\n    advisorresources\r\n    | where type =~ 'microsoft.advisor/recommendations' \r\n    | extend visList = split(\"{current_vis:id}\", ', ')\r\n    | where properties.lastUpdated >=ago(1d)\r\n    | extend visId = split(split(split(id, '/centralInstances')[0], '/applicationInstances')[0], '/databaseInstances')[0]\r\n    | where set_has_element(visList, tostring(visId)) == 1\r\n    | extend resourceId = tostring(properties.resourceMetadata.resourceId)\r\n    | extend impactedField = properties.impactedField\r\n    | extend resourceTypeName = \"Database\"\r\n    | extend impact = properties.impact\r\n    | extend resourceTypeName = iff(impactedField has \"centralInstances\", \"Central service instance\", resourceTypeName)\r\n    | extend resourceTypeName = iff(impactedField has \"applicationInstances\", \"App server instance\", resourceTypeName)\r\n    | project resourceId, resourceTypeName, visId, impact, properties.shortDescription.solution, properties.category, properties.lastUpdated, name\r\n) on $left.recommendationId == $right.name\r\n| where isempty( recommendationId)",
               "size": 3,
               "noDataMessage": "There are no recommendations to show for now. If this is a newly created Virtual Instance for SAP solutions (VIS), please check back here in 60 minutes to see if there are any quality-check recommendations for your SAP system.   Quality checks will continue to run on a 12 hour interval for all Virtual Instances. Please check here to see all the recommendations from the quality checks for your VIS",
               "showRefreshButton": true,
@@ -743,6 +794,10 @@
               "visualization": "table",
               "gridSettings": {
                 "formatters": [
+                  {
+                    "columnMatch": "recommendationId",
+                    "formatter": 5
+                  },
                   {
                     "columnMatch": "resourceId",
                     "formatter": 13,
@@ -804,6 +859,10 @@
                   {
                     "columnMatch": "properties_lastUpdated",
                     "formatter": 6
+                  },
+                  {
+                    "columnMatch": "name",
+                    "formatter": 5
                   },
                   {
                     "columnMatch": "properties_impact",
@@ -1328,7 +1387,7 @@
                       }
                     ]
                   },
-                  "customWidth": "50",
+                  "customWidth": "51",
                   "conditionalVisibilities": [
                     {
                       "parameterName": "SelectedTab",
@@ -1349,7 +1408,7 @@
                     "json": "Microsoft is constantly updating its platform and submitting new certification details to SAP in order to ensure Microsoft Azure is the best platform on which to run your SAP workloads.\r\n\r\n💡 Learn more about [SAP certifications and configurations running on Microsoft Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/workloads/sap/sap-certifications)",
                     "style": "info"
                   },
-                  "customWidth": "50",
+                  "customWidth": "49",
                   "conditionalVisibilities": [
                     {
                       "parameterName": "SelectedTab",
@@ -1360,9 +1419,348 @@
                       "parameterName": "Report_check",
                       "comparison": "isEqualTo",
                       "value": "No"
+                    },
+                    {
+                      "parameterName": "Help",
+                      "comparison": "isEqualTo",
+                      "value": "Yes"
                     }
                   ],
                   "name": "text - Compute Info"
+                },
+                {
+                  "type": 1,
+                  "content": {
+                    "json": "This query could not run because some parameters are not set.\r\nPlease set: VIS",
+                    "style": "info"
+                  },
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "SelectedTab",
+                      "comparison": "isEqualTo",
+                      "value": "compute"
+                    },
+                    {
+                      "parameterName": "Report_check",
+                      "comparison": "isEqualTo",
+                      "value": "No"
+                    },
+                    {
+                      "parameterName": "current_vis",
+                      "comparison": "isEqualTo",
+                      "value": ""
+                    }
+                  ],
+                  "name": "text - VIS not selected"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\r\n| where type startswith 'Microsoft.Workloads/sapVirtualInstances/'\r\n| extend visId = split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0] // getting the VIS id out of child resource\r\n| extend visList = split('{current_vis:id}', ', ') // split the selected vis list in array to search\r\n| where set_has_element(visList, tostring(visId)) == 1 //check if the running vis exists in selected vis id.\r\n| mv-expand properties.vmDetails\r\n| extend vmId = tostring(properties_vmDetails.virtualMachineId)\r\n| where strlen(vmId) > 0\r\n| extend vmRole = split(type, \"/\")[2]\r\n| distinct tostring(visId), vmId",
+                    "size": 0,
+                    "title": "VIS VM Mapping (Used for merge)",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "value::all"
+                    ]
+                  },
+                  "customWidth": "50",
+                  "conditionalVisibility": {
+                    "parameterName": "SelectedTab",
+                    "comparison": "isEqualTo",
+                    "value": "-"
+                  },
+                  "name": "query - VIS VM match (Used for merge)",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook47fdc9d0-25c3-46cb-921a-b370fc0e5828",
+                    "version": "MetricsItem/2.0",
+                    "size": 0,
+                    "chartType": 0,
+                    "resourceType": "microsoft.compute/virtualmachines",
+                    "metricScope": 0,
+                    "resourceParameter": "vmIds",
+                    "resourceIds": [
+                      "{vmIds}"
+                    ],
+                    "timeContext": {
+                      "durationMs": 86400000
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
+                        "aggregation": 4
+                      },
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--Percentage CPU",
+                        "aggregation": 4
+                      },
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--Disk Read Bytes",
+                        "aggregation": 1
+                      },
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--Disk Write Bytes",
+                        "aggregation": 1
+                      },
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--Network In Total",
+                        "aggregation": 1
+                      },
+                      {
+                        "namespace": "microsoft.compute/virtualmachines",
+                        "metric": "microsoft.compute/virtualmachines--Network Out Total",
+                        "aggregation": 1
+                      }
+                    ],
+                    "title": "VM  Monitoring Key Metrics (Used for merge)",
+                    "resourceLimit": 10000,
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "$gen_group",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "Subscription",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Name",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
+                          "formatter": 5,
+                          "numberFormat": {
+                            "unit": 0,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--VmAvailabilityMetric Timeline",
+                          "formatter": 21,
+                          "formatOptions": {
+                            "palette": "green"
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Percentage CPU",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "blue"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Percentage CPU Timeline",
+                          "formatter": 21,
+                          "formatOptions": {
+                            "min": 0,
+                            "palette": "blue"
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Disk Read Bytes",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "min": 0,
+                            "palette": "orange",
+                            "workbookContext": {
+                              "componentIdSource": "column",
+                              "componentId": "Name",
+                              "resourceIdsSource": "column",
+                              "resourceIds": "Name",
+                              "templateIdSource": "static",
+                              "templateId": "Community-Workbooks/Virtual Machines/Virtual machine details",
+                              "typeSource": "static",
+                              "type": "workbook",
+                              "gallerySource": "static",
+                              "gallery": "microsoft.compute/virtualmachines",
+                              "locationSource": "default"
+                            }
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Disk Read Bytes Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Disk Write Bytes",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "orange"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Disk Write Bytes Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Network In Total",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "yellow"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Network In Total Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Network Out Total",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "yellow"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Network Out Total Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Availability Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.compute/virtualmachines--Availability",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "linkTarget": "GenericDetails",
+                            "linkIsContextBlade": true
+                          },
+                          "numberFormat": {
+                            "unit": 0,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        }
+                      ],
+                      "rowLimit": 10000,
+                      "filter": true,
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "Subscription"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "Name"
+                      },
+                      "labelSettings": [
+                        {
+                          "columnId": "Name",
+                          "label": "Storage Name"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
+                          "label": "VM Availability Metric (Preview) (Sum)"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--VmAvailabilityMetric Timeline",
+                          "label": "VM Availability Metric (Preview) Timeline"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Percentage CPU",
+                          "label": "Percentage CPU (Average)"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Percentage CPU Timeline",
+                          "label": "Percentage CPU Timeline"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Disk Read Bytes",
+                          "label": "Disk Read Bytes (Sum)"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Disk Read Bytes Timeline",
+                          "label": "Disk Read Bytes Timeline"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Disk Write Bytes",
+                          "label": "Disk Write Bytes (Sum)"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Disk Write Bytes Timeline",
+                          "label": "Disk Write Bytes Timeline"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Network In Total",
+                          "label": "Network In Total (Sum)"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Network In Total Timeline",
+                          "label": "Network In Total Timeline"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Network Out Total",
+                          "label": "Network Out Total (Sum)"
+                        },
+                        {
+                          "columnId": "microsoft.compute/virtualmachines--Network Out Total Timeline",
+                          "label": "Network Out Total Timeline"
+                        }
+                      ]
+                    },
+                    "showExportToExcel": true
+                  },
+                  "customWidth": "50",
+                  "conditionalVisibility": {
+                    "parameterName": "SelectedTab",
+                    "comparison": "isEqualTo",
+                    "value": "-"
+                  },
+                  "name": "metric - Monitroing Key Metrics (Used for merge)",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
                 },
                 {
                   "type": 3,
@@ -1419,7 +1817,7 @@
                       ]
                     }
                   },
-                  "customWidth": "65",
+                  "customWidth": "50",
                   "conditionalVisibilities": [
                     {
                       "parameterName": "SelectedTab",
@@ -1435,10 +1833,559 @@
                       "parameterName": "Report_check",
                       "comparison": "isEqualTo",
                       "value": "No"
+                    },
+                    {
+                      "parameterName": "current_vis",
+                      "comparison": "isNotEqualTo",
+                      "value": ""
                     }
                   ],
                   "showPin": true,
-                  "name": "query - Azure Compute Summary "
+                  "name": "query - Azure Compute Summary ",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\",\"mergeType\":\"innerunique\",\"leftTable\":\"metric - Monitroing Key Metrics (Used for merge)\",\"rightTable\":\"query - VIS VM match (Used for merge)\",\"leftColumn\":\"Name\",\"rightColumn\":\"vmId\"}],\"projectRename\":[{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].Subscription\",\"mergedName\":\"Subscription\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].Name\",\"mergedName\":\"Storage Name\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[query - VIS VM match (Used for merge)].visId\",\"mergedName\":\"visId\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--VmAvailabilityMetric\",\"mergedName\":\"VM Availability Metric (Preview) (Sum)\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--VmAvailabilityMetric Timeline\",\"mergedName\":\"VM Availability Metric (Preview) Timeline\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Percentage CPU\",\"mergedName\":\"Percentage CPU (Average)\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Percentage CPU Timeline\",\"mergedName\":\"Percentage CPU Timeline\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Disk Read Bytes\",\"mergedName\":\"Disk Read Bytes (Sum)\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Disk Read Bytes Timeline\",\"mergedName\":\"Disk Read Bytes Timeline\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Disk Write Bytes\",\"mergedName\":\"Disk Write Bytes (Sum)\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Disk Write Bytes Timeline\",\"mergedName\":\"Disk Write Bytes Timeline\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Network In Total\",\"mergedName\":\"Network In Total (Sum)\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Network In Total Timeline\",\"mergedName\":\"Network In Total Timeline\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Network Out Total\",\"mergedName\":\"Network Out Total (Sum)\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[metric - Monitroing Key Metrics (Used for merge)].microsoft.compute/virtualmachines--Network Out Total Timeline\",\"mergedName\":\"Network Out Total Timeline\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[query - VIS VM match (Used for merge)].vmId\",\"mergedName\":\"vmId\",\"fromId\":\"5e753f6d-18cd-4295-84c0-fc475611c0ac\"},{\"originalName\":\"[query - VIS VM match].vmId\"}]}",
+                    "size": 0,
+                    "title": "VM  Monitoring Key Metrics (Last 24 hours)",
+                    "queryType": 7,
+                    "visualization": "table",
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "Subscription",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "visId",
+                          "formatter": 0,
+                          "formatOptions": {
+                            "customColumnWidthSetting": "15ch"
+                          }
+                        },
+                        {
+                          "columnMatch": "VM Availability Metric (Preview) (Sum)",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "VM Availability Metric (Preview) Timeline",
+                          "formatter": 21,
+                          "formatOptions": {
+                            "palette": "green"
+                          }
+                        },
+                        {
+                          "columnMatch": "Percentage CPU (Average)",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "blue"
+                          },
+                          "numberFormat": {
+                            "unit": 1,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Percentage CPU Timeline",
+                          "formatter": 21,
+                          "formatOptions": {
+                            "min": 0,
+                            "palette": "blue"
+                          }
+                        },
+                        {
+                          "columnMatch": "Disk Read Bytes (Sum)",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "min": 0,
+                            "palette": "orange"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Disk Read Bytes Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Disk Write Bytes (Sum)",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "orange"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Disk Write Bytes Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Network In Total (Sum)",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "yellow"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Network In Total Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Network Out Total (Sum)",
+                          "formatter": 8,
+                          "formatOptions": {
+                            "palette": "yellow"
+                          },
+                          "numberFormat": {
+                            "unit": 2,
+                            "options": {
+                              "style": "decimal"
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "Network Out Total Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "vmId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Virtual Machine",
+                          "formatter": 5
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "Subscription",
+                          "label": "-"
+                        },
+                        {
+                          "columnId": "Storage Name",
+                          "label": "Virtual machine"
+                        },
+                        {
+                          "columnId": "visId",
+                          "label": "SID"
+                        },
+                        {
+                          "columnId": "VM Availability Metric (Preview) (Sum)",
+                          "label": "VM Availability Metric (Preview) (Sum)"
+                        },
+                        {
+                          "columnId": "VM Availability Metric (Preview) Timeline",
+                          "label": "VM Availability Metric (Preview) Timeline"
+                        },
+                        {
+                          "columnId": "Percentage CPU (Average)",
+                          "label": "Percentage CPU (Average)"
+                        },
+                        {
+                          "columnId": "Percentage CPU Timeline",
+                          "label": "Percentage CPU Timeline"
+                        },
+                        {
+                          "columnId": "Disk Read Bytes (Sum)",
+                          "label": "Disk Read Bytes (Sum)"
+                        },
+                        {
+                          "columnId": "Disk Read Bytes Timeline",
+                          "label": "Disk Read Bytes Timeline"
+                        },
+                        {
+                          "columnId": "Disk Write Bytes (Sum)",
+                          "label": "Disk Write Bytes (Sum)"
+                        },
+                        {
+                          "columnId": "Disk Write Bytes Timeline",
+                          "label": "Disk Write Bytes Timeline"
+                        },
+                        {
+                          "columnId": "Network In Total (Sum)",
+                          "label": "Network In Total (Sum)"
+                        },
+                        {
+                          "columnId": "Network In Total Timeline",
+                          "label": "Network In Total Timeline"
+                        },
+                        {
+                          "columnId": "Network Out Total (Sum)",
+                          "label": "Network Out Total (Sum)"
+                        },
+                        {
+                          "columnId": "Network Out Total Timeline",
+                          "label": "Network Out Total Timeline"
+                        }
+                      ]
+                    },
+                    "tileSettings": {
+                      "showBorder": false,
+                      "titleContent": {
+                        "columnMatch": "Subscription",
+                        "formatter": 1
+                      },
+                      "leftContent": {
+                        "columnMatch": "VM Availability Metric (Preview) (Sum)",
+                        "formatter": 12,
+                        "formatOptions": {
+                          "palette": "auto"
+                        },
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "maximumSignificantDigits": 3,
+                            "maximumFractionDigits": 2
+                          }
+                        }
+                      }
+                    },
+                    "graphSettings": {
+                      "type": 0,
+                      "topContent": {
+                        "columnMatch": "Subscription",
+                        "formatter": 1
+                      },
+                      "centerContent": {
+                        "columnMatch": "VM Availability Metric (Preview) (Sum)",
+                        "formatter": 1,
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "maximumSignificantDigits": 3,
+                            "maximumFractionDigits": 2
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "customWidth": "50",
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "SelectedTab",
+                      "comparison": "isEqualTo",
+                      "value": "compute"
+                    },
+                    {
+                      "parameterName": "compute",
+                      "comparison": "isEqualTo",
+                      "value": "azure"
+                    },
+                    {
+                      "parameterName": "Report_check",
+                      "comparison": "isEqualTo",
+                      "value": "No"
+                    },
+                    {
+                      "parameterName": "current_vis",
+                      "comparison": "isNotEqualTo",
+                      "value": ""
+                    }
+                  ],
+                  "name": "Virtual Machine Monitoring Metrics (Last 24 hours)",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| extend visList = split('{current_vis:id}', ', ')\r\n| where set_has_element(visList, visId) == 1\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| where strlen(vmId) > 0\r\n| distinct vmId, visId, subscriptionId\r\n| join kind = leftouter (\r\n    HealthResources \r\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses' or type =~ 'microsoft.resourcehealth/resourceannotations'\r\n    | extend vmId = tolower(properties.targetResourceId)\r\n    | project vmId, AvailabilityState = tostring(properties.availabilityState), Reason = tostring(properties.reason), Context = tostring(properties.context), Category = tostring(properties.category)\r\n) on vmId\r\n| summarize make_set_if(AvailabilityState, isnotempty(AvailabilityState)), make_set_if(Reason, isnotempty(Reason)), make_set_if(Context, isnotempty(Context)), make_set_if(Category, isnotempty(Category)) by vmId, visId, subscriptionId\r\n| project subscriptionId, vmId, visId,\r\n    AvailabilityState = iff(isnull(set_AvailabilityState[0]), \"Unknown\", set_AvailabilityState[0]),\r\n    Reason = iff(isnull(set_Reason[0]), \"-\", set_Reason[0]),\r\n    Context = iff(isnull(set_Context[0]), \"-\", set_Context[0]),\r\n    Category = iff(isnull(set_Category[0]), \"-\", set_Category[0])",
+                    "size": 0,
+                    "title": "Current VM Health & Annotations",
+                    "exportToExcelOptions": "all",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "value::all"
+                    ],
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "subscriptionId",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "linkIsContextBlade": false
+                          }
+                        },
+                        {
+                          "columnMatch": "vmId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth",
+                            "showIcon": true,
+                            "bladeOpenContext": {
+                              "bladeName": "ResourceMenuBlade",
+                              "extensionName": "HubsExtension",
+                              "bladeParameters": [
+                                {
+                                  "name": "id",
+                                  "source": "cell",
+                                  "value": ""
+                                },
+                                {
+                                  "name": "menuid",
+                                  "source": "static",
+                                  "value": "resourcehealth"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "columnMatch": "visId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true,
+                            "customColumnWidthSetting": "15ch"
+                          }
+                        },
+                        {
+                          "columnMatch": "AvailabilityState",
+                          "formatter": 11,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourceHealth",
+                            "linkIsContextBlade": true
+                          }
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "subscriptionId",
+                          "label": "Subscription / Virtual machine"
+                        },
+                        {
+                          "columnId": "vmId",
+                          "label": "Virtual machine"
+                        },
+                        {
+                          "columnId": "visId",
+                          "label": "SID"
+                        },
+                        {
+                          "columnId": "AvailabilityState",
+                          "label": "Availability state"
+                        },
+                        {
+                          "columnId": "Reason",
+                          "label": "Reason"
+                        },
+                        {
+                          "columnId": "Context",
+                          "label": "Context"
+                        },
+                        {
+                          "columnId": "Category",
+                          "label": "Category"
+                        }
+                      ]
+                    }
+                  },
+                  "customWidth": "50",
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "SelectedTab",
+                      "comparison": "isEqualTo",
+                      "value": "compute"
+                    },
+                    {
+                      "parameterName": "compute",
+                      "comparison": "isEqualTo",
+                      "value": "azure"
+                    },
+                    {
+                      "parameterName": "Report_check",
+                      "comparison": "isEqualTo",
+                      "value": "No"
+                    },
+                    {
+                      "parameterName": "current_vis",
+                      "comparison": "isNotEqualTo",
+                      "value": ""
+                    }
+                  ],
+                  "showPin": true,
+                  "name": "query - Current VM Health & Annotations",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\r\n| where type startswith 'microsoft.workloads/sapvirtualinstances/'\r\n| extend visId = tostring(split(split(split(id, '/centralInstances')[0], '/databaseInstances')[0], '/applicationInstances')[0])\r\n| extend visList = split('{current_vis:id}', ', ')\r\n| where set_has_element(visList, tostring(visId)) == 1\r\n| mv-expand vm = properties.vmDetails\r\n| extend vmId = tolower(vm.virtualMachineId)\r\n| where strlen(vmId) > 0\r\n| distinct vmId, visId, subscriptionId\r\n| join kind = inner (\r\n    healthresourcechanges\r\n    | where type == \"microsoft.resources/changes\"\r\n    | where properties.targetResourceType =~ \"microsoft.resourcehealth/resourceannotations\"\r\n    | extend Id = tolower(split(properties.targetResourceId, '/providers/Microsoft.ResourceHealth/resourceAnnotations/current')[0]),\r\n    Timestamp = todatetime(properties.changeAttributes.timestamp), AnnotationName = properties['changes']['properties.annotationName']['newValue'], Reason = properties['changes']['properties.reason']['newValue'], \r\n    Context = iff(isempty(properties['changes']['properties.context']['newValue']), \"-\", properties['changes']['properties.context']['newValue']),\r\n    Category = iff(isempty(properties['changes']['properties.category']['newValue']), \"-\", properties['changes']['properties.category']['newValue'])\r\n    | where isnotempty(AnnotationName)\r\n    | where Timestamp > ago(14d)) on $left.vmId == $right.Id\r\n| project subscriptionId, vmId, visId, Timestamp, Reason, AnnotationName, PreviousAnnotation = properties['changes']['properties.annotationName']['previousValue'], Context, Category \r\n| order by Timestamp desc\r\n| extend Timestamp = format_datetime(Timestamp, 'dd/MM/yyyy, hh:mm:ss tt')",
+                    "size": 0,
+                    "title": "VM Health Changes (Last 14 days)",
+                    "noDataMessage": "No health changes found in the last 14 days",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "value::all"
+                    ],
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "$gen_group",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "subscriptionId",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "vmId",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "subTarget": "resourcehealth"
+                          }
+                        },
+                        {
+                          "columnMatch": "visId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true,
+                            "customColumnWidthSetting": "15ch"
+                          }
+                        },
+                        {
+                          "columnMatch": "Timestamp",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Reason",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "AnnotationName",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "PreviousAnnotation",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "Context",
+                          "formatter": 1
+                        },
+                        {
+                          "columnMatch": "Category",
+                          "formatter": 1
+                        }
+                      ],
+                      "filter": true,
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "vmId"
+                        ],
+                        "expandTopLevel": true,
+                        "finalBy": "Timestamp"
+                      },
+                      "labelSettings": [
+                        {
+                          "columnId": "subscriptionId",
+                          "label": "Subscription"
+                        },
+                        {
+                          "columnId": "vmId",
+                          "label": "Virtual machine"
+                        },
+                        {
+                          "columnId": "visId",
+                          "label": "SID"
+                        },
+                        {
+                          "columnId": "Timestamp",
+                          "label": "Timestamp"
+                        },
+                        {
+                          "columnId": "Reason",
+                          "label": "Reason"
+                        },
+                        {
+                          "columnId": "AnnotationName",
+                          "label": "Annotation"
+                        },
+                        {
+                          "columnId": "PreviousAnnotation",
+                          "label": "Previous annotation"
+                        },
+                        {
+                          "columnId": "Context",
+                          "label": "Context"
+                        },
+                        {
+                          "columnId": "Category",
+                          "label": "Category"
+                        }
+                      ]
+                    }
+                  },
+                  "customWidth": "50",
+                  "conditionalVisibilities": [
+                    {
+                      "parameterName": "SelectedTab",
+                      "comparison": "isEqualTo",
+                      "value": "compute"
+                    },
+                    {
+                      "parameterName": "compute",
+                      "comparison": "isEqualTo",
+                      "value": "azure"
+                    },
+                    {
+                      "parameterName": "Report_check",
+                      "comparison": "isEqualTo",
+                      "value": "No"
+                    },
+                    {
+                      "parameterName": "current_vis",
+                      "comparison": "isNotEqualTo",
+                      "value": ""
+                    }
+                  ],
+                  "showPin": true,
+                  "name": "query - VM Health Changes (Last 14 days)",
+                  "styleSettings": {
+                    "padding": "5px"
+                  }
                 },
                 {
                   "type": 1,
@@ -4521,8 +5468,7 @@
                       {
                         "namespace": "microsoft.network/loadbalancers",
                         "metric": "microsoft.network/loadbalancers--DipAvailability",
-                        "aggregation": 3,
-                        "splitBy": null
+                        "aggregation": 3
                       }
                     ],
                     "title": "Backend health probe by Backend IP",
@@ -5014,8 +5960,7 @@
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--CurrentConnections",
-                        "aggregation": 1,
-                        "splitBy": null
+                        "aggregation": 1
                       }
                     ],
                     "title": " Current Connections",
@@ -5065,8 +6010,7 @@
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--NewConnectionsPerSecond",
-                        "aggregation": 4,
-                        "splitBy": null
+                        "aggregation": 4
                       }
                     ],
                     "title": "Avg. New  Connections per second",
@@ -5115,8 +6059,7 @@
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--TotalRequests",
-                        "aggregation": 1,
-                        "splitBy": null
+                        "aggregation": 1
                       }
                     ],
                     "title": "Total Requests",
@@ -5166,8 +6109,7 @@
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--Throughput",
-                        "aggregation": 4,
-                        "splitBy": null
+                        "aggregation": 4
                       }
                     ],
                     "title": "Throughput",
@@ -5216,8 +6158,7 @@
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--ComputeUnits",
-                        "aggregation": 4,
-                        "splitBy": null
+                        "aggregation": 4
                       }
                     ],
                     "title": "Avg Current Compute Units",
@@ -5271,8 +6212,7 @@
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--HealthyHostCount",
-                        "aggregation": 4,
-                        "splitBy": null
+                        "aggregation": 4
                       }
                     ],
                     "title": "Avg Health Host count",
