@@ -3,17 +3,15 @@
 ## Template deployment via Safe Deploy process
 Once content is checked into master, the template content is packaged into an npm package, and the release pipeline will publish that npm package to our internal team packaging feed where other dependencies live. That npm package of templates will be picked up by the AppInsights extension's daily build, and deployed via the extension's daily release train.
 
-1. An [official build is queued](https://github-private.visualstudio.com/microsoft/_build?definitionId=474) (you might not have access to this) @ noon (pacific) daily which packages all the processed templates into a versioned NPM package.
+1. An [official build is queued](https://msazure.visualstudio.com/One/_build?definitionId=299360) (you might not have access to this) @ noon PST/1pm PDT daily which packages all the processed templates into a versioned NPM package and uploads the NPM package to an Azure Devops package feed.
 
-2. After the official build completes, [a release pipeline](https://github-private.visualstudio.com/microsoft/_release?_a=releases&view=mine&definitionId=65) (again, you might not have access to this), uploads the built NPM package to an Azure Devops package feed.
+2. Every weekday @ 3pm (pacific), a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
 
-3. Every weekday @ 3pm (pacific), a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
+3. Every weekday @ ~4pm (pacific), [a daily deployment of the AppInsightsExtension occcurs](https://eng.ms/docs/cloud-ai-platform/azure/aep-platform-infrastructure/observability/application-insights/portal/operations/deployment#deployment-pipeline), which deploys the extension to a pre-production environment ([PPE](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=ppe))
 
-4. Every weekday @ ~4pm (pacific), [a daily deployment of the AppInsightsExtension occcurs](https://eng.ms/docs/cloud-ai-platform/azure/aep-platform-infrastructure/observability/application-insights/portal/operations/deployment#deployment-pipeline), which deploys the extension to a pre-production environment ([PPE](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=ppe))
+4. Every weekday @ ~noon (pacific), the previous day's build moves up a stage, from PPE to another internal environment ([MPAC](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=mpac)), and other non-public cloud test environments.
 
-5. Every weekday @ ~noon (pacific), the previous day's build moves up a stage, from PPE to another internal environment ([MPAC](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=mpac)), and other non-public cloud test environments.
-
-6. Every weekday @ ~noon (pacific), the previous previous day's build moves up a stage and starts a rolling deployment to production Azure environments, including other non-public clouds. The production rollouts take several hours as they deploy region by region.
+5. Every weekday @ ~noon (pacific), the previous previous day's build moves up a stage and starts a rolling deployment to production Azure environments, including other non-public clouds. The production rollouts take several hours as they deploy region by region.
 
 In the usual case, this means that template changes will not show up in Production Azure for at least 48 hours.
 
