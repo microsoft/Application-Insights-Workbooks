@@ -61,7 +61,7 @@
               "durationMs": 86400000
             },
             "value": {
-              "durationMs": 2592000000
+              "durationMs": 604800000
             },
             "label": "Time Range"
           },
@@ -73,7 +73,6 @@
             "type": 6,
             "isRequired": true,
             "isGlobal": true,
-            "isHiddenWhenLocked": true,
             "typeSettings": {
               "additionalResourceOptions": [
                 "value::1"
@@ -122,17 +121,6 @@
               "version": "KqlParameterItem/1.0",
               "parameters": [
                 {
-                  "id": "75cb73be-9cd3-4b83-a481-cf0c586299c1",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "qualityindex",
-                  "type": 1,
-                  "isGlobal": true,
-                  "query": "\r\nlet prereqTotalCount = toscalar(SharePointOnlineAssessmentRecommendation\r\n| where FocusArea == \"Prerequisite\" and TimeGenerated {TimeRange} | summarize by RecommendationId | summarize count = count());\r\n\r\nlet prereqFailedCount = toscalar(SharePointOnlineAssessmentRecommendation\r\n| where FocusArea == \"Prerequisite\" and RecommendationResult == \"Failed\" and TimeGenerated {TimeRange} | summarize by RecommendationId | summarize count = count());\r\n\r\n\r\nlet prereqPassedCount = toscalar(SharePointOnlineAssessmentRecommendation\r\n| where FocusArea == \"Prerequisite\" and RecommendationResult == \"Passed\" and TimeGenerated {TimeRange} | summarize by RecommendationId | summarize count = count());\r\n\r\nlet index = todouble((prereqTotalCount - prereqFailedCount))/todouble(prereqTotalCount) * 100;\r\nprint tostring(toint(index));\r\n",
-                  "isHiddenWhenLocked": true,
-                  "queryType": 0,
-                  "resourceType": "microsoft.operationalinsights/workspaces"
-                },
-                {
                   "id": "52a5d0dc-0488-420e-9bab-a8ccbe0c9016",
                   "version": "KqlParameterItem/1.0",
                   "name": "discoveryfailurecount",
@@ -172,7 +160,7 @@
           {
             "type": 1,
             "content": {
-              "json": "#### Assessment Quality\r\n\r\nCollection Machines in Critical State | Discovery Failures | Other Prerequisite Failures | Assessment Quality Index\r\n:-:|:-:|:-:|:-:\r\n{mvefailedmachines} |{discoveryfailurecount} | {otherfailurecount} | {qualityindex}% \r\n"
+              "json": "#### Assessment Quality\r\n\r\nCollection Machines in Critical State | Discovery Failures | Other Prerequisite Failures \r\n:-:|:-:|:-:\r\n{mvefailedmachines} |{discoveryfailurecount} | {otherfailurecount} \r\n"
             },
             "name": "Assessment Quality"
           }
@@ -191,7 +179,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "SharePointOnlineAssessmentRecommendation\r\n|where FocusArea != \"EnvironementFilter\"  and RecommendationResult == \"Failed\"\r\nand TimeGenerated {TimeRange}\r\n| summarize by   Recommendation, FocusArea, Weight = (RecommendationScore/10), RecommendationId, Description\r\n//| order by FocusArea asc",
+              "query": "SharePointOnlineAssessmentRecommendation\r\n|where FocusArea != \"EnvironementFilter\"  and RecommendationResult == \"Failed\"\r\nand TimeGenerated {TimeRange}\r\n| summarize by  Recommendation, FocusArea, RecommendationId, Description, Weight = (RecommendationScore/10)\r\n| order by Weight desc",
               "size": 0,
               "title": "Prioritized Recommendations",
               "noDataMessage": "No recommendations found",
@@ -263,19 +251,41 @@
                 "filter": true,
                 "sortBy": [
                   {
-                    "itemKey": "$gen_thresholds_Weight_2",
+                    "itemKey": "FocusArea",
                     "sortOrder": 1
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "Recommendation",
+                    "label": "Recommendation"
+                  },
+                  {
+                    "columnId": "FocusArea",
+                    "label": "Focus Area"
+                  },
+                  {
+                    "columnId": "RecommendationId",
+                    "label": "RecommendationId"
+                  },
+                  {
+                    "columnId": "Description",
+                    "label": "Description"
+                  },
+                  {
+                    "columnId": "Weight",
+                    "label": "Weight"
                   }
                 ]
               },
               "sortBy": [
                 {
-                  "itemKey": "$gen_thresholds_Weight_2",
+                  "itemKey": "FocusArea",
                   "sortOrder": 1
                 }
               ]
             },
-            "customWidth": "50",
+            "customWidth": "60",
             "showPin": false,
             "name": "PriortizedRecommendations-grid",
             "styleSettings": {
@@ -286,7 +296,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "SharePointOnlineAssessmentRecommendation\r\n| where FocusArea has \"{FocusArea}\"\r\nand RecommendationResult != \"Inconclusive\" and RecommendationResult == \"Failed\"\r\nand TimeGenerated > ago(30d)\r\n| extend High = (RecommendationScore >= 35)\r\n| extend Low = (RecommendationScore < 35)\r\n| extend status = iff(High==true,\"High Priority Recommendations\",\"Low Priority Recommendations\")\r\n| extend Passed = (RecommendationResult == \"Passed\")\r\n//| extend Priority = iif((RecommendationScore >= 35 and RecommendationResult == \"Failed\"),\"High Priority\",\"Low Priority\")\r\n//| extend Priority1 = iif((RecommendationScore < 35 and RecommendationResult == \"Failed\"),\"Low Priority\",\"Low Priority\")\r\n//| extend Passed = iif(RecommendationResult == \"Passed\",\"Passed\",\"Failed\")\r\n| summarize count() by status\r\n\r\n",
+              "query": "\r\nSharePointOnlineAssessmentRecommendation\r\n| where FocusArea == \"{FocusArea}\" and TimeGenerated {TimeRange}\r\n| summarize arg_max(TimeGenerated, *) by RecommendationId, AffectedObjectName, AffectedObjectUniqueName\r\n|where  RecommendationResult == \"Failed\" and (Technology has \"\" or Technology == \"\")\r\n|summarize arg_max(TimeGenerated, *) by RecommendationId\r\n| extend High = (RecommendationScore >= 35)\r\n| extend Low = (RecommendationScore < 35)\r\n| extend status = iff(High==true,\"High Priority Recommendations\",\"Low Priority Recommendations\")\r\n| extend Passed = (RecommendationResult == \"Passed\")\r\n| summarize count() by status\r\n\r\n",
               "size": 0,
               "title": "{FocusArea}",
               "queryType": 0,
@@ -297,16 +307,18 @@
                 "seriesLabelSettings": [
                   {
                     "seriesName": "High Priority Recommendations",
+                    "label": "High Priority Recommendations",
                     "color": "redBright"
                   },
                   {
                     "seriesName": "Low Priority Recommendations",
+                    "label": "Low Priority Recommendations",
                     "color": "blue"
                   }
                 ]
               }
             },
-            "customWidth": "50",
+            "customWidth": "40",
             "conditionalVisibility": {
               "parameterName": "FocusArea",
               "comparison": "isNotEqualTo"
@@ -560,7 +572,7 @@
     {
       "type": 1,
       "content": {
-        "json": "### Recommendation\r\n{content:$.properties.reason}\r\n\r\n### Suggested Actions\r\n{content:$.properties.suggestedActions}\r\n\r\n### Context\r\n{content:$.properties.context}\r\n\r\n### Prioritization Guidance\r\nImpact | Effort | Probability\r\n---|---|---\r\n{impacttext} |{efforttext} | {probabilitytext}\r\n\r\n### Learn More\r\n{content:$.properties.learnMore}\r\n\r\n\r\n\r\n\r\n"
+        "json": "### Title\r\n{content:$.properties.name}\r\n\r\n### Recommendation\r\n{content:$.properties.reason}\r\n\r\n### Suggested Actions\r\n{content:$.properties.suggestedActions}\r\n\r\n### Context\r\n{content:$.properties.context}\r\n\r\n### Prioritization Guidance\r\nImpact | Effort | Probability\r\n---|---|---\r\n{impacttext} |{efforttext} | {probabilitytext}\r\n\r\n### How To Troubleshoot\r\n{content:$.properties.troubleshootingSteps}\r\n\r\n### Learn More\r\n{content:$.properties.learnMore}\r\n\r\n"
       },
       "conditionalVisibility": {
         "parameterName": "content",
@@ -569,31 +581,101 @@
       "name": "Content-template"
     },
     {
-      "type": 3,
+      "type": 12,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "SharePointOnlineAssessmentRecommendation\r\n| where RecommendationId ==  '{RecommendationId}' and  TimeGenerated {TimeRange}\r\nand  RecommendationResult == \"Failed\"\r\n| project AffectedObjects =  AffectedObjectName\r\n\r\n",
-        "size": 0,
-        "timeContext": {
-          "durationMs": 2592000000
-        },
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces",
-        "sortBy": [],
-        "tileSettings": {
-          "showBorder": false
-        },
-        "mapSettings": {
-          "locInfo": "LatLong"
-        }
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SharePointOnlineAssessmentRecommendation\r\n| where RecommendationId ==  '{RecommendationId}' and  TimeGenerated {TimeRange}\r\nand  RecommendationResult == \"Failed\"\r\n| summarize arg_max(TimeGenerated, *) by AffectedObjectName, AffectedObjectUniqueName\r\n| sort by TimeGenerated desc\r\n| extend AffectedObjectDetails=replace_string(AffectedObjectDetails, '\"', '\\'')\r\n| project AffectedObjects =  AffectedObjectName,AffectedObjectDetails=replace_string(AffectedObjectDetails, '\\\\', '\\\\\\\\'), LastReportedDate = TimeGenerated\r\n\r\n",
+              "size": 0,
+              "title": "Select Affected Object to see the details",
+              "timeContext": {
+                "durationMs": 2592000000
+              },
+              "exportFieldName": "AffectedObjectDetails",
+              "exportParameterName": "AffectedObjectDetails",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "AffectedObjectDetails",
+                    "formatter": 5
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "AffectedObjects",
+                    "label": "Affected Object"
+                  },
+                  {
+                    "columnId": "LastReportedDate",
+                    "label": "Last Reported Date"
+                  }
+                ]
+              },
+              "sortBy": [],
+              "tileSettings": {
+                "showBorder": false
+              },
+              "mapSettings": {
+                "locInfo": "LatLong"
+              }
+            },
+            "customWidth": "40",
+            "conditionalVisibility": {
+              "parameterName": "RecommendationId",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "name": "affectedobjects-grid"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ef1da6f9-acc2-4cbc-9484-bfeee726ac18",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "affectedObjectsContent",
+                  "type": 1,
+                  "isRequired": true,
+                  "isGlobal": true,
+                  "query": "{\"version\":\"ARMEndpoint/1.0\",\"data\":\"{\\r\\n    \\\"properties\\\": {\\r\\n        \\\"assessment\\\": \\\"sharepointonlineassessment\\\",\\r\\n        \\\"slot\\\": 1,\\r\\n        \\\"id\\\": \\\"{RecommendationId}\\\",\\r\\n        \\\"culture\\\": \\\"{culture}\\\",\\r\\n\\t\\t\\\"affectedObjectData\\\":\\\"{AffectedObjectDetails}\\\"\\r\\n    }\\r\\n}\",\"headers\":[],\"method\":\"POST\",\"path\":\"{subsID}/providers/Microsoft.ServicesHub/getRecommendationsContent?api-version=2023-03-24-preview\",\"urlParams\":[],\"batchDisabled\":false,\"transformers\":null}",
+                  "isHiddenWhenLocked": true,
+                  "timeContext": {
+                    "durationMs": 86400000
+                  },
+                  "queryType": 12
+                }
+              ],
+              "style": "pills",
+              "queryType": 12
+            },
+            "customWidth": "1",
+            "name": "parameters - 2"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "\r\n#### Affected Object Details\r\n\r\n{affectedObjectsContent:$.properties.affectedEnvironments}\r\n"
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "affectedObjectsContent",
+              "comparison": "isNotEqualTo"
+            },
+            "name": "Affected Object Details"
+          }
+        ],
+        "exportParameters": true
       },
-      "conditionalVisibility": {
-        "parameterName": "RecommendationId",
-        "comparison": "isNotEqualTo",
-        "value": ""
-      },
-      "customWidth": "50",
-      "name": "query - 5"
+      "name": "Affected Objects Group"
     }
   ],
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
