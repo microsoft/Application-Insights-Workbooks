@@ -12,7 +12,7 @@
             "name": "qdsStartTime",
             "type": 1,
             "isRequired": true,
-            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"union\\r\\n(\\r\\n// The most recent interval that is earlier than the end of time range.\\r\\n// This may be earlier than the start of time range by at most 2h.\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_start_time between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| summarize interval_start_time = max(interval_start_time)\\r\\n),\\r\\n(\\r\\n// earliest interval start within time range\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_end_time >= {timeRange:start} and interval_start_time <= {timeRange:end}\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| summarize interval_start_time = min(interval_start_time)\\r\\n)\\r\\n// return the earliest of these times as start of QDS range\\r\\n// if there isn't a complete QDS interval within time range, this will show the most recent available interval outside of the range\\r\\n| summarize qds_start_time = min(interval_start_time)\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"union\\r\\n(\\r\\n// The most recent interval that is earlier than the end of time range.\\r\\n// This may be earlier than the start of time range by at most 2h.\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_start_time between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| where \\\"{replicaType}\\\" == \\\"Primary\\\"\\r\\n| summarize interval_start_time = max(interval_start_time)\\r\\n),\\r\\n(\\r\\n// earliest interval start within time range\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_end_time >= {timeRange:start} and interval_start_time <= {timeRange:end}\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| where \\\"{replicaType}\\\" == \\\"Primary\\\"\\r\\n| summarize interval_start_time = min(interval_start_time)\\r\\n)\\r\\n// return the earliest of these times as start of QDS range\\r\\n// if there isn't a complete QDS interval within time range, this will show the most recent available interval outside of the range\\r\\n| summarize qds_start_time = min(interval_start_time)\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
             "isHiddenWhenLocked": true,
             "queryType": 9
           },
@@ -22,7 +22,7 @@
             "name": "qdsEndTime",
             "type": 1,
             "isRequired": true,
-            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"union\\r\\n(\\r\\n// The most recent interval that is earlier than the end of time range.\\r\\n// This may be earlier than the start of time range by at most 2h.\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_end_time between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| summarize interval_end_time = max(interval_end_time)\\r\\n),\\r\\n(\\r\\n// latest interval end within time range\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_end_time >= {timeRange:start} and interval_start_time <= {timeRange:end}\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| summarize interval_end_time = max(interval_end_time)\\r\\n)\\r\\n// return the latest of these times as end of QDS range\\r\\n// if there isn't a complete QDS interval within time range, this will show the latest available interval\\r\\n| summarize qds_end_time = datetime_add(\\\"second\\\", 1, max(interval_end_time)) // make-series treats the end of interval as not inclusive, fudge by 1 second\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"union\\r\\n(\\r\\n// The most recent interval that is earlier than the end of time range.\\r\\n// This may be earlier than the start of time range by at most 2h.\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_end_time between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| where \\\"{replicaType}\\\" == \\\"Primary\\\"\\r\\n| summarize interval_end_time = max(interval_end_time)\\r\\n),\\r\\n(\\r\\n// latest interval end within time range\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_end_time >= {timeRange:start} and interval_start_time <= {timeRange:end}\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| where \\\"{replicaType}\\\" == \\\"Primary\\\"\\r\\n| summarize interval_end_time = max(interval_end_time)\\r\\n)\\r\\n// return the latest of these times as end of QDS range\\r\\n// if there isn't a complete QDS interval within time range, this will show the latest available interval\\r\\n| summarize qds_end_time = datetime_add(\\\"second\\\", 1, max(interval_end_time)) // make-series treats the end of interval as not inclusive, fudge by 1 second\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
             "isHiddenWhenLocked": true,
             "queryType": 9
           },
@@ -33,6 +33,15 @@
             "type": 1,
             "isRequired": true,
             "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"// QDS data may be collected on the primary or on its secondary HA replica.\\r\\n// QDS data collection from geo replicas is blocked to avoid associating query workload from the primary with the server/database name of a geo secondary.\\r\\n// If QDS data is collected from both primary and HA secondary, KQL queries must be restricted to data from either primary or HA secondary to avoid wrong results from querying duplicate data.\\r\\n// This parameter determines the replica type to use in that filter.\\r\\n// HA secondary is used only if all data from all databases on the instance within the interval is from HA secondary. Otherwise, primary is used.\\r\\nsqlmi_query_runtime_stats\\r\\n| where interval_start_time >= todatetime(\\\"{qdsStartTime}\\\") and interval_end_time <= todatetime(\\\"{qdsEndTime}\\\")\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| summarize count_from_ha_secondary = countif(replica_type == \\\"HA secondary\\\"),\\r\\n            count_from_primary = countif(replica_type == \\\"Primary\\\")\\r\\n| project replica_type = iif(count_from_ha_secondary > 0 and count_from_primary == 0, \\\"HA secondary\\\", \\\"Primary\\\")\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "queryType": 9
+          },
+          {
+            "id": "621902c6-c42c-4102-bd83-08f58a7c4a3a",
+            "version": "KqlParameterItem/1.0",
+            "name": "qdsMissingDataWarningText",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqlmi_database_properties\\r\\n| where sample_time_utc between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where managed_instance_name =~ @\\\"{managedInstanceName}\\\"\\r\\n| where database_id > 4\\r\\n| where replica_type =='Primary' \\r\\n| where query_store_actual_state_desc != \\\"READ_WRITE\\\"\\r\\n| extend query_store_actual_state_desc = iif(isempty(query_store_actual_state_desc), \\\"<missing>\\\", query_store_actual_state_desc)\\r\\n| distinct database_name, query_store_actual_state_desc\\r\\n| sort by database_name asc\\r\\n| summarize databases = strcat(\\r\\n                              strcat_array(\\r\\n                                          make_list(\\r\\n                                                   database_name,\\r\\n                                                   5\\r\\n                                                   ),\\r\\n                                          \\\", \\\"\\r\\n                                          ),\\r\\n                              iif(\\r\\n                                 dcount(database_name) > 5,\\r\\n                                 strcat(\\\" and \\\", tostring(dcount(database_name) - 5), \\\" more\\\"),\\r\\n                                 \\\"\\\")\\r\\n                              )\\r\\n            by query_store_actual_state_desc\\r\\n| sort by query_store_actual_state_desc asc\\r\\n| extend warning_row = strcat(\\\"| `\\\", query_store_actual_state_desc, \\\"` | \\\", databases, \\\" |\\\")\\r\\n| summarize warning = strcat_array(make_list(warning_row), \\\"\\\\r\\\\n\\\")\\r\\n| where isnotempty(warning)\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
             "isHiddenWhenLocked": true,
             "queryType": 9
           }
@@ -63,6 +72,41 @@
         }
       ],
       "name": "qds_help"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Top query data in the selected time range might be missing or incomplete for some databases because their [Query Store](https://go.microsoft.com/fwlink/?linkid=2213253) state is other than `READ_WRITE`. For more information, see [Best practices for managing Query Store](https://go.microsoft.com/fwlink/?linkid=2198632).\r\n\r\n| Query Store state | Database(s) |\r\n|:--|:--|\r\n{qdsMissingDataWarningText}",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "qdsStartTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "qdsEndTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "qdsMissingDataWarningText",
+          "comparison": "isNotEqualTo"
+        }
+      ],
+      "name": "qds_warning_missing_data"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Top query data is not available for secondary replicas.",
+        "style": "info"
+      },
+      "conditionalVisibility": {
+        "parameterName": "replicaType",
+        "comparison": "isNotEqualTo",
+        "value": "Primary"
+      },
+      "name": "qds_warning_secondary"
     },
     {
       "type": 9,
