@@ -1,0 +1,914 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "parameters": [
+          {
+            "id": "113c3ea5-8b94-4949-b294-597916807477",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "description": "Select the log analytics workspace containing your application experiment data",
+            "isRequired": true,
+            "query": "where type == \"microsoft.operationalinsights/workspaces\"\r\n| project value = id, label = id, selected = false, group = resourceGroup",
+            "crossComponentResources": [
+              "value::selected"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "85a14715-deb7-4787-87d0-4f81c629a9ec",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "description": "Select a time window to search for experiment analyses",
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "value": {
+              "durationMs": 2592000000
+            }
+          },
+          {
+            "id": "560ae94b-4e9c-4f41-bc4a-0fafba08c5c5",
+            "version": "KqlParameterItem/1.0",
+            "name": "FeatureName",
+            "label": "✨Feature flag",
+            "type": 2,
+            "description": "Select the feature flag to analyze",
+            "isRequired": true,
+            "query": "AEWExperimentScorecards\r\n| summarize LatestScorecard=max(TimeGenerated) by FeatureName\r\n| order by LatestScorecard desc, FeatureName asc\r\n| project FeatureName",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "1820d286-fe95-460d-aaea-dcfc2c77ab83",
+            "version": "KqlParameterItem/1.0",
+            "name": "AllocationId",
+            "label": "🔬Experiment",
+            "type": 2,
+            "description": "A new experiment starts when the experiment configuration changes",
+            "isRequired": true,
+            "query": "AEWExperimentScorecards\r\n| where FeatureName == '{FeatureName}'\r\n| summarize\r\n    EarliestAnalysisTime = min(AnalysisStartTime),\r\n    LatestAnalysisTime = max(AnalysisEndTime)\r\n    by AllocationId\r\n| order by EarliestAnalysisTime asc\r\n| extend Iteration = row_number()\r\n| order by LatestAnalysisTime desc\r\n| project\r\n    value = AllocationId,\r\n    label = strcat('Iteration ', Iteration, ' (', AllocationId, ')'),\r\n    selected = row_number() == 1",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "defaultItemsText": "Latest"
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "773a3f34-a30d-4bc8-adae-31a0471b3e34",
+            "version": "KqlParameterItem/1.0",
+            "name": "ScorecardId",
+            "label": "📅Analysis period",
+            "type": 2,
+            "description": "Experiment data accumulates over time. Experiment analysis provides regular snapshots of the metric results.",
+            "isRequired": true,
+            "query": "AEWExperimentScorecards\r\n| where FeatureName == '{FeatureName}' and AllocationId == '{AllocationId}'\r\n| project ScorecardId, TimeGenerated, AnalysisStartTime, AnalysisEndTime\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId\r\n| summarize arg_max(TimeGenerated, *) by AnalysisEndTime\r\n| order by AnalysisEndTime desc\r\n| project\r\n    value = ScorecardId,\r\n    label = strcat(\r\n        round((AnalysisEndTime - AnalysisStartTime) / 1d, 1),\r\n        \" days (\",\r\n        format_datetime(AnalysisStartTime, 'MM/dd/yyyy HH:mm'),\r\n        ' - ',\r\n        format_datetime(AnalysisEndTime, 'MM/dd/yyyy HH:mm'),\r\n        ' UTC)'\r\n    ),\r\n    selected = row_number() == 1",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "defaultItemsText": "Latest"
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          },
+          {
+            "id": "73bb864b-2b6f-46fd-bfcb-4a2b587e675b",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsAnySrm",
+            "label": "SRM check",
+            "type": 10,
+            "description": "Indicates whether any variant exhibits an SRM",
+            "isRequired": true,
+            "query": "let srm_check = AEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| mv-expand VariantMetadata = Variants\r\n| where not(tobool(VariantMetadata.IsControlVariant))\r\n| project IsSrm = toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005\r\n| summarize IsAnySrm = max(IsSrm)\r\n;\r\ndatatable(value: bool, label: string) [\r\n    false, 'Pass',\r\n    true, 'Fail'\r\n]\r\n| extend selected = value == toscalar(srm_check)",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "Parameters - Select analysis",
+      "styleSettings": {
+        "margin": "5px"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Summary of variants",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let variants = AEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc\r\n;\r\nlet tea_lite = AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == \"{ScorecardId}\"\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where TreatmentEffect !in ('Zero samples', 'Too few samples')\r\n| where TreatmentStandardErrorNormalized > 0 and ControlStandardErrorNormalized > 0 and PValue < 1 and PValue >= 0\r\n| summarize\r\n    MetricCount = count(),\r\n    StatSigMetricCount = countif(PValue <= 0.05)\r\n    by TreatmentVariant\r\n| project\r\n    Variant = TreatmentVariant,\r\n    MetricSummary = strcat(toint(round(100. * StatSigMetricCount / MetricCount)), '% metrics are conclusive (', StatSigMetricCount, ' of ', MetricCount, ')')\r\n;\r\nvariants\r\n| join kind=leftouter tea_lite on Variant\r\n| project-away Variant1\r\n| extend MetricSummary = iff(Type == 'Control', 'n/a', MetricSummary)\r\n",
+              "size": 3,
+              "noDataMessage": "Zero variants were found in this experiment analysis",
+              "noDataMessageStyle": 4,
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Allocation",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Assignment",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "DataQuality",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "Pass",
+                          "representation": "success",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "No sample ratio mismatch detected."
+                          }
+                        },
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "Fail",
+                          "representation": "critical",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Sample ratio mismatch detected."
+                          }
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "MetricSummary",
+                    "formatter": 0,
+                    "tooltipFormat": {
+                      "tooltip": "We expect roughly 5% by random chance. Note: Filtering applied so metric count does not correspond to table below."
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "Variant",
+                    "label": "Variant 💊"
+                  },
+                  {
+                    "columnId": "Assignment",
+                    "label": "Assigned users"
+                  },
+                  {
+                    "columnId": "DataQuality",
+                    "label": "Data quality"
+                  },
+                  {
+                    "columnId": "MetricSummary",
+                    "label": "Treatment effects"
+                  }
+                ]
+              }
+            },
+            "name": "Variants table"
+          }
+        ],
+        "exportParameters": true
+      },
+      "conditionalVisibility": {
+        "parameterName": "ScorecardId",
+        "comparison": "isNotEqualTo"
+      },
+      "name": "Variants",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Metric results",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "e4a559fa-7d55-42b6-bef5-14cbd4807326",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "SelectedTreatments",
+                  "label": "Treatment variants",
+                  "type": 2,
+                  "isRequired": true,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == \"{ScorecardId}\"\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where isnotempty(TreatmentVariant)\r\n| distinct TreatmentVariant",
+                  "crossComponentResources": [
+                    "{Workspace}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "selectAllValue": "",
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "TimeRange",
+                  "defaultValue": "value::all",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                },
+                {
+                  "id": "671a73a2-6028-4d75-a2a8-397ffd7c9140",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "SelectedTags",
+                  "label": "Metric tags",
+                  "type": 2,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == \"{ScorecardId}\"\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| summarize MetricTags = array_sort_asc(make_set(iff(array_length(MetricTags) == 0, dynamic([\"Untagged\"]), MetricTags)))\r\n| mv-expand MetricTag = MetricTags\r\n| filter MetricTag != '__Internal__'\r\n| project MetricTag",
+                  "crossComponentResources": [
+                    "{Workspace}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "selectAllValue": "[]",
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "TimeRange",
+                  "defaultValue": "value::all",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces",
+                  "value": [
+                    "value::all"
+                  ]
+                },
+                {
+                  "id": "ec86029e-4f37-4c83-b003-6828b94e70d8",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "SelectedMetrics",
+                  "label": "Metrics",
+                  "type": 2,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "let selected_tags = dynamic([{SelectedTags}]);\r\nAEWExperimentScorecardMetricPairs\r\n| where ScorecardId == \"{ScorecardId}\"\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| extend MetricTags = iff(array_length(MetricTags) == 0 or isempty(MetricTags), dynamic([\"Untagged\"]), MetricTags)\r\n| where array_length(selected_tags) == 0 or array_length(set_intersect(MetricTags, selected_tags)) > 0\r\n| project MetricId, MetricDisplayName, MetricTags\r\n| mv-expand MetricTags\r\n| extend MetricTag = tostring(MetricTags)\r\n| distinct MetricId, MetricDisplayName, MetricTag\r\n| order by MetricTag asc, MetricDisplayName asc\r\n| project value = MetricId, label = MetricDisplayName, selected = false, group = MetricTag",
+                  "crossComponentResources": [
+                    "{Workspace}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "selectAllValue": "",
+                    "showDefault": false
+                  },
+                  "timeContext": {
+                    "durationMs": 0
+                  },
+                  "timeContextFromParameter": "TimeRange",
+                  "defaultValue": "value::all",
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                },
+                {
+                  "id": "7d7c98e9-833f-4695-87a2-c02df6aa8d90",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "MinimalConfidence",
+                  "label": "Confidence",
+                  "type": 10,
+                  "description": "Select the minimum strength of evidence for the treatment effect",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[{\"label\": \"High\", \"value\": \"High\"}, {\"label\": \"Marginal\", \"value\": \"Marginal\"}, {\"label\": \"All metrics\", \"value\": \"All metrics\", \"selected\": true}]",
+                  "timeContext": {
+                    "durationMs": 86400000
+                  }
+                },
+                {
+                  "id": "5a14e1a1-a69f-4ec1-8a23-fb2624bfd4d9",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IsMultiTreatment",
+                  "label": "Multiple treatments",
+                  "type": 1,
+                  "description": "Determines whether metric results are displayed as a hierarchy",
+                  "isRequired": true,
+                  "isHiddenWhenLocked": true,
+                  "criteriaData": [
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "SelectedTreatments",
+                        "operator": "notContains",
+                        "rightValType": "static",
+                        "rightVal": ",",
+                        "resultValType": "static",
+                        "resultVal": "false"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "operator": "Default",
+                        "resultValType": "static",
+                        "resultVal": "true"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "Parameters - Metric filters"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "This experiment exhibits a Sample Ratio Mismatch (SRM) between the treatment and control groups. SRM can bias the results of an experiment. Ensure the experiment is properly configured and interpret the metric results with caution.",
+              "style": "error"
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsAnySrm",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "SRM warning"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where MetricId in ({SelectedMetrics})\r\n| project\r\n    MetricDisplayName,\r\n    TreatmentVariant = strcat(TreatmentVariant, ' 💊'),\r\n    TreatmentEffect,\r\n    Confidence = case(\r\n        TreatmentEffect in ('Zero samples', 'Too few samples'), '',\r\n        PValue <= 0.001, 'High',\r\n        PValue <= 0.05, 'Merginal',\r\n        PValue > 0.05, 'Not stat sig',\r\n        'Unknown'\r\n    ),\r\n    PValue = case(\r\n        PValue == 0, '≈0',\r\n        PValue < 0.001, strcat('<1e', tostring(toint(ceiling(log10(PValue))))),\r\n        tostring(round(PValue, 3))\r\n    ),\r\n    RelativeDifference,\r\n    ControlMetricValue,\r\n    TreatmentMetricValue,\r\n    Details = bag_pack(\r\n        \"MetricId\", MetricId,\r\n        \"MetricDisplayName\", MetricDisplayName,\r\n        \"MetricDescription\", MetricDescription,\r\n        \"MetricKind\", MetricKind,\r\n        \"MetricLifecycle\", MetricLifecycle,\r\n        \"MetricTags\", strcat_array(MetricTags, ', '),\r\n        \"DesiredDirection\", DesiredDirection,\r\n        \"ControlVariant\", ControlVariant,\r\n        \"ControlCount\", ControlCount,\r\n        \"ControlMetricValue\", ControlMetricValue,\r\n        \"ControlMetricValueNormalized\", ControlMetricValueNormalized,\r\n        \"ControlStandardErrorNormalized\", ControlStandardErrorNormalized,\r\n        \"TreatmentVariant\", TreatmentVariant,\r\n        \"TreatmentCount\", TreatmentCount,\r\n        \"TreatmentMetricValue\", TreatmentMetricValue,\r\n        \"TreatmentMetricValueNormalized\", TreatmentMetricValueNormalized,\r\n        \"TreatmentStandardErrorNormalized\", TreatmentStandardErrorNormalized,\r\n        \"RelativeDifference\", RelativeDifference,\r\n        \"PValue\", PValue,\r\n        \"TreatmentEffect\", TreatmentEffect\r\n    )\r\n| where case(\r\n    '{MinimalConfidence}' == 'High', Confidence == 'High',\r\n    '{MinimalConfidence}' == 'Marginal', Confidence in ('High', 'Marginal'),\r\n    true\r\n)\r\n| order by MetricDisplayName asc\r\n",
+              "size": 2,
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "$gen_group",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "70ch"
+                    }
+                  },
+                  {
+                    "columnMatch": "MetricDisplayName",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "TreatmentVariant",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "TreatmentEffect",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Improved",
+                          "representation": "success",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Statistically significant and matches the desired direction"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "4",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Statistically significant and against the desired direction"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Changed",
+                          "representation": "1",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Statistically significant and the desired direction is neutral"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Inconclusive",
+                          "representation": "unknown",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Not statistically significant"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Too few samples",
+                          "representation": "warning",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Insufficient observations to determine statistical significance"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zero samples",
+                          "representation": "2",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Zero observations might indicate a problem with the metric definition or data collection"
+                          }
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ],
+                      "customColumnWidthSetting": "20ch"
+                    }
+                  },
+                  {
+                    "columnMatch": "Confidence",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "DoubleChevron",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "p-value: [\"PValue\"]"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Marginal",
+                          "representation": "CaretUp",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "p-value: [\"PValue\"]"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not stat sig",
+                          "representation": "Subtract",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "p-value: [\"PValue\"]"
+                          }
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PValue",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "RelativeDifference",
+                    "formatter": 2,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "percent",
+                        "maximumFractionDigits": 1
+                      }
+                    },
+                    "tooltipFormat": {
+                      "tooltip": "For count and sum metrics, this calculation accounts for unequal variant allocations."
+                    }
+                  },
+                  {
+                    "columnMatch": "ControlMetricValue",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true,
+                        "maximumSignificantDigits": 4
+                      },
+                      "emptyValCustomText": "--"
+                    }
+                  },
+                  {
+                    "columnMatch": "TreatmentMetricValue",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true,
+                        "maximumSignificantDigits": 4
+                      },
+                      "emptyValCustomText": "--"
+                    }
+                  },
+                  {
+                    "columnMatch": "Details",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "CellDetails",
+                      "linkLabel": "Details",
+                      "linkIsContextBlade": true
+                    }
+                  },
+                  {
+                    "columnMatch": "$gen_group",
+                    "formatter": 0,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "70ch"
+                    }
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "MetricDisplayName"
+                  ],
+                  "expandTopLevel": true,
+                  "finalBy": "TreatmentVariant"
+                },
+                "labelSettings": [
+                  {
+                    "columnId": "MetricDisplayName",
+                    "label": "Metric"
+                  },
+                  {
+                    "columnId": "TreatmentEffect",
+                    "label": "Treatment effect"
+                  },
+                  {
+                    "columnId": "RelativeDifference",
+                    "label": "Effect estimate"
+                  },
+                  {
+                    "columnId": "ControlMetricValue",
+                    "label": "Control value"
+                  },
+                  {
+                    "columnId": "TreatmentMetricValue",
+                    "label": "Treatment value"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsMultiTreatment",
+              "comparison": "isEqualTo",
+              "value": "true"
+            },
+            "name": "Metric results table (multiple treatments)"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AEWExperimentScorecardMetricPairs\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricTags, '__Internal__')) and isnotempty(MetricId)\r\n| where MetricId in ({SelectedMetrics})\r\n| project\r\n    MetricDisplayName,\r\n    TreatmentVariant = strcat(TreatmentVariant, ' 💊'),\r\n    TreatmentEffect,\r\n    Confidence = case(\r\n        TreatmentEffect in ('Zero samples', 'Too few samples'), '',\r\n        PValue <= 0.001, 'High',\r\n        PValue <= 0.05, 'Merginal',\r\n        PValue > 0.05, 'Not stat sig',\r\n        'Unknown'\r\n    ),\r\n    PValue = case(\r\n        PValue == 0, '≈0',\r\n        PValue < 0.001, strcat('<1e', tostring(toint(ceiling(log10(PValue))))),\r\n        tostring(round(PValue, 3))\r\n    ),\r\n    RelativeDifference,\r\n    ControlMetricValue,\r\n    TreatmentMetricValue,\r\n    Details = bag_pack(\r\n        \"MetricId\", MetricId,\r\n        \"MetricDisplayName\", MetricDisplayName,\r\n        \"MetricDescription\", MetricDescription,\r\n        \"MetricKind\", MetricKind,\r\n        \"MetricLifecycle\", MetricLifecycle,\r\n        \"MetricTags\", strcat_array(MetricTags, ', '),\r\n        \"DesiredDirection\", DesiredDirection,\r\n        \"ControlVariant\", ControlVariant,\r\n        \"ControlCount\", ControlCount,\r\n        \"ControlMetricValue\", ControlMetricValue,\r\n        \"ControlMetricValueNormalized\", ControlMetricValueNormalized,\r\n        \"ControlStandardErrorNormalized\", ControlStandardErrorNormalized,\r\n        \"TreatmentVariant\", TreatmentVariant,\r\n        \"TreatmentCount\", TreatmentCount,\r\n        \"TreatmentMetricValue\", TreatmentMetricValue,\r\n        \"TreatmentMetricValueNormalized\", TreatmentMetricValueNormalized,\r\n        \"TreatmentStandardErrorNormalized\", TreatmentStandardErrorNormalized,\r\n        \"RelativeDifference\", RelativeDifference,\r\n        \"PValue\", PValue,\r\n        \"TreatmentEffect\", TreatmentEffect\r\n    )\r\n| where case(\r\n    '{MinimalConfidence}' == 'High', Confidence == 'High',\r\n    '{MinimalConfidence}' == 'Marginal', Confidence in ('High', 'Marginal'),\r\n    true\r\n)\r\n| order by MetricDisplayName asc\r\n",
+              "size": 2,
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TreatmentVariant",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "TreatmentEffect",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Improved",
+                          "representation": "success",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Statistically significant and matches the desired direction"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "4",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Statistically significant and against the desired direction"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Changed",
+                          "representation": "1",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Statistically significant and the desired direction is neutral"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Inconclusive",
+                          "representation": "unknown",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Not statistically significant"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Too few samples",
+                          "representation": "warning",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Insufficient observations to determine statistical significance"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zero samples",
+                          "representation": "2",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Zero observations might indicate a problem with the metric definition or data collection"
+                          }
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ],
+                      "customColumnWidthSetting": "20ch"
+                    }
+                  },
+                  {
+                    "columnMatch": "Confidence",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "DoubleChevron",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "p-value: [\"PValue\"]"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Marginal",
+                          "representation": "CaretUp",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "p-value: [\"PValue\"]"
+                          }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not stat sig",
+                          "representation": "Subtract",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "p-value: [\"PValue\"]"
+                          }
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PValue",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "RelativeDifference",
+                    "formatter": 2,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "percent",
+                        "maximumFractionDigits": 1
+                      }
+                    },
+                    "tooltipFormat": {
+                      "tooltip": "For count and sum metrics, this calculation accounts for unequal variant allocations."
+                    }
+                  },
+                  {
+                    "columnMatch": "ControlMetricValue",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true,
+                        "maximumSignificantDigits": 4
+                      },
+                      "emptyValCustomText": "--"
+                    }
+                  },
+                  {
+                    "columnMatch": "TreatmentMetricValue",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": true,
+                        "maximumSignificantDigits": 4
+                      },
+                      "emptyValCustomText": "--"
+                    }
+                  },
+                  {
+                    "columnMatch": "Details",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "CellDetails",
+                      "linkLabel": "Details",
+                      "linkIsContextBlade": true
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "MetricDisplayName",
+                    "label": "Metric"
+                  },
+                  {
+                    "columnId": "TreatmentEffect",
+                    "label": "Treatment effect"
+                  },
+                  {
+                    "columnId": "RelativeDifference",
+                    "label": "Effect estimate"
+                  },
+                  {
+                    "columnId": "ControlMetricValue",
+                    "label": "Control value"
+                  },
+                  {
+                    "columnId": "TreatmentMetricValue",
+                    "label": "Treatment value"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IsMultiTreatment",
+              "comparison": "isEqualTo",
+              "value": "false"
+            },
+            "name": "Metric results table (single treatments)"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "ScorecardId",
+        "comparison": "isNotEqualTo"
+      },
+      "name": "Metric results",
+      "styleSettings": {
+        "showBorder": true
+      }
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
