@@ -19,13 +19,13 @@ This repository contains the templates shown in the workbook galleries of [Azure
 Workbooks allow Azure Monitor users to create customizable interactive reports and analytic narratives by providing a flexible canvas that allows them to:
 
 1. Create rich visual reports and analytics experiences within the Azure portal.
-2.	Use metric, log and Azure Resource Graph data
-3.	Build interactive experiences based on user input
-4.	Customize their analysis and persist for later use.
-5.	Use templates for curated analysis from a public gallery
-6.	Leverage ARM programmability to create and manage their workbook assets.
+2. Use metric, log and Azure Resource Graph data
+3. Build interactive experiences based on user input
+4. Customize their analysis and persist for later use.
+5. Use templates for curated analysis from a public gallery
+6. Leverage ARM programmability to create and manage their workbook assets.
 
-These capabilities of workbooks can be used to create curated and customized reports, analytic narratives, dashboards, etc. 
+These capabilities of workbooks can be used to create curated and customized reports, analytic narratives, dashboards, etc.
 
 Use these links to learn more about workbooks:
 
@@ -36,7 +36,7 @@ Use these links to learn more about workbooks:
 * [Interactivity](Documentation/Interactivity.md)
 * [Manage programmatically](Documentation/Programmatically.md)
 * [Sample Gallery](Documentation/Samples/Samples.md)
-* [Contributing](Documentation/Contributing.md) 
+* [Contributing](Documentation/Contributing.md)
 * [Testing](Documentation/Contributing.md#how-to-test-your-changes)
 * [Previews](Documentation/Contributing.md#testing-preview-workbook-templates)
 * [Auto-Refresh](Documentation/AutoRefresh.md)
