@@ -1,18 +1,17 @@
 # Azure Monitor Workbook Templates [![Build Status](https://github.com/microsoft/Application-Insights-Workbooks/workflows/Template%20Validation/badge.svg)](https://travis-ci.org/microsoft/Application-Insights-Workbooks)
 
-
-
 ## Contributing
 
-This project welcomes contributions and suggestions. Most contributions require you to agree to a 
-Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us 
-the rights to use your contribution. For details, visit https://cla.microsoft.com.
+This project welcomes contributions and suggestions. Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit <https://cla.microsoft.com>.
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
-contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments. 
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## What is this repository for?
+
 This repository contains the templates shown in the workbook galleries of [Azure Monitor Workbooks](https://docs.microsoft.com/azure/application-insights/app-insights-usage-workbooks). Templates added to this repository will show up in the various Workbook Galleries for users of Azure Monitor Workbooks. By contributing templates, you can help others solve interesting problems using the workbooks you've found helpful on your own team.
 
 ## Azure Monitor Workbooks
