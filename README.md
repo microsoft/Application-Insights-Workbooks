@@ -43,6 +43,7 @@ Use these links to learn more about workbooks:
 * [New Gallery](Documentation/Gallery.md)
 
 ### Sample Workbook
+
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)
 
 ## How to contribute?
@@ -52,6 +53,7 @@ For more details about getting started, see the [Contributing guidelines](CONTRI
 Note that templates in this repo will show up for all users of Azure who open the specified gallery. For this reason, the templates gallery is curated by Microsoft. If the submitted template is useful to the community and it does not place undue stress on the underlying infrastructure, it will be accepted to be part of the gallery.
 
 ## Status
+
 This repo is [supported by Microsoft](https://docs.microsoft.com/en-us/azure/azure-monitor).
 * [File an issue](new-issue) or submit a pull request on GitHub
 * Request or upvote features on [UserVoice](https://feedback.azure.com/forums/913690-azure-monitor)
