@@ -18,7 +18,7 @@ This repository contains the templates shown in the workbook galleries of [Azure
 
 Workbooks allow Azure Monitor users to create customizable interactive reports and analytic narratives by providing a flexible canvas that allows them to:
 
-1.	Create rich visual reports and analytics experiences within the Azure portal.
+1. Create rich visual reports and analytics experiences within the Azure portal.
 2.	Use metric, log and Azure Resource Graph data
 3.	Build interactive experiences based on user input
 4.	Customize their analysis and persist for later use.
