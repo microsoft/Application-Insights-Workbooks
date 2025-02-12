@@ -42,7 +42,7 @@ Use these links to learn more about workbooks:
 * [Auto-Refresh](Documentation/AutoRefresh.md)
 * [New Gallery](Documentation/Gallery.md)
 
-### Sample Workbook 
+### Sample Workbook
 ![Image of a sample workbook](Documentation/Images/WorkbookExample.png)
 
 ## How to contribute?
