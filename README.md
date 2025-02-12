@@ -55,6 +55,7 @@ Note that templates in this repo will show up for all users of Azure who open th
 ## Status
 
 This repo is [supported by Microsoft](https://docs.microsoft.com/en-us/azure/azure-monitor).
+
 * [File an issue](new-issue) or submit a pull request on GitHub
 * Request or upvote features on [UserVoice](https://feedback.azure.com/forums/913690-azure-monitor)
 * File a [support](https://docs.microsoft.com/en-us/azure/azure-supportability/how-to-create-azure-support-request) ticket with Azure
