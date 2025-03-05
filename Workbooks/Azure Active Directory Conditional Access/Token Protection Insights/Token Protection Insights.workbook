@@ -1,0 +1,869 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Token Protection deployment insights\r\n\r\n"
+      },
+      "customWidth": "100",
+      "name": "text - 2"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Token Protection get some prerequisite regarding device status and client application.   \r\nTo minimize potential user disruption due to app or device incompatibility, we highly recommend starting by piloting Token Protection enforcement for a groups of users and expand over the time.   Report-only conditional access policy is also a good way to learn about your environment and potential issue linked to Token Protection enforcement.     \r\nCheck [Token Protection]( https://learn.microsoft.com/en-us/azure/active-directory/conditional-access/concept-token-protection) article for more details.\r\n\r\nThis workbook was designed to help admins understand the impact of policy enforcing Token protection and facilitate the deployment by aggregating sign-in results .\r\n\r\nThe workbook can be used with sign-in logs or both non-interactive and sign-in logs. For more accurate result in tracking potential non expected user disruption we recommend to toggle *Include non-interactive logs* to **On** if you store the non-interactive log in your workspace."
+      },
+      "name": "Getting started"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "9ec5c082-6eb3-40d8-926f-bf53db8cadca",
+            "version": "KqlParameterItem/1.0",
+            "name": "IncludeNonInteractive",
+            "label": "Include non-Interactive sign-in log",
+            "type": 10,
+            "description": "Select yes if you store non-interactive log in you log analytics workspace",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\r\n    {\"value\": \"On\", \"label\": \"On\"},\r\n    {\"value\": \"Off\", \"label\": \"Off\", \"selected\":true}\r\n]",
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "On"
+          },
+          {
+            "id": "00acfd68-78c0-4807-a754-698f014f27fc",
+            "version": "KqlParameterItem/1.0",
+            "name": "OverAllTimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            },
+            "value": {
+              "durationMs": 2592000000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "40",
+      "name": "parameters - 6"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "23e6ab13-493b-48c0-bca2-4498c5e81fcd",
+            "cellValue": "MnuTabs",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "8cf57d01-83a8-40d5-8214-2268220fd1a7",
+            "cellValue": "MnuTabs",
+            "linkTarget": "parameter",
+            "linkLabel": "Users",
+            "subTarget": "users",
+            "preText": "Users",
+            "style": "link"
+          },
+          {
+            "id": "90f34794-f3f3-452c-8ae2-2c13999513ec",
+            "cellValue": "MnuTabs",
+            "linkTarget": "parameter",
+            "linkLabel": "Applications",
+            "subTarget": "applications",
+            "preText": "Applications",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "links - 9"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Give an overview of:  \r\n- Users impacted by Token Protection versus the total users for the Time Range.     \r\n- Sign-ins with Token Protection status versus total sign-ins for the Time Range.\r\n"
+            },
+            "name": "text - 4"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n| where ConditionalAccessPolicies.result != \"reportOnlyNotApplied\"\r\n;\r\n// Get Binding total Users in the log period ->  statusCode = 1\r\nallSigninLogs\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"Total Users\",unit =  \"users\", statusCode =1\r\n|union ( \r\n// Get Binding enforced + Success->  statusCode = 2\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"Enable Success\",unit =  \"users\", statusCode =2\r\n)\r\n|union ( \r\n// get binding enforced failure -> statuscode = 3\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"Enable Fail\",unit =  \"users\", statusCode =3\r\n )\r\n|union ( \r\nallSigninLogs\r\n// get TP RO success   -->4\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"RO Success\",unit =  \"users\", statusCode =4\r\n)\r\n|union ( \r\nallSigninLogs\r\n// get TP RO fail --> 5\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"RO Fail\",unit =  \"users\", statusCode =5\r\n)",
+              "size": 4,
+              "title": "Targeted Users",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "resultName",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "dcount_UserPrincipalName",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "unit"
+                },
+                "showBorder": true,
+                "sortCriteriaField": "resultName",
+                "sortOrderField": 1
+              },
+              "chartSettings": {
+                "yAxis": [
+                  "dcount_UserPrincipalName"
+                ]
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "IncludeNonInteractive",
+              "comparison": "isEqualTo",
+              "value": "Off"
+            },
+            "name": "TargetedUsers"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "///\r\n// Union between Signin and nonInteractive \r\n///\r\nlet allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n| where ConditionalAccessPolicies.result != \"reportOnlyNotApplied\"\r\n|union (\r\nAADNonInteractiveUserSignInLogs \r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n| where ConditionalAccessPolicies.result != \"reportOnlyNotApplied\"\r\n);\r\n// Get Binding not enforced ->  statusCode = 1\r\nallSigninLogs\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"Total Users\",unit =  \"users\", statusCode =1\r\n|union ( \r\n// Get Binding enforced + Success->  statusCode = 2\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"Enable Success\",unit =  \"users\", statusCode =2\r\n)\r\n|union ( \r\n// get binding enforced failure -> statuscode = 3\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"Enable Fail\",unit =  \"users\", statusCode =3\r\n )\r\n|union ( \r\nallSigninLogs\r\n// get TP RO success   -->4\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"RO Success\",unit =  \"users\", statusCode =4\r\n)\r\n|union ( \r\nallSigninLogs\r\n// get TP RO fail --> 5\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n| summarize by Id, UserPrincipalName\r\n| summarize dcount(UserPrincipalName)\r\n|extend resultName =\"RO Fail\",unit =  \"users\", statusCode =5\r\n)",
+              "size": 4,
+              "title": "Targeted  User (including non-Interactive logs )",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "resultName",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "dcount_UserPrincipalName",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "unit"
+                },
+                "showBorder": true,
+                "sortCriteriaField": "resultName",
+                "sortOrderField": 1
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "IncludeNonInteractive",
+              "comparison": "isEqualTo",
+              "value": "On"
+            },
+            "name": "targetedUsersWithNI"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "///\r\n// Union between Signin and nonInteractive & enabled policy only\r\n///\r\nlet allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n| where ConditionalAccessPolicies.result != \"reportOnlyNotApplied\"\r\n|union (\r\nAADNonInteractiveUserSignInLogs \r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n| where ConditionalAccessPolicies.result != \"reportOnlyNotApplied\"\r\n);\r\n// Get Total sign-ins ->  statusCode = 1\r\nallSigninLogs\r\n| project-away ConditionalAccessPolicies\r\n| summarize  by Id\r\n| summarize count()\r\n| extend resultName =\"Total Sign-ins\",unit =  \"sign-ins\", statusCode =1\r\n|union ( \r\n// Get Binding enforced + Success->  statusCode = 2\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"Enable Success\",unit =  \"sign-ins\", statusCode =2\r\n)\r\n|union ( \r\n// get binding enforced failure -> statuscode = 3\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"Enable Fail\",unit =  \"sign-ins\", statusCode =3\r\n )\r\n|union ( \r\nallSigninLogs\r\n// get TP RO success   -->4\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"RO Success\",unit =  \"sing-ins\", statusCode =4\r\n)\r\n|union ( \r\nallSigninLogs\r\n// get TP RO fail --> 5\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"RO Fail\",unit =  \"sign-ins\", statusCode =5\r\n)",
+              "size": 3,
+              "title": "Sign-ins reppartition (including non-Interactive logs )",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "resultName",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "count_",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "unit"
+                },
+                "showBorder": true,
+                "sortCriteriaField": "resultName",
+                "sortOrderField": 1
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IncludeNonInteractive",
+              "comparison": "isEqualTo",
+              "value": "On"
+            },
+            "name": "Overall Sign-ins with NI"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "///\r\n// Signin in\r\n///\r\nlet allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project Id,ConditionalAccessPolicies //, UserPrincipalName, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where ConditionalAccessPolicies.result != \"reportOnlyNotApplied\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n;\r\n// Get Total Sign-ins  ->  statusCode = 1\r\nallSigninLogs\r\n| project-away ConditionalAccessPolicies\r\n| summarize  by Id\r\n| summarize count()\r\n| extend resultName =\"Total Sign-ins\",unit =  \"sign-ins\", statusCode =1\r\n|union ( \r\n// Get Binding enforced + Success->  statusCode = 2\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"Enable Success\",unit =  \"sign-ins\", statusCode =2\r\n)\r\n|union ( \r\n// get binding enforced failure -> statuscode = 3\r\nallSigninLogs\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"Enable Fail\",unit =  \"sign-ins\", statusCode =3\r\n )\r\n|union ( \r\nallSigninLogs\r\n// get TP RO success   -->4\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"Binding\" and ConditionalAccessPolicies.sessionControlsNotSatisfied  !contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"RO Success\",unit =  \"sing-ins\", statusCode =4\r\n)\r\n|union ( \r\nallSigninLogs\r\n// get TP RO fail --> 5\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result contains \"report\"\r\n| where ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"Binding\" or ConditionalAccessPolicies.sessionControlsNotSatisfied  contains \"SignInTokenProtection\"\r\n| project-away ConditionalAccessPolicies\r\n|summarize  by Id\r\n|summarize count()\r\n|extend resultName =\"RO Fail\",unit =  \"sign-ins\", statusCode =5\r\n)",
+              "size": 3,
+              "title": "Sign-ins reppartition",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "resultName",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "count_",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "unit"
+                },
+                "showBorder": true,
+                "sortCriteriaField": "resultName",
+                "sortOrderField": 1
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IncludeNonInteractive",
+              "comparison": "isEqualTo",
+              "value": "Off"
+            },
+            "name": "Overall Sign-ins"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "MnuTabs",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "name": "Overview"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "This tab will give detail about allowed and blocked sign-ins per CA policy and per user.   \r\nYou can first scope to a specific policy by selecting the policy in the table and then a selected user to have user's application details."
+            },
+            "name": "text - 6"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project Id,ConditionalAccessPolicies, Status,UserPrincipalName//, ResourceDisplayName\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| union (\r\n    AADNonInteractiveUserSignInLogs \r\n    | where TimeGenerated {OverAllTimeRange:value}\r\n    | project Id,ConditionalAccessPolicies, Status,UserPrincipalName//, ResourceDisplayName\r\n    | where ConditionalAccessPolicies != \"[]\"\r\n    | mv-expand todynamic(ConditionalAccessPolicies)\r\n)\r\n| where ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\"\r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies[\"sessionControlsNotSatisfied\"]\r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains 'SignInTokenProtection' , 'Block','Allow')\r\n| extend CADisplayName = ConditionalAccessPolicies.displayName\r\n| extend CAId = ConditionalAccessPolicies.id\r\n| summarize by Id,tostring(CAId),tostring(CADisplayName), UserPrincipalName, Result\r\n| summarize Requests = count(), Block = countif(Result == \"Block\"), Allow = countif(Result == \"Allow\"), Users = dcount(UserPrincipalName), BlockedUsers = dcountif(UserPrincipalName, Result == \"Block\") by tostring(CADisplayName),tostring(CAId)\r\n| extend PctAllowed = round(100.0 * Allow/(Allow+Block), 2)\r\n| sort by Requests desc\r\n",
+              "size": 3,
+              "title": "Conditional Access Insigths (including non-Interactive logs )",
+              "exportedParameters": [
+                {
+                  "fieldName": "CAId",
+                  "parameterName": "caId",
+                  "parameterType": 1,
+                  "defaultValue": "all"
+                },
+                {
+                  "fieldName": "CADisplayName",
+                  "parameterName": "caDisplayName",
+                  "parameterType": 1,
+                  "defaultValue": "all"
+                }
+              ],
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CAId",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Block",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "redBright"
+                    }
+                  },
+                  {
+                    "columnMatch": "BlockedUsers",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 80,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CADisplayName",
+                    "label": "Conditional Acccess Policy"
+                  },
+                  {
+                    "columnId": "Requests",
+                    "label": "Total Request"
+                  },
+                  {
+                    "columnId": "Block",
+                    "label": "Block"
+                  },
+                  {
+                    "columnId": "BlockedUsers",
+                    "label": "Blocked users"
+                  },
+                  {
+                    "columnId": "PctAllowed",
+                    "label": "% Allowed"
+                  }
+                ]
+              }
+            },
+            "customWidth": "60",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IncludeNonInteractive",
+                "comparison": "isEqualTo",
+                "value": "On"
+              },
+              {
+                "parameterName": "MnuTabs",
+                "comparison": "isEqualTo",
+                "value": "users"
+              }
+            ],
+            "name": "CA Insigths with NI"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project Id,ConditionalAccessPolicies, Status,UserPrincipalName//, ResourceDisplayName\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies [\"enforcedSessionControls\"] contains '[\"Binding\"]' or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\"\r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies[\"sessionControlsNotSatisfied\"]\r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains 'SignInTokenProtection', 'Block','Allow')\r\n| extend CADisplayName = ConditionalAccessPolicies.displayName\r\n| extend CAId = ConditionalAccessPolicies.id\r\n| summarize by Id,tostring(CAId),tostring(CADisplayName), UserPrincipalName, Result\r\n| summarize Requests = count(), Block = countif(Result == \"Block\"), Allow = countif(Result == \"Allow\"), Users = dcount(UserPrincipalName), BlockedUsers = dcountif(UserPrincipalName, Result == \"Block\") by tostring(CADisplayName),tostring(CAId)\r\n| extend PctAllowed = round(100.0 * Allow/(Allow+Block), 2)\r\n| sort by Requests desc\r\n",
+              "size": 3,
+              "title": "Conditional Access Insigths",
+              "exportedParameters": [
+                {
+                  "fieldName": "CAId",
+                  "parameterName": "caId",
+                  "parameterType": 1,
+                  "defaultValue": "all"
+                },
+                {
+                  "fieldName": "CADisplayName",
+                  "parameterName": "caDisplayName",
+                  "parameterType": 1,
+                  "defaultValue": "all"
+                }
+              ],
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CAId",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Block",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "redBright"
+                    }
+                  },
+                  {
+                    "columnMatch": "BlockedUsers",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 80,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "CADisplayName",
+                    "label": "Conditional Acccess Policy"
+                  },
+                  {
+                    "columnId": "Requests",
+                    "label": "Total Request"
+                  },
+                  {
+                    "columnId": "Block",
+                    "label": "Block"
+                  },
+                  {
+                    "columnId": "BlockedUsers",
+                    "label": "Blocked users"
+                  },
+                  {
+                    "columnId": "PctAllowed",
+                    "label": "% Allowed"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IncludeNonInteractive",
+                "comparison": "isEqualTo",
+                "value": "Off"
+              },
+              {
+                "parameterName": "MnuTabs",
+                "comparison": "isEqualTo",
+                "value": "users"
+              }
+            ],
+            "name": "CA Insigths"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project Id,ConditionalAccessPolicies, Status,UserPrincipalName//, ResourceDisplayName\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| union (\r\n    AADNonInteractiveUserSignInLogs \r\n    | where TimeGenerated {OverAllTimeRange:value}\r\n    | project Id,ConditionalAccessPolicies, Status,UserPrincipalName//, ResourceDisplayName\r\n    | where ConditionalAccessPolicies != \"[]\"\r\n    | mv-expand todynamic(ConditionalAccessPolicies)\r\n)\r\n| where '{caId:escape}' ==\"all\" or '{caId:escape}' == ConditionalAccessPolicies.id\r\n| where ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\"\r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies.sessionControlsNotSatisfied\r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains \"SignInTokenProtection\" , 'Block','Allow')\r\n| summarize by Id, UserPrincipalName,Result \r\n| summarize Requests = count(),Block = countif(Result == \"Block\"), Allow = countif(Result == \"Allow\") by UserPrincipalName\r\n| extend PctAllowed = round(100.0 * Allow/(Allow+Block), 2)\r\n| sort by UserPrincipalName asc  \r\n",
+              "size": 0,
+              "showAnalytics": true,
+              "title": "Policy : {caDisplayName:escape}",
+              "exportFieldName": "UserPrincipalName",
+              "exportParameterName": "selecteduser",
+              "exportDefaultValue": "Select from left table",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 70,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  }
+                ],
+                "rowLimit": 10000,
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "PctAllowed",
+                    "label": "% Allowed"
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IncludeNonInteractive",
+                "comparison": "isEqualTo",
+                "value": "On"
+              },
+              {
+                "parameterName": "MnuTabs",
+                "comparison": "isEqualTo",
+                "value": "users"
+              }
+            ],
+            "name": "query-userDetails - withNI - Copy"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project Id,ConditionalAccessPolicies, Status,UserPrincipalName//, ResourceDisplayName\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where '{caId:escape}' ==\"all\" or '{caId:escape}' == ConditionalAccessPolicies.id\r\n| where ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\"\r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies.sessionControlsNotSatisfied\r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains 'SignInTokenProtection' , 'Block','Allow')\r\n| summarize by Id, UserPrincipalName,Result \r\n| summarize Requests = count(),Block = countif(Result == \"Block\"), Allow = countif(Result == \"Allow\") by UserPrincipalName\r\n| extend PctAllowed = round(100.0 * Allow/(Allow+Block), 2)\r\n| sort by UserPrincipalName asc  \r\n",
+              "size": 0,
+              "showAnalytics": true,
+              "title": "Policy : {caDisplayName:escape}",
+              "exportFieldName": "UserPrincipalName",
+              "exportParameterName": "selecteduser",
+              "exportDefaultValue": "Select from left table",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 70,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  }
+                ],
+                "rowLimit": 10000,
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "PctAllowed",
+                    "label": "% Allowed"
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IncludeNonInteractive",
+                "comparison": "isEqualTo",
+                "value": "Off"
+              },
+              {
+                "parameterName": "MnuTabs",
+                "comparison": "isEqualTo",
+                "value": "users"
+              }
+            ],
+            "name": "query-userDetails"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "///\r\nlet allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n|union (\r\nAADNonInteractiveUserSignInLogs \r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName, AppDisplayName, ResourceDisplayName//, ClientAppUsed, Status\r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n);\r\nallSigninLogs\r\n| where UserPrincipalName == '{selecteduser:escape}' \r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where '{caId:escape}' ==\"all\" or '{caId:escape}' == ConditionalAccessPolicies.id\r\n| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\"\r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies.sessionControlsNotSatisfied\r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains 'SignInTokenProtection' , 'Block','Allow')\r\n| summarize by AppDisplayName,ResourceDisplayName,Result \r\n| order by AppDisplayName asc",
+              "size": 0,
+              "title": "User: {selecteduser:escape}  Policy: {caDisplayName}",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "filter": true
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IncludeNonInteractive",
+                "comparison": "isEqualTo",
+                "value": "On"
+              },
+              {
+                "parameterName": "MnuTabs",
+                "comparison": "isEqualTo",
+                "value": "users"
+              }
+            ],
+            "name": "query - user App details - with NI - Copy"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project Id,ConditionalAccessPolicies, UserPrincipalName, AppDisplayName ,ResourceDisplayName \r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where UserPrincipalName == '{selecteduser:escape}' \r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where '{caId:escape}' ==\"all\" or '{caId:escape}' == ConditionalAccessPolicies.id\r\n| where ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\"\r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies.sessionControlsNotSatisfied\r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains \"SignInTokenProtection\" , 'Block','Allow')\r\n| summarize by AppDisplayName,ResourceDisplayName,Result \r\n| order by AppDisplayName asc",
+              "size": 0,
+              "title": "User: {selecteduser:escape}  Policy: {caDisplayName}",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "filter": true
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "IncludeNonInteractive",
+                "comparison": "isEqualTo",
+                "value": "Off"
+              },
+              {
+                "parameterName": "MnuTabs",
+                "comparison": "isEqualTo",
+                "value": "users"
+              }
+            ],
+            "name": "query - user App details"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "MnuTabs",
+        "comparison": "isEqualTo",
+        "value": "users"
+      },
+      "name": "Users"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "This tab will display Apllication specific statistics "
+            },
+            "name": "text - 2"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "///\r\nlet allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName, Status,AppDisplayName, ResourceDisplayName //, ClientAppUsed, , \r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n|union (\r\nAADNonInteractiveUserSignInLogs \r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName, Status, AppDisplayName, ResourceDisplayName//, ClientAppUsed, AppDisplayName, ResourceDisplayName, \r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\"\r\n);\r\n//Per Apps query \r\nallSigninLogs\r\n//| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\" \r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies[\"sessionControlsNotSatisfied\"] \r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains 'SignInTokenProtection', 'Block','Allow') \r\n| extend isRO = case (ConditionalAccessPolicies.result contains \"report\", \"yes\", \"no\")\r\n| summarize by Id,UserPrincipalName, AppDisplayName,ResourceDisplayName, Result, isRO\r\n| summarize Requests = count(), Users = dcount(UserPrincipalName), Block = countif(Result == \"Block\" and isRO ==\"no\"), Allow = countif(Result == \"Allow\" and isRO ==\"yes\"), RO_Block =countif(Result == \"Block\" and isRO ==\"yes\"),RO_Allow=countif(Result == \"Allow\" and isRO ==\"yes\"), BlockedUsers = dcountif(UserPrincipalName, Result == \"Block\") by AppDisplayName, ResourceDisplayName\r\n| extend PctAllowed = round(100.0 * Allow/(Allow+Block), 2) \r\n| extend RO_PctAllowed = round(100.0 * Allow/(RO_Allow+RO_Block), 2) \r\n| sort by Requests desc ",
+              "size": 2,
+              "timeContextFromParameter": "OverAllTimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Block",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "RO_Block",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 80,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  },
+                  {
+                    "columnMatch": "RO_PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 80,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  }
+                ],
+                "rowLimit": 1000,
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RO_Block",
+                    "label": "Report Only Block"
+                  },
+                  {
+                    "columnId": "RO_Allow",
+                    "label": "Report Only Allow"
+                  },
+                  {
+                    "columnId": "PctAllowed",
+                    "label": "% Allowed"
+                  },
+                  {
+                    "columnId": "RO_PctAllowed",
+                    "label": "% Report Only Allowed"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IncludeNonInteractive",
+              "comparison": "isEqualTo",
+              "value": "On"
+            },
+            "name": "Application Insigth -with NI"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "///\r\nlet allSigninLogs = SigninLogs\r\n| where TimeGenerated {OverAllTimeRange:value}\r\n| project TimeGenerated,Id,ConditionalAccessPolicies, UserPrincipalName, Status,AppDisplayName, ResourceDisplayName //, ClientAppUsed, , \r\n| mv-expand todynamic(ConditionalAccessPolicies)\r\n| where ConditionalAccessPolicies != \"[]\"\r\n| where  ConditionalAccessPolicies.enforcedSessionControls contains \"Binding\" or ConditionalAccessPolicies.enforcedSessionControls contains \"SignInTokenProtection\"\r\n| where ConditionalAccessPolicies.result != \"notApplied\";\r\n//Per Apps query \r\nallSigninLogs\r\n//| where ConditionalAccessPolicies.result !=\"reportOnlyNotApplied\" and ConditionalAccessPolicies.result !=\"notApplied\" \r\n| extend SessionNotSatisfyResult = ConditionalAccessPolicies[\"sessionControlsNotSatisfied\"] \r\n| extend Result = case (SessionNotSatisfyResult contains 'Binding' or SessionNotSatisfyResult contains 'SignInTokenProtection', 'Block','Allow') \r\n| extend isRO = case (ConditionalAccessPolicies.result contains \"report\", \"yes\", \"no\")\r\n| summarize by Id,UserPrincipalName, AppDisplayName,ResourceDisplayName, Result, isRO\r\n| summarize Requests = count(), Users = dcount(UserPrincipalName), Block = countif(Result == \"Block\" and isRO ==\"no\"), Allow = countif(Result == \"Allow\" and isRO ==\"yes\"), RO_Block =countif(Result == \"Block\" and isRO ==\"yes\"),RO_Allow=countif(Result == \"Allow\" and isRO ==\"yes\"), BlockedUsers = dcountif(UserPrincipalName, Result == \"Block\") by AppDisplayName, ResourceDisplayName\r\n| extend PctAllowed = round(100.0 * Allow/(Allow+Block), 2) \r\n| extend RO_PctAllowed = round(100.0 * Allow/(RO_Allow+RO_Block), 2) \r\n| sort by Requests desc ",
+              "size": 2,
+              "timeContextFromParameter": "OverAllTimeRange",
+              "showExportToExcel": true,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Block",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "RO_Block",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red"
+                    }
+                  },
+                  {
+                    "columnMatch": "PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 80,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  },
+                  {
+                    "columnMatch": "RO_PctAllowed",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "min": 80,
+                      "max": 100,
+                      "palette": "green"
+                    }
+                  }
+                ],
+                "rowLimit": 1000,
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RO_Block",
+                    "label": "Report Only Block"
+                  },
+                  {
+                    "columnId": "RO_Allow",
+                    "label": "Report Only Allow"
+                  },
+                  {
+                    "columnId": "PctAllowed",
+                    "label": "% Allowed"
+                  },
+                  {
+                    "columnId": "RO_PctAllowed",
+                    "label": "% Report Only Allowed"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IncludeNonInteractive",
+              "comparison": "isEqualTo",
+              "value": "Off"
+            },
+            "name": "Application Insigth"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "MnuTabs",
+        "comparison": "isEqualTo",
+        "value": "applications"
+      },
+      "name": "Applications"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
