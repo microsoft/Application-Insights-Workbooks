@@ -1628,7 +1628,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "patchassessmentresources\r\n| where type in~ (\"microsoft.compute/virtualmachines/patchassessmentresults/softwarePatches\", \"microsoft.hybridcompute/machines/patchassessmentresults/softwarePatches\")\r\n| parse type with typeID \"/patchassessmentresults/softwarepatches\"\r\n| where typeID in~ ({ResourceType})\r\n| where location in~ ({Location})\r\n| parse id with resourceId \"/patchAssessmentResults\" *\r\n| extend vmId = tolower(resourceId)\r\n| extend classification = tostring(properties.classifications[0])\r\n| extend msrcSeverity = iff(isnotnull(properties.msrcSeverity), properties.msrcSeverity, \"N/A\")\r\n| extend patchName = tostring(properties.patchName)\r\n| join kind=leftouter (\r\n    resources\r\n    | where type == \"microsoft.compute/virtualmachines\" or type == \"microsoft.hybridcompute/machines\"\r\n    | extend vmId = tolower(id)\r\n    | extend os = coalesce(tostring(properties.osName), tostring(properties.osType), tostring(properties.storageProfile.osDisk.osType))\r\n    | extend osType = iff(os =~ \"Windows\", \"Windows\", \"Linux\")\r\n    | where osType == \"Windows\"\r\n    | project vmId, osType\r\n) on vmId // To check for existing VMs only\r\n| where isnotempty(classification) and isnotempty(osType)\r\n| summarize NumberOfVMs = dcount(vmId) by patchName, classification, msrcSeverity\r\n| extend classificationPriority = iff(classification in~ (\"security\", \"critical\"), 0, 1)\r\n| extend msrcSeverityPriority = case(msrcSeverity =~ \"Critical\", 0, msrcSeverity =~ \"Important\", 1, msrcSeverity =~ \"Moderate\", 2, msrcSeverity =~ \"Low\", 3, 4)\r\n| sort by msrcSeverityPriority asc, classificationPriority asc, NumberOfVMs desc\r\n| project PatchName = patchName, Classification = classification, MSRCSeverity = msrcSeverity, NumberOfVMs\r\n| take 30",
+                    "query": "patchassessmentresources\r\n| where type in~ (\"microsoft.compute/virtualmachines/patchassessmentresults/softwarePatches\", \"microsoft.hybridcompute/machines/patchassessmentresults/softwarePatches\")\r\n| parse type with typeID \"/patchassessmentresults/softwarepatches\"\r\n| where typeID in~ ({ResourceType})\r\n| where location in~ ({Location})\r\n| parse id with resourceId \"/patchAssessmentResults\" *\r\n| extend vmId = tolower(resourceId)\r\n| extend classification = tostring(properties.classifications[0])\r\n| extend classification = iff(classification =~ \"updaterollup\", \"UpdateRollup\", classification)\r\n| extend msrcSeverity = iff(isnotnull(properties.msrcSeverity), properties.msrcSeverity, \"N/A\")\r\n| extend patchName = tostring(properties.patchName)\r\n| join kind=leftouter (\r\n    resources\r\n    | where type == \"microsoft.compute/virtualmachines\" or type == \"microsoft.hybridcompute/machines\"\r\n    | extend vmId = tolower(id)\r\n    | extend os = coalesce(tostring(properties.osName), tostring(properties.osType), tostring(properties.storageProfile.osDisk.osType))\r\n    | extend osType = iff(os =~ \"Windows\", \"Windows\", \"Linux\")\r\n    | where osType == \"Windows\"\r\n    | project vmId, osType\r\n) on vmId // To check for existing VMs only\r\n| where isnotempty(classification) and isnotempty(osType)\r\n| summarize NumberOfVMs = dcount(vmId) by patchName, classification, msrcSeverity\r\n| extend classificationPriority = iff(classification in~ (\"security\", \"critical\"), 0, 1)\r\n| extend msrcSeverityPriority = case(msrcSeverity =~ \"Critical\", 0, msrcSeverity =~ \"Important\", 1, msrcSeverity =~ \"Moderate\", 2, msrcSeverity =~ \"Low\", 3, 4)\r\n| sort by msrcSeverityPriority asc, classificationPriority asc, NumberOfVMs desc\r\n| project PatchName = patchName, Classification = classification, MSRCSeverity = msrcSeverity, NumberOfVMs\r\n| take 30",
                     "size": 0,
                     "title": "Top 30 pending updates",
                     "queryType": 1,
@@ -2607,7 +2607,7 @@
                     "formatter": 5
                   }
                 ],
-                "rowLimit": 1000,
+                "rowLimit": 500,
                 "labelSettings": [
                   {
                     "columnId": "id",
@@ -2723,7 +2723,7 @@
                     "formatter": 5
                   }
                 ],
-                "rowLimit": 1000,
+                "rowLimit": 500,
                 "labelSettings": [
                   {
                     "columnId": "id",
@@ -3162,7 +3162,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "maintenanceresources\r\n| where location in~ ({Location})\r\n| where type =~ \"microsoft.maintenance/maintenanceconfigurations/applyupdates\"\r\n| where properties.startDateTime {TimeRange}\r\n| where properties.maintenanceConfiguration.properties.maintenanceScope == \"InGuestPatch\"\r\n| project name, properties, id\r\n| extend joinId = tolower(properties.maintenanceConfigurationId)\r\n| join kind=leftouter (\r\n    resources\r\n    | where type =~ \"microsoft.maintenance/maintenanceconfigurations\"\r\n    | where location in~ ({Location})\r\n    | extend maintenanceConfigId = tolower(id)\r\n    | project maintenanceConfigId, tags\r\n) on $left.joinId == $right.maintenanceConfigId\r\n| extend status = tostring(properties.status)\r\n| extend maintenanceConfigurationName = tostring(properties.maintenanceConfiguration.name)\r\n| extend operationStartTime = todatetime(properties.startDateTime)\r\n| extend operationEndTime = iff(properties.status =~ \"InProgress\", datetime(null), todatetime(properties.endDateTime))\r\n| extend maintenanceConfigurationId = properties.maintenanceConfigurationId\r\n| extend scheduleRunId = properties.correlationId\r\n| extend succeededMachinesCount = iff(isempty(properties.resourceUpdateSummary.succeeded), 0, properties.resourceUpdateSummary.succeeded)\r\n| extend totalMachines = iff(isempty(properties.resourceUpdateSummary.total), 0, properties.resourceUpdateSummary.total)\r\n| project-rename maintenanceRunId = name\r\n| project maintenanceRunId, maintenanceConfigurationId, updatedMachines = strcat(succeededMachinesCount, \" out of \", totalMachines), operationStartTime, operationEndTime, status, tags, id\r\n| order by operationStartTime desc\r\n",
+                    "query": "maintenanceresources\r\n| where type =~ \"microsoft.maintenance/maintenanceconfigurations/applyupdates\"\r\n| where properties.startDateTime {TimeRange}\r\n| where properties.maintenanceConfiguration.properties.maintenanceScope == \"InGuestPatch\"\r\n| project name, properties, id\r\n| extend joinId = tolower(properties.maintenanceConfigurationId)\r\n| join kind=leftouter (\r\n    resources\r\n    | where type =~ \"microsoft.maintenance/maintenanceconfigurations\"\r\n    | extend maintenanceConfigId = tolower(id)\r\n    | project maintenanceConfigId, tags\r\n) on $left.joinId == $right.maintenanceConfigId\r\n| extend status = tostring(properties.status)\r\n| extend maintenanceConfigurationName = tostring(properties.maintenanceConfiguration.name)\r\n| extend operationStartTime = todatetime(properties.startDateTime)\r\n| extend operationEndTime = iff(properties.status =~ \"InProgress\", datetime(null), todatetime(properties.endDateTime))\r\n| extend maintenanceConfigurationId = properties.maintenanceConfigurationId\r\n| extend scheduleRunId = properties.correlationId\r\n| extend succeededMachinesCount = iff(isempty(properties.resourceUpdateSummary.succeeded), 0, properties.resourceUpdateSummary.succeeded)\r\n| extend totalMachines = iff(isempty(properties.resourceUpdateSummary.total), 0, properties.resourceUpdateSummary.total)\r\n| project-rename maintenanceRunId = name\r\n| project maintenanceRunId, maintenanceConfigurationId, updatedMachines = strcat(succeededMachinesCount, \" out of \", totalMachines), operationStartTime, operationEndTime, status, tags, id\r\n| order by operationStartTime desc\r\n| take 1000",
                     "size": 0,
                     "queryType": 1,
                     "resourceType": "microsoft.resourcegraph/resources",
@@ -3308,7 +3308,7 @@
                           }
                         }
                       ],
-                      "rowLimit": 1000,
+                      "rowLimit": 500,
                       "labelSettings": [
                         {
                           "columnId": "maintenanceRunId",
@@ -3414,7 +3414,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "patchinstallationresources\r\n| where type =~ \"microsoft.compute/virtualmachines/patchinstallationresults\" or type =~ \"microsoft.hybridcompute/machines/patchinstallationresults\"\r\n| parse type with typeID \"/patchinstallationresults\"\r\n| where typeID in~ ({ResourceType})\r\n| where properties.lastModifiedDateTime {TimeRange}\r\n| where location in~ ({Location})\r\n| parse id with resourceId '/patchInstallationResults/' *\r\n| parse id with * 'achines/' resourceName '/patchInstallationResults/' *\r\n| project resourceName, resourceId, properties.status, properties.startDateTime, properties.lastModifiedDateTime, properties.startedBy, properties, tocName = iff(resourceId contains \"hybridcompute\", \"updateManagement\", \"unifiedUpdateManagement\")\r\n| order by todatetime(properties.lastModifiedDateTime) desc\r\n",
+                    "query": "patchinstallationresources\r\n| where type =~ \"microsoft.compute/virtualmachines/patchinstallationresults\" or type =~ \"microsoft.hybridcompute/machines/patchinstallationresults\"\r\n| parse type with typeID \"/patchinstallationresults\"\r\n| where typeID in~ ({ResourceType})\r\n| where properties.lastModifiedDateTime {TimeRange}\r\n| where location in~ ({Location})\r\n| parse id with resourceId '/patchInstallationResults/' *\r\n| parse id with * 'achines/' resourceName '/patchInstallationResults/' *\r\n| project resourceName, resourceId, properties.status, properties.startDateTime, properties.lastModifiedDateTime, properties.startedBy, properties, tocName = iff(resourceId contains \"hybridcompute\", \"updateManagement\", \"unifiedUpdateManagement\")\r\n| order by todatetime(properties.lastModifiedDateTime) desc\r\n| take 1000\r\n",
                     "size": 0,
                     "queryType": 1,
                     "resourceType": "microsoft.resourcegraph/resources",
@@ -3531,10 +3531,14 @@
                           "formatter": 1
                         }
                       ],
-                      "rowLimit": 1000,
+                      "rowLimit": 500,
                       "labelSettings": [
                         {
                           "columnId": "resourceName",
+                          "label": "Name"
+                        },
+                        {
+                          "columnId": "resourceId",
                           "label": "Name"
                         },
                         {
@@ -3629,7 +3633,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "patchassessmentresources\r\n| where type =~ \"microsoft.compute/virtualmachines/patchassessmentresults\" or type =~  \"microsoft.hybridcompute/machines/patchassessmentresults\"\r\n| parse type with typeID \"/patchassessmentresults\"\r\n| where typeID in~ ({ResourceType})\r\n| where properties.lastModifiedDateTime {TimeRange}\r\n| where location in~ ({Location})\r\n| parse id with resourceId '/patchAssessmentResults/' *\r\n| parse id with * 'achines/' resourceName '/patchAssessmentResults/' *\r\n| project resourceName, resourceId, properties.status, properties.startDateTime, properties.lastModifiedDateTime, properties.startedBy, properties, tocName = iff(resourceId contains \"hybridcompute\", \"updateManagement\", \"unifiedUpdateManagement\")\r\n| order by todatetime(properties.lastModifiedDateTime) desc\r\n",
+                    "query": "patchassessmentresources\r\n| where type =~ \"microsoft.compute/virtualmachines/patchassessmentresults\" or type =~  \"microsoft.hybridcompute/machines/patchassessmentresults\"\r\n| parse type with typeID \"/patchassessmentresults\"\r\n| where typeID in~ ({ResourceType})\r\n| where properties.lastModifiedDateTime {TimeRange}\r\n| where location in~ ({Location})\r\n| parse id with resourceId '/patchAssessmentResults/' *\r\n| parse id with * 'achines/' resourceName '/patchAssessmentResults/' *\r\n| project resourceName, resourceId, properties.status, properties.startDateTime, properties.lastModifiedDateTime, properties.startedBy, properties, tocName = iff(resourceId contains \"hybridcompute\", \"updateManagement\", \"unifiedUpdateManagement\")\r\n| order by todatetime(properties.lastModifiedDateTime) desc\r\n| take 1000\r\n",
                     "size": 0,
                     "queryType": 1,
                     "resourceType": "microsoft.resourcegraph/resources",
@@ -3746,10 +3750,14 @@
                           "formatter": 1
                         }
                       ],
-                      "rowLimit": 1000,
+                      "rowLimit": 500,
                       "labelSettings": [
                         {
                           "columnId": "resourceName",
+                          "label": "Name"
+                        },
+                        {
+                          "columnId": "resourceId",
                           "label": "Name"
                         },
                         {
