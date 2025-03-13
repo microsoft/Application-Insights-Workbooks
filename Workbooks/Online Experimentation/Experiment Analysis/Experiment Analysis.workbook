@@ -214,7 +214,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-                "query": "let variants = OEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc;\r\nlet pvalue_bh = OEWExperimentScorecardMetricPairs\r\n| where ScorecardId ==  '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricCategories, '__Internal__')) and isnotempty(MetricId)\r\n| where TreatmentEffect !in ('Zero samples', 'Too few samples')\r\n| where TreatmentStandardErrorNormalized > 0 and ControlStandardErrorNormalized > 0 and PValue < 1 and PValue >= 0;\r\nlet N = pvalue_bh | summarize N=count() by TreatmentVariant;\r\nlet min_pvalue_bh = pvalue_bh\r\n| summarize min_PValue= min(PValue) by TreatmentVariant\r\n| join kind=leftouter N on TreatmentVariant\r\n| extend adjusted_min_PValue = min_PValue * N\r\n| project Variant = TreatmentVariant, TreatmentEffect = case(adjusted_min_PValue < 0.05, 'Observed metric movements are inconsistent with statistical noise', 'Observed metric movements are consistent with statistical noise. Either the experiment is underpowered or had limited impact on the metrics.');\r\nvariants\r\n| join kind=leftouter min_pvalue_bh on Variant\r\n| project-away Variant1\r\n| extend TreatmentEffect = iff(isempty(TreatmentEffect), 'Observed metric movements are consistent with statistical noise. Either the experiment is underpowered or had limited impact on the metrics.', TreatmentEffect)\r\n| extend TreatmentEffect = iff(Type == 'Control', 'n/a', TreatmentEffect)",
+                "query": "let variants = OEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc;\r\nlet pvalue_bh = OEWExperimentScorecardMetricPairs\r\n| where ScorecardId ==  '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricCategories, '__Internal__')) and isnotempty(MetricId)\r\n| where TreatmentEffect !in ('Zero samples', 'Too few samples')\r\n| where TreatmentStandardErrorNormalized > 0 and ControlStandardErrorNormalized > 0 and PValue < 1 and PValue >= 0;\r\nlet N = pvalue_bh | summarize N=count() by TreatmentVariant;\r\nlet min_pvalue_bh = pvalue_bh\r\n| summarize min_PValue= min(PValue) by TreatmentVariant\r\n| join kind=leftouter N on TreatmentVariant\r\n| extend adjusted_min_PValue = min_PValue * N\r\n| project Variant = TreatmentVariant, MetricSummary = case(adjusted_min_PValue < 0.05, 'Change detected', 'Change undetected');\r\nvariants\r\n| join kind=leftouter min_pvalue_bh on Variant\r\n| project-away Variant1\r\n| extend MetricSummary = iff(isempty(MetricSummary), 'Change undetected', MetricSummary)\r\n| extend MetricSummary  = iff(Type == 'Control', 'n/a', MetricSummary)",
               "size": 3,
               "noDataMessage": "Zero variants were found in this experiment analysis",
               "noDataMessageStyle": 4,
@@ -282,13 +282,31 @@
                     }
                   },
                   {
-                      "columnMatch": "TreatmentEffect",
-                      "formatter": 1,
-                      "formatOptions": {
-                        "customColumnWidthSetting": "100ch"
-                      },
-                    "tooltipFormat": {
-                        "tooltip": "Treatment effect is determined by applying the Benjamini-Hochberg adjustment to the lowest p-values from the tests, which scales the lowest p-value by total number of tests to control the false discovery rate. Note: Filtering applied so metric count does not correspond to table below."
+                    "columnMatch": "MetricSummary",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "customColumnWidthSetting": "20ch",
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                            "operator": "==",
+                            "thresholdValue": "Change detected",
+                            "representation": "1",
+                            "text": "{0}{1}",
+                            "tooltipFormat": {
+                              "tooltip": "Observed metric movements are consistent with statistical noise. Either the experiment is underpowered or had limited impact on the metrics."
+                            }
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Change undetected",
+                          "representation": "unknown",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Observed metric movements are inconsistent with statistical noise."
+                          }
+                        }
+                      ]
                     }
                   }
                 ],
@@ -306,8 +324,8 @@
                     "label": "Data quality"
                   },
                   {
-                      "columnId": "TreatmentEffect",
-                      "label": "Treatment Effects"
+                      "columnId": "MetricSummary",
+                      "label": "Metric Summary"
                   }
                 ]
               }
