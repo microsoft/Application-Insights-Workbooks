@@ -252,7 +252,7 @@ function validateNoDuplicateId(obj, key, outputMap, file) {
             const jsonVal = obj[field];
             if (jsonVal) {
                 if (outputMap[jsonKey] != null) {
-                    assert.fail("Found duplicate key: " + jsonKey + " in template: " + file + ". To fix this error, change the step name or id", /**true**/);
+                    assert.fail("Found duplicate key: " + jsonKey + " with value '" + jsonVal + "' in template: " + file + ". To fix this error, change the step name or id", /**true**/);
                 } else {
                     outputMap[jsonKey] = jsonVal;
                 }
