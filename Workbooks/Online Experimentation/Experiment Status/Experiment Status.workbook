@@ -13,9 +13,31 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
-        "crossComponentResources": [
-          "{Workspace}"
+        "parameters": [
+          {
+            "id": "f1acf9ad-0350-4a76-816f-a92fc5c72ccd",
+            "version": "KqlParameterItem/1.0",
+            "name": "ShowStep",
+            "label": "Show/Hide step",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "value": "show"
+          }
         ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "100",
+      "name": "Parameters - Show/Hide",
+      "styleSettings": {
+        "margin": "5px"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
         "parameters": [
           {
             "id": "f8faca65-a2fb-4809-9403-b7201691c7bd",
@@ -75,13 +97,57 @@
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
+      "conditionalVisibility": {
+        "parameterName": "ShowStep",
+        "comparison": "isEqualTo",
+        "value": "show"
+      },
+      "customWidth": "30",
+      "name": "Parameters - Select law",
+      "styleSettings": {
+        "margin": "5px"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "parameters": [
+          {
+            "id": "f43ae1c3-e909-4da2-ad78-6d9623ccb25f",
+            "version": "KqlParameterItem/1.0",
+            "name": "FeatureName",
+            "label": "✨Feature flag",
+            "type": 2,
+            "description": "Select the feature flag to analyze",
+            "isRequired": true,
+            "query": "OEWExperimentScorecards\r\n| summarize LatestScorecard=max(TimeGenerated) by FeatureName\r\n| order by LatestScorecard desc, FeatureName asc\r\n| project FeatureName",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "value": "system_prompt"
+          }
+        ],
+        "style": "above",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
       "name": "Parameters - Select data source"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let LatestSummaryTime = OEWExperimentAssignmentSummary_CL\r\n| summarize _BinStartTime = max(_BinStartTime), _BinSize = take_any(_BinSize)\r\n| project coalesce(_BinStartTime + make_timespan(0, _BinSize), bin(now(), 30m));\r\nlet FinalSummary = AppEvents\r\n| where TimeGenerated between (max_of({TimeRange:start}, toscalar(LatestSummaryTime)) .. {TimeRange:end})\r\n| where Name == 'FeatureEvaluation'\r\n| where Properties has 'Percentile'\r\n| where tostring(Properties.VariantAssignmentReason) == 'Percentile'\r\n| where tostring(Properties.TargetingId) != ''\r\n| where tostring(Properties.Enabled) == 'True'\r\n| where tostring(Properties.AllocationId) != ''\r\n| where toint(Properties.VariantAssignmentPercentage) < 100\r\n| project\r\n    TimeGenerated,\r\n    ItemCount,\r\n    FeatureFlagReference = tostring(Properties.FeatureFlagReference),\r\n    FeatureName = tostring(Properties.FeatureName),\r\n    AllocationId = tostring(Properties.AllocationId),\r\n    Variant = tostring(Properties.Variant),\r\n    VariantAssignmentPercentage = toreal(Properties.VariantAssignmentPercentage),\r\n    IsControlVariant = tostring(Properties.DefaultWhenEnabled) == tostring(Properties.Variant)\r\n| summarize\r\n    TimeGenerated = {TimeRange:end},\r\n    VariantAssignmentPercentage = take_any(VariantAssignmentPercentage),\r\n    IsControlVariant = take_any(IsControlVariant),\r\n    AssignmentEventCount = tolong(sum(ItemCount)),\r\n    FirstAssignmentTimestamp = min(TimeGenerated),\r\n    LastAssignmentTimestamp = max(TimeGenerated)\r\n    by FeatureFlagReference, FeatureName, AllocationId, Variant\r\n;\r\nlet variant_ts = OEWExperimentAssignmentSummary_CL\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| union FinalSummary\r\n| make-series\r\n    AssignmentCountSeries = sum(AssignmentEventCount) default=0\r\n    on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n    by FeatureName, AllocationId, Variant\r\n| project-away TimeGenerated\r\n;\r\nlet allocation_ts = variant_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by FeatureName, AllocationId, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by FeatureName, AllocationId\r\n;\r\nlet feature_ts = allocation_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by FeatureName, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by FeatureName\r\n;\r\nlet scorecards = OEWExperimentScorecards\r\n| where TimeGenerated > {TimeRange:start} - 7d\r\n| distinct FeatureName, AllocationId\r\n| project FeatureName, AllocationId\r\n;\r\nlet variants = OEWExperimentAssignmentSummary_CL\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| union FinalSummary\r\n| summarize\r\n    Kind = strcat(\r\n        iff(take_any(IsControlVariant), 'Control', 'Treatment'),\r\n        ' (', toint(take_any(VariantAssignmentPercentage)), ' %)'\r\n    ),\r\n    EarliestAssignment = min(FirstAssignmentTimestamp),\r\n    LatestAssignment = max(LastAssignmentTimestamp),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName, AllocationId, Variant\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(FeatureName, '-', AllocationId, '-', Variant),\r\n    PARENT = strcat(FeatureName, '-', AllocationId),\r\n    Name = strcat('💊 ', Variant)\r\n// join to time series\r\n| join kind=leftouter variant_ts on FeatureName, AllocationId, Variant\r\n| project-away FeatureName1, AllocationId1, Variant1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away FeatureName1, AllocationId1\r\n;\r\nlet allocations = variants\r\n| summarize\r\n    Kind = 'Experiment',\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName, AllocationId\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(FeatureName, '-', AllocationId),\r\n    PARENT = FeatureName\r\n| order by PARENT, EarliestAssignment asc\r\n| extend Name = strcat('🔬 Iteration ', row_number(1, prev(PARENT) != PARENT), ' (', AllocationId, ')')\r\n// join to time series\r\n| join kind=leftouter allocation_ts on FeatureName, AllocationId\r\n| project-away FeatureName1, AllocationId1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away FeatureName1, AllocationId1\r\n;\r\nlet features = allocations\r\n| summarize\r\n    Kind = 'Feature',\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestIteration = arg_max(EarliestAssignment, AllocationId),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName\r\n| project-away LatestIteration\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = FeatureName,\r\n    PARENT = '',\r\n    Name = strcat('✨ ', FeatureName)\r\n| order by LatestAssignment desc\r\n| extend FeatureOrder = row_number()\r\n// join to time series\r\n| join kind=leftouter feature_ts on FeatureName\r\n| project-away FeatureName1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(FeatureName1), 'Available', 'Pending')\r\n| project-away FeatureName1\r\n;\r\nvariants\r\n| union allocations\r\n| union features\r\n| order by FeatureOrder asc, Kind startswith 'Control' desc, Variant asc\r\n| extend TimeSinceActivity = iff(AssignmentEventCount > 0, now() - LatestAssignment, timespan(null))\r\n| project\r\n    ID, PARENT, Name, Kind,\r\n    FeatureName, AllocationId, Variant,\r\n    DaysSinceActivity = TimeSinceActivity / 1d,\r\n    TimeSinceActivityFormatted = case(\r\n        abs(TimeSinceActivity) > 1d, strcat(round(TimeSinceActivity / 1d, 1), ' days'),\r\n        abs(TimeSinceActivity) > 1h, strcat(round(TimeSinceActivity / 1h, 1), ' hours'),\r\n        isnotnull(TimeSinceActivity), strcat(round(TimeSinceActivity / 1m, 1), ' mins'),\r\n        ''\r\n    ),\r\n    AssignmentEventCount, AssignmentCountSeries,\r\n    Analysis,\r\n    EarliestAssignment = format_datetime(EarliestAssignment, 'MM/dd/yyyy h:mm tt'),\r\n    LatestAssignment = format_datetime(LatestAssignment, 'MM/dd/yyyy h:mm tt')",
+        "query": "let LatestSummaryTime = OEWExperimentAssignmentSummary_CL\r\n| where FeatureName == '{FeatureName}'\r\n| summarize _BinStartTime = max(_BinStartTime), _BinSize = take_any(_BinSize)\r\n| project coalesce(_BinStartTime + make_timespan(0, _BinSize), bin(now(), 30m));\r\nlet FinalSummary = AppEvents\r\n| where TimeGenerated between (max_of({TimeRange:start}, toscalar(LatestSummaryTime)) .. {TimeRange:end})\r\n| where Name == 'FeatureEvaluation'\r\n| where Properties has 'Percentile'\r\n| where tostring(Properties.FeatureName) == '{FeatureName}'\r\n| where tostring(Properties.VariantAssignmentReason) == 'Percentile'\r\n| where tostring(Properties.TargetingId) != ''\r\n| where tostring(Properties.Enabled) == 'True'\r\n| where tostring(Properties.AllocationId) != ''\r\n| where toint(Properties.VariantAssignmentPercentage) < 100\r\n| project\r\n    TimeGenerated,\r\n    ItemCount,\r\n    FeatureFlagReference = tostring(Properties.FeatureFlagReference),\r\n    FeatureName = tostring(Properties.FeatureName),\r\n    AllocationId = tostring(Properties.AllocationId),\r\n    Variant = tostring(Properties.Variant),\r\n    VariantAssignmentPercentage = toreal(Properties.VariantAssignmentPercentage),\r\n    IsControlVariant = tostring(Properties.DefaultWhenEnabled) == tostring(Properties.Variant)\r\n| summarize\r\n    TimeGenerated = {TimeRange:end},\r\n    VariantAssignmentPercentage = take_any(VariantAssignmentPercentage),\r\n    IsControlVariant = take_any(IsControlVariant),\r\n    AssignmentEventCount = tolong(sum(ItemCount)),\r\n    FirstAssignmentTimestamp = min(TimeGenerated),\r\n    LastAssignmentTimestamp = max(TimeGenerated)\r\n    by FeatureFlagReference, FeatureName, AllocationId, Variant\r\n;\r\nlet variant_ts = OEWExperimentAssignmentSummary_CL\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| where FeatureName == '{FeatureName}'\r\n| union FinalSummary\r\n| make-series\r\n    AssignmentCountSeries = sum(AssignmentEventCount) default=0\r\n    on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\r\n    by FeatureName, AllocationId, Variant\r\n| project-away TimeGenerated\r\n;\r\nlet allocation_ts = variant_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by FeatureName, AllocationId, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by FeatureName, AllocationId\r\n;\r\nlet feature_ts = allocation_ts\r\n| mv-expand with_itemindex=i AssignmentCount = AssignmentCountSeries to typeof(long)\r\n| summarize AssignmentCount = sum(AssignmentCount) by FeatureName, i\r\n| summarize AssignmentCountSeries = make_list(AssignmentCount) by FeatureName\r\n;\r\nlet scorecards = OEWExperimentScorecards\r\n| where TimeGenerated > {TimeRange:start} - 7d\r\n| where FeatureName == '{FeatureName}'\r\n| distinct FeatureName, AllocationId\r\n| project FeatureName, AllocationId\r\n;\r\nlet variants = OEWExperimentAssignmentSummary_CL\r\n| where TimeGenerated between ({TimeRange:start} .. {TimeRange:end})\r\n| where FeatureName == '{FeatureName}'\r\n| union FinalSummary\r\n| summarize\r\n    Kind = strcat(\r\n        iff(take_any(IsControlVariant), 'Control', 'Treatment'),\r\n        ' (', toint(take_any(VariantAssignmentPercentage)), ' %)'\r\n    ),\r\n    EarliestAssignment = min(FirstAssignmentTimestamp),\r\n    LatestAssignment = max(LastAssignmentTimestamp),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName, AllocationId, Variant\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(FeatureName, '-', AllocationId, '-', Variant),\r\n    PARENT = strcat(FeatureName, '-', AllocationId),\r\n    Name = strcat('💊 ', Variant)\r\n// join to time series\r\n| join kind=leftouter variant_ts on FeatureName, AllocationId, Variant\r\n| project-away FeatureName1, AllocationId1, Variant1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away FeatureName1, AllocationId1\r\n;\r\nlet allocations = variants\r\n| summarize\r\n    Kind = 'Experiment',\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName, AllocationId\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = strcat(FeatureName, '-', AllocationId),\r\n    PARENT = FeatureName\r\n| order by PARENT, EarliestAssignment asc\r\n| extend Name = strcat('🔬 Iteration ', row_number(1, prev(PARENT) != PARENT), ' (', AllocationId, ')')\r\n// join to time series\r\n| join kind=leftouter allocation_ts on FeatureName, AllocationId\r\n| project-away FeatureName1, AllocationId1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(AllocationId1), 'Available', 'Pending')\r\n| project-away FeatureName1, AllocationId1\r\n;\r\nlet features = allocations\r\n| summarize\r\n    Kind = 'Feature',\r\n    EarliestAssignment = min(EarliestAssignment),\r\n    LatestIteration = arg_max(EarliestAssignment, AllocationId),\r\n    LatestAssignment = max(LatestAssignment),\r\n    AssignmentEventCount = sum(AssignmentEventCount)\r\n    by FeatureName\r\n| project-away LatestIteration\r\n// add hierarchy identifiers\r\n| extend\r\n    ID = FeatureName,\r\n    PARENT = '',\r\n    Name = strcat('✨ ', FeatureName)\r\n| order by LatestAssignment desc\r\n| extend FeatureOrder = row_number()\r\n// join to time series\r\n| join kind=leftouter feature_ts on FeatureName\r\n| project-away FeatureName1\r\n// join to scorecards\r\n| join kind=leftouter scorecards on FeatureName, AllocationId\r\n| extend Analysis = iff(isnotempty(FeatureName1), 'Available', 'Pending')\r\n| project-away FeatureName1\r\n;\r\nvariants\r\n| union allocations\r\n| union features\r\n| order by FeatureOrder asc, Kind startswith 'Control' desc, Variant asc\r\n| extend TimeSinceActivity = iff(AssignmentEventCount > 0, now() - LatestAssignment, timespan(null))\r\n| project\r\n    ID, PARENT, Name, Kind,\r\n    FeatureName, AllocationId, Variant,\r\n    DaysSinceActivity = TimeSinceActivity / 1d,\r\n    TimeSinceActivityFormatted = case(\r\n        abs(TimeSinceActivity) > 1d, strcat(round(TimeSinceActivity / 1d, 1), ' days'),\r\n        abs(TimeSinceActivity) > 1h, strcat(round(TimeSinceActivity / 1h, 1), ' hours'),\r\n        isnotnull(TimeSinceActivity), strcat(round(TimeSinceActivity / 1m, 1), ' mins'),\r\n        ''\r\n    ),\r\n    AssignmentEventCount, AssignmentCountSeries,\r\n    Analysis,\r\n    EarliestAssignment = format_datetime(EarliestAssignment, 'MM/dd/yyyy h:mm tt'),\r\n    LatestAssignment = format_datetime(LatestAssignment, 'MM/dd/yyyy h:mm tt')",
         "size": 2,
         "noDataMessage": "No experiments found",
         "noDataMessageStyle": 4,
