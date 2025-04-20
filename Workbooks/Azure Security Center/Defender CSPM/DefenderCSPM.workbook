@@ -65,14 +65,6 @@
             "linkLabel": "Remediation - Recommendation",
             "subTarget": "assessment",
             "style": "link"
-          },
-          {
-            "id": "de67769c-67b1-4eac-8f83-407463408ec0",
-            "cellValue": "tab",
-            "linkTarget": "parameter",
-            "linkLabel": "Sensitive Data Insights",
-            "subTarget": "insight",
-            "style": "link"
           }
         ]
       },
@@ -127,7 +119,7 @@
     {
       "type": 1,
       "content": {
-        "json": "**Risk Found (by Categories)**"
+        "json": "**Risk Found (by Level)**"
       },
       "conditionalVisibility": {
         "parameterName": "tab",
@@ -204,7 +196,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| summarize apCount = count()\r\n| project lable = \"Attack Paths\", apCount",
+        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| extend CorrelationIdForGrouping = tolower(tostring(coalesce(properties.correlationId, properties.attackPathId)))\r\n| summarize id=any(id), type=any(type),  properties=any(properties) by CorrelationIdForGrouping\r\n| extend riskLevelText = iff(isnotempty(properties.RiskLevel), tostring(properties.RiskLevel), tostring(properties.riskLevel)),\r\n         hasRiskCategories = isnotnull(properties.riskCategories),\r\n         mapVersion = iff(tobool(tostring(properties.attackPathVersion) == \"V2\"), 'v2', 'v1')\r\n| where type == \"microsoft.security/attackpaths\" and (mapVersion == 'v2' or hasRiskCategories)\r\n| extend RiskLevel = case(riskLevelText =~ \"Critical\", 4,\r\n                        riskLevelText =~ \"High\", 3,\r\n                        riskLevelText =~ \"Medium\", 2,\r\n                        riskLevelText =~ \"Low\", 1,\r\n                        0)\r\n| where RiskLevel != 0\r\n| summarize apCount = count()\r\n| project lable = \"Attack Paths\", apCount",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -246,7 +238,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| mv-expand riskCategories = properties.riskCategories\r\n| project apId = name, apTemplate = tostring(properties.displayName), tostring(riskCategories)\r\n| summarize dcount(apId) by riskCategories",
+        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| extend CorrelationIdForGrouping = tolower(tostring(coalesce(properties.correlationId, properties.attackPathId)))\r\n| summarize id=any(id), type=any(type),  properties=any(properties) by CorrelationIdForGrouping, name\r\n| extend riskLevelText = iff(isnotempty(properties.RiskLevel), tostring(properties.RiskLevel), tostring(properties.riskLevel)),\r\n         hasRiskCategories = isnotnull(properties.riskCategories),\r\n         mapVersion = iff(tobool(tostring(properties.attackPathVersion) == \"V2\"), 'v2', 'v1')\r\n| where type == \"microsoft.security/attackpaths\" and (mapVersion == 'v2' or hasRiskCategories)\r\n| extend RiskLevel = case(riskLevelText =~ \"Critical\", 4,\r\n                        riskLevelText =~ \"High\", 3,\r\n                        riskLevelText =~ \"Medium\", 2,\r\n                        riskLevelText =~ \"Low\", 1,\r\n                        0)\r\n| where RiskLevel != 0\r\n| project apId = name, apTemplate = tostring(properties.displayName), tostring(riskLevelText)\r\n| summarize dcount(apId) by riskLevelText",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -764,7 +756,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"SensitiveDataDiscovery\")\r\n| extend dataAware = iff(name in~ (\"CloudPosture\", \"StorageAccounts\") and extensionName == \"SensitiveDataDiscovery\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, dataAware",
+        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"SensitiveDataDiscovery\")\r\n| extend dataAware = iff(name in~ (\"CloudPosture\", \"StorageAccounts\") and extensionName == \"SensitiveDataDiscovery\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, dataAware, name",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -812,6 +804,10 @@
             {
               "columnId": "dataAware",
               "label": "Status"
+            },
+            {
+              "columnId": "name",
+              "label": "Plan"
             }
           ]
         }
@@ -831,7 +827,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"AgentlessDiscoveryForKubernetes\")\r\n| extend agentLessAKSDisc = iff(name in~ (\"CloudPosture\", \"Containers\") and extensionName == \"AgentlessDiscoveryForKubernetes\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, agentLessAKSDisc",
+        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"AgentlessDiscoveryForKubernetes\")\r\n| extend agentLessAKSDisc = iff(name in~ (\"CloudPosture\", \"Containers\") and extensionName == \"AgentlessDiscoveryForKubernetes\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, agentLessAKSDisc, name",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -879,6 +875,10 @@
             {
               "columnId": "agentLessAKSDisc",
               "label": "Status"
+            },
+            {
+              "columnId": "name",
+              "label": "Plan"
             }
           ]
         }
@@ -898,7 +898,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"ContainerRegistriesVulnerabilityAssessments\")\r\n| extend agentLessContainerScan = iff(name in~ (\"CloudPosture\", \"Containers\") and extensionName == \"ContainerRegistriesVulnerabilityAssessments\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, agentLessContainerScan",
+        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"ContainerRegistriesVulnerabilityAssessments\")\r\n| extend agentLessContainerScan = iff(name in~ (\"CloudPosture\", \"Containers\") and extensionName == \"ContainerRegistriesVulnerabilityAssessments\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, agentLessContainerScan, name",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -946,6 +946,10 @@
             {
               "columnId": "agentLessContainerScan",
               "label": "Status"
+            },
+            {
+              "columnId": "name",
+              "label": "Plan"
             }
           ]
         }
@@ -965,7 +969,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"AgentlessVmScanning\")\r\n| extend agentLessVMScan = iff(name in~ (\"CloudPosture\", \"VirtualMachines\") and extensionName == \"AgentlessVmScanning\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, agentLessVMScan",
+        "query": "securityresources\r\n| where type == \"microsoft.security/pricings\"\r\n| where name in~(\"CloudPosture\", \"VirtualMachines\", \"Containers\", \"StorageAccounts\")\r\n| mv-expand extensions = properties.extensions\r\n| extend extensionName = tostring(extensions.name)\r\n| where extensionName in~(\"AgentlessVmScanning\")\r\n| extend agentLessVMScan = iff(name in~ (\"CloudPosture\", \"VirtualMachines\", \"Containers\") and extensionName == \"AgentlessVmScanning\" and tostring(extensions.isEnabled) == \"True\", \"Good\", \"Should Enable\")\r\n| distinct   subscriptionId, agentLessVMScan, name",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -1013,6 +1017,10 @@
             {
               "columnId": "agentLessVMScan",
               "label": "Status"
+            },
+            {
+              "columnId": "name",
+              "label": "Plan"
             }
           ]
         }
@@ -1032,7 +1040,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| summarize count()",
+        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| extend CorrelationIdForGrouping = tolower(tostring(coalesce(properties.correlationId, properties.attackPathId)))\r\n| summarize id=any(id), type=any(type),  properties=any(properties) by CorrelationIdForGrouping\r\n| extend riskLevelText = iff(isnotempty(properties.RiskLevel), tostring(properties.RiskLevel), tostring(properties.riskLevel)),\r\n         hasRiskCategories = isnotnull(properties.riskCategories),\r\n         mapVersion = iff(tobool(tostring(properties.attackPathVersion) == \"V2\"), 'v2', 'v1')\r\n| where type == \"microsoft.security/attackpaths\" and (mapVersion == 'v2' or hasRiskCategories)\r\n| extend RiskLevel = case(riskLevelText =~ \"Critical\", 4,\r\n                        riskLevelText =~ \"High\", 3,\r\n                        riskLevelText =~ \"Medium\", 2,\r\n                        riskLevelText =~ \"Low\", 1,\r\n                        0)\r\n| where RiskLevel != 0\r\n| summarize count()",
         "size": 4,
         "title": "Num. Attack Paths",
         "queryType": 1,
@@ -1148,9 +1156,9 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| mv-expand riskCategories = properties.riskCategories\r\n| project apId = name, apTemplate = tostring(properties.displayName), tostring(riskCategories)\r\n| summarize dcount(apId) by riskCategories",
+        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| extend CorrelationIdForGrouping = tolower(tostring(coalesce(properties.correlationId, properties.attackPathId)))\r\n| summarize id=any(id), type=any(type),  properties=any(properties) by CorrelationIdForGrouping, name\r\n| extend riskLevelText = iff(isnotempty(properties.RiskLevel), tostring(properties.RiskLevel), tostring(properties.riskLevel)),\r\n         hasRiskCategories = isnotnull(properties.riskCategories),\r\n         mapVersion = iff(tobool(tostring(properties.attackPathVersion) == \"V2\"), 'v2', 'v1')\r\n| where type == \"microsoft.security/attackpaths\" and (mapVersion == 'v2' or hasRiskCategories)\r\n| extend RiskLevel = case(riskLevelText =~ \"Critical\", 4,\r\n                        riskLevelText =~ \"High\", 3,\r\n                        riskLevelText =~ \"Medium\", 2,\r\n                        riskLevelText =~ \"Low\", 1,\r\n                        0)\r\n| where RiskLevel != 0\r\n| project apId = name, apTemplate = tostring(properties.displayName), tostring(riskLevelText)\r\n| summarize dcount(apId) by riskLevelText",
         "size": 1,
-        "title": "Risk Categories",
+        "title": "Risk Level Categories",
         "exportFieldName": "riskCategories",
         "exportParameterName": "riskCategories",
         "exportDefaultValue": "All",
@@ -1162,7 +1170,7 @@
         "visualization": "tiles",
         "tileSettings": {
           "titleContent": {
-            "columnMatch": "riskCategories",
+            "columnMatch": "riskLevelText",
             "formatter": 1
           },
           "leftContent": {
@@ -1198,7 +1206,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| extend riskCategories = tostring(properties.riskCategories)\r\n| extend riskCategories = tostring(split(riskCategories, \"[\")[1])\r\n| extend riskCategories = tostring(split(riskCategories, \"]\")[0])\r\n| extend riskCategory = iff('{riskCategories}' == \"All\", riskCategories, '{riskCategories}')\r\n| where riskCategories has(riskCategory)\r\n| project apId = name, apTemplate = tostring(properties.displayName), riskCategories\r\n| summarize Path_Count = count() by Attack_Path = apTemplate, riskCategories\r\n| project Attack_Path, Path_Count, riskCategories\r\n",
+        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| extend riskCategories = tostring(properties.riskLevel)\r\n| project apId = name, apTemplate = tostring(properties.displayName), riskCategories\r\n| summarize Path_Count = count() by Attack_Path = apTemplate, riskCategories\r\n| project Attack_Path, Path_Count, riskCategories\r\n",
         "size": 0,
         "title": "Attack Path (Type) List",
         "exportFieldName": "Attack_Path",
@@ -1239,6 +1247,12 @@
             }
           ],
           "filter": true,
+          "sortBy": [
+            {
+              "itemKey": "riskCategories",
+              "sortOrder": 2
+            }
+          ],
           "labelSettings": [
             {
               "columnId": "Attack_Path",
@@ -1250,10 +1264,16 @@
             },
             {
               "columnId": "riskCategories",
-              "label": "Risk Category"
+              "label": "Risk Level"
             }
           ]
-        }
+        },
+        "sortBy": [
+          {
+            "itemKey": "riskCategories",
+            "sortOrder": 2
+          }
+        ]
       },
       "conditionalVisibility": {
         "parameterName": "tab",
@@ -1269,7 +1289,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| project apId = name, Attack_Paths = tostring(properties.displayName), description = tostring(properties.description), attackPathType = tostring(properties.attackPathType)\r\n| extend Attack_Path = iff('{Attack_Path}' == \"All\", Attack_Paths, '{Attack_Path}')\r\n| where Attack_Path == Attack_Paths\r\n| project Attack_Path, apId, description, Url=strcat(\"https://portal.azure.com/#view/Microsoft_Azure_Security_Orion/AttackPathTypeBlade/attackPathTypeId/\", attackPathType)\r\n\r\n",
+        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\"\r\n| project apId = name, Attack_Paths = tostring(properties.displayName), description = tostring(properties.description), attackPathType = tostring(properties.attackPathType), attackPathDisplayName = tostring(properties.displayName), attakPathId = name\r\n| extend Attack_Path = iff('{Attack_Path}' == \"All\", Attack_Paths, '{Attack_Path}')\r\n| where Attack_Path == Attack_Paths\r\n| project Attack_Path, apId, description, Url=strcat(\"https://portal.azure.com/#view/Microsoft_Azure_Security/AttackPathType.ReactView/attackPathType/\", attackPathType,\"/attackPathTypeName/\", attackPathDisplayName, \"/attackPathId/\", attakPathId)\r\n\r\n",
         "size": 0,
         "title": "Attack Path (Instances)",
         "exportFieldName": "apId",
@@ -1998,122 +2018,6 @@
       },
       "customWidth": "45",
       "name": "query - 32",
-      "styleSettings": {
-        "showBorder": true
-      }
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### **Sensitive Data Found by Sample** <br>\r\nSensitive data threat detection is powered by the sensitive data discovery engine, an agentless engine that uses a smart sampling method to find resources with sensitive data. <br>\r\nDefender for Cloud uses smart sampling to discover a selected number of files in your cloud datastores. Smart sampling results discover evidence of sensitive data issues, while saving on discovery costs and time.",
-        "style": "info"
-      },
-      "conditionalVisibility": {
-        "parameterName": "tab",
-        "comparison": "isEqualTo",
-        "value": "insight"
-      },
-      "name": "text - 29"
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\" \r\n| mv-expand insights = properties.graphComponent.insights\r\n| where insights.additionalData.type == 'Sensitivity'\r\n| mv-expand fileSamples = insights.additionalData.fileSamples\r\n| extend fileName = translate('%20', ' ', tostring(fileSamples.path)), classification=fileSamples.classificationNames\r\n| mv-expand classification\r\n| summarize numfiles = dcount(fileName) by classification = tostring(classification)",
-        "size": 0,
-        "exportFieldName": "classification",
-        "exportParameterName": "classification",
-        "exportDefaultValue": "All",
-        "queryType": 1,
-        "resourceType": "microsoft.resourcegraph/resources",
-        "crossComponentResources": [
-          "{subscriptions}"
-        ],
-        "visualization": "tiles",
-        "tileSettings": {
-          "titleContent": {
-            "columnMatch": "classification",
-            "formatter": 1
-          },
-          "leftContent": {
-            "columnMatch": "numfiles",
-            "formatter": 12,
-            "formatOptions": {
-              "palette": "auto"
-            },
-            "numberFormat": {
-              "unit": 17,
-              "options": {
-                "maximumSignificantDigits": 3,
-                "maximumFractionDigits": 2
-              }
-            }
-          },
-          "showBorder": false
-        }
-      },
-      "conditionalVisibility": {
-        "parameterName": "tab",
-        "comparison": "isEqualTo",
-        "value": "insight"
-      },
-      "name": "query - 33",
-      "styleSettings": {
-        "showBorder": true
-      }
-    },
-    {
-      "type": 3,
-      "content": {
-        "version": "KqlItem/1.0",
-        "query": "securityresources\r\n| where type == \"microsoft.security/attackpaths\" \r\n| mv-expand insights = properties.graphComponent.insights\r\n| extend entityInternalId = tostring(insights.entityInternalId)\r\n| where insights.additionalData.type == 'Sensitivity'\r\n| mv-expand fileSamples = insights.additionalData.fileSamples\r\n| extend fileName = translate('%20', ' ', tostring(fileSamples.path)), classification=tostring(fileSamples.classificationNames)\r\n| extend classification = tostring(split(classification, \"[\")[1])\r\n| extend classification = tostring(split(classification, \"]\")[0])\r\n| extend classtype = iff('{classification}' == \"All\", classification, '{classification}')\r\n| where classification has(classtype)\r\n| join kind = leftouter (\r\n    securityresources\r\n    | where type == \"microsoft.security/attackpaths\" \r\n    | mv-expand entities = properties.graphComponent.entities\r\n    | extend entityInternalId = tostring(entities.entityInternalId)\r\n    | extend entityType = tostring(entities.entityType)\r\n    | extend azureResourceId = tostring(entities.entityIdentifiers.azureResourceId)\r\n    | extend storageAccountAzureResourceId = tostring(entities.entityIdentifiers.storageAccountAzureResourceId)\r\n    | extend entityStoreUniqueIdentifier = tostring(entities.entityIdentifiers.entityStoreUniqueIdentifier)\r\n) on entityInternalId\r\n//| extend AzureResourceId = tostring(iff(isnotempty(storageAccountAzureResourceId ), storageAccountAzureResourceId, azureResourceId))\r\n//| extend AzureResourceId = tostring(iff(isnotempty(entityStoreUniqueIdentifier ), entityStoreUniqueIdentifier, azureResourceId))\r\n| extend AzureResourceId = case( isnotempty(storageAccountAzureResourceId ), storageAccountAzureResourceId\r\n                                ,isnotempty(entityStoreUniqueIdentifier ), entityStoreUniqueIdentifier\r\n                                ,azureResourceId\r\n)\r\n| distinct  AzureResourceId, fileName, classification",
-        "size": 3,
-        "queryType": 1,
-        "resourceType": "microsoft.resourcegraph/resources",
-        "crossComponentResources": [
-          "{subscriptions}"
-        ],
-        "visualization": "table",
-        "gridSettings": {
-          "formatters": [
-            {
-              "columnMatch": "AzureResourceId",
-              "formatter": 13,
-              "formatOptions": {
-                "linkTarget": null,
-                "showIcon": true
-              }
-            },
-            {
-              "columnMatch": "fileName",
-              "formatter": 16,
-              "formatOptions": {
-                "showIcon": true
-              }
-            }
-          ],
-          "labelSettings": [
-            {
-              "columnId": "AzureResourceId",
-              "label": "Resource"
-            },
-            {
-              "columnId": "fileName",
-              "label": "File Name (Container/FileName)"
-            },
-            {
-              "columnId": "classification",
-              "label": "Type of Sensitive Data Found"
-            }
-          ]
-        }
-      },
-      "conditionalVisibility": {
-        "parameterName": "tab",
-        "comparison": "isEqualTo",
-        "value": "insight"
-      },
-      "name": "query - 10",
       "styleSettings": {
         "showBorder": true
       }

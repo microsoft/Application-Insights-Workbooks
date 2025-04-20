@@ -214,7 +214,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let variants = OEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc;\r\nlet pvalue_bh = OEWExperimentScorecardMetricPairs\r\n| where ScorecardId ==  '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricCategories, '__Internal__')) and isnotempty(MetricId)\r\n| where TreatmentEffect !in ('Zero samples', 'Too few samples')\r\n| where TreatmentStandardErrorNormalized > 0 and ControlStandardErrorNormalized > 0 and PValue < 1 and PValue >= 0;\r\nlet N = pvalue_bh | summarize N=count() by TreatmentVariant;\r\nlet variants_tea = pvalue_bh\r\n| join kind=leftouter N on TreatmentVariant\r\n| sort by TreatmentVariant asc, PValue asc\r\n| extend rank = row_number(1, prev(TreatmentVariant) != TreatmentVariant)\r\n| extend pvalue_adjusted_initial = PValue * N / rank\r\n| summarize pvalue_tea = min(pvalue_adjusted_initial) by TreatmentVariant\r\n| project Variant = TreatmentVariant, MetricSummary = case(pvalue_tea <= 0.05, 'Change detected', 'Change undetected');\r\nvariants\r\n| join kind=leftouter variants_tea on Variant\r\n| project-away Variant1\r\n| extend MetricSummary = iff(isempty(MetricSummary), 'Change undetected', MetricSummary)\r\n| extend MetricSummary  = iff(Type == 'Control', 'n/a', MetricSummary)",
+              "query": "let expanded_variants = OEWExperimentScorecards\r\n| where ScorecardId == '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *)\r\n| project Variants = Insights.Assignment\r\n| where array_length(Variants) > 0\r\n| mv-expand VariantMetadata = Variants;\r\nlet control_assignment_user_count = toscalar( expanded_variants\r\n| where tobool(VariantMetadata.IsControlVariant)\r\n| take 1\r\n| project VariantMetadata.AssignmentUserCount\r\n);\r\nlet variants = expanded_variants\r\n| project\r\n    Variant = tostring(VariantMetadata.Variant),\r\n    Type = iff(tobool(VariantMetadata.IsControlVariant), \"Control\", \"Treatment\"),\r\n    Allocation = toreal(VariantMetadata.VariantAssignmentPercentage),\r\n    Assignment = tolong(VariantMetadata.AssignmentUserCount),\r\n    DataQuality = case(\r\n        tobool(VariantMetadata.IsControlVariant), 'n/a',\r\n        tolong(VariantMetadata.AssignmentUserCount) + control_assignment_user_count <= 13, 'Too few samples',\r\n        toreal(VariantMetadata.SampleRatioMismatchPValue) <= 0.0005, 'SRM check: Fail',\r\n        'SRM check: Pass'\r\n    )\r\n| order by Type asc, Allocation desc;\r\nlet pvalue_bh = OEWExperimentScorecardMetricPairs\r\n| where ScorecardId ==  '{ScorecardId}'\r\n| summarize arg_max(TimeGenerated, *) by ScorecardId, MetricId, TreatmentVariant, ControlVariant // de-dupe\r\n| where not(set_has_element(MetricCategories, '__Internal__')) and isnotempty(MetricId)\r\n| where TreatmentEffect !in ('Zero samples', 'Too few samples')\r\n| where TreatmentStandardErrorNormalized > 0 and ControlStandardErrorNormalized > 0 and PValue < 1 and PValue >= 0;\r\nlet N = pvalue_bh | summarize N=count() by TreatmentVariant;\r\nlet variants_tea = pvalue_bh\r\n| join kind=leftouter N on TreatmentVariant\r\n| sort by TreatmentVariant asc, PValue asc\r\n| extend rank = row_number(1, prev(TreatmentVariant) != TreatmentVariant)\r\n| extend pvalue_adjusted_initial = PValue * N / rank\r\n| summarize pvalue_tea = min(pvalue_adjusted_initial) by TreatmentVariant\r\n| project Variant = TreatmentVariant, MetricSummary = case(pvalue_tea <= 0.05, 'Change detected', 'Change undetected');\r\nvariants\r\n| join kind=leftouter variants_tea on Variant\r\n| project-away Variant1\r\n| extend MetricSummary = iff(isempty(MetricSummary), 'Change undetected', MetricSummary)\r\n| extend MetricSummary  = iff(Type == 'Control', 'n/a', MetricSummary)",
               "size": 3,
               "noDataMessage": "Zero variants were found in this experiment analysis",
               "noDataMessageStyle": 4,
@@ -254,6 +254,15 @@
                     "formatOptions": {
                       "thresholdsOptions": "icons",
                       "thresholdsGrid": [
+                        {
+                          "operator": "contains",
+                          "thresholdValue": "samples",
+                          "representation": "warning",
+                          "text": "{0}{1}",
+                          "tooltipFormat": {
+                            "tooltip": "Insufficient observations to detect sample ratio mismatch."
+                          }
+                        },
                         {
                           "operator": "contains",
                           "thresholdValue": "Pass",
@@ -330,8 +339,8 @@
                     "label": "Data quality"
                   },
                   {
-                      "columnId": "MetricSummary",
-                      "label": "Treatment effect"
+                    "columnId": "MetricSummary",
+                    "label": "Treatment effect"
                   }
                 ]
               }
