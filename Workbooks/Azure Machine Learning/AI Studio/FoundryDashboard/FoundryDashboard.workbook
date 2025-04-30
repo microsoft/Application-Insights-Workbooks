@@ -213,6 +213,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\"\r\n  and customDimensions[\"gen_ai.response.model\"] in ({Model})\r\n  and cloud_RoleName in ({Application})\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    total_tokens = sum(\r\n        toint(customDimensions[\"gen_ai.usage.input_tokens\"]) + \r\n        toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n    )\r\n  by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| summarize \r\n    initial_total_tokens = todouble(arg_min(timestamp, total_tokens).[1]), \r\n    final_total_tokens = todouble(arg_max(timestamp, total_tokens).[1]),\r\n    total_tokens = sum(total_tokens)\r\n| extend overall_percentage_change = round(\r\n    (final_total_tokens - initial_total_tokens) / initial_total_tokens * 100\r\n)\r\n| project metric = \"Total tokens\", total_tokens, overall_percentage_change",
           "size": 4,
           "timeContextFromParameter": "TimeRange",
@@ -307,6 +308,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\"\r\n  and customDimensions[\"gen_ai.response.model\"] in ({Model})\r\n  and cloud_RoleName in ({Application})\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    avg_duration = avg(duration) \r\n by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| summarize \r\n    initial_avg_duration = todouble(arg_min(timestamp, avg_duration).[1]), \r\n    final_avg_duration = todouble(arg_max(timestamp, avg_duration).[1]),\r\n    avg_duration= round(avg(avg_duration))\r\n| extend overall_percentage_change = round(\r\n    (initial_avg_duration - final_avg_duration) / initial_avg_duration * 100)\r\n| project metric = \"Avg. Duration\", avg_duration, overall_percentage_change",
           "size": 4,
           "timeContextFromParameter": "TimeRange",
@@ -400,6 +402,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+           "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\"\r\n  and customDimensions[\"gen_ai.response.model\"] in ({Model})\r\n  and cloud_RoleName in ({Application})\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    total_requests = count() \r\n  by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| summarize \r\n    initial_total_requests = todouble(arg_min(timestamp, total_requests).[1]), \r\n    final_total_requests = todouble(arg_max(timestamp, total_requests).[1]),\r\n    total_requests = sum(total_requests)\r\n| extend overall_percentage_change = round(\r\n    (initial_total_requests - final_total_requests) / initial_total_requests * 100\r\n)\r\n| project metric = \"Total requests\", total_requests, overall_percentage_change\r\n",
           "size": 4,
           "timeContextFromParameter": "TimeRange",
@@ -512,6 +515,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "exceptions\r\n| where cloud_RoleName in ({Application}) and timestamp {TimeRange} \r\n| summarize total_exception = count() by bin(timestamp, 1d)\r\n| join kind=inner (\r\n    requests\r\n    | where cloud_RoleName in ({Application}) and timestamp {TimeRange} \r\n    | summarize total_requests = count() by bin(timestamp, 1d)\r\n) on timestamp\r\n| summarize \r\n    initial_total_exception = todouble(arg_min(timestamp, total_exception).[1]),\r\n    final_total_exception = todouble(arg_max(timestamp, total_exception).[1]),\r\n    initial_total_requests = todouble(arg_min(timestamp, total_requests).[1]),\r\n    final_total_requests = todouble(arg_max(timestamp, total_requests).[1]),\r\n    total_exception = sum(total_exception),\r\n    total_requests = sum(total_requests)\r\n| extend overall_percentage_change = round((final_total_exception - initial_total_exception) / initial_total_exception * 100)\r\n| extend overall_percentage_by_request = iff(total_requests == 0, 0.0, round((todouble(total_exception) / todouble(total_requests))*100))\r\n| project metric = \"Total exceptions (% req)\", total_exception,overall_percentage_by_request",
           "size": 4,
           "timeContextFromParameter": "TimeRange",
@@ -604,6 +608,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"])\r\n| summarize TotalScores = count(), ScoresInTotal = sum(score) by tostring(metric)\r\n| extend Percentage = round(todouble(ScoresInTotal) / (TotalScores * 5) * 100)\r\n| join kind=inner (\r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"]), timestamp\r\n| summarize TotalScores = count(), ScoresInTotal = sum(score) by tostring(metric), bin(timestamp,1d)\r\n| extend Percentage = round(todouble(ScoresInTotal) / (TotalScores * 5) * 100)\r\n| summarize \r\n    initial_metric_percentage = todouble(arg_min(timestamp, Percentage).[1]), \r\n    final_metric_exception = todouble(arg_max(timestamp, Percentage).[1])\r\n    by metric\r\n) on metric\r\n| extend PercentageChange = round(todouble(initial_metric_percentage - final_metric_exception))\r\n| project metric=strcat(toupper(substring(metric, 0, 1)), substring(metric, 1)),initial_metric_percentage,final_metric_exception, Percentage,PercentageChange",
           "size": 4,
           "timeContextFromParameter": "TimeRange",
@@ -696,11 +701,11 @@
       },
       {
         "type": 1,
-        "name": "Charts",
+        "name": "Trendlines",
         "content": {
           "json": "",
           "showViewButton": false,
-          "title": "Charts"
+          "title": "Trendlines"
         },
         "styleSettings": {
           "showBorder": false,
@@ -718,6 +723,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n  and ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application))\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    Prompt_Tokens = sum(toint(customDimensions[\"gen_ai.usage.input_tokens\"])),\r\n    Completion_Tokens = sum(toint(customDimensions[\"gen_ai.usage.output_tokens\"])),\r\n    Total_Tokens = sum(toint(customDimensions[\"gen_ai.usage.input_tokens\"]) + toint(customDimensions[\"gen_ai.usage.output_tokens\"]))\r\n    by bin(timestamp, 1d)\r\n| render linechart with (title=\"Token Usage Over Time\", ytitle=\"Token Count\", xtitle=\"Time\")",
           "size": 0,
           "title": "Token consumption(Input vs Output vs Total)",
@@ -774,6 +780,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nrequests\r\n| where  ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  \r\n| summarize request_count = count() by success, bin (timestamp,1d)\r\n| project  request_count, success,timestamp  ",
           "size": 1,
           "title": "Total requests",
@@ -828,6 +835,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nrequests\r\n| where success == \"True\" and ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize avg_duration=avg(duration), total_request=count()\r\n   by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| project duration=avg_duration, timestamp\r\n\r\n",
           "size": 1,
           "aggregation": 3,
@@ -886,6 +894,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nrequests\r\n| where  ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize Count = count() by success",
           "size": 1,
           "title": "Request status",
@@ -934,6 +943,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"]), timestamp\r\n| summarize totalscores = count(), scoresintotal = sum(score) by tostring(metric), bin(timestamp,1d) \r\n| extend percentage = round(todouble(scoresintotal) / (totalscores * 5) * 100)\r\n| project strcat(toupper(substring(metric, 0, 1)), substring(metric, 1)),percentage, timestamp\r\n",
           "size": 1,
           "title": "Daily quality passing rate",
@@ -975,6 +985,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange} \r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"]), timestamp\r\n| summarize totalscores = count(), scoresintotal = sum(score) by tostring(metric), bin(timestamp,1d) \r\n| extend percentage = round(todouble(scoresintotal) / (totalscores * 5) * 100)\r\n| project strcat(toupper(substring(metric, 0, 1)), substring(metric, 1)),percentage, timestamp\r\n",
           "size": 1,
           "title": "Daily safety defect rate",
@@ -1017,6 +1028,7 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters.",
           "query": "let application=dynamic([{Application}]);\r\nlet model=dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] == \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange} \r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| extend FeedbackType = case(toint(customDimensions[\"gen_ai.evaluation.score\"]) == -1, \"Positive\", toint(customDimensions[\"gen_ai.evaluation.score\"]) == 1, \"Negative\", \"Unknown\")\r\n| summarize Count = count() by FeedbackType",
           "size": 1,
           "title": "User feedback",
