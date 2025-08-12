@@ -140,7 +140,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let success_data = customMetrics\n| where name == \"preview.item.success.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| summarize success_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain});\nlet dropped_data = customMetrics\n| where name == \"preview.item.dropped.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| summarize dropped_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain});\nlet drop_reasons_by_bucket = customMetrics\n| where name == \"preview.item.dropped.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| extend drop_reason = tostring(customDimensions[\"drop.reason\"])\n| where isnotempty(drop_reason)\n| summarize reason_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain}), drop_reason\n| summarize drop_reasons = make_list(strcat(drop_reason, \": \", tostring(reason_count))) by time_bucket;\nsuccess_data\n| join kind=fullouter dropped_data on time_bucket\n| join kind=leftouter drop_reasons_by_bucket on time_bucket\n| extend \n    time_bucket = coalesce(time_bucket, time_bucket1, time_bucket2),\n    success_count = coalesce(success_count, 0.0),\n    dropped_count = coalesce(dropped_count, 0.0),\n    drop_reasons = coalesce(drop_reasons, dynamic([]))\n| extend drop_reasons_text = strcat_array(drop_reasons, \"; \")\n| project \n    [\"Time Bucket\"] = time_bucket,\n    [\"Success Count\"] = tolong(success_count),\n    [\"Dropped Count\"] = tolong(dropped_count),\n    [\"Drop Reason Details\"] = iff(dropped_count > 0, drop_reasons_text, \"\")\n| order by [\"Time Bucket\"] asc",
+        "query": "let success_data = customMetrics\n| where name == \"preview.item.success.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| summarize success_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain})\n| extend metric_type = \"Success Count\", tooltip_info = \"\";\nlet dropped_with_reasons = customMetrics\n| where name == \"preview.item.dropped.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| extend drop_reason = tostring(customDimensions[\"drop.reason\"])\n| summarize reason_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain}), drop_reason\n| summarize \n    dropped_count = sum(reason_count),\n    drop_reasons_detail = strcat_array(make_list(strcat(drop_reason, \": \", tostring(reason_count))), \"; \")\n    by time_bucket\n| extend metric_type = \"Dropped Count\", tooltip_info = drop_reasons_detail;\nunion success_data, dropped_with_reasons\n| extend count_value = coalesce(success_count, dropped_count)\n| project \n    time_bucket,\n    metric_type,\n    count_value,\n    [\"Drop Reasons\"] = iff(metric_type == \"Dropped Count\", tooltip_info, \"\")\n| order by time_bucket asc, metric_type asc",
         "size": 1,
         "title": "Telemetry Export Success Count",
         "timeContext": {
@@ -152,9 +152,9 @@
         "resourceType": "microsoft.insights/components",
         "visualization": "barchart",
         "chartSettings": {
-          "xAxis": "Time Bucket",
-          "yAxis": ["Success Count", "Dropped Count"],
-          "group": null,
+          "xAxis": "time_bucket",
+          "yAxis": ["count_value"],
+          "group": "metric_type",
           "size": null,
           "aggregation": "Sum",
           "legendLocation": "bottom",
@@ -181,31 +181,24 @@
         "gridSettings": {
           "formatters": [
             {
-              "columnMatch": "Time Bucket",
+              "columnMatch": "time_bucket",
               "formatter": 6,
               "formatOptions": {
                 "customColumnWidthSetting": "20ch"
               }
             },
             {
-              "columnMatch": "Success Count",
+              "columnMatch": "count_value",
               "formatter": 8,
               "formatOptions": {
-                "palette": "green"
+                "palette": "auto"
               }
             },
             {
-              "columnMatch": "Dropped Count",
-              "formatter": 8,
-              "formatOptions": {
-                "palette": "redBright"
-              }
-            },
-            {
-              "columnMatch": "Drop Reason Details",
+              "columnMatch": "Drop Reasons",
               "formatter": 1,
               "formatOptions": {
-                "customColumnWidthSetting": "50ch"
+                "customColumnWidthSetting": "60ch"
               }
             }
           ]
@@ -219,8 +212,8 @@
             "title": "Select Time Bucket",
             "subtitle": "Click on a dropped count bar to see drop reasons for that time period",
             "parameterName": "SelectedTimeBucket",
-            "parameterValue": "Time Bucket",
-            "parameterValueDisplayName": "Time Bucket"
+            "parameterValue": "time_bucket",
+            "parameterValueDisplayName": "time_bucket"
           }
         ]
       },
