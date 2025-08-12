@@ -125,7 +125,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "customMetrics\n| where name in (\"preview.item.dropped.count\", \"preview.item.success.count\")\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| summarize total_count = sum(value) by name, bin(timestamp, {TimeRange:grain})\n| extend display_name = case(\n    name == \"preview.item.success.count\", \"success count\",\n    name == \"preview.item.dropped.count\", \"dropped count\",\n    name\n)\n| project timestamp, name = display_name, total_count\n| render timechart",
+        "query": "let success_data = customMetrics\n| where name == \"preview.item.success.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| summarize success_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain});\nlet dropped_data = customMetrics\n| where name == \"preview.item.dropped.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| summarize dropped_count = sum(todouble(value)) by time_bucket = bin(timestamp, {TimeRange:grain});\nlet drop_reasons_by_bucket = customMetrics\n| where name == \"preview.item.dropped.count\"\n| where '{SdkVersion}' == '*' or sdkVersion == '{SdkVersion}'\n| extend drop_reason = tostring(customDimensions[\"drop.reason\"])\n| where isnotempty(drop_reason)\n| summarize drop_reasons = make_list(strcat(drop_reason, \": \", tostring(sum(todouble(value))))) by time_bucket = bin(timestamp, {TimeRange:grain});\nsuccess_data\n| join kind=fullouter dropped_data on time_bucket\n| join kind=leftouter drop_reasons_by_bucket on time_bucket\n| extend \n    time_bucket = coalesce(time_bucket, time_bucket1, time_bucket2),\n    success_count = coalesce(success_count, 0.0),\n    dropped_count = coalesce(dropped_count, 0.0),\n    drop_reasons = coalesce(drop_reasons, dynamic([]))\n| extend drop_reasons_text = strcat_array(drop_reasons, \"; \")\n| project \n    [\"Time Bucket\"] = time_bucket,\n    [\"Success Count\"] = tolong(success_count),\n    [\"Dropped Count\"] = tolong(dropped_count),\n    [\"Drop Reason Details\"] = iff(dropped_count > 0, drop_reasons_text, \"\")\n| order by [\"Time Bucket\"] asc",
         "size": 1,
         "title": "Telemetry Export Success Count",
         "timeContext": {
@@ -135,60 +135,69 @@
         "timeContextFromParameter": "TimeRange",
         "queryType": 0,
         "resourceType": "microsoft.insights/components",
-        "visualization": "timechart",
+        "visualization": "barchart",
         "chartSettings": {
+          "xAxis": "Time Bucket",
+          "yAxis": ["Success Count", "Dropped Count"],
+          "group": null,
+          "size": null,
+          "aggregation": "Sum",
+          "legendLocation": "bottom",
           "seriesLabelSettings": [
             {
-              "seriesName": "dropped count",
+              "seriesName": "Dropped Count",
               "color": "redBright"
             },
             {
-              "seriesName": "success count", 
+              "seriesName": "Success Count",
               "color": "green"
+            }
+          ],
+          "ySettings": {
+            "numberFormatSettings": {
+              "unit": 0,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
+        },
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Time Bucket",
+              "formatter": 6,
+              "formatOptions": {
+                "customColumnWidthSetting": "20ch"
+              }
+            },
+            {
+              "columnMatch": "Success Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "green"
+              }
+            },
+            {
+              "columnMatch": "Dropped Count",
+              "formatter": 8,
+              "formatOptions": {
+                "palette": "redBright"
+              }
+            },
+            {
+              "columnMatch": "Drop Reason Details",
+              "formatter": 1,
+              "formatOptions": {
+                "customColumnWidthSetting": "50ch"
+              }
             }
           ]
         },
-        "gridSettings": {
-          "formatters": []
-        },
         "tileSettings": {
           "showBorder": false
-        },
-        "graphSettings": {
-          "type": 0,
-          "topContent": {
-            "columnMatch": "name",
-            "formatter": 1
-          },
-          "hiveBinSettings": {
-            "xAxis": "timestamp",
-            "yAxis": "total_count",
-            "groupByColumn": "name"
-          }
-        },
-        "mapSettings": {
-          "locInfo": "LatLong",
-          "sizeSettings": "total_count",
-          "sizeAggregation": "Sum",
-          "legendMetric": "total_count",
-          "legendAggregation": "Sum",
-          "itemColorSettings": {
-            "type": "heatmap",
-            "colorAggregation": "Sum",
-            "nodeColorField": "total_count",
-            "heatmapPalette": "greenRed"
-          }
-        },
-        "selections": [
-          {
-            "id": "SeriesSelection",
-            "title": "Select Series",
-            "subtitle": "Click on dropped count to see drop reasons",
-            "parameterName": "SelectedMetric",
-            "parameterValue": "name",
-            "parameterValueDisplayName": "name"
-          }
-        ]
+        }
       },
       "name": "Success and Failure Count"
     },
