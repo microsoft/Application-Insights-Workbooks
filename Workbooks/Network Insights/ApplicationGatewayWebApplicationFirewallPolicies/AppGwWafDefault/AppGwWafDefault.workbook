@@ -36,7 +36,7 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 2419200000
+              "durationMs": 259200000
             },
             "typeSettings": {
               "selectableValues": [
@@ -114,7 +114,10 @@
               "durationMs": 86400000
             },
             "queryType": 1,
-            "resourceType": "microsoft.resourcegraph/resources"
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "value::all"
+            ]
           }
         ],
         "style": "pills",
@@ -300,9 +303,12 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}'\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n| where TimeGenerated {detectionTime}\r\n| distinct hostname_s",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) \r\n\r\n// at this point hostname_s can still contain both hostname and port; for example: www.myhost.com:80 -> we need to split this up to match on just the host later\r\n| extend splittedhost = split(hostname_s, ':')\r\n//| extend hostname_s_noport =  tostring(splittedhost[0]) //override hostname_s to just contain host; drop the port section\r\n| extend hostname_s_noport = iif(isnull(splittedhost[0]) or isempty(splittedhost[0]), \"NA\", tostring(splittedhost[0]))\r\n| extend port =  tostring(splittedhost[1])\r\n//| distinct hostname_s, hostname_s_noport\r\n| summarize total=count() by hostname_s, hostname_s_noport\r\n| extend hostname_s = iif(isempty(hostname_s),\"NA\", hostname_s)\r\n| project  hostname_s,total\r\n| order by total desc\r\n",
                     "size": 0,
-                    "title": "Hostnames with entries in Firewall Log",
+                    "title": "Hostnames in Firewall Logs",
+                    "noDataMessage": "The query returned no results. Please select a scope from the table above.",
+                    "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportFieldName": "hostname_s",
                     "exportParameterName": "HostName",
                     "queryType": 0,
@@ -325,6 +331,16 @@
                           "itemKey": "hostname_s",
                           "sortOrder": 1
                         }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "hostname_s",
+                          "label": "Host"
+                        },
+                        {
+                          "columnId": "total",
+                          "label": "Total"
+                        }
                       ]
                     },
                     "sortBy": [
@@ -334,16 +350,19 @@
                       }
                     ]
                   },
-                  "customWidth": "10",
+                  "customWidth": "15",
                   "name": "Hostnames with entries in Firewall Log"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}'\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n| where hostname_s == '{HostName}'\r\n| where TimeGenerated {detectionTime}\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where ResourceId in (Resource_list))\r\n on transactionId_g\r\n| distinct  requestUri_s, httpMethod_s1, originalRequestUriWithArgs_s1, httpStatus_d1\r\n| extend Id = new_guid()\r\n",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}'\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n| where hostname_s == '{HostName}'\r\n| where TimeGenerated {detectionTime}\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where ResourceId in (Resource_list))\r\n on transactionId_g\r\n| distinct  requestUri_s, httpMethod_s1, originalRequestUriWithArgs_s1, httpStatus_d1\r\n| extend Id = new_guid()\r\n\r\n",
                     "size": 0,
-                    "title": "Paths which have triggered firewall rules",
+                    "title": "Paths that Triggered Firewall Rules",
+                    "noDataMessage": "The query returned no results. Please select a Host.",
+                    "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportedParameters": [
                       {
                         "fieldName": "requestUri_s",
@@ -376,11 +395,11 @@
                     "gridSettings": {
                       "formatters": [
                         {
-                          "columnMatch": "encodedRequestUriWithArgs",
+                          "columnMatch": "Id",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "Id",
+                          "columnMatch": "encodedRequestUriWithArgs",
                           "formatter": 5
                         }
                       ],
@@ -391,12 +410,31 @@
                           "requestUri_s",
                           "httpMethod_s1"
                         ],
+                        "expandTopLevel": true,
                         "finalBy": "httpStatus_d1"
                       },
                       "sortBy": [
                         {
                           "itemKey": "httpStatus_d1",
                           "sortOrder": 1
+                        }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "requestUri_s",
+                          "label": "Request URI"
+                        },
+                        {
+                          "columnId": "httpMethod_s1",
+                          "label": "HTTP Method"
+                        },
+                        {
+                          "columnId": "originalRequestUriWithArgs_s1",
+                          "label": "Original Request "
+                        },
+                        {
+                          "columnId": "httpStatus_d1",
+                          "label": "HTTP Status "
                         }
                       ]
                     },
@@ -416,7 +454,9 @@
                     "version": "KqlItem/1.0",
                     "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}'\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n| where hostname_s == '{HostName}'\r\n| where TimeGenerated {detectionTime}\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where ResourceId in (Resource_list))\r\n  on transactionId_g\r\n| where originalRequestUriWithArgs_s1 == ```{RequestUriWithArgs}``` and httpMethod_s1 == '{HttpMethod}' and httpStatus_d1 == '{HttpStatus}'\r\n| distinct transactionId_g\r\n| extend access_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayAccessLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n| extend firewall_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayFirewallLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")",
                     "size": 0,
-                    "title": "Requests on selected host and url",
+                    "title": "Requests for Selected Host and URL",
+                    "noDataMessage": "The query returned no results. Please select a Path.",
+                    "timeContextFromParameter": "detectionTime",
                     "exportFieldName": "transactionId_g",
                     "exportParameterName": "TransactionId",
                     "queryType": 0,
@@ -493,19 +533,35 @@
                             }
                           }
                         }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "transactionId_g",
+                          "label": "Transaction Id"
+                        },
+                        {
+                          "columnId": "access_log",
+                          "label": "Access Log"
+                        },
+                        {
+                          "columnId": "firewall_log",
+                          "label": "Firewall Log"
+                        }
                       ]
                     }
                   },
                   "customWidth": "25",
-                  "name": "query 1 "
+                  "name": "query - 3"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "AzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where TimeGenerated {detectionTime}\r\n| where transactionId_g == '{TransactionId}'\r\n| extend Id = new_guid()\r\n| project-reorder Id, action_s, ruleSetType_s, ruleSetVersion_s, ruleId_s, Message, hostname_s, requestUri_s, details_message_s, details_data_s, details_file_s, details_line_s, transactionId_g\r\n| extend normalizedRuleSetVersion = case(isempty(ruleSetVersion_s), \"\",\r\n                                         // old engine: rulesetVersion_s looks like \"3.1.0\" while type is \"OWASP_CRS\" => leave untouched, can use this as-is\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.1.0/rules/REQUEST-913-SCANNER-DETECTION.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+.[0-9]+\", ruleSetVersion_s,\r\n                                         // new engine: rulesetVersion_s looks like \"3.2\" while type is \"OWASP CRS\" => need a version that looks like \"3.2.0\"\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.2.0/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+\", strcat(ruleSetVersion_s, \".0\"),\r\n                                         \"\")\r\n| extend normalizedDetailsFile = case(  ruleSetType_s == \"OWASP_CRS\", replace(@'rules/', '', details_file_s),   // old engine: details_files_s looks like \"rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP_CRS\"\r\n                                        ruleSetType_s == \"OWASP CRS\", details_file_s,                           // new engine: details_files_s looks like \"REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP CRS\"\r\n                                        details_file_s)\r\n| extend Url = iif(isnotempty(ruleSetVersion_s), strcat('https://github.com/coreruleset/coreruleset/blob/', 'v', normalizedRuleSetVersion, '/rules/', normalizedDetailsFile, '#L', details_line_s), '')\r\n| project action_s, ruleId_s, Message, details_message_s, details_data_s, Url, TimeGenerated, ruleSetType_s, normalizedRuleSetVersion\r\n",
+                    "query": "AzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where TimeGenerated {detectionTime}\r\n| where transactionId_g == '{TransactionId}'\r\n| extend Id = new_guid()\r\n| project-reorder Id, action_s, ruleSetType_s, ruleSetVersion_s, ruleId_s, Message, hostname_s, requestUri_s, details_message_s, details_data_s, details_file_s, details_line_s, transactionId_g\r\n| extend normalizedRuleSetVersion = case(isempty(ruleSetVersion_s), \"\",\r\n                                         // old engine: rulesetVersion_s looks like \"3.1.0\" while type is \"OWASP_CRS\" => leave untouched, can use this as-is\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.1.0/rules/REQUEST-913-SCANNER-DETECTION.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+.[0-9]+\", ruleSetVersion_s,\r\n                                         // new engine: rulesetVersion_s looks like \"3.2\" while type is \"OWASP CRS\" => need a version that looks like \"3.2.0\"\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.2.0/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+\", strcat(ruleSetVersion_s, \".0\"),\r\n                                         \"\")\r\n| extend normalizedDetailsFile = case(  ruleSetType_s == \"OWASP_CRS\", replace(@'rules/', '', details_file_s),   // old engine: details_files_s looks like \"rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP_CRS\"\r\n                                        ruleSetType_s == \"OWASP CRS\", details_file_s,                           // new engine: details_files_s looks like \"REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP CRS\"\r\n                                        details_file_s)\r\n| extend Url = iif(isnotempty(ruleSetVersion_s), strcat('https://github.com/coreruleset/coreruleset/blob/', 'v', normalizedRuleSetVersion, '/rules/', normalizedDetailsFile, '#L', details_line_s), '')\r\n| extend RuleSet_V = strcat(ruleSetType_s, \" \", ruleSetVersion_s )\r\n| project action_s, ruleId_s,RuleSet_V, Message, details_message_s, details_data_s, Url, TimeGenerated, ruleSetType_s, normalizedRuleSetVersion\r\n",
                     "size": 0,
-                    "title": "Rules that got triggered for selected request",
+                    "title": "Rules Triggered for Selected Request",
+                    "noDataMessage": "The query returned no results. Please select a Transaction ID.",
+                    "timeContextFromParameter": "detectionTime",
                     "exportedParameters": [
                       {
                         "fieldName": "transactionId_g",
@@ -596,6 +652,14 @@
                           }
                         },
                         {
+                          "columnMatch": "ruleSetType_s",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "normalizedRuleSetVersion",
+                          "formatter": 5
+                        },
+                        {
                           "columnMatch": "statusFromAction",
                           "formatter": 5,
                           "numberFormat": {
@@ -609,27 +673,35 @@
                       "labelSettings": [
                         {
                           "columnId": "action_s",
-                          "label": "action"
+                          "label": "Ation"
                         },
                         {
                           "columnId": "ruleId_s",
-                          "label": "rule id"
+                          "label": "Rule Id"
+                        },
+                        {
+                          "columnId": "RuleSet_V",
+                          "label": "Ruleset Version"
                         },
                         {
                           "columnId": "Message",
-                          "label": "message"
+                          "label": "Message"
                         },
                         {
                           "columnId": "details_message_s",
-                          "label": "details"
+                          "label": "Details"
                         },
                         {
                           "columnId": "details_data_s",
-                          "label": "matched data"
+                          "label": "Matched Data"
+                        },
+                        {
+                          "columnId": "Url",
+                          "label": "URL "
                         },
                         {
                           "columnId": "TimeGenerated",
-                          "label": "time generated"
+                          "label": "Time Generated"
                         }
                       ]
                     }
@@ -663,10 +735,13 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s in ('{PolicyScope}')\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n| summarize Count = count() by ruleSetType_s, ruleSetVersion_s, ruleId_s, details_file_s, details_line_s, action_s, ResourceId, policyScopeName_s, policyScope_s\r\n| order by Count desc\r\n| project-reorder Count\r\n| extend normalizedRuleSetVersion = case(isempty(ruleSetVersion_s), \"\",\r\n                                       \r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+.[0-9]+\", ruleSetVersion_s,\r\n                                        \r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+\", strcat(ruleSetVersion_s, \".0\"),\r\n                                         \"\")\r\n| extend normalizedDetailsFile = case(  ruleSetType_s == \"OWASP_CRS\", replace(@'rules/', '', details_file_s),   \r\n                                        ruleSetType_s == \"OWASP CRS\", details_file_s,                           \r\n                                        details_file_s)\r\n| extend Url = iif(isnotempty(ruleSetVersion_s), strcat('https://github.com/coreruleset/coreruleset/blob/', 'v', normalizedRuleSetVersion, '/rules/', normalizedDetailsFile, '#L', details_line_s), '')\r\n// add sparklines\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayFirewallLog\" | where TimeGenerated {detectionTime} | where  ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n                                    | make-series Trend = count() on TimeGenerated from {detectionTime:start} to {detectionTime:end} step (time({detectionTime:seconds} seconds) / 20)  by ruleId_s\r\n    ) on ruleId_s\r\n| extend Id = new_guid()\r\n",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s in ('{PolicyScope}')\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n| summarize Count = count() by ruleId_s, action_s, ruleSetType_s, ruleSetVersion_s, ruleGroup_s, details_file_s, details_line_s,  ResourceId, policyScopeName_s, policyScope_s\r\n//| summarize Count = count() by ruleSetType_s, ruleSetVersion_s, ruleId_s, details_file_s, details_line_s, action_s, ResourceId, policyScopeName_s, policyScope_s\r\n//| project-reorder Count\r\n| extend normalizedRuleSetVersion = case(isempty(ruleSetVersion_s), \"\",\r\n                                       \r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+.[0-9]+\", ruleSetVersion_s,\r\n                                        \r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+\", strcat(ruleSetVersion_s, \".0\"),\r\n                                         \"\")\r\n| extend normalizedDetailsFile = case(  ruleSetType_s == \"OWASP_CRS\", replace(@'rules/', '', details_file_s),   \r\n                                        ruleSetType_s == \"OWASP CRS\", details_file_s,                           \r\n                                        details_file_s)\r\n| extend Url = iif(isnotempty(ruleGroup_s), strcat('https://github.com/coreruleset/coreruleset/blob/', 'v', normalizedRuleSetVersion, '/rules/', normalizedDetailsFile, '#L', details_line_s), '')\r\n// add sparklines\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayFirewallLog\" | where TimeGenerated {detectionTime} | where  ResourceId in (Resource_list) and policyScopeName_s in (Policy_list)\r\n                                    | make-series Trend = count() on TimeGenerated from {detectionTime:start} to {detectionTime:end} step (time({detectionTime:seconds} seconds) / 20)  by ruleId_s\r\n    ) on ruleId_s\r\n\r\n| extend Id = new_guid()\r\n| extend RuleSet_V = strcat(ruleSetType_s, \" \", ruleSetVersion_s )\r\n|project-away ruleId_s1, Id\r\n|project-reorder Count, ruleId_s, action_s, RuleSet_V, ruleGroup_s, ResourceId, policyScopeName_s, policyScope_s, Url, Trend, ruleSetType_s,ruleSetVersion_s\r\n| order by Count desc\r\n\r\n",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Rules that got triggered",
+                    "title": "Rules Triggered for Selected Scope",
+                    "noDataMessage": "The query returned no results. Please select a scope from the table above.",
+                    "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportedParameters": [
                       {
                         "fieldName": "ruleId_s",
@@ -699,14 +774,6 @@
                           }
                         },
                         {
-                          "columnMatch": "ruleSetType_s",
-                          "formatter": 5
-                        },
-                        {
-                          "columnMatch": "ruleId_s",
-                          "formatter": 5
-                        },
-                        {
                           "columnMatch": "Url",
                           "formatter": 7,
                           "formatOptions": {
@@ -716,35 +783,63 @@
                         },
                         {
                           "columnMatch": "Trend",
-                          "formatter": 10,
+                          "formatter": 9,
                           "formatOptions": {
-                            "palette": "yellowOrangeRed"
+                            "palette": "greenRed"
                           }
                         },
                         {
-                          "columnMatch": "TimeGenerated",
+                          "columnMatch": "ruleSetType_s",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "Id",
+                          "columnMatch": "ruleSetVersion_s",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "details_file_s",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "details_line_s",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "normalizedRuleSetVersion",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "normalizedDetailsFile",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "TimeGenerated",
                           "formatter": 5
                         }
                       ],
                       "filter": true,
                       "sortBy": [
                         {
-                          "itemKey": "$gen_heatmap_Count_0",
-                          "sortOrder": 2
+                          "itemKey": "$gen_link_ResourceId_5",
+                          "sortOrder": 1
                         }
                       ],
                       "labelSettings": [
                         {
-                          "columnId": "ruleSetVersion_s",
+                          "columnId": "ruleId_s",
+                          "label": "Rule ID"
+                        },
+                        {
+                          "columnId": "action_s",
+                          "label": "Action"
+                        },
+                        {
+                          "columnId": "RuleSet_V",
                           "label": "Ruleset Version"
                         },
                         {
-                          "columnId": "ruleId_s",
-                          "label": "Rule Id"
+                          "columnId": "ruleGroup_s",
+                          "label": "Rule Group"
                         },
                         {
                           "columnId": "ResourceId",
@@ -752,14 +847,22 @@
                         },
                         {
                           "columnId": "policyScopeName_s",
-                          "label": "Policy Scope"
+                          "label": "Scope Name"
+                        },
+                        {
+                          "columnId": "policyScope_s",
+                          "label": "Scope Type"
+                        },
+                        {
+                          "columnId": "Url",
+                          "label": "URL"
                         }
                       ]
                     },
                     "sortBy": [
                       {
-                        "itemKey": "$gen_heatmap_Count_0",
-                        "sortOrder": 2
+                        "itemKey": "$gen_link_ResourceId_5",
+                        "sortOrder": 1
                       }
                     ]
                   },
@@ -770,9 +873,12 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}' and ruleId_s == '{RuleId}' and ruleSetVersion_s == '{RuleSetVersion}'\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}' and ruleSetVersion_s == '{RuleSetVersion}'\r\n| where TimeGenerated {detectionTime}\r\n// at this point hostname_s can still contain both hostname and port; for example: www.myhost.com:80 -> we need to split this up to match on just the host later\r\n| extend splittedhost = split(hostname_s, ':')\r\n| extend hostname_s_noport = tostring(splittedhost[0]) //override hostname_s to just contain host; drop the port section\r\n| extend port =  tostring(splittedhost[1])\r\n| distinct hostname_s, hostname_s_noport",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}' and ruleSetVersion_s == '{RuleSetVersion}'\r\n| where TimeGenerated {detectionTime}\r\n\r\n// at this point hostname_s can still contain both hostname and port; for example: www.myhost.com:80 -> we need to split this up to match on just the host later\r\n| extend splittedhost = split(hostname_s, ':')\r\n//| extend hostname_s_noport =  tostring(splittedhost[0]) //override hostname_s to just contain host; drop the port section\r\n| extend hostname_s_noport = iif(isnull(splittedhost[0]) or isempty(splittedhost[0]), \"NA\", tostring(splittedhost[0]))\r\n| extend port =  tostring(splittedhost[1])\r\n//| distinct hostname_s, hostname_s_noport\r\n| summarize total=count() by hostname_s_noport, ruleId_s,hostname_s\r\n| extend hostname_s = iif(isempty(hostname_s),\"NA\", hostname_s)\r\n| project  hostname_s,total,hostname_s_noport\r\n| order by total desc\r\n",
                     "size": 0,
-                    "title": "Hosts Affected",
+                    "title": "Affected Hosts ",
+                    "noDataMessage": "The query returned no results. Please select a Rule from the table above.",
+                    "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportedParameters": [
                       {
                         "fieldName": "hostname_s",
@@ -797,10 +903,21 @@
                           "columnMatch": "hostname_s_noport",
                           "formatter": 5
                         }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "hostname_s",
+                          "label": "Host"
+                        },
+                        {
+                          "columnId": "total",
+                          "label": "Total"
+                        }
                       ]
-                    }
+                    },
+                    "sortBy": []
                   },
-                  "customWidth": "15",
+                  "customWidth": "20",
                   "showPin": true,
                   "name": "Affected Hosts"
                 },
@@ -808,10 +925,13 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}' and ruleId_s == '{RuleId}'\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}'\r\n| where hostname_s == '{HostName}'\r\n| project-reorder hostname_s, transactionId_g\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where TimeGenerated {detectionTime}) on transactionId_g\r\n| distinct host_s1, httpMethod_s1, requestUri_s1, originalRequestUriWithArgs_s1\r\n| order by host_s1, requestUri_s1, httpMethod_s1, originalRequestUriWithArgs_s1\r\n| extend id = new_guid()",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n//| where ResourceId == '{ResourceId}' and policyScopeName_s == '{PolicyScope}' and ruleId_s == '{RuleId}'\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}'\r\n|extend hostname_s = iif(isnull(hostname_s) or isempty(hostname_s), \"NA\", tostring(hostname_s))\r\n| where hostname_s == '{HostName}'\r\n| project-reorder hostname_s, transactionId_g\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where TimeGenerated {detectionTime}) on transactionId_g\r\n| distinct host_s1, httpMethod_s1, requestUri_s1, originalRequestUriWithArgs_s1\r\n| order by host_s1, requestUri_s1, httpMethod_s1, originalRequestUriWithArgs_s1\r\n| extend id = new_guid()",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Hosts and urls impacted by selected rule",
+                    "title": "Hosts and URLs Impacted by the Selected Rule",
+                    "noDataMessage": "The query returned no results. Please select a Host from the table on the left..",
+                    "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportedParameters": [
                       {
                         "fieldName": "httpMethod_s1",
@@ -835,22 +955,28 @@
                       "{Associations}"
                     ],
                     "visualization": "table",
+                    "showExpandCollapseGrid": true,
                     "gridSettings": {
                       "formatters": [
+                        {
+                          "columnMatch": "host_s1",
+                          "formatter": 5
+                        },
                         {
                           "columnMatch": "requestUri_s",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "encodedRequestUri",
+                          "columnMatch": "id",
                           "formatter": 5
                         },
                         {
-                          "columnMatch": "id",
+                          "columnMatch": "encodedRequestUri",
                           "formatter": 5
                         }
                       ],
                       "rowLimit": 1000,
+                      "filter": true,
                       "hierarchySettings": {
                         "treeType": 1,
                         "groupBy": [
@@ -858,8 +984,38 @@
                         ],
                         "expandTopLevel": true,
                         "finalBy": "requestUri_s"
+                      },
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_count_$gen_group_0",
+                          "sortOrder": 1
+                        }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "host_s1",
+                          "label": "Host"
+                        },
+                        {
+                          "columnId": "httpMethod_s1",
+                          "label": "HTTP Method"
+                        },
+                        {
+                          "columnId": "requestUri_s1",
+                          "label": "Request URI"
+                        },
+                        {
+                          "columnId": "originalRequestUriWithArgs_s1",
+                          "label": "Original Request"
+                        }
+                      ]
+                    },
+                    "sortBy": [
+                      {
+                        "itemKey": "$gen_count_$gen_group_0",
+                        "sortOrder": 1
                       }
-                    }
+                    ]
                   },
                   "customWidth": "60",
                   "name": "affected urls"
@@ -870,7 +1026,9 @@
                     "version": "KqlItem/1.0",
                     "query": "AzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n| distinct transactionId_g\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where TimeGenerated {detectionTime}) \r\n  on transactionId_g\r\n| where originalHost_s == '{HostNameNoPort}' and httpMethod_s == '{Method}' and requestUri_s == ```{RequestUri}``` and originalRequestUriWithArgs_s == ```{FullUri}```\r\n| project transactionId_g\r\n| extend access_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayAccessLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n| extend firewall_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayFirewallLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n",
                     "size": 0,
-                    "title": "Requests on selected host and url",
+                    "title": "Requests for the Selected Host and URL",
+                    "noDataMessage": "The query returned no results. Please select a URL.",
+                    "timeContextFromParameter": "detectionTime",
                     "exportFieldName": "transactionId_g",
                     "exportParameterName": "TransactionId",
                     "queryType": 0,
@@ -947,19 +1105,36 @@
                             }
                           }
                         }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "transactionId_g",
+                          "label": "Transaction Id"
+                        },
+                        {
+                          "columnId": "access_log",
+                          "label": "Access Log"
+                        },
+                        {
+                          "columnId": "firewall_log",
+                          "label": "Firewall Log"
+                        }
                       ]
                     }
                   },
-                  "customWidth": "25",
+                  "customWidth": "20",
                   "name": "ImpactedRequestsFromSelectedUri"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "AzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where transactionId_g == '{TransactionId}'\r\n| extend Id = new_guid()\r\n| project-reorder Id, action_s, ruleSetType_s, ruleSetVersion_s, ruleId_s, Message, hostname_s, requestUri_s, details_message_s, details_data_s, details_file_s, details_line_s, transactionId_g\r\n| extend normalizedRuleSetVersion = case(isempty(ruleSetVersion_s), \"\",\r\n                                         // old engine: rulesetVersion_s looks like \"3.1.0\" while type is \"OWASP_CRS\" => leave untouched, can use this as-is\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.1.0/rules/REQUEST-913-SCANNER-DETECTION.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+.[0-9]+\", ruleSetVersion_s,\r\n                                         // new engine: rulesetVersion_s looks like \"3.2\" while type is \"OWASP CRS\" => need a version that looks like \"3.2.0\"\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.2.0/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+\", strcat(ruleSetVersion_s, \".0\"),\r\n                                         \"\")\r\n| extend normalizedDetailsFile = case(  ruleSetType_s == \"OWASP_CRS\", replace(@'rules/', '', details_file_s),   // old engine: details_files_s looks like \"rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP_CRS\"\r\n                                        ruleSetType_s == \"OWASP CRS\", details_file_s,                           // new engine: details_files_s looks like \"REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP CRS\"\r\n                                        details_file_s)\r\n| extend Url = iif(isnotempty(ruleSetVersion_s), strcat('https://github.com/coreruleset/coreruleset/blob/', 'v', normalizedRuleSetVersion, '/rules/', normalizedDetailsFile, '#L', details_line_s), '')\r\n| project action_s, ruleId_s, Message, details_message_s, details_data_s, Url, TimeGenerated\r\n",
+                    "query": "AzureDiagnostics \r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where transactionId_g == '{TransactionId}'\r\n| extend Id = new_guid()\r\n| project-reorder Id, action_s, ruleSetType_s, ruleSetVersion_s, ruleId_s, Message, hostname_s, requestUri_s, details_message_s, details_data_s, details_file_s, details_line_s, transactionId_g\r\n| extend normalizedRuleSetVersion = case(isempty(ruleSetVersion_s), \"\",\r\n                                         // old engine: rulesetVersion_s looks like \"3.1.0\" while type is \"OWASP_CRS\" => leave untouched, can use this as-is\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.1.0/rules/REQUEST-913-SCANNER-DETECTION.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+.[0-9]+\", ruleSetVersion_s,\r\n                                         // new engine: rulesetVersion_s looks like \"3.2\" while type is \"OWASP CRS\" => need a version that looks like \"3.2.0\"\r\n                                         //             final url to GH is like: https://github.com/coreruleset/coreruleset/blob/v3.2.0/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf#L56\r\n                                         ruleSetVersion_s matches regex \"[0-9]+.[0-9]+\", strcat(ruleSetVersion_s, \".0\"),\r\n                                         \"\")\r\n| extend normalizedDetailsFile = case(  ruleSetType_s == \"OWASP_CRS\", replace(@'rules/', '', details_file_s),   // old engine: details_files_s looks like \"rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP_CRS\"\r\n                                        ruleSetType_s == \"OWASP CRS\", details_file_s,                           // new engine: details_files_s looks like \"REQUEST-920-PROTOCOL-ENFORCEMENT.conf\" while type is \"OWASP CRS\"\r\n                                        details_file_s)\r\n| extend Url = iif(isnotempty(ruleSetVersion_s), strcat('https://github.com/coreruleset/coreruleset/blob/', 'v', normalizedRuleSetVersion, '/rules/', normalizedDetailsFile, '#L', details_line_s), '')\r\n| extend RuleSet_V = strcat(ruleSetType_s, \" \", ruleSetVersion_s )\r\n| project action_s, ruleId_s, RuleSet_V, Message, details_message_s, details_data_s, Url, TimeGenerated\r\n",
                     "size": 0,
-                    "title": "Rules that got triggered for selected request",
+                    "title": "Rules Triggered for Selected Request ",
+                    "noDataMessage": "The query returned no results. Please select a Tramsaction Id.",
+                    "timeContextFromParameter": "detectionTime",
                     "exportedParameters": [
                       {
                         "fieldName": "transactionId_g",
@@ -1047,7 +1222,7 @@
                         },
                         {
                           "columnMatch": "statusFromAction",
-                          "formatter": 5,
+                          "formatter": 1,
                           "numberFormat": {
                             "unit": 0,
                             "options": {
@@ -1059,27 +1234,35 @@
                       "labelSettings": [
                         {
                           "columnId": "action_s",
-                          "label": "action"
+                          "label": "Action"
                         },
                         {
                           "columnId": "ruleId_s",
-                          "label": "rule id"
+                          "label": "Rule Id"
+                        },
+                        {
+                          "columnId": "RuleSet_V",
+                          "label": "Ruleset Version"
                         },
                         {
                           "columnId": "Message",
-                          "label": "message"
+                          "label": "Message"
                         },
                         {
                           "columnId": "details_message_s",
-                          "label": "details"
+                          "label": "Details"
                         },
                         {
                           "columnId": "details_data_s",
-                          "label": "matched data"
+                          "label": "Matched Data"
+                        },
+                        {
+                          "columnId": "Url",
+                          "label": "URL"
                         },
                         {
                           "columnId": "TimeGenerated",
-                          "label": "time generated"
+                          "label": "Time Generated"
                         }
                       ]
                     }
@@ -1165,8 +1348,9 @@
                     "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend Action = iif(action_s == \"JSChallenge\", Action = \"JSChallenge\", Action)\r\n| summarize number = count() by Action",
                     "size": 3,
                     "showAnalytics": true,
-                    "title": "WAF actions filter",
+                    "title": "WAF Actions (select to filter)",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportFieldName": "series",
                     "exportParameterName": "SelectedAction",
                     "exportDefaultValue": "*",
@@ -1180,7 +1364,7 @@
                     "visualization": "piechart"
                   },
                   "customWidth": "27",
-                  "name": "waf filters"
+                  "name": "query - 11"
                 },
                 {
                   "type": 3,
@@ -1189,9 +1373,10 @@
                     "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where Action == \"Block\"\r\n| where requestUri_s <> \"/\"\r\n| summarize count() by requestUri_s \r\n| top 40 by count_ desc ",
                     "size": 3,
                     "showAnalytics": true,
-                    "title": "Top 40 Blocked Request URI addresses, filter to single URI address",
+                    "title": "Top 40 Blocked Request URIs (select to filter)",
                     "noDataMessage": "The current data has no \"Blocked\" results",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportFieldName": "requestUri_s",
                     "exportParameterName": "RequestURI",
                     "exportDefaultValue": "*",
@@ -1231,7 +1416,8 @@
                           }
                         }
                       },
-                      "showBorder": false
+                      "showBorder": false,
+                      "rowLimit": 40
                     },
                     "graphSettings": {
                       "type": 0,
@@ -1266,17 +1452,18 @@
                     }
                   },
                   "customWidth": "63",
-                  "name": "query - 12"
+                  "name": "query - 9"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Rule= iif(Rule contains \"Mandatory rule. Cannot be disabled.\", strcat_array(split(Rule, \"Mandatory rule. Cannot be disabled. Inbound \",1),\"\"), Rule) // Removes initial component for mandatory rule \r\n| extend Rule = iif(Rule contains \"Total Inbound Score\", strcat_array(array_concat(split(Rule, \" - SQLI=\", 0), parse_json('[\") -\"]'), split(Rule,\"):\",1)),\"\"),Rule) // Removes smaller information if more info is available for anomaly score\r\n| summarize count() by Rule\r\n| top 50 by count_ desc\r\n",
+                    "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string, ruleId_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ,\"\"]);\r\nFakeData | union AzureDiagnostics\r\n| where OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Rule= iif(Rule contains \"Mandatory rule. Cannot be disabled.\", strcat_array(split(Rule, \"Mandatory rule. Cannot be disabled. Inbound \",1),\"\"), Rule) // Removes initial component for mandatory rule \r\n| extend Rule = iif(Rule contains \"Total Inbound Score\", strcat_array(array_concat(split(Rule, \" - SQLI=\", 0), parse_json('[\") -\"]'), split(Rule,\"):\",1)),\"\"),Rule) // Removes smaller information if more info is available for anomaly score\r\n| summarize count() by  ruleId_s, Rule\r\n| top 50 by count_ desc\r\n",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Top 50 event trigger, filter by rule name",
+                    "title": "Top 50 WAF Rules (select to filter)",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportFieldName": "Rule",
                     "exportParameterName": "Selected",
                     "exportDefaultValue": "*",
@@ -1292,30 +1479,33 @@
                       "formatters": [
                         {
                           "columnMatch": "count_",
-                          "formatter": 3,
+                          "formatter": 8,
                           "formatOptions": {
-                            "palette": "blue",
-                            "showIcon": true
+                            "palette": "blueDark",
+                            "compositeBarSettings": {
+                              "labelText": "",
+                              "columnSettings": []
+                            }
                           }
                         }
                       ],
+                      "rowLimit": 50,
                       "filter": true,
-                      "sortBy": [
+                      "labelSettings": [
                         {
-                          "itemKey": "$gen_bar_count__1",
-                          "sortOrder": 2
+                          "columnId": "ruleId_s",
+                          "label": "Rule Id"
+                        },
+                        {
+                          "columnId": "count_",
+                          "label": "Count"
                         }
                       ]
                     },
-                    "sortBy": [
-                      {
-                        "itemKey": "$gen_bar_count__1",
-                        "sortOrder": 2
-                      }
-                    ]
+                    "sortBy": []
                   },
-                  "customWidth": "30",
-                  "name": "query - 13"
+                  "customWidth": "40",
+                  "name": "query - 12"
                 },
                 {
                   "type": 3,
@@ -1324,8 +1514,9 @@
                     "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where  OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| summarize count() by Rule, bin(TimeGenerated, 1h)\r\n",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Messages, by time",
+                    "title": "Rules Over Time",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "showExportToExcel": true,
                     "exportToExcelOptions": "all",
                     "queryType": 0,
@@ -1356,53 +1547,104 @@
                       }
                     }
                   },
-                  "customWidth": "70",
-                  "name": "query - 14"
+                  "customWidth": "60",
+                  "name": "query - 13"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let FakeData = (datatable (Message:string,ruleName_s:string,clientIp_s:string,clientIP_s:string,action_s:string,transactionId_s:string,site_s:string,details_message_sRole:string,details_file_sRole:string,hostname_sRole:string,Role:string,trackingReference_s:string,requestUri_s:string,ruleSetType_s:string,details_message_s:string,details_data_s:string,details_file_s:string,hostname_s:string,instanceId_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\",\"\", \"\", \"\", \"\", \"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| where '{Selected}' == Rule or '{Selected}' == \"*\" \r\n| extend Role =  extract(\"ApplicationGateway([a-zA-Z_a-zA-Z_0-9]*)\",1,instanceId_s) \r\n| extend RequestUri = requestUri_s, RuleSetType = ruleSetType_s, Message_Details = details_message_s, Data_Details = details_data_s, File_Details = details_file_s, Hostname = hostname_s, Site = site_s\r\n| project Rule, TimeGenerated, SourceSystem, Hostname, ResourceId, ResourceGroup, ResourceProvider, Category, Role, Action, Site, Message_Details, File_Details, ClientIP, RequestUri\r\n| sort by TimeGenerated",
+                    "query": "let FakeData = datatable (\r\n    Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string, site_s:string,\r\n    details_message_sRole:string, details_file_sRole:string, hostname_sRole:string, Role:string, trackingReference_s:string,\r\n    requestUri_s:string, ruleSetType_s:string, details_message_s:string, details_data_s:string, details_file_s:string,\r\n    hostname_s:string, instanceId_s:string, ruleId_s:string, ruleSetVersion_s:string\r\n) [\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ,\"\" ];\r\n\r\nFakeData\r\n| union AzureDiagnostics\r\n| where OperationName == \"ApplicationGatewayFirewall\" or Category == \"WebApplicationFirewallLogs\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", \"Block\", iif(action_s == \"Detected\", \"Log\", action_s))\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| where '{Selected}' == Rule or '{Selected}' == \"*\" \r\n| extend RuleSet_V = strcat(ruleSetType_s, \" \", ruleSetVersion_s)\r\n| extend RoleExtracted = extract(\"ApplicationGateway([a-zA-Z_0-9]*)\", 1, instanceId_s)\r\n| extend RequestUri = requestUri_s, Message_Details = details_message_s, Data_Details = details_data_s, File_Details = details_file_s, Hostname = hostname_s, Site = site_s\r\n| project ruleId_s, Rule, RuleSet_V, TimeGenerated, SourceSystem, Hostname, ResourceId, ResourceGroup, ResourceProvider, Category, RoleExtracted, Action, Site, Message_Details, File_Details, ClientIP, RequestUri\r\n| sort by TimeGenerated\r\n",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Message, full details",
+                    "title": "Rules Details",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "showExportToExcel": true,
                     "exportToExcelOptions": "all",
                     "queryType": 0,
-                    "resourceType": "microsoft.network/applicationgateways",
+                    "resourceType": "{Associations}",
                     "crossComponentResources": [
                       "{Associations}"
                     ],
                     "visualization": "table",
                     "gridSettings": {
-                      "filter": true,
-                      "sortBy": [
+                      "formatters": [
                         {
-                          "itemKey": "$gen_link_ResourceId_4",
-                          "sortOrder": 2
+                          "columnMatch": "SourceSystem",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "ResourceProvider",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "RoleExtracted",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Site",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "File_Details",
+                          "formatter": 5
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "ruleId_s",
+                          "label": "Rule Id"
+                        },
+                        {
+                          "columnId": "RuleSet_V",
+                          "label": "Ruleset Version"
+                        },
+                        {
+                          "columnId": "TimeGenerated",
+                          "label": "Time Generated"
+                        },
+                        {
+                          "columnId": "Hostname",
+                          "label": "Host"
+                        },
+                        {
+                          "columnId": "ResourceId",
+                          "label": "AppGW"
+                        },
+                        {
+                          "columnId": "ResourceGroup",
+                          "label": "Resource Group "
+                        },
+                        {
+                          "columnId": "Message_Details",
+                          "label": "Message Details"
+                        },
+                        {
+                          "columnId": "ClientIP",
+                          "label": "Client IP"
+                        },
+                        {
+                          "columnId": "RequestUri",
+                          "label": "Request URI"
                         }
                       ]
                     },
-                    "sortBy": [
-                      {
-                        "itemKey": "$gen_link_ResourceId_4",
-                        "sortOrder": 2
-                      }
-                    ]
+                    "sortBy": []
                   },
-                  "name": "query - 15"
+                  "name": "query - 11"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where  (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\" \r\n| summarize Amount = count() by Rule\r\n| order by Amount desc\r\n\r\n",
+                    "query": "let FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string ,ruleId_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ,\"\"]);\r\nFakeData | union AzureDiagnostics\r\n| where  (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\" \r\n| summarize Amount = count() by  Rule\r\n| order by Amount desc\r\n\r\n",
                     "size": 0,
-                    "title": "Attacks events, by messages and filterable by rule name",
-                    "noDataMessage": "Filtered messages are not attack events",
+                    "title": " Attack Requests by Rule (select to filter)",
+                    "noDataMessage": "No data found –try to expand the detection time range to include more events",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportFieldName": "",
                     "exportParameterName": "MessageFilter",
                     "exportDefaultValue": "{\"Rule\":\"*\"}",
@@ -1426,11 +1668,22 @@
                           }
                         }
                       ],
-                      "filter": true
+                      "filter": true,
+                      "sortBy": [
+                        {
+                          "itemKey": "$gen_heatmap_Amount_1",
+                          "sortOrder": 2
+                        }
+                      ]
                     },
-                    "sortBy": []
+                    "sortBy": [
+                      {
+                        "itemKey": "$gen_heatmap_Amount_1",
+                        "sortOrder": 2
+                      }
+                    ]
                   },
-                  "customWidth": "20",
+                  "customWidth": "30",
                   "name": "query - 16"
                 },
                 {
@@ -1440,9 +1693,10 @@
                     "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\" \r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| where Rule == Child or Child == \"*\"\r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| summarize Amount = count() by Rule, bin(TimeGenerated, 1h), ResourceId\r\n| project Amount, Rule, TimeGenerated, ResourceId\r\n| order by Amount desc",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Attack events, by time",
-                    "noDataMessage": "Filtered messages are not attack events",
+                    "title": "Attack Requests Over Time",
+                    "noDataMessage": "No data found –try to expand the detection time range to include more events",
                     "timeContextFromParameter": "detectionTime",
+                    "showRefreshButton": true,
                     "exportParameterName": "Message",
                     "exportDefaultValue": "{ \"Name\":\"\", \"Type\":\"*\"}",
                     "showExportToExcel": true,
@@ -1454,18 +1708,18 @@
                     ],
                     "visualization": "areachart"
                   },
-                  "customWidth": "80",
-                  "name": "query - 17"
+                  "customWidth": "70",
+                  "name": "query - 14"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = strcat(transactionId_s, trackingReference_s)\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| where Rule == Child or Child == \"*\" \r\n| distinct TrackingID",
+                    "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = iff (isnull(strcat(transactionId_s, trackingReference_s)) or isempty(strcat(transactionId_s, trackingReference_s)) ,\"NA\", strcat(transactionId_s, trackingReference_s))\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| where Rule == Child or Child == \"*\" \r\n| distinct TrackingID",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "TrackingID filter",
-                    "noDataMessage": "You've over filtered or you're missing this data.",
+                    "title": " Filter by Tracking ID",
+                    "noDataMessage": "No data found –try to expand the detection time range to include more events",
                     "timeContextFromParameter": "detectionTime",
                     "exportFieldName": "TrackingID",
                     "exportParameterName": "SelectedTrackingID",
@@ -1484,6 +1738,12 @@
                           "itemKey": "TrackingID",
                           "sortOrder": 1
                         }
+                      ],
+                      "labelSettings": [
+                        {
+                          "columnId": "TrackingID",
+                          "label": "Tracking Id"
+                        }
                       ]
                     },
                     "sortBy": [
@@ -1494,17 +1754,17 @@
                     ]
                   },
                   "customWidth": "20",
-                  "name": "query - 18"
+                  "name": "query - 12"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string,ruleName_s:string,clientIp_s:string,clientIP_s:string,action_s:string,transactionId_s:string,site_s:string,details_message_sRole:string,details_file_sRole:string,hostname_sRole:string,Role:string,trackingReference_s:string,ruleGroup_s:string,instanceId_s:string,ruleSetType_s:string,details_message_s:string,details_data_s:string,details_file_s:string,hostname_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\",\"\", \"\", \"\", \"\", \"\",\"\",\"\",\"\",\"\",\"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = strcat(transactionId_s, trackingReference_s)\r\n| where '{SelectedTrackingID}' == TrackingID or '{SelectedTrackingID}' == \"*\" \r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| where Rule == Child or Child == \"*\"\r\n| extend RuleGroup = ruleGroup_s, InstandUri = instanceId_s, RequestUri = requestUri_s, RuleSetType = ruleSetType_s, Message_Details = details_message_s, Data_Details = details_data_s, File_Details = details_file_s, Hostname = hostname_s\r\n| project TrackingID, TimeGenerated, Rule, ClientIP, RuleGroup, InstandUri, RequestUri, RuleSetType, Action, Message_Details, File_Details, Data_Details, Hostname, Category",
+                    "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string,ruleName_s:string,clientIp_s:string,clientIP_s:string,action_s:string,transactionId_s:string,site_s:string,details_message_sRole:string,details_file_sRole:string,hostname_sRole:string,Role:string,trackingReference_s:string,ruleGroup_s:string,instanceId_s:string,ruleSetType_s:string,details_message_s:string,details_data_s:string,details_file_s:string,hostname_s:string, ruleId_s:string,ruleSetVersion_s:string, ResourceId:string) [\"\",\"\",\"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\",\"\", \"\", \"\", \"\", \"\",\"\",\"\",\"\",\"\",\"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = iff (isnull(strcat(transactionId_s, trackingReference_s)) or isempty(strcat(transactionId_s, trackingReference_s)) ,\"NA\", strcat(transactionId_s, trackingReference_s))\r\n//| extend TrackingID = strcat(transactionId_s, trackingReference_s)\r\n//| extend TrackingID = iff(isnull(TrackingID) or isempty(TrackingID),\"NA\", TrackingID)\r\n| where '{SelectedTrackingID}' == TrackingID or '{SelectedTrackingID}' == \"*\" \r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| extend RuleSet_V = strcat(ruleSetType_s, \" \", ruleSetVersion_s)\r\n| where Rule == Child or Child == \"*\"\r\n| extend RuleGroup = ruleGroup_s, InstandUri = instanceId_s, RequestUri = requestUri_s, RuleSetType = ruleSetType_s, Message_Details = details_message_s, Data_Details = details_data_s, File_Details = details_file_s, Hostname = hostname_s\r\n| project TrackingID, TimeGenerated, ruleId_s,Rule,RuleSet_V, ClientIP, RuleGroup, ResourceId, InstandUri, RequestUri, RuleSetType, Action, Message_Details, File_Details, Data_Details, Hostname, Category",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "TrackingID Messages",
-                    "noDataMessage": "You've over filtered or you're missing this data.",
+                    "title": " Rule for Tracking ID",
+                    "noDataMessage": "No data found –try to expand the detection time range to include more events",
                     "timeContextFromParameter": "detectionTime",
                     "showExportToExcel": true,
                     "queryType": 0,
@@ -1513,12 +1773,72 @@
                       "{Associations}"
                     ],
                     "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "InstandUri",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "RuleSetType",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "File_Details",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Data_Details",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Category",
+                          "formatter": 5
+                        }
+                      ],
                       "rowLimit": 50,
-                      "filter": true
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "TrackingID",
+                          "label": "Tracking Id"
+                        },
+                        {
+                          "columnId": "TimeGenerated",
+                          "label": "Time Generated"
+                        },
+                        {
+                          "columnId": "ruleId_s",
+                          "label": "Rule Id"
+                        },
+                        {
+                          "columnId": "RuleSet_V",
+                          "label": "Ruleset Version"
+                        },
+                        {
+                          "columnId": "ClientIP",
+                          "label": "Client IP"
+                        },
+                        {
+                          "columnId": "RuleGroup",
+                          "label": "Rule Group"
+                        },
+                        {
+                          "columnId": "ResourceId",
+                          "label": "AppGW"
+                        },
+                        {
+                          "columnId": "RequestUri",
+                          "label": "Request URI"
+                        },
+                        {
+                          "columnId": "Message_Details",
+                          "label": "Message Details"
+                        }
+                      ]
                     }
                   },
                   "customWidth": "80",
-                  "name": "query - 19"
+                  "name": "query - 13"
                 },
                 {
                   "type": 3,
@@ -1527,8 +1847,8 @@
                     "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string, ruleName_s:string, clientIp_s:string, clientIP_s:string, action_s:string, transactionId_s:string,trackingReference_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = strcat(transactionId_s, trackingReference_s)\r\n| where '{SelectedTrackingID}' == TrackingID or '{SelectedTrackingID}' == \"*\" \r\n| where Rule == Child or Child == \"*\"\r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\"\r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| summarize count() by ClientIP\r\n| top 10 by count_ desc",
                     "size": 0,
                     "showAnalytics": true,
-                    "title": "Top 10 Attacking IP Addresses, filter to single IP address",
-                    "noDataMessage": "Filtered messages are not attack events",
+                    "title": "Top 10 Attacking IPs (select to filter)",
+                    "noDataMessage": "No data found –try to expand the detection time range to include more events",
                     "timeContextFromParameter": "detectionTime",
                     "exportFieldName": "x",
                     "exportParameterName": "ClientIP",
@@ -1598,16 +1918,16 @@
                     }
                   },
                   "customWidth": "25",
-                  "name": "query - 20"
+                  "name": "query - 12"
                 },
                 {
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string,ruleName_s:string,clientIp_s:string,clientIP_s:string,action_s:string,transactionId_s:string,site_s:string,details_message_sRole:string,details_file_sRole:string,hostname_sRole:string,Role:string,trackingReference_s:string,ruleGroup_s:string,instanceId_s:string,ruleSetType_s:string,details_message_s:string,details_data_s:string,details_file_s:string,hostname_s:string,requestUri_s:string) [ \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\",\"\", \"\", \"\", \"\", \"\",\"\",\"\",\"\",\"\",\"\",\"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| where Rule == Child or Child == \"*\"\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = strcat(transactionId_s, trackingReference_s)\r\n| where '{SelectedTrackingID}' == TrackingID or '{SelectedTrackingID}' == \"*\" \r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| where ('{ClientIP}' == ClientIP or '{ClientIP}' == \"*\")\r\n| extend RuleGroup = ruleGroup_s, InstandUri = instanceId_s, RequestUri = requestUri_s, RuleSetType = ruleSetType_s, Message_Details = details_message_s, Data_Details = details_data_s, File_Details = details_file_s, Hostname = hostname_s\r\n| project TimeGenerated, Rule, ClientIP, RuleGroup, InstandUri, RequestUri, RuleSetType, Action, Message_Details, File_Details, Data_Details, Hostname, Category",
+                    "query": "let SelectedMS = dynamic({MessageFilter}); // reference to the above list of messages (Event trigger)\r\nlet Child = SelectedMS.Rule; // Used to choose a group of messages - redirects to the message which was grouped\r\nlet FakeData = (datatable (Message:string,ruleName_s:string,clientIp_s:string,clientIP_s:string,action_s:string,transactionId_s:string,site_s:string,details_message_sRole:string,details_file_sRole:string,hostname_sRole:string,Role:string,trackingReference_s:string,ruleGroup_s:string,instanceId_s:string,ruleSetType_s:string,details_message_s:string,details_data_s:string,details_file_s:string,hostname_s:string,requestUri_s:string,ruleId_s:string,ruleSetVersion_s:string,ResourceId:string) [\"\",\"\",\"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\",\"\", \"\", \"\", \"\", \"\",\"\",\"\",\"\",\"\",\"\",\"\" ]);\r\nFakeData | union AzureDiagnostics\r\n| where (OperationName == \"ApplicationGatewayFirewall\" and Message contains \"attack\") or Category == \"WebApplicationFirewallLogs\"\r\n| where '{RequestURI}' == requestUri_s or '{RequestURI}' == \"*\"\r\n| extend Rule = strcat(ruleName_s, Message), ClientIP = strcat(clientIp_s, clientIP_s)\r\n| where Rule == Child or Child == \"*\"\r\n| extend Action = iif(action_s == \"Blocked\", Action = \"Block\", action_s)\r\n| extend Action = iif(Action == \"Detected\", Action = \"Log\", Action)\r\n| extend TrackingID = strcat(transactionId_s, trackingReference_s)\r\n| where '{SelectedTrackingID}' == TrackingID or '{SelectedTrackingID}' == \"*\" \r\n| where '{SelectedAction}' == Action or '{SelectedAction}' == \"*\" \r\n| where '{Selected}' == Rule or '{Selected}' == \"*\"\r\n| extend RuleSet_V = strcat(ruleSetType_s, \" \", ruleSetVersion_s )\r\n| where ('{ClientIP}' == ClientIP or '{ClientIP}' == \"*\")\r\n| extend RuleGroup = ruleGroup_s, InstandUri = instanceId_s, RequestUri = requestUri_s, RuleSetType = ruleSetType_s, Message_Details = details_message_s, Data_Details = details_data_s, File_Details = details_file_s, Hostname = hostname_s\r\n| project TimeGenerated, ruleId_s, Rule,RuleSet_V, ClientIP, RuleGroup,ResourceId, InstandUri, RequestUri, RuleSetType, Action, Message_Details, File_Details, Data_Details, Hostname, Category",
                     "size": 0,
-                    "title": "Attack messages of IP address",
-                    "noDataMessage": "Filtered messages are not attack events",
+                    "title": " Attack Requests (from selected IP)",
+                    "noDataMessage": "No data found –try to expand the detection time range to include more events",
                     "timeContextFromParameter": "detectionTime",
                     "showExportToExcel": true,
                     "queryType": 0,
@@ -1617,12 +1937,68 @@
                     ],
                     "visualization": "table",
                     "gridSettings": {
-                      "filter": true
+                      "formatters": [
+                        {
+                          "columnMatch": "InstandUri",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "RuleSetType",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "File_Details",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Data_Details",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Category",
+                          "formatter": 5
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "TimeGenerated",
+                          "label": "Time Generated "
+                        },
+                        {
+                          "columnId": "ruleId_s",
+                          "label": "Rule Id"
+                        },
+                        {
+                          "columnId": "RuleSet_V",
+                          "label": "Ruleset Version"
+                        },
+                        {
+                          "columnId": "ClientIP",
+                          "label": "Client IP"
+                        },
+                        {
+                          "columnId": "RuleGroup",
+                          "label": "Rule Group"
+                        },
+                        {
+                          "columnId": "ResourceId",
+                          "label": "AppGW"
+                        },
+                        {
+                          "columnId": "RequestUri",
+                          "label": "Request URI"
+                        },
+                        {
+                          "columnId": "Message_Details",
+                          "label": "Message Details"
+                        }
+                      ]
                     }
                   },
                   "customWidth": "75",
                   "showPin": true,
-                  "name": "query - 21"
+                  "name": "query - 13"
                 }
               ]
             },
@@ -1640,14 +2016,6 @@
               "groupType": "editable",
               "items": [
                 {
-                  "type": 1,
-                  "content": {
-                    "json": "### Azure WAF Metrics\r\nThe data below dosen't read from the Log Analytics workpsace, it's reading directly from the resources which requires resource visibility. The following metrics have 'SplitBy' dimensions set that will not run properly when multiple resources are selected. \r\nClick [here for more information on Azure Metrics](https://docs.microsoft.com/en-us/azure/azure-monitor/platform/data-platform-metrics)",
-                    "style": "info"
-                  },
-                  "name": "WAF Metric Warning"
-                },
-                {
                   "type": 10,
                   "content": {
                     "chartId": "workbookc21108a5-6fd3-403e-aafd-d8b6eb53bae8",
@@ -1662,7 +2030,7 @@
                     ],
                     "timeContextFromParameter": "detectionTime",
                     "timeContext": {
-                      "durationMs": 2419200000
+                      "durationMs": 259200000
                     },
                     "metrics": [
                       {
@@ -1671,12 +2039,12 @@
                         "aggregation": 1
                       }
                     ],
-                    "title": "WAF Total Requests - Application Gateway",
+                    "title": "WAF Total Requests ",
                     "gridSettings": {
                       "rowLimit": 10000
                     }
                   },
-                  "name": "WAF Total Requests - Application Gateway"
+                  "name": "WAF Total Requests per association"
                 },
                 {
                   "type": 10,
@@ -1693,274 +2061,22 @@
                     ],
                     "timeContextFromParameter": "detectionTime",
                     "timeContext": {
-                      "durationMs": 2419200000
+                      "durationMs": 259200000
                     },
                     "metrics": [
                       {
                         "namespace": "microsoft.network/applicationgateways",
                         "metric": "microsoft.network/applicationgateways--AzwafSecRule",
-                        "aggregation": 1,
-                        "splitBy": [
-                          "RuleGroupID"
-                        ]
+                        "aggregation": 1
                       }
                     ],
-                    "title": "WAF Managed Rule Blocks by RuleGroup - Application Gateway",
-                    "filters": [
-                      {
-                        "id": "1",
-                        "key": "Action",
-                        "operator": 0,
-                        "values": [
-                          "Block"
-                        ]
-                      }
-                    ],
+                    "title": "WAF Total Managed Rule Matches by associations ",
                     "gridSettings": {
                       "rowLimit": 10000
                     }
                   },
-                  "customWidth": "50",
-                  "name": "WAF Managed Rule Matches - RuleGroup - Block - Application Gateway"
-                },
-                {
-                  "type": 10,
-                  "content": {
-                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
-                    "version": "MetricsItem/2.0",
-                    "size": 0,
-                    "chartType": 2,
-                    "resourceType": "microsoft.network/applicationgateways",
-                    "metricScope": 0,
-                    "resourceParameter": "Associations",
-                    "resourceIds": [
-                      "{Associations}"
-                    ],
-                    "timeContextFromParameter": "detectionTime",
-                    "timeContext": {
-                      "durationMs": 2419200000
-                    },
-                    "metrics": [
-                      {
-                        "namespace": "microsoft.network/applicationgateways",
-                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
-                        "aggregation": 1,
-                        "splitBy": [
-                          "RuleGroupID"
-                        ]
-                      }
-                    ],
-                    "title": "WAF Managed Rule Allows by RuleGroup - Application Gateway",
-                    "filters": [
-                      {
-                        "id": "1",
-                        "key": "Action",
-                        "operator": 0,
-                        "values": [
-                          "Pass"
-                        ]
-                      }
-                    ],
-                    "gridSettings": {
-                      "rowLimit": 10000
-                    }
-                  },
-                  "customWidth": "50",
-                  "name": "WAF Managed Rule Matches - RuleGroup - Allow - Application Gateway"
-                },
-                {
-                  "type": 10,
-                  "content": {
-                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
-                    "version": "MetricsItem/2.0",
-                    "size": 0,
-                    "chartType": 2,
-                    "resourceType": "microsoft.network/applicationgateways",
-                    "metricScope": 0,
-                    "resourceParameter": "Associations",
-                    "resourceIds": [
-                      "{Associations}"
-                    ],
-                    "timeContextFromParameter": "detectionTime",
-                    "timeContext": {
-                      "durationMs": 2419200000
-                    },
-                    "metrics": [
-                      {
-                        "namespace": "microsoft.network/applicationgateways",
-                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
-                        "aggregation": 1,
-                        "splitBy": [
-                          "RuleID"
-                        ]
-                      }
-                    ],
-                    "title": "WAF Managed Rule Blocks by RuleId - Application Gateway",
-                    "filters": [
-                      {
-                        "id": "1",
-                        "key": "Action",
-                        "operator": 0,
-                        "values": [
-                          "Block"
-                        ]
-                      }
-                    ],
-                    "gridSettings": {
-                      "rowLimit": 10000
-                    }
-                  },
-                  "customWidth": "50",
-                  "name": "WAF Managed Rule Matches - RuleId - Block - Application Gateway"
-                },
-                {
-                  "type": 10,
-                  "content": {
-                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
-                    "version": "MetricsItem/2.0",
-                    "size": 0,
-                    "chartType": 2,
-                    "resourceType": "microsoft.network/applicationgateways",
-                    "metricScope": 0,
-                    "resourceParameter": "Associations",
-                    "resourceIds": [
-                      "{Associations}"
-                    ],
-                    "timeContextFromParameter": "detectionTime",
-                    "timeContext": {
-                      "durationMs": 2419200000
-                    },
-                    "metrics": [
-                      {
-                        "namespace": "microsoft.network/applicationgateways",
-                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
-                        "aggregation": 1,
-                        "splitBy": [
-                          "RuleID"
-                        ]
-                      }
-                    ],
-                    "title": "WAF Managed Rule Allows by RuleId - Application Gateway",
-                    "filters": [
-                      {
-                        "id": "1",
-                        "key": "Action",
-                        "operator": 0,
-                        "values": [
-                          "Pass"
-                        ]
-                      }
-                    ],
-                    "gridSettings": {
-                      "rowLimit": 10000
-                    }
-                  },
-                  "customWidth": "50",
-                  "name": "WAF Managed Rule Matches - RuleId - Allow - Application Gateway"
-                },
-                {
-                  "type": 10,
-                  "content": {
-                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
-                    "version": "MetricsItem/2.0",
-                    "size": 0,
-                    "chartType": 2,
-                    "resourceType": "microsoft.network/applicationgateways",
-                    "metricScope": 0,
-                    "resourceParameter": "Associations",
-                    "resourceIds": [
-                      "{Associations}"
-                    ],
-                    "timeContextFromParameter": "detectionTime",
-                    "timeContext": {
-                      "durationMs": 2419200000
-                    },
-                    "metrics": [
-                      {
-                        "namespace": "microsoft.network/applicationgateways",
-                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
-                        "aggregation": 1,
-                        "splitBy": [
-                          "CountryCode"
-                        ]
-                      }
-                    ],
-                    "title": "WAF Managed Rule Blocks by GeoLocation - Application Gateway",
-                    "mapSettings": {
-                      "locInfo": "AzureResource",
-                      "sizeSettings": "US/WAF Managed Rule Matches",
-                      "sizeAggregation": "Sum",
-                      "legendMetric": "US/WAF Managed Rule Matches",
-                      "legendAggregation": "Sum",
-                      "itemColorSettings": {
-                        "type": "heatmap",
-                        "colorAggregation": "Sum",
-                        "nodeColorField": "US/WAF Managed Rule Matches",
-                        "heatmapPalette": "greenRed"
-                      },
-                      "locInfoColumn": "Name"
-                    },
-                    "filters": [
-                      {
-                        "id": "1",
-                        "key": "Action",
-                        "operator": 0,
-                        "values": [
-                          "Block"
-                        ]
-                      }
-                    ],
-                    "gridSettings": {
-                      "rowLimit": 10000
-                    }
-                  },
-                  "customWidth": "50",
-                  "name": "WAF Managed Rule Matches - GeoLocation - Block - Application Gateway"
-                },
-                {
-                  "type": 10,
-                  "content": {
-                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
-                    "version": "MetricsItem/2.0",
-                    "size": 0,
-                    "chartType": 2,
-                    "resourceType": "microsoft.network/applicationgateways",
-                    "metricScope": 0,
-                    "resourceParameter": "Associations",
-                    "resourceIds": [
-                      "{Associations}"
-                    ],
-                    "timeContextFromParameter": "detectionTime",
-                    "timeContext": {
-                      "durationMs": 2419200000
-                    },
-                    "metrics": [
-                      {
-                        "namespace": "microsoft.network/applicationgateways",
-                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
-                        "aggregation": 1,
-                        "splitBy": [
-                          "CountryCode"
-                        ]
-                      }
-                    ],
-                    "title": "WAF Managed Rule Allows by GeoLocation - Application Gateway",
-                    "filters": [
-                      {
-                        "id": "1",
-                        "key": "Action",
-                        "operator": 0,
-                        "values": [
-                          "Pass"
-                        ]
-                      }
-                    ],
-                    "gridSettings": {
-                      "rowLimit": 10000
-                    }
-                  },
-                  "customWidth": "50",
-                  "name": "WAF Managed Rule Matches - GeoLocation - Allow - Application Gateway"
+                  "customWidth": "100",
+                  "name": "WAF Total Managed Rule Matches by associations "
                 },
                 {
                   "type": 10,
@@ -1982,24 +2098,280 @@
                     "metrics": [
                       {
                         "namespace": "microsoft.network/applicationgateways",
-                        "metric": "microsoft.network/applicationgateways--AzwafCustomRule",
+                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
                         "aggregation": 1,
                         "splitBy": null
                       }
                     ],
-                    "title": "WAF Custom Rules Matches by RuleName - ApplicationGateway",
+                    "title": "WAF Managed Rule Matches by associations - Block ",
                     "filters": [
                       {
                         "id": "1",
                         "key": "Action",
                         "operator": 0,
                         "values": [
-                          "Block",
-                          "Pass",
-                          "JSChallenge"
+                          "Block"
                         ]
                       }
                     ],
+                    "gridSettings": {
+                      "rowLimit": 10000
+                    }
+                  },
+                  "customWidth": "50",
+                  "name": "WAF Managed Rule Matches - RuleGroup - Block"
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
+                    "version": "MetricsItem/2.0",
+                    "size": 0,
+                    "chartType": 2,
+                    "resourceType": "microsoft.network/applicationgateways",
+                    "metricScope": 0,
+                    "resourceParameter": "Associations",
+                    "resourceIds": [
+                      "{Associations}"
+                    ],
+                    "timeContextFromParameter": "detectionTime",
+                    "timeContext": {
+                      "durationMs": 0
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.network/applicationgateways",
+                        "metric": "microsoft.network/applicationgateways--AzwafSecRule",
+                        "aggregation": 1,
+                        "splitBy": null
+                      }
+                    ],
+                    "title": "WAF  Managed Rule Matches by associations - Allow ",
+                    "filters": [
+                      {
+                        "id": "1",
+                        "key": "Action",
+                        "operator": 0,
+                        "values": [
+                          "Pass"
+                        ]
+                      }
+                    ],
+                    "gridSettings": {
+                      "rowLimit": 10000
+                    }
+                  },
+                  "customWidth": "50",
+                  "name": "WAF Managed Rule Matches - RuleId - allow "
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
+                    "version": "MetricsItem/2.0",
+                    "size": 0,
+                    "chartType": 2,
+                    "resourceType": "microsoft.network/applicationgateways",
+                    "metricScope": 0,
+                    "resourceParameter": "Associations",
+                    "resourceIds": [
+                      "{Associations}"
+                    ],
+                    "timeContextFromParameter": "detectionTime",
+                    "timeContext": {
+                      "durationMs": 259200000
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.network/applicationgateways",
+                        "metric": "microsoft.network/applicationgateways--AzWAFJSChallengeRequestCount",
+                        "aggregation": 1
+                      }
+                    ],
+                    "title": "WAF Total JS Challenge Request Count by Association",
+                    "gridSettings": {
+                      "rowLimit": 10000
+                    }
+                  },
+                  "customWidth": "100",
+                  "name": "WAF Managed Rule Matches - RuleId - Allow - Application Gateway"
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
+                    "version": "MetricsItem/2.0",
+                    "size": 0,
+                    "chartType": 2,
+                    "resourceType": "microsoft.network/applicationgateways",
+                    "metricScope": 0,
+                    "resourceParameter": "Associations",
+                    "resourceIds": [
+                      "{Associations}"
+                    ],
+                    "timeContextFromParameter": "detectionTime",
+                    "timeContext": {
+                      "durationMs": 259200000
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.network/applicationgateways",
+                        "metric": "microsoft.network/applicationgateways--AzWAFJSChallengeRequestCount",
+                        "aggregation": 1
+                      }
+                    ],
+                    "title": "WAF JS Challenge Request Count by Association - Block",
+                    "mapSettings": {
+                      "locInfo": "AzureResource",
+                      "sizeSettings": "US/WAF Managed Rule Matches",
+                      "sizeAggregation": "Sum",
+                      "legendMetric": "US/WAF Managed Rule Matches",
+                      "legendAggregation": "Sum",
+                      "itemColorSettings": {
+                        "type": "heatmap",
+                        "colorAggregation": "Sum",
+                        "nodeColorField": "US/WAF Managed Rule Matches",
+                        "heatmapPalette": "greenRed"
+                      },
+                      "locInfoColumn": "Name"
+                    },
+                    "graphSettings": {
+                      "type": 0,
+                      "topContent": {
+                        "columnMatch": "Subscription",
+                        "formatter": 1
+                      },
+                      "centerContent": {
+                        "columnMatch": "microsoft.network/applicationgateways--AzwafSecRule",
+                        "formatter": 1,
+                        "numberFormat": {
+                          "unit": 17,
+                          "options": {
+                            "maximumSignificantDigits": 3,
+                            "maximumFractionDigits": 2
+                          }
+                        }
+                      }
+                    },
+                    "filters": [
+                      {
+                        "id": "1",
+                        "key": "Action",
+                        "operator": 0,
+                        "values": [
+                          "Block"
+                        ]
+                      }
+                    ],
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "Subscription",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Name",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource"
+                          }
+                        },
+                        {
+                          "columnMatch": "microsoft.network/applicationgateways--AzwafSecRule Timeline",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "microsoft.network/applicationgateways--AzwafSecRule",
+                          "formatter": 1,
+                          "numberFormat": {
+                            "unit": 0,
+                            "options": null
+                          }
+                        }
+                      ],
+                      "rowLimit": 10000,
+                      "labelSettings": [
+                        {
+                          "columnId": "microsoft.network/applicationgateways--AzwafSecRule",
+                          "label": "WAF Managed Rule Matches (Sum)"
+                        },
+                        {
+                          "columnId": "microsoft.network/applicationgateways--AzwafSecRule Timeline",
+                          "label": "WAF Managed Rule Matches Timeline"
+                        }
+                      ]
+                    }
+                  },
+                  "customWidth": "50",
+                  "name": "WAF Total JS Challenge Request Count by Association - Block"
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
+                    "version": "MetricsItem/2.0",
+                    "size": 0,
+                    "chartType": 2,
+                    "resourceType": "microsoft.network/applicationgateways",
+                    "metricScope": 0,
+                    "resourceParameter": "Associations",
+                    "resourceIds": [
+                      "{Associations}"
+                    ],
+                    "timeContextFromParameter": "detectionTime",
+                    "timeContext": {
+                      "durationMs": 259200000
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.network/applicationgateways",
+                        "metric": "microsoft.network/applicationgateways--AzWAFJSChallengeRequestCount",
+                        "aggregation": 1
+                      }
+                    ],
+                    "title": "WAF JS Challenge Request Count by Association - Allow",
+                    "filters": [
+                      {
+                        "id": "1",
+                        "key": "Action",
+                        "operator": 0,
+                        "values": [
+                          "Pass"
+                        ]
+                      }
+                    ],
+                    "gridSettings": {
+                      "rowLimit": 10000
+                    }
+                  },
+                  "customWidth": "50",
+                  "name": "WAF Managed Rule Matches - GeoLocation - Allow"
+                },
+                {
+                  "type": 10,
+                  "content": {
+                    "chartId": "workbook52eb8d72-7af5-4c4f-8e72-434507e3a051",
+                    "version": "MetricsItem/2.0",
+                    "size": 0,
+                    "chartType": 2,
+                    "resourceType": "microsoft.network/applicationgateways",
+                    "metricScope": 0,
+                    "resourceParameter": "Associations",
+                    "resourceIds": [
+                      "{Associations}"
+                    ],
+                    "timeContextFromParameter": "detectionTime",
+                    "timeContext": {
+                      "durationMs": 259200000
+                    },
+                    "metrics": [
+                      {
+                        "namespace": "microsoft.network/applicationgateways",
+                        "metric": "microsoft.network/applicationgateways--AzwafCustomRule",
+                        "aggregation": 1
+                      }
+                    ],
+                    "title": "WAF Custom Rules total Matches by Association",
                     "gridSettings": {
                       "rowLimit": 10000
                     }
@@ -2027,5 +2399,6 @@
       "name": "Monitor Page"
     }
   ],
+
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
 }
