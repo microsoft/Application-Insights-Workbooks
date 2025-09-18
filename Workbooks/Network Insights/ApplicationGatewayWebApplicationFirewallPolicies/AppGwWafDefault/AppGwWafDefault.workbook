@@ -55,7 +55,7 @@
             "type": 4,
             "isRequired": true,
             "value": {
-              "durationMs": 2592000000
+              "durationMs": 604800000
             },
             "typeSettings": {
               "selectableValues": [
@@ -757,6 +757,11 @@
                         "fieldName": "ruleSetVersion_s",
                         "parameterName": "RuleSetVersion",
                         "parameterType": 1
+                      },
+                      {
+                        "fieldName": "action_s",
+                        "parameterName": "selectedAction",
+                        "parameterType": 1
                       }
                     ],
                     "queryType": 0,
@@ -771,14 +776,6 @@
                           "formatter": 8,
                           "formatOptions": {
                             "palette": "greenRed"
-                          }
-                        },
-                        {
-                          "columnMatch": "Url",
-                          "formatter": 5,
-                          "formatOptions": {
-                            "linkTarget": "Url",
-                            "linkLabel": "Go to Core Rule Set Project GitHub for this rule"
                           }
                         },
                         {
@@ -805,23 +802,31 @@
                           "formatter": 5
                         },
                         {
+                          "columnMatch": "TimeGenerated",
+                          "formatter": 5
+                        },
+                        {
+                          "columnMatch": "Url",
+                          "formatter": 5,
+                          "formatOptions": {
+                            "linkTarget": "Url",
+                            "linkLabel": "Go to Core Rule Set Project GitHub for this rule"
+                          }
+                        },
+                        {
                           "columnMatch": "normalizedRuleSetVersion",
                           "formatter": 5
                         },
                         {
                           "columnMatch": "normalizedDetailsFile",
                           "formatter": 5
-                        },
-                        {
-                          "columnMatch": "TimeGenerated",
-                          "formatter": 5
                         }
                       ],
                       "filter": true,
                       "sortBy": [
                         {
-                          "itemKey": "action_s",
-                          "sortOrder": 2
+                          "itemKey": "ruleId_s",
+                          "sortOrder": 1
                         }
                       ],
                       "labelSettings": [
@@ -857,8 +862,8 @@
                     },
                     "sortBy": [
                       {
-                        "itemKey": "action_s",
-                        "sortOrder": 2
+                        "itemKey": "ruleId_s",
+                        "sortOrder": 1
                       }
                     ]
                   },
@@ -869,7 +874,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}' and ruleSetVersion_s == '{RuleSetVersion}'\r\n| where TimeGenerated {detectionTime}\r\n\r\n// at this point hostname_s can still contain both hostname and port; for example: www.myhost.com:80 -> we need to split this up to match on just the host later\r\n| extend splittedhost = split(hostname_s, ':')\r\n| extend hostname_s_noport = iif(isnull(splittedhost[0]) or isempty(splittedhost[0]), \"NA\", tostring(splittedhost[0])) //override hostname_s to just contain host; drop the port section\r\n| extend port =  tostring(splittedhost[1])\r\n| summarize total=count(),listports=make_set(port) by hostname_s_noport, ruleId_s\r\n| extend hostname_s_noport = iif(isempty(hostname_s_noport),\"NA\", hostname_s_noport)\r\n| project  hostname_s_noport, total\r\n| order by total desc\r\n",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}' and ruleSetVersion_s == '{RuleSetVersion}'\r\n| where TimeGenerated {detectionTime}\r\n|where action_s == '{selectedAction}'\r\n// at this point hostname_s can still contain both hostname and port; for example: www.myhost.com:80 -> we need to split this up to match on just the host later\r\n| extend splittedhost = split(hostname_s, ':')\r\n| extend hostname_s_noport = iif(isnull(splittedhost[0]) or isempty(splittedhost[0]), \"NA\", tostring(splittedhost[0])) //override hostname_s to just contain host; drop the port section\r\n| extend port =  tostring(splittedhost[1])\r\n| summarize total=count(),listports=make_set(port) by hostname_s_noport, ruleId_s\r\n| extend hostname_s_noport = iif(isempty(hostname_s_noport),\"NA\", hostname_s_noport)\r\n| project  hostname_s_noport, total\r\n| order by total desc\r\n",
                     "size": 0,
                     "title": "Impacted Hosts ",
                     "noDataMessage": "The query returned no results. Please select a Rule from the table above.",
@@ -915,7 +920,7 @@
                   "type": 3,
                   "content": {
                     "version": "KqlItem/1.0",
-                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}'\r\n|extend hostname_s = iif(isnull(hostname_s) or isempty(hostname_s), \"NA\", tostring(hostname_s))\r\n| where hostname_s contains '{HostNameNoPort}'\r\n| project-reorder hostname_s, transactionId_g\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where TimeGenerated {detectionTime}) on transactionId_g\r\n| extend access_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayAccessLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n| extend firewall_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayFirewallLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n| project host_s1, requestUri_s1, httpMethod_s1,  originalRequestUriWithArgs_s1 , transactionId_g, access_log, firewall_log\r\n| order by host_s1, requestUri_s1, httpMethod_s1, originalRequestUriWithArgs_s1, transactionId_g\r\n| extend id = new_guid()",
+                    "query": "let Policy_list = dynamic ([{PolicyScope}]);\r\nlet Resource_list = dynamic ([{ResourceId}]);\r\nAzureDiagnostics\r\n| where Category == \"ApplicationGatewayFirewallLog\"\r\n| where TimeGenerated {detectionTime}\r\n|where action_s == '{selectedAction}'\r\n|where ResourceId in (Resource_list) and policyScopeName_s in (Policy_list) and ruleId_s == '{RuleId}'\r\n|extend hostname_s = iif(isnull(hostname_s) or isempty(hostname_s), \"NA\", tostring(hostname_s))\r\n| where hostname_s contains '{HostNameNoPort}'\r\n| project-reorder hostname_s, transactionId_g\r\n| join kind=inner (AzureDiagnostics | where Category == \"ApplicationGatewayAccessLog\" | where TimeGenerated {detectionTime}) on transactionId_g\r\n| extend access_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayAccessLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n| extend firewall_log = strcat(\"AzureDiagnostics | where Category == \\\"ApplicationGatewayFirewallLog\\\" | where TimeGenerated {detectionTime} | where transactionId_g == \\\"\", transactionId_g, \"\\\"\")\r\n| project host_s1, requestUri_s1, httpMethod_s1,  originalRequestUriWithArgs_s1 , transactionId_g, access_log, firewall_log\r\n| order by host_s1, requestUri_s1, httpMethod_s1, originalRequestUriWithArgs_s1, transactionId_g\r\n| extend id = new_guid()",
                     "size": 0,
                     "showAnalytics": true,
                     "title": "Rule-Impacted URLs for Selected Host ",
