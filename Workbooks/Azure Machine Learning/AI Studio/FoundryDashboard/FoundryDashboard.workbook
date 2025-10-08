@@ -124,7 +124,7 @@
               "multiSelect": true,
               "quote": "'",
               "delimiter": ",",
-              "query": "dependencies\r\n| where isnotnull(customDimensions[\"gen_ai.system\"]) and isnotempty(customDimensions[\"gen_ai.response.model\"])\r\n| project response_model = customDimensions[\"gen_ai.response.model\"]\r\n| distinct tostring(response_model)",
+              "query": "let get_model = (customDimensions: dynamic) {  iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\ndependencies\r\n| where isnotnull(customDimensions[\"gen_ai.system\"])\r\n| extend model = get_model(customDimensions)\r\n| where model != \"\"\r\n| distinct tostring(model)",
               "crossComponentResources": [
                 "{ApplicationInsights}"
               ],
@@ -142,8 +142,7 @@
               "timeContextFromParameter": "TimeRange",
               "defaultValue": "value::all",
               "queryType": 0,
-              "resourceType": "microsoft.insights/components",
-              "key": "e7d3b1f7-46be-42a0-a230-bd956710205f"
+              "resourceType": "microsoft.insights/components"
             },
             {
               "id": "8d86fb4d-756c-4cd4-afdb-7ce2f8481600",
@@ -176,7 +175,9 @@
               "key": "8d86fb4d-756c-4cd4-afdb-7ce2f8481600"
             }
           ],
-          "style": "pills"
+          "style": "pills",
+          "queryType": 0,
+          "resourceType": "microsoft.insights/components"
         },
         "name": "parameters",
         "id": "3d2881a4-b8e6-4cad-9da4-76f80cdd4687",
@@ -200,6 +201,7 @@
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "w": 24,
           "h": 1,
           "x": 0,
@@ -213,9 +215,9 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\"\r\n  and customDimensions[\"gen_ai.response.model\"] in ({Model})\r\n  and cloud_RoleName in ({Application})\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    total_tokens = sum(\r\n        toint(customDimensions[\"gen_ai.usage.input_tokens\"]) + \r\n        toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n    )\r\n  by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| summarize \r\n    initial_total_tokens = todouble(arg_min(timestamp, total_tokens).[1]), \r\n    final_total_tokens = todouble(arg_max(timestamp, total_tokens).[1]),\r\n    total_tokens = sum(total_tokens)\r\n| extend overall_percentage_change = round(\r\n    (final_total_tokens - initial_total_tokens) / initial_total_tokens * 100\r\n)\r\n| project metric = \"Total tokens\", total_tokens, overall_percentage_change",
+          "query": "let application = dynamic([{Application}]); let model = dynamic([{Model}]); let start_time = {TimeRange:start}; let end_time = {TimeRange:end}; let period = end_time - start_time;\r\nlet get_model = (customDimensions: dynamic) {\r\n    iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"])\r\n};\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    customDimensions[\"gen_ai.system\"] != \"\" \r\n    and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\", \"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true \r\n    and (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model))\r\n    and ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet change_percent = (final: double, initial: double) {\r\n    // handle nulls and division-by-zero: return 0 if both zero/null, +inf if initial==0 and final>0\r\n    iff(isnull(initial) or initial == 0, iff(isnull(final) or final == 0, real(0), real(+inf)), (final - initial) / initial * 100)\r\n};\r\n// Base dataset\r\nlet base_data = dependencies\r\n    | where timestamp between (start_time .. end_time)\r\n    | where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n        (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n        ),\r\n        (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n        );\r\n// Get final_total_tokens using make-series\r\nlet make_series_result = deduped_data\r\n    | extend\r\n        input_tokens = todouble(customDimensions[\"gen_ai.usage.input_tokens\"]),\r\n        output_tokens = todouble(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n    | make-series total_tokens = sum(coalesce(input_tokens, 0.0) + coalesce(output_tokens, 0.0))\r\n        on timestamp\r\n        from (start_time - period) to end_time step period\r\n    | extend\r\n        final_total_tokens = iff(isnull(total_tokens), 0.0, iff(array_length(total_tokens) >= 2, todouble(coalesce(total_tokens[1], 0.0)), iff(array_length(total_tokens) == 1, todouble(array_sum(total_tokens)), 0.0))),\r\n        metric = \"Total tokens\"\r\n    | project metric, final_total_tokens;\r\n// Get overall_percentage_change using bin/summarize\r\nlet bin_result = deduped_data\r\n    | extend\r\n        input_tokens = todouble(customDimensions[\"gen_ai.usage.input_tokens\"]),\r\n        output_tokens = todouble(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n    | summarize total_tokens = sum(coalesce(input_tokens, 0.0) + coalesce(output_tokens, 0.0)) by bin(timestamp, period)\r\n    | order by timestamp asc\r\n    | extend metric = \"Total tokens\"\r\n    | summarize initial_total_tokens = min(total_tokens), final_total_tokens_bin = max(total_tokens) by metric\r\n    | extend overall_percentage_change = change_percent(final_total_tokens_bin, initial_total_tokens)\r\n    | project metric, overall_percentage_change;\r\nmake_series_result\r\n| join kind=inner bin_result on metric\r\n| project metric, final_total_tokens, overall_percentage_change",
           "size": 4,
-          "timeContextFromParameter": "TimeRange",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -224,13 +226,14 @@
           "visualization": "tiles",
           "sortBy": [],
           "showViewButton": false,
+          "showAnalytics": true,
           "tileSettings": {
             "titleContent": {
               "columnMatch": "metric",
               "formatter": 1
             },
             "leftContent": {
-              "columnMatch": "total_tokens",
+              "columnMatch": "final_total_tokens",
               "formatter": 12,
               "formatOptions": {
                 "palette": "none"
@@ -239,7 +242,7 @@
                 "unit": 17,
                 "options": {
                   "style": "decimal",
-                  "maximumFractionDigits": 0
+                  "maximumFractionDigits": 1
                 }
               }
             },
@@ -257,19 +260,19 @@
                     "operator": ">",
                     "thresholdValue": "0",
                     "representation": "green",
-                    "text": "{0}{1} increase over {TimeRange:label}"
+                    "text": "{0}{1} increase over time range"
                   },
                   {
                     "operator": "<",
                     "thresholdValue": "0",
                     "representation": "red",
-                    "text": "{0}{1} decrease over {TimeRange:label}"
+                    "text": "{0}{1} decrease over time range"
                   },
                   {
                     "operator": "Default",
                     "thresholdValue": null,
                     "representation": "gray",
-                    "text": "No change over {TimeRange:label}"
+                    "text": "No change"
                   }
                 ],
                 "showAsTag": true
@@ -295,6 +298,7 @@
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "x": 0,
           "y": 3,
           "w": 6,
@@ -307,9 +311,9 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\"\r\n  and customDimensions[\"gen_ai.response.model\"] in ({Model})\r\n  and cloud_RoleName in ({Application})\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    avg_duration = avg(duration) \r\n by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| summarize \r\n    initial_avg_duration = todouble(arg_min(timestamp, avg_duration).[1]), \r\n    final_avg_duration = todouble(arg_max(timestamp, avg_duration).[1]),\r\n    avg_duration= round(avg(avg_duration))\r\n| extend overall_percentage_change = round(\r\n    (initial_avg_duration - final_avg_duration) / initial_avg_duration * 100)\r\n| project metric = \"Avg. Duration\", avg_duration, overall_percentage_change",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);let start_time = {TimeRange:start}; let end_time = {TimeRange:end}; let period = end_time - start_time;\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet change_percent = (final: double, initial: double) { iff(initial == 0, iff(final == 0, real(0), real(+inf)), (final - initial) / initial * 100) };\r\n// Base dataset\r\nlet base_data = dependencies\r\n| where timestamp between ((start_time - period) .. end_time)\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n    ),\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n    );\r\ndeduped_data\r\n| where timestamp between ((start_time - period) .. end_time) // need two periods to compare \r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| where success == true // duration of unsuccessful calls is not representative\r\n| make-series kind=nonempty avg_duration = avg(duration) on timestamp from (start_time - period) to end_time step period\r\n| project final_duration = todouble(avg_duration[1]), initial_duration = todouble(avg_duration[0])\r\n| project metric = \"Average inference call duration\", final_duration, overall_percentage_change = change_percent(final_duration, initial_duration)\r\n",
           "size": 4,
-          "timeContextFromParameter": "TimeRange",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -317,28 +321,25 @@
           ],
           "visualization": "tiles",
           "showViewButton": false,
+          "showAnalytics": true,
           "tileSettings": {
             "titleContent": {
               "columnMatch": "metric",
               "formatter": 1
             },
             "leftContent": {
-              "columnMatch": "avg_duration",
+              "columnMatch": "final_duration",
               "formatter": 12,
               "formatOptions": {
                 "palette": "none"
               },
               "numberFormat": {
-                "unit": 22,
+                "unit": 23,
                 "options": {
                   "style": "decimal",
-                  "maximumFractionDigits": 2
+                  "maximumFractionDigits": 1
                 }
               }
-            },
-            "rightContent": {
-              "columnMatch": "completion_tokens",
-              "formatter": 1
             },
             "secondaryContent": {
               "columnMatch": "overall_percentage_change",
@@ -349,20 +350,20 @@
                   {
                     "operator": ">",
                     "thresholdValue": "0",
-                    "representation": "green",
-                    "text": "{0}{1} increase over {TimeRange:label}"
+                    "representation": "red",
+                    "text": "{0}{1} increase over time range"
                   },
                   {
                     "operator": "<",
                     "thresholdValue": "0",
-                    "representation": "red",
-                    "text": "{0}{1} decrease over {TimeRange:label}"
+                    "representation": "green",
+                    "text": "{0}{1} decrease over time range"
                   },
                   {
                     "operator": "Default",
                     "thresholdValue": null,
                     "representation": "gray",
-                    "text": "No change over {TimeRange:label}"
+                    "text": "No change"
                   }
                 ],
                 "showAsTag": true
@@ -388,6 +389,7 @@
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "x": 6,
           "y": 3,
           "w": 6,
@@ -400,15 +402,16 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\"\r\n  and customDimensions[\"gen_ai.response.model\"] in ({Model})\r\n  and cloud_RoleName in ({Application})\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    total_requests = count() \r\n  by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| summarize \r\n    initial_total_requests = todouble(arg_min(timestamp, total_requests).[1]), \r\n    final_total_requests = todouble(arg_max(timestamp, total_requests).[1]),\r\n    total_requests = sum(total_requests)\r\n| extend overall_percentage_change = round(\r\n    (initial_total_requests - final_total_requests) / initial_total_requests * 100\r\n)\r\n| project metric = \"Total requests\", total_requests, overall_percentage_change\r\n",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);let start_time = {TimeRange:start}; let end_time = {TimeRange:end}; let period = end_time - start_time;\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet change_percent = (final: double, initial: double) { iff(initial == 0, iff(final == 0, real(0), real(+inf)), (final - initial) / initial * 100) };\r\n// Base dataset\r\nlet base_data = dependencies\r\n| where timestamp between ((start_time - period) .. end_time)\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n    ),\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n    );\r\ndeduped_data\r\n| where timestamp between ((start_time - period) .. end_time) // need two periods to compare \r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| make-series kind=nonempty total_inference_calls = count() on timestamp from (start_time - period) to end_time step period\r\n| project final_calls = toint(total_inference_calls[1]), initial_calls = toint(total_inference_calls[0])\r\n| project metric = \"Total inference calls\", final_calls, overall_percentage_change=change_percent(final_calls, initial_calls)",
           "size": 4,
-          "timeContextFromParameter": "TimeRange",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
             "{ApplicationInsights}"
           ],
           "showViewButton": false,
+          "showAnalytics": true,
           "visualization": "tiles",
           "tileSettings": {
             "titleContent": {
@@ -416,7 +419,7 @@
               "formatter": 1
             },
             "leftContent": {
-              "columnMatch": "total_requests",
+              "columnMatch": "final_calls",
               "formatter": 12,
               "formatOptions": {
                 "palette": "none"
@@ -442,19 +445,19 @@
                     "operator": ">",
                     "thresholdValue": "0",
                     "representation": "green",
-                    "text": "{0}{1} increase over {TimeRange:label}"
+                    "text": "{0}{1} increase over time range"
                   },
                   {
                     "operator": "<",
                     "thresholdValue": "0",
                     "representation": "red",
-                    "text": "{0}{1} decrease over {TimeRange:label}"
+                    "text": "{0}{1} decrease over time range"
                   },
                   {
                     "operator": "Default",
                     "thresholdValue": null,
                     "representation": "gray",
-                    "text": "No change over {TimeRange:label}"
+                    "text": "No change"
                   }
                 ],
                 "showAsTag": true
@@ -480,6 +483,7 @@
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "x": 12,
           "y": 3,
           "w": 6,
@@ -489,38 +493,19 @@
         "id": "b3d9a2a8-4dbf-40e2-afb3-b19e9f92565c"
       },
       {
-        "type": 1,
-        "name": "Evaluation metrics",
-        "content": {
-          "json": "",
-          "title": "Evaluation Metrics",
-          "showViewButton": false
-        },
-        "styleSettings": {
-          "showBorder": false,
-          "borderStyle": "light rounded",
-          "w": 24,
-          "h": 1,
-          "x": 0,
-          "y": 6,
-          "margin": "0",
-          "padding": "0"
-        },
-        "id": "f2cc1aed-fcde-4e39-b57c-86ba28e6767e"
-      },
-      {
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "exceptions\r\n| where cloud_RoleName in ({Application}) and timestamp {TimeRange} \r\n| summarize total_exception = count() by bin(timestamp, 1d)\r\n| join kind=inner (\r\n    requests\r\n    | where cloud_RoleName in ({Application}) and timestamp {TimeRange} \r\n    | summarize total_requests = count() by bin(timestamp, 1d)\r\n) on timestamp\r\n| summarize \r\n    initial_total_exception = todouble(arg_min(timestamp, total_exception).[1]),\r\n    final_total_exception = todouble(arg_max(timestamp, total_exception).[1]),\r\n    initial_total_requests = todouble(arg_min(timestamp, total_requests).[1]),\r\n    final_total_requests = todouble(arg_max(timestamp, total_requests).[1]),\r\n    total_exception = sum(total_exception),\r\n    total_requests = sum(total_requests)\r\n| extend overall_percentage_change = round((final_total_exception - initial_total_exception) / initial_total_exception * 100)\r\n| extend overall_percentage_by_request = iff(total_requests == 0, 0.0, round((todouble(total_exception) / todouble(total_requests))*100))\r\n| project metric = \"Total exceptions (% req)\", total_exception,overall_percentage_by_request",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);let start_time = {TimeRange:start}; let end_time = {TimeRange:end}; let period = end_time - start_time;\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet change_percent = (final: double, initial: double) { iff(initial == 0, iff(final == 0, real(0), real(+inf)), (final - initial) / initial * 100) };\r\n// Base dataset\r\nlet base_data = dependencies\r\n| where timestamp between ((start_time - period) .. end_time)\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n    ),\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n    );\r\ndeduped_data\r\n| where timestamp between ((start_time - period) .. end_time) // need two periods to compare \r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| make-series kind=nonempty error_ratio = todouble(countif(success == False)) / count()  on timestamp from (start_time - period) to end_time step period\r\n| project final_ratio = todouble(error_ratio[1]), initial_ratio = todouble(error_ratio[0])\r\n| project metric = \"Error rate\", final_ratio, overall_percentage_change = change_percent(final_ratio, initial_ratio)",
           "size": 4,
-          "timeContextFromParameter": "TimeRange",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
             "{ApplicationInsights}"
           ],
           "showViewButton": false,
+          "showAnalytics": true,
           "visualization": "tiles",
           "tileSettings": {
             "titleContent": {
@@ -528,19 +513,16 @@
               "formatter": 1
             },
             "leftContent": {
-              "columnMatch": "total_exception",
+              "columnMatch": "final_ratio",
               "formatter": 12,
               "formatOptions": {
                 "palette": "none"
-              }
-            },
-            "rightContent": {
-              "columnMatch": "overall_percentage_by_request",
-              "formatter": 1,
+              },
               "numberFormat": {
-                "unit": 1,
+                "unit": 0,
                 "options": {
-                  "style": "decimal"
+                  "style": "percent",
+                  "maximumFractionDigits": 1
                 }
               }
             },
@@ -553,20 +535,20 @@
                   {
                     "operator": ">",
                     "thresholdValue": "0",
-                    "representation": "green",
-                    "text": "{0}{1} increase over {TimeRange:label}"
+                    "representation": "red",
+                    "text": "{0}{1} increase over time range"
                   },
                   {
                     "operator": "<",
                     "thresholdValue": "0",
-                    "representation": "red",
-                    "text": "{0}{1} decrease over {TimeRange:label}"
+                    "representation": "green",
+                    "text": "{0}{1} decrease over time range"
                   },
                   {
                     "operator": "Default",
                     "thresholdValue": null,
                     "representation": "gray",
-                    "text": "No change over {TimeRange:label}"
+                    "text": "No change"
                   }
                 ],
                 "showAsTag": true
@@ -588,10 +570,11 @@
           }
         },
         "customWidth": "25",
-        "name": "exceptions tile",
+        "name": "errors tile",
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "x": 18,
           "y": 3,
           "w": 6,
@@ -604,10 +587,11 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"])\r\n| summarize TotalScores = count(), ScoresInTotal = sum(score) by tostring(metric)\r\n| extend Percentage = round(todouble(ScoresInTotal) / (TotalScores * 5) * 100)\r\n| join kind=inner (\r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"]), timestamp\r\n| summarize TotalScores = count(), ScoresInTotal = sum(score) by tostring(metric), bin(timestamp,1d)\r\n| extend Percentage = round(todouble(ScoresInTotal) / (TotalScores * 5) * 100)\r\n| summarize \r\n    initial_metric_percentage = todouble(arg_min(timestamp, Percentage).[1]), \r\n    final_metric_exception = todouble(arg_max(timestamp, Percentage).[1])\r\n    by metric\r\n) on metric\r\n| extend PercentageChange = round(todouble(initial_metric_percentage - final_metric_exception))\r\n| project metric=strcat(toupper(substring(metric, 0, 1)), substring(metric, 1)),initial_metric_percentage,final_metric_exception, Percentage,PercentageChange",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);let start_time = {TimeRange:start}; let end_time = {TimeRange:end}; let period = end_time - start_time;\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and filter_model_and_app(customDimensions, app_name) == true\r\n};\r\nlet change_percent = (final: double, initial: double) { iff(initial == 0, iff(final == 0, real(0), real(+inf)), (final - initial) / initial * 100) };\r\nlet get_event_name = (customDimensions: dynamic, message: string) { iff(customDimensions[\"event.name\"] == \"\", message, customDimensions[\"event.name\"]) };\r\nlet get_evaluator_name = (customDimensions: dynamic, event_name: string) { iff(customDimensions[\"gen_ai.evaluator.name\"] == \"\", split(event_name, \".\")[2], tostring(customDimensions[\"gen_ai.evaluator.name\"])) };\r\nlet get_response_id = (customDimensions: dynamic) { \r\n    iff(\r\n    customDimensions[\"gen_ai.response.id\"] == \"\", \r\n    iff(customDimensions[\"gen_ai.thread.run.id\"] == \"\", \"\", strcat(tostring(customDimensions[\"gen_ai.thread.id\"]), \"/\", tostring(customDimensions[\"gen_ai.thread.run.id\"]))),\r\n    tostring(customDimensions[\"gen_ai.response.id\"])\r\n)\r\n}; \r\n// Deduplicate get_thread_run operations\r\nlet inference_calls =\r\n    union\r\n    (\r\n        dependencies\r\n        | where timestamp between ((start_time - period) .. end_time)\r\n        | where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n        | project response_id=get_response_id(customDimensions), model=tostring(get_model(customDimensions))\r\n    ),\r\n    (\r\n        dependencies\r\n        | where timestamp between ((start_time - period) .. end_time)\r\n        | where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n        | project response_id=get_response_id(customDimensions), model=tostring(get_model(customDimensions))\r\n    );\r\nlet evals = traces\r\n| where timestamp between ((start_time - period) .. end_time)\r\n| where filter_model_and_app(customDimensions, cloud_RoleName)\r\n| extend event_name = get_event_name(customDimensions, message)\r\n| where event_name startswith \"gen_ai.evaluation\"\r\n| extend evaluator_name = get_evaluator_name(customDimensions, event_name), score = todouble(customDimensions[\"gen_ai.evaluation.score\"]), response_id=get_response_id(customDimensions);\r\nevals \r\n| join kind=leftouter inference_calls on response_id\r\n| project response_id, model, score, evaluator_name, timestamp\r\n| summarize score=avg(score) by evaluator_name, bin (timestamp, {TimeRange:grain})\r\n| make-series score=avg(score) on timestamp from (start_time - period) to end_time step period by evaluator_name\r\n| extend final_score = todouble(score[1]), initial_score = todouble(score[0])\r\n| project final_score, initial_score, evaluator_name, overall_percentage_change = change_percent(final_score, initial_score)\r\n| order by evaluator_name\r\n",
           "size": 4,
-          "timeContextFromParameter": "TimeRange",
+          "noDataMessage": "The query returned no results. Note that you must instrument client application with distributed tracing to enable filtering by Application and Model. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "queryType": 0,
+          "showAnalytics": true,
           "showViewButton": false,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -616,28 +600,25 @@
           "visualization": "tiles",
           "tileSettings": {
             "titleContent": {
-              "columnMatch": "metric",
+              "columnMatch": "evaluator_name",
               "formatter": 1
             },
             "leftContent": {
-              "columnMatch": "Percentage",
+              "columnMatch": "final_score",
               "formatter": 12,
               "formatOptions": {
                 "palette": "none"
               },
               "numberFormat": {
-                "unit": 1,
+                "unit": 0,
                 "options": {
-                  "style": "decimal"
+                  "style": "decimal",
+                  "maximumFractionDigits": 1
                 }
               }
             },
-            "rightContent": {
-              "columnMatch": "completion_tokens",
-              "formatter": 1
-            },
             "secondaryContent": {
-              "columnMatch": "PercentageChange",
+              "columnMatch": "overall_percentage_change",
               "formatter": 18,
               "formatOptions": {
                 "thresholdsOptions": "colors",
@@ -646,19 +627,19 @@
                     "operator": ">",
                     "thresholdValue": "0",
                     "representation": "green",
-                    "text": "{0}{1} increase over {TimeRange:label}"
+                    "text": "{0}{1} increase over time range"
                   },
                   {
                     "operator": "<",
                     "thresholdValue": "0",
                     "representation": "red",
-                    "text": "{0}{1} decrease over {TimeRange:label}"
+                    "text": "{0}{1} decrease over time range"
                   },
                   {
                     "operator": "Default",
                     "thresholdValue": null,
                     "representation": "gray",
-                    "text": "No change over {TimeRange:label}"
+                    "text": "No change"
                   }
                 ],
                 "showAsTag": true
@@ -679,14 +660,15 @@
               "layout": "grid"
             }
           },
-          "title": ""
+          "title": "Evaluation Metrics ({$rowCount})"
         },
         "name": "evaluation metrics query tiles",
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "x": 0,
-          "y": 7,
+          "y": 6,
           "w": 24,
           "h": 3,
           "margin": "0",
@@ -696,19 +678,20 @@
       },
       {
         "type": 1,
-        "name": "Charts",
+        "name": "Trendlines",
         "content": {
           "json": "",
           "showViewButton": false,
-          "title": "Charts"
+          "title": "Trendlines"
         },
         "styleSettings": {
           "showBorder": false,
           "borderStyle": "light rounded",
+          "backgroundColor": "body",
           "w": 24,
           "h": 1,
           "x": 0,
-          "y": 11,
+          "y": 9,
           "margin": "0",
           "padding": "0"
         },
@@ -718,11 +701,13 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n  and ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application))\r\n  and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize \r\n    Prompt_Tokens = sum(toint(customDimensions[\"gen_ai.usage.input_tokens\"])),\r\n    Completion_Tokens = sum(toint(customDimensions[\"gen_ai.usage.output_tokens\"])),\r\n    Total_Tokens = sum(toint(customDimensions[\"gen_ai.usage.input_tokens\"]) + toint(customDimensions[\"gen_ai.usage.output_tokens\"]))\r\n    by bin(timestamp, 1d)\r\n| render linechart with (title=\"Token Usage Over Time\", ytitle=\"Token Count\", xtitle=\"Time\")",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\", \"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\n// Base dataset\r\nlet base_data = dependencies\r\n    | where timestamp {TimeRange}\r\n    | where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n        (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n        ),\r\n        (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n        );\r\ndeduped_data\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| summarize \r\n    Prompt_Tokens = sum(toint(customDimensions[\"gen_ai.usage.input_tokens\"])),\r\n    Completion_Tokens = sum(toint(customDimensions[\"gen_ai.usage.output_tokens\"])),\r\n    Total_Tokens = sum(toint(customDimensions[\"gen_ai.usage.input_tokens\"]) + toint(customDimensions[\"gen_ai.usage.output_tokens\"]))\r\n    by bin(timestamp, {TimeRange:grain})",
           "size": 0,
-          "title": "Token consumption(Input vs Output vs Total)",
-          "headingLevel": 4,
+          "showAnnotations": true,
+          "title": "Token usage",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -735,15 +720,15 @@
             "seriesLabelSettings": [
               {
                 "seriesName": "Prompt_Tokens",
-                "label": "Input Tokens"
+                "label": "Input"
               },
               {
                 "seriesName": "Completion_Tokens",
-                "label": "Output Tokens"
+                "label": "Output"
               },
               {
                 "seriesName": "Total_Tokens",
-                "label": "Total Tokens"
+                "label": "Total"
               }
             ],
             "showDataPoints": true,
@@ -754,18 +739,19 @@
               "label": "Time"
             },
             "ySettings": {
-              "label": "Token consumption"
+              "label": "Token usage"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
-        "name": "Token consumption(Input vs Output vs Total)",
         "id": "5dd92ecb-030a-496d-bd61-c8dedff06913",
         "styleSettings": {
           "showBorder": true,
           "borderStyle": "light rounded",
           "padding": "16px",
           "x": 0,
-          "y": 12,
+          "y": 10,
           "w": 24,
           "h": 6
         }
@@ -774,11 +760,13 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nrequests\r\n| where  ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  \r\n| summarize request_count = count() by success, bin (timestamp,1d)\r\n| project  request_count, success,timestamp  ",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\n// Base dataset\r\nlet base_data = dependencies\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n    ),\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n    );\r\ndeduped_data\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| summarize inference_calls_count = count() by success, bin (timestamp,{TimeRange:grain})\r\n| project  inference_calls_count, success,timestamp",
           "size": 1,
-          "title": "Total requests",
-          "headingLevel": 4,
+          "showAnnotations": true,
+          "title": "Total inference calls",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -791,12 +779,12 @@
             "seriesLabelSettings": [
               {
                 "seriesName": "True",
-                "label": "Sucessful",
+                "label": "Successful",
                 "color": "greenDark"
               },
               {
                 "seriesName": "False",
-                "label": "Exceptions",
+                "label": "Errors",
                 "color": "red"
               }
             ],
@@ -807,9 +795,11 @@
               "label": "Time"
             },
             "ySettings": {
-              "label": "Total requests"
+              "label": "Total inference calls"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
         "customWidth": "33.3",
         "name": "query - 1",
@@ -818,7 +808,7 @@
           "borderStyle": "light rounded",
           "padding": "16px",
           "x": 0,
-          "y": 18,
+          "y": 16,
           "w": 8,
           "h": 6
         },
@@ -828,13 +818,15 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nrequests\r\n| where success == \"True\" and ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize avg_duration=avg(duration), total_request=count()\r\n   by bin(timestamp, 1d)  // Adjust the time bin as needed (e.g., 1d for daily)\r\n| project duration=avg_duration, timestamp\r\n\r\n",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\n// Base dataset\r\nlet base_data = dependencies\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n    ),\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n    );\r\ndeduped_data\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| where success == true // duration of unsuccessful calls is not representative\r\n| summarize p95=percentile(duration, 95), p50=percentile(duration, 50) by bin(timestamp, {TimeRange:grain})\r\n| project p95, p50, timestamp",
           "size": 1,
           "aggregation": 3,
-          "title": "Duration (Time to last byte)",
-          "headingLevel": 4,
+          "showAnnotations": true,
+          "title": "Inference call duration",
           "color": "lightBlue",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -842,20 +834,6 @@
           ],
           "visualization": "linechart",
           "chartSettings": {
-            "yAxis": [
-              "duration"
-            ],
-            "showMetrics": false,
-            "seriesLabelSettings": [
-              {
-                "seriesName": "duration",
-                "color": "lightBlue"
-              }
-            ],
-            "showDataPoints": true,
-            "xSettings": {
-              "label": "Time"
-            },
             "ySettings": {
               "numberFormatSettings": {
                 "unit": 23,
@@ -865,9 +843,32 @@
                   "maximumFractionDigits": 0
                 }
               },
-              "label": "Time to last byte"
+              "label": "Inference call duration"
+            },
+            "showMetrics": false,
+            "showLegend": true,
+            "seriesLabelSettings": [
+              {
+                "seriesName": "p95",
+                "label": "P95",
+                "color": "greenDark"
+              },
+              {
+                "seriesName": "p50",
+                "label": "P50",
+                "color": "lightGreen"
+              }
+            ],
+            "simpleLegendSettings": {
+              "position": "bottom"
+            },
+            "showDataPoints": true,
+            "xSettings": {
+              "label": "Time"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
         "customWidth": "33.3",
         "name": "query - 2",
@@ -876,7 +877,7 @@
           "borderStyle": "light rounded",
           "padding": "16px",
           "x": 8,
-          "y": 18,
+          "y": 16,
           "w": 8,
           "h": 6
         },
@@ -886,11 +887,12 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nrequests\r\n| where  ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}  // Replace {TimeRange} with your specific time filter\r\n| summarize Count = count() by success",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);\r\nlet get_model = (customDimensions: dynamic) { iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n    // this filters out non-genai calls/non-inference calls like create_agent\r\n    customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n    is_inference_call(customDimensions) == true and \r\n    (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n    ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\n// Base dataset\r\nlet base_data = dependencies\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true;\r\n// Dedup only for get_thread_run\r\nlet deduped_data =\r\n    union\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n    ),\r\n    (\r\n        base_data\r\n        | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n        | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n    );\r\ndeduped_data\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| summarize request_count = count() by success",
           "size": 1,
-          "title": "Request status",
-          "headingLevel": 4,
+          "title": "Inference call status",
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -903,19 +905,21 @@
             "seriesLabelSettings": [
               {
                 "seriesName": "True",
-                "label": "Sucess",
+                "label": "Success",
                 "color": "greenDark"
               },
               {
                 "seriesName": "False",
-                "label": "Exception",
+                "label": "Error",
                 "color": "red"
               }
             ],
             "simpleLegendSettings": {
               "position": "bottom"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
         "customWidth": "33.3",
         "name": "query - 3",
@@ -924,7 +928,7 @@
           "borderStyle": "light rounded",
           "padding": "16px",
           "x": 16,
-          "y": 18,
+          "y": 16,
           "w": 8,
           "h": 6
         },
@@ -934,11 +938,12 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"]), timestamp\r\n| summarize totalscores = count(), scoresintotal = sum(score) by tostring(metric), bin(timestamp,1d) \r\n| extend percentage = round(todouble(scoresintotal) / (totalscores * 5) * 100)\r\n| project strcat(toupper(substring(metric, 0, 1)), substring(metric, 1)),percentage, timestamp\r\n",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);\r\nlet get_model = (customDimensions: dynamic) {  iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n   // this filters out non-genai calls/non-inference calls like create_agent\r\n  customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n  (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n  ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n  is_inference_call(customDimensions) == true and filter_model_and_app(customDimensions, app_name) == true\r\n};\r\nlet change_percent = (final: double, initial: double) {iff(initial == 0, iff(final == 0, real(0), real(+inf)), (final-initial) / initial * 100)};\r\nlet get_event_name = (customDimensions: dynamic, message: string) {  iff(customDimensions[\"event.name\"] == \"\", message, customDimensions[\"event.name\"]) };\r\nlet get_evaluator_name = (customDimensions: dynamic, event_name: string) { iff(customDimensions[\"gen_ai.evaluator.name\"] == \"\", split(event_name, \".\")[2], tostring(customDimensions[\"gen_ai.evaluator.name\"])) };\r\nlet get_response_id = (customDimensions: dynamic) { \r\n    iff(\r\n        customDimensions[\"gen_ai.response.id\"] == \"\", \r\n        iff(customDimensions[\"gen_ai.thread.run.id\"] == \"\", \"\", strcat(tostring(customDimensions[\"gen_ai.thread.id\"]), \"/\", tostring(customDimensions[\"gen_ai.thread.run.id\"]))),\r\n        tostring(customDimensions[\"gen_ai.response.id\"]))\r\n}; \r\nlet inference_calls = dependencies\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| project customDimensions, cloud_RoleName, timestamp, response_id=get_response_id(customDimensions), model=tostring(get_model(customDimensions));\r\n// Dedup only for get_thread_run\r\nlet deduped_inference_calls =\r\n  union\r\n  (\r\n    inference_calls\r\n    | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n  ),\r\n  (\r\n    inference_calls\r\n    | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n    | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n  )\r\n  | project response_id, model;\r\nlet evals = traces\r\n| where timestamp {TimeRange}\r\n| where filter_model_and_app(customDimensions, cloud_RoleName)\r\n| extend event_name = get_event_name(customDimensions, message)\r\n| where event_name startswith \"gen_ai.evaluation\"\r\n| extend evaluator_name = get_evaluator_name(customDimensions, event_name), score = todouble(customDimensions[\"gen_ai.evaluation.score\"]), response_id=get_response_id(customDimensions), evaluator_id=tostring(customDimensions[\"gen_ai.evaluator.id\"]);\r\nevals \r\n| join kind=leftouter deduped_inference_calls on response_id\r\n| project response_id, model, score, evaluator_name, timestamp, evaluator_id\r\n| where evaluator_id !in~ (\"azureai://built-in/evaluators/code_vulnerability\", \"azureai://built-in/evaluators/hate_unfairness\", \"azureai://built-in/evaluators/indirect_attack\", \"azureai://built-in/evaluators/self_harm\", \"azureai://built-in/evaluators/sexual\", \"azureai://built-in/evaluators/violence\")\r\n| summarize avg(score) by tostring(evaluator_name), bin(timestamp, {TimeRange:grain})",
           "size": 1,
-          "title": "Daily quality passing rate",
-          "headingLevel": 4,
+          "title": "AI Quality average score",
+          "noDataMessage": "The query returned no results. Note that you must instrument client application with distributed tracing to enable filtering by Application and Model. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -955,9 +960,11 @@
               "label": "Time"
             },
             "ySettings": {
-              "label": "Passing rate"
+              "label": "Average score"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
         "name": "query - 4",
         "styleSettings": {
@@ -965,9 +972,9 @@
           "borderStyle": "light rounded",
           "padding": "16px",
           "x": 0,
-          "y": 24,
+          "y": 22,
           "w": 24,
-          "h": 6
+          "h": 8
         },
         "id": "baf17bd7-d0a9-4189-8a62-c3671816fc66"
       },
@@ -975,11 +982,12 @@
         "type": 3,
         "content": {
           "version": "KqlItem/1.0",
-          "query": "let application = dynamic([{Application}]);\r\nlet model = dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] startswith \"gen_ai.evaluation\" and customDimensions[\"event.name\"] != \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange} \r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| project metric = extract(\"gen_ai\\\\.evaluation\\\\.(.*)\", 1, tostring(customDimensions[\"event.name\"])), score = toint(customDimensions[\"gen_ai.evaluation.score\"]), timestamp\r\n| summarize totalscores = count(), scoresintotal = sum(score) by tostring(metric), bin(timestamp,1d) \r\n| extend percentage = round(todouble(scoresintotal) / (totalscores * 5) * 100)\r\n| project strcat(toupper(substring(metric, 0, 1)), substring(metric, 1)),percentage, timestamp\r\n",
+          "query": "let application = dynamic([{Application}]);let model = dynamic([{Model}]);\r\nlet get_model = (customDimensions: dynamic) {  iff(customDimensions[\"gen_ai.request.model\"] == \"\", customDimensions[\"gen_ai.response.model\"], customDimensions[\"gen_ai.request.model\"]) };\r\nlet is_inference_call = (customDimensions: dynamic) {\r\n   // this filters out non-genai calls/non-inference calls like create_agent\r\n  customDimensions[\"gen_ai.system\"] != \"\" and customDimensions[\"gen_ai.operation.name\"] in (\"chat\", \"process_thread_run\", \"text_completion\",\"get_thread_run\")\r\n};\r\nlet filter_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n  (\"*\" in (model) or array_length(model) == 0 or get_model(customDimensions) in (model)) and \r\n  ('*' in (application) or array_length(application) == 0 or app_name in (application))\r\n};\r\nlet filter_inference_model_and_app = (customDimensions: dynamic, app_name: string) {\r\n  is_inference_call(customDimensions) == true and filter_model_and_app(customDimensions, app_name) == true\r\n};\r\nlet change_percent = (final: double, initial: double) {iff(initial == 0, iff(final == 0, real(0), real(+inf)), (final-initial) / initial * 100)};\r\nlet get_event_name = (customDimensions: dynamic, message: string) {  iff(customDimensions[\"event.name\"] == \"\", message, customDimensions[\"event.name\"]) };\r\nlet get_evaluator_name = (customDimensions: dynamic, event_name: string) { iff(customDimensions[\"gen_ai.evaluator.name\"] == \"\", split(event_name, \".\")[2], tostring(customDimensions[\"gen_ai.evaluator.name\"])) };\r\nlet get_response_id = (customDimensions: dynamic) { \r\n    iff(\r\n        customDimensions[\"gen_ai.response.id\"] == \"\", \r\n        iff(customDimensions[\"gen_ai.thread.run.id\"] == \"\", \"\", strcat(tostring(customDimensions[\"gen_ai.thread.id\"]), \"/\", tostring(customDimensions[\"gen_ai.thread.run.id\"]))),\r\n        tostring(customDimensions[\"gen_ai.response.id\"]))\r\n}; \r\nlet inference_calls = dependencies\r\n| where timestamp {TimeRange}\r\n| where filter_inference_model_and_app(customDimensions, cloud_RoleName) == true\r\n| project customDimensions, cloud_RoleName, timestamp, response_id=get_response_id(customDimensions), model=tostring(get_model(customDimensions));\r\n// Dedup only for get_thread_run\r\nlet deduped_inference_calls =\r\n  union\r\n  (\r\n    inference_calls\r\n    | where customDimensions[\"gen_ai.operation.name\"] != \"get_thread_run\"\r\n  ),\r\n  (\r\n    inference_calls\r\n    | where customDimensions[\"gen_ai.operation.name\"] == \"get_thread_run\"\r\n    | summarize arg_max(timestamp, *) by tostring(customDimensions[\"gen_ai.thread.run.id\"])\r\n  )\r\n  | project response_id, model;\r\nlet evals = traces\r\n| where timestamp {TimeRange}\r\n| where filter_model_and_app(customDimensions, cloud_RoleName)\r\n| extend event_name = get_event_name(customDimensions, message)\r\n| where event_name startswith \"gen_ai.evaluation\"\r\n| extend evaluator_name = get_evaluator_name(customDimensions, event_name), score = todouble(customDimensions[\"gen_ai.evaluation.score\"]), response_id=get_response_id(customDimensions), evaluator_id=tostring(customDimensions[\"gen_ai.evaluator.id\"]);\r\nevals \r\n| join kind=leftouter deduped_inference_calls on response_id\r\n| project response_id, model, score, evaluator_name, timestamp, evaluator_id\r\n| where evaluator_id in~ (\"azureai://built-in/evaluators/code_vulnerability\", \"azureai://built-in/evaluators/hate_unfairness\", \"azureai://built-in/evaluators/indirect_attack\", \"azureai://built-in/evaluators/self_harm\", \"azureai://built-in/evaluators/sexual\", \"azureai://built-in/evaluators/violence\")\r\n| summarize avg(score) by tostring(evaluator_name), bin(timestamp, {TimeRange:grain})",
           "size": 1,
-          "title": "Daily safety defect rate",
-          "headingLevel": 4,
+          "title": "Risk + safety average score",
+          "noDataMessage": "The query returned no results. Note that you must instrument client application with distributed tracing to enable filtering by Application and Model. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -996,12 +1004,14 @@
               "label": "Time"
             },
             "ySettings": {
-              "label": "Defect rate"
+              "label": "Average score"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
         "customWidth": "66.67",
-        "name": "Daily safety defect rate",
+        "name": "Daily safety average score",
         "styleSettings": {
           "showBorder": true,
           "borderStyle": "light rounded",
@@ -1020,8 +1030,9 @@
           "query": "let application=dynamic([{Application}]);\r\nlet model=dynamic([{Model}]);\r\nlet response_ids=(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"chat\" and (\"*\" in (model) or array_length(model) == 0 or customDimensions[\"gen_ai.response.model\"] in (model))\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange}\r\n| project customDimensions.[\"gen_ai.response.id\"]\r\n); \r\ntraces\r\n| where customDimensions[\"event.name\"] == \"gen_ai.evaluation.user_feedback\"\r\n| where ('*' in (application) or array_length(application) == 0 or cloud_RoleName in (application)) and timestamp {TimeRange} \r\n| where customDimensions.[\"gen_ai.response.id\"] in (response_ids)\r\n| extend FeedbackType = case(toint(customDimensions[\"gen_ai.evaluation.score\"]) == -1, \"Positive\", toint(customDimensions[\"gen_ai.evaluation.score\"]) == 1, \"Negative\", \"Unknown\")\r\n| summarize Count = count() by FeedbackType",
           "size": 1,
           "title": "User feedback",
-          "headingLevel": 4,
+          "noDataMessage": "The query returned no results. Try updating the time range or changing filters. To learn more about monitoring, go to aka.ms/AzureAIFoundry/Observability/Monitoring",
           "timeContextFromParameter": "TimeRange",
+          "headingLevel": 4,
           "queryType": 0,
           "resourceType": "microsoft.insights/components",
           "crossComponentResources": [
@@ -1046,7 +1057,9 @@
             "simpleLegendSettings": {
               "position": "bottom"
             }
-          }
+          },
+          "showAnalytics": true,
+          "showViewButton": false
         },
         "customWidth": "33.3",
         "name": "query - 6",
@@ -1065,8 +1078,8 @@
     "layout": {
       "type": "grid",
       "options": {
-        "rowHeight": 36
+        "rowHeight": 44
       }
     },
     "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
-  }
+}
