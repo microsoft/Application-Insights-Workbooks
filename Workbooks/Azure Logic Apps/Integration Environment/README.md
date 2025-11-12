@@ -1,0 +1,3 @@
+This directory is for backwards compatibility - its files describe IE apps, but the name incorrectly referred to the parent environment. We are changing the directory name to Integration Environment Application. All the files in this folder have been copied to that directory.
+
+This folder will be deleted afterwards. In its place we have a new directory 'Integration Environment Insights' that will describe the new insights experience for an integration environment.

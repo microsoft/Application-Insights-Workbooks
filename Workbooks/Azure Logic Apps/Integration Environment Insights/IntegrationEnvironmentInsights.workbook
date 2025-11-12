@@ -1,0 +1,423 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "value::all"
+        ],
+        "parameters": [
+        {
+            "id": "6da96b6a-ebf4-4706-a6c1-bf3c1ec042ee",
+            "version": "KqlParameterItem/1.0",
+            "name": "IntegrationEnvironment",
+            "type": 5,
+            "isRequired": true,
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false,
+              "componentIdOnly": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "0544d62b-f2cf-4499-913e-0d7392ec7f04",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000
+                },
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 172800000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2419200000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 5184000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": {
+              "durationMs": 86400000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters - 11"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "ExtensibilityResources\r\n| where id contains \"{IntegrationEnvironment}\"\r\n| where type == \"microsoft.integrationspaces/spaces/applications/resources\"\r\n| extend resourceName = name\r\n| extend resourceId = tolower(tostring(properties[\"resourceId\"]))\r\n| extend originalResourceId = resourceId\r\n| extend ResourceType = properties[\"resourceType\"]\r\n| extend ParentAPIM = iff(ResourceType == \"microsoft.apimanagement/service/apis\", trim_end(\"/apis/.*\", resourceId), \"\")\r\n| extend ParentSBQueue = iff(ResourceType == \"microsoft.servicebus/namespaces/queues\", trim_end(\"/queues/.*\", resourceId), \"\")\r\n| extend ParentSBTopic = iff(ResourceType == \"microsoft.servicebus/namespaces/topics\", trim_end(\"/topics/.*\", resourceId), \"\")\r\n| extend ResourceToUseForMatching = coalesce(ParentAPIM, ParentSBQueue, ParentSBTopic, resourceId)\r\n| join kind=inner (alertsmanagementresources | where type =~ 'microsoft.alertsmanagement/alerts' | where todatetime(properties.essentials.startDateTime) {TimeRange} | extend resourceId=tolower(tostring(properties.essentials.targetResource))) on $left.ResourceToUseForMatching == $right.resourceId\r\n| project originalResourceId, resourceName, id, AlertId=id1, Severity = tostring(properties1.essentials.severity),  \r\nMonitorCondition = tostring(properties1.essentials.monitorCondition),  \r\nObjectState = tostring(properties1.essentials.alertState),\r\nAlertRuleId = tostring(properties1.essentials.alertRule),\r\nTargetAlertResource = tostring(properties1.essentials.targetResource),\r\nName = tostring(properties1.context.context.name), properties1,\r\nAPIMTriggeredDueToDimensionInfo = iff(properties1.essentials.targetResourceType == \"microsoft.apimanagement/service\" and properties1.context.context.conditionType == \"SingleResourceMultipleMetricCriteria\" and  \r\nproperties1.context.context.condition contains \"ApiId\", properties1.context.context.condition, \"\"),\r\nSBTriggeredDueToDimensionInfo = iff(properties1.essentials.targetResourceType == \"microsoft.servicebus/namespaces\" and properties1.context.context.conditionType == \"SingleResourceMultipleMetricCriteria\" and  \r\nproperties1.context.context.condition contains \"EntityName\", properties1.context.context.condition, \"\")\r\n| where MonitorCondition == \"Fired\" and ObjectState == \"New\"\r\n| project id, originalResourceId, Application = tolower(trim_end(\"/resources/.*\", id)), Name, TargetAlertResource, Severity, AlertId, Details=\"Open Alert Details\", APIMTriggeredDueToDimensionInfo, SBTriggeredDueToDimensionInfo, ExtractedSBEntities=extractall('\"value\":\"(.*?)\"', SBTriggeredDueToDimensionInfo), ExtractedApiIds=extractall('\"value\":\"(.*?)\"', APIMTriggeredDueToDimensionInfo)\r\n| extend IncludedAlert = ((isnull(ExtractedApiIds) and isnull(ExtractedSBEntities)) or (isnotnull(ExtractedApiIds) and originalResourceId hassuffix strcat(\"apis/\", ExtractedApiIds)) or (isnotnull(ExtractedSBEntities) and originalResourceId hassuffix strcat(\"/\", ExtractedSBEntities)))\r\n| summarize Sev0 = countif(IncludedAlert and Severity == \"Sev0\"), Sev1 = countif(IncludedAlert and Severity == \"Sev1\"), Sev2 = countif(IncludedAlert and Severity == \"Sev2\"), Sev3 = countif(IncludedAlert and Severity == \"Sev3\"), Sev4 = countif(IncludedAlert and Severity == \"Sev4\") by Application\r\n| extend Total = Sev0 + Sev1 + Sev2 + Sev3 + Sev4\r\n| project Application, Sev0, Sev1, Sev2, Sev3, Sev4, Total",
+        "size": 1,
+        "title": "Aggregated Alerts by Application",
+        "noDataMessage": "The query returned no alerts. Consider widening your time range.",
+        "exportFieldName": "Application",
+        "exportParameterName": "SelectedApplication",
+        "exportDefaultValue": "NoneSelected",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "value::all"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Application",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": null,
+                "showIcon": true,
+                "customColumnWidthSetting": "350px"
+              }
+            },
+            {
+              "columnMatch": "Sev0",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev0",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Sev1",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev1",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Sev2",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev2",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Sev3",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev3",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Sev4",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Sev4",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "App",
+              "formatter": 13,
+              "formatOptions": {
+                "linkColumn": "Application",
+                "linkTarget": "Resource",
+                "showIcon": false
+              }
+            },
+            {
+              "columnMatch": "IntegrationApplication",
+              "formatter": 5,
+              "formatOptions": {
+                "linkColumn": "Application",
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "ShortApplication",
+              "formatter": 5,
+              "formatOptions": {
+                "linkColumn": "Application",
+                "linkTarget": "Resource"
+              }
+            },
+            {
+              "columnMatch": "Details",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "OpenBlade",
+                "linkLabel": "Open Alert Details",
+                "linkIsContextBlade": true,
+                "bladeOpenContext": {
+                  "bladeName": "AlertDetails.ReactView",
+                  "extensionName": "Microsoft_Azure_Monitoring_Alerts",
+                  "bladeParameters": [
+                    {
+                      "name": "alertId",
+                      "source": "column",
+                      "value": "AlertId"
+                    },
+                    {
+                      "name": "invokedFrom",
+                      "source": "static",
+                      "value": "aisWorkbook"
+                    }
+                  ]
+                },
+                "customColumnWidthSetting": "200px"
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Sev0",
+              "label": "Critical"
+            },
+            {
+              "columnId": "Sev1",
+              "label": "Error"
+            },
+            {
+              "columnId": "Sev2",
+              "label": "Warning"
+            },
+            {
+              "columnId": "Sev3",
+              "label": "Informational"
+            },
+            {
+              "columnId": "Sev4",
+              "label": "Verbose"
+            }
+          ]
+        },
+        "graphSettings": {
+          "type": 2,
+          "topContent": {
+            "columnMatch": "Application",
+            "formatter": 13,
+            "formatOptions": {
+              "linkTarget": null,
+              "showIcon": true
+            }
+          },
+          "centerContent": {
+            "columnMatch": "total",
+            "formatter": 22,
+            "formatOptions": {
+              "compositeBarSettings": {
+                "labelText": "",
+                "columnSettings": [
+                  {
+                    "columnName": "Sev1",
+                    "color": "redBright"
+                  },
+                  {
+                    "columnName": "Sev2",
+                    "color": "redDark"
+                  },
+                  {
+                    "columnName": "Sev3",
+                    "color": "yellow"
+                  },
+                  {
+                    "columnName": "Sev4",
+                    "color": "yellowDark"
+                  },
+                  {
+                    "columnName": "OneIfThereAreNoAlerts",
+                    "color": "green"
+                  }
+                ],
+                "noRowsScaling": true
+              }
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "style": "decimal",
+                "maximumFractionDigits": 2,
+                "maximumSignificantDigits": 3
+              }
+            }
+          },
+          "nodeIdField": "Application",
+          "graphOrientation": 3,
+          "showOrientationToggles": false,
+          "nodeSize": null,
+          "staticNodeSize": 200,
+          "colorSettings": null,
+          "hivesMargin": 5,
+          "edgeColorSettings": null
+        }
+      },
+      "name": "query - 10 - Copy"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select a row above to see alerts for that application.",
+        "style": "upsell"
+      },
+      "conditionalVisibility": {
+        "parameterName": "SelectedApplication",
+        "comparison": "isEqualTo",
+        "value": "NoneSelected"
+      },
+      "name": "text - 3"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "ExtensibilityResources\r\n| where id contains \"{IntegrationEnvironment}\"\r\n| where type == \"microsoft.integrationspaces/spaces/applications/resources\"\r\n| where trim_end(\"/resources/.*\", id) =~ \"{SelectedApplication}\"\r\n| extend resourceName = name\r\n| extend resourceId = tolower(tostring(properties[\"resourceId\"]))\r\n| extend originalResourceId = resourceId\r\n| extend ResourceType = properties[\"resourceType\"]\r\n| extend ParentAPIM = iff(ResourceType == \"microsoft.apimanagement/service/apis\", trim_end(\"/apis/.*\", resourceId), \"\")\r\n| extend ParentSBQueue = iff(ResourceType == \"microsoft.servicebus/namespaces/queues\", trim_end(\"/queues/.*\", resourceId), \"\")\r\n| extend ParentSBTopic = iff(ResourceType == \"microsoft.servicebus/namespaces/topics\", trim_end(\"/topics/.*\", resourceId), \"\")\r\n| extend ResourceToUseForMatching = coalesce(ParentAPIM, ParentSBQueue, ParentSBTopic, resourceId)\r\n| join (alertsmanagementresources | where type =~ 'microsoft.alertsmanagement/alerts' | where todatetime(properties.essentials.startDateTime) {TimeRange} | extend resourceId=tolower(tostring(properties.essentials.targetResource))) on $left.ResourceToUseForMatching == $right.resourceId\r\n| project originalResourceId, resourceName, id, AlertId=id1, Severity = tostring(properties1.essentials.severity),  \r\nMonitorCondition = tostring(properties1.essentials.monitorCondition),  \r\nObjectState = tostring(properties1.essentials.alertState),\r\nAlertRuleId = tostring(properties1.essentials.alertRule),\r\nTargetAlertResource = tostring(properties1.essentials.targetResource),\r\nName = tostring(properties1.context.context.name), properties1,\r\nAPIMTriggeredDueToDimensionInfo = iff(properties1.essentials.targetResourceType == \"microsoft.apimanagement/service\" and properties1.context.context.conditionType == \"SingleResourceMultipleMetricCriteria\" and  \r\nproperties1.context.context.condition contains \"ApiId\", properties1.context.context.condition, \"\"),\r\nSBTriggeredDueToDimensionInfo = iff(properties1.essentials.targetResourceType == \"microsoft.servicebus/namespaces\" and properties1.context.context.conditionType == \"SingleResourceMultipleMetricCriteria\" and  \r\nproperties1.context.context.condition contains \"EntityName\", properties1.context.context.condition, \"\")\r\n| where MonitorCondition == \"Fired\" and ObjectState == \"New\"\r\n| project originalResourceId, id, Application = trim_end(\"/resources/.*\", id), Name, TargetAlertResource, Severity, AlertId, Details=\"Open Alert Details\", ExtractedSBEntities=extractall('\"value\":\"(.*?)\"', SBTriggeredDueToDimensionInfo), ExtractedApiIds=extractall('\"value\":\"(.*?)\"', APIMTriggeredDueToDimensionInfo), MonitorCondition, TimeFired=todatetime(properties1.essentials.startDateTime)\r\n| where (isnull(ExtractedApiIds) and isnull(ExtractedSBEntities)) or (isnotnull(ExtractedApiIds) and originalResourceId hassuffix strcat(\"apis/\", ExtractedApiIds)) or (isnotnull(ExtractedSBEntities) and originalResourceId hassuffix strcat(\"/\", ExtractedSBEntities))\r\n| extend SeverityFriendlyName=case(Severity == \"Sev0\", \"Critical\", Severity == \"Sev1\", \"Error\", Severity == \"Sev2\", \"Warning\", Severity == \"Sev3\", \"Informational\", Severity == \"Sev4\", \"Verbose\", \"Unknown\")\r\n| project App=Application, TargetAlertResource, AlertName=Name, StartTime=TimeFired, Severity=SeverityFriendlyName, AlertState=MonitorCondition, AlertId, Details",
+        "size": 0,
+        "title": "Fired Alerts for {SelectedApplication:name}",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "value::all"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "App",
+              "formatter": 5,
+              "formatOptions": {
+                "customColumnWidthSetting": "48.1416ch"
+              }
+            },
+            {
+              "columnMatch": "StartTime",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "AlertId",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Details",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "OpenBlade",
+                "linkLabel": "Open Alert Details",
+                "linkIsContextBlade": true,
+                "bladeOpenContext": {
+                  "bladeName": "AlertDetails.ReactView",
+                  "extensionName": "Microsoft_Azure_Monitoring_Alerts",
+                  "bladeParameters": [
+                    {
+                      "name": "alertId",
+                      "source": "column",
+                      "value": "AlertId"
+                    },
+                    {
+                      "name": "invokedFrom",
+                      "source": "static",
+                      "value": "aisWorkbook"
+                    }
+                  ]
+                },
+                "customColumnWidthSetting": "200px"
+              }
+            },
+            {
+              "columnMatch": "TimeFired",
+              "formatter": 6
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "SelectedApplication",
+        "comparison": "isNotEqualTo",
+        "value": "NoneSelected"
+      },
+      "name": "query - 10"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

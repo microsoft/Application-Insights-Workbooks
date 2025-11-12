@@ -1,0 +1,519 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+      {
+        "type": 1,
+        "content": {
+          "json": "This workbook provides basic monitoring of the custom events logged by your application.\nThese events and their properties are available when defining experimentation metrics."
+        },
+        "name": "Workbook description"
+      },
+      {
+        "type": 9,
+        "content": {
+          "version": "KqlParameterItem/1.0",
+          "crossComponentResources": [
+            "value::all"
+          ],
+          "parameters": [
+            {
+              "id": "f302ac53-6f28-4116-ab28-6e5d198ee8cb",
+              "version": "KqlParameterItem/1.0",
+              "name": "_Source",
+              "label": "Log Analytics Workspace",
+              "type": 5,
+              "isRequired": true,
+              "query": "where type == \"microsoft.operationalinsights/workspaces\"\r\n| project id\r\n| order by id contains \"exp\" desc",
+              "crossComponentResources": [
+                "value::all"
+              ],
+              "typeSettings": {
+                "resourceTypeFilter": {
+                  "microsoft.operationalinsights/workspaces": true
+                },
+                "additionalResourceOptions": []
+              },
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            }
+          ],
+          "style": "above",
+          "queryType": 1,
+          "resourceType": "microsoft.resourcegraph/resources"
+        },
+        "name": "parameters - LA workspace"
+      },
+      {
+        "type": 12,
+        "content": {
+          "version": "NotebookGroup/1.0",
+          "groupType": "editable",
+          "items": [
+            {
+              "type": 3,
+              "content": {
+                "version": "KqlItem/1.0",
+                "query": "AppEvents\n| where Name != \"FeatureEvaluation\"\n| make-series Sparkline = count() on TimeGenerated from ago(30d) to now() step 6h by Name\n| project-away TimeGenerated\n| extend EventCount = array_sum(Sparkline)\n| order by Name asc",
+                "size": 2,
+                "title": "{$rowCount} custom events were observed in the last 30 days",
+                "timeContext": {
+                  "durationMs": 2592000000
+                },
+                "exportFieldName": "Name",
+                "exportParameterName": "SelectedEvent",
+                "exportDefaultValue": "",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "crossComponentResources": [
+                  "{_Source}"
+                ],
+                "visualization": "table",
+                "gridSettings": {
+                  "formatters": [
+                    {
+                      "columnMatch": "Sparkline",
+                      "formatter": 9,
+                      "formatOptions": {
+                        "palette": "blue"
+                      },
+                      "tooltipFormat": {
+                        "tooltip": "."
+                      }
+                    },
+                    {
+                      "columnMatch": "EventCount",
+                      "formatter": 2,
+                      "numberFormat": {
+                        "unit": 0,
+                        "options": {
+                          "style": "decimal",
+                          "useGrouping": true,
+                          "maximumFractionDigits": 0
+                        }
+                      }
+                    }
+                  ],
+                  "labelSettings": [
+                    {
+                      "columnId": "Name",
+                      "label": "Event name"
+                    },
+                    {
+                      "columnId": "Sparkline",
+                      "label": "Event volume (30d)"
+                    },
+                    {
+                      "columnId": "EventCount",
+                      "label": "Total events (30d)"
+                    }
+                  ]
+                }
+              },
+              "customWidth": "50",
+              "name": "Custom events received in the last 30 days"
+            },
+            {
+              "type": 12,
+              "content": {
+                "version": "NotebookGroup/1.0",
+                "groupType": "editable",
+                "items": [
+                  {
+                    "type": 3,
+                    "content": {
+                      "version": "KqlItem/1.0",
+                      "query": "let total_events = AppEvents\r\n| where Name == '{SelectedEvent}'\r\n| summarize\r\n    EventCount = count(),\r\n    UserCount = dcount(tostring(Properties.TargetingId))\r\n;\r\nAppEvents\r\n| where Name == '{SelectedEvent}'\r\n| project Properties = bag_remove_keys(Properties, dynamic([\"code.filepath\", \"code.function\", \"code.lineno\", \"TargetingId\"]))\r\n| mv-expand kind=array Properties \r\n| project PropertyKey = tostring(Properties[0]), PropertyValue = Properties[1]\r\n| extend IsNumeric = isnotnull(toreal(PropertyValue))\r\n| summarize\r\n    AvailableCount = count(),\r\n    IsNumericCount = countif(IsNumeric),\r\n    Sum = sumif(toreal(PropertyValue), IsNumeric),\r\n    Average = avgif(toreal(PropertyValue), IsNumeric),\r\n    ExampleValue = take_any(PropertyValue)\r\n    by PropertyKey\r\n| extend EventCount = toscalar(total_events | project EventCount)\r\n| project\r\n    Property = PropertyKey,\r\n    Available = 100. * AvailableCount / EventCount,\r\n    IsNumeric = 100. * IsNumericCount / AvailableCount,\r\n    ExampleValue,\r\n    Sum,\r\n    Average",
+                      "size": 1,
+                      "title": "{$rowCount} properties were observed for event: {SelectedEvent}",
+                      "noDataMessage": "This event has zero properties.",
+                      "timeContext": {
+                        "durationMs": 2592000000
+                      },
+                      "exportParameterName": "SelectedProperty",
+                      "queryType": 0,
+                      "resourceType": "microsoft.operationalinsights/workspaces",
+                      "crossComponentResources": [
+                        "{_Source}"
+                      ],
+                      "visualization": "table",
+                      "gridSettings": {
+                        "formatters": [
+                          {
+                            "columnMatch": "Available",
+                            "formatter": 18,
+                            "formatOptions": {
+                              "thresholdsOptions": "icons",
+                              "thresholdsGrid": [
+                                {
+                                  "operator": "==",
+                                  "thresholdValue": "100",
+                                  "representation": "success",
+                                  "text": "{0}{1}"
+                                },
+                                {
+                                  "operator": ">=",
+                                  "thresholdValue": "95",
+                                  "representation": "2",
+                                  "text": "{0}{1}"
+                                },
+                                {
+                                  "operator": "Default",
+                                  "thresholdValue": null,
+                                  "representation": "critical",
+                                  "text": "{0}{1}"
+                                }
+                              ]
+                            },
+                            "numberFormat": {
+                              "unit": 1,
+                              "options": {
+                                "style": "decimal",
+                                "maximumFractionDigits": 1
+                              }
+                            },
+                            "tooltipFormat": {
+                              "tooltip": "How frequently is the property available?"
+                            }
+                          },
+                          {
+                            "columnMatch": "IsNumeric",
+                            "formatter": 0,
+                            "numberFormat": {
+                              "unit": 1,
+                              "options": {
+                                "style": "decimal"
+                              }
+                            },
+                            "tooltipFormat": {
+                              "tooltip": "How frequently is the property value numeric?"
+                            }
+                          },
+                          {
+                            "columnMatch": "Sum",
+                            "formatter": 5
+                          },
+                          {
+                            "columnMatch": "Average",
+                            "formatter": 5
+                          },
+                          {
+                            "columnMatch": "EventCount",
+                            "formatter": 0,
+                            "numberFormat": {
+                              "unit": 0,
+                              "options": {
+                                "style": "decimal",
+                                "useGrouping": true,
+                                "maximumFractionDigits": 0
+                              }
+                            }
+                          }
+                        ],
+                        "labelSettings": [
+                          {
+                            "columnId": "IsNumeric",
+                            "label": "Numeric"
+                          },
+                          {
+                            "columnId": "ExampleValue",
+                            "label": "Example value"
+                          }
+                        ]
+                      }
+                    },
+                    "name": "Properties observed for selected event"
+                  },
+                  {
+                    "type": 12,
+                    "content": {
+                      "version": "NotebookGroup/1.0",
+                      "groupType": "editable",
+                      "title": "Preview a metric",
+                      "items": [
+                        {
+                          "type": 9,
+                          "content": {
+                            "version": "KqlParameterItem/1.0",
+                            "parameters": [
+                              {
+                                "id": "5245012f-4577-45b2-a267-b03bf41f19ae",
+                                "version": "KqlParameterItem/1.0",
+                                "name": "MetricFunction",
+                                "type": 2,
+                                "typeSettings": {
+                                  "additionalResourceOptions": [],
+                                  "showDefault": false
+                                },
+                                "jsonData": "[\"EventCount\", \"UserCount\", \"Sum\", \"Average\"]",
+                                "timeContext": {
+                                  "durationMs": 86400000
+                                },
+                                "value": "Sum",
+                                "label": "Metric function"
+                              }
+                            ],
+                            "style": "above",
+                            "queryType": 0,
+                            "resourceType": "microsoft.operationalinsights/workspaces"
+                          },
+                          "name": "MetricFunction parameter"
+                        },
+                        {
+                          "type": 12,
+                          "content": {
+                            "version": "NotebookGroup/1.0",
+                            "groupType": "editable",
+                            "loadType": "always",
+                            "items": [
+                              {
+                                "type": 3,
+                                "content": {
+                                  "version": "KqlItem/1.0",
+                                  "query": "AppEvents\r\n| where Name == '{SelectedEvent}'\r\n| summarize count()",
+                                  "size": 1,
+                                  "timeContext": {
+                                    "durationMs": 2592000000
+                                  },
+                                  "queryType": 0,
+                                  "resourceType": "microsoft.operationalinsights/workspaces",
+                                  "visualization": "stat",
+                                  "statSettings": {
+                                    "valueAggregation": "None",
+                                    "colorSettings": {
+                                      "type": "static",
+                                      "mode": "background",
+                                      "heatmapPalette": "greenRed",
+                                      "thresholdsGrid": []
+                                    },
+                                    "iconSettings": {
+                                      "thresholdsGrid": []
+                                    },
+                                    "tagText": "EventCount",
+                                    "valueFontStyle": "auto"
+                                  }
+                                },
+                                "conditionalVisibility": {
+                                  "parameterName": "MetricFunction",
+                                  "comparison": "isEqualTo",
+                                  "value": "EventCount"
+                                },
+                                "name": "Metric value - EventCount"
+                              },
+                              {
+                                "type": 3,
+                                "content": {
+                                  "version": "KqlItem/1.0",
+                                  "query": "AppEvents\r\n| where Name == '{SelectedEvent}'\r\n| summarize dcount(tostring(Properties.TargetingId))",
+                                  "size": 1,
+                                  "timeContext": {
+                                    "durationMs": 2592000000
+                                  },
+                                  "queryType": 0,
+                                  "resourceType": "microsoft.operationalinsights/workspaces",
+                                  "visualization": "stat",
+                                  "statSettings": {
+                                    "valueAggregation": "None",
+                                    "colorSettings": {
+                                      "type": "static",
+                                      "mode": "background",
+                                      "heatmapPalette": "greenRed",
+                                      "thresholdsGrid": []
+                                    },
+                                    "iconSettings": {
+                                      "thresholdsGrid": []
+                                    },
+                                    "tagText": "UserCount",
+                                    "valueFontStyle": "auto"
+                                  }
+                                },
+                                "conditionalVisibility": {
+                                  "parameterName": "MetricFunction",
+                                  "comparison": "isEqualTo",
+                                  "value": "UserCount"
+                                },
+                                "name": "Metric value - UserCount"
+                              },
+                              {
+                                "type": 3,
+                                "content": {
+                                  "version": "KqlItem/1.0",
+                                  "query": "print(toreal(todynamic('{SelectedProperty}').Sum))",
+                                  "size": 1,
+                                  "timeContext": {
+                                    "durationMs": 2592000000
+                                  },
+                                  "queryType": 0,
+                                  "resourceType": "microsoft.operationalinsights/workspaces",
+                                  "visualization": "stat",
+                                  "statSettings": {
+                                    "valueAggregation": "None",
+                                    "colorSettings": {
+                                      "type": "static",
+                                      "mode": "background",
+                                      "heatmapPalette": "greenRed",
+                                      "thresholdsGrid": []
+                                    },
+                                    "iconSettings": {
+                                      "thresholdsGrid": []
+                                    },
+                                    "tagText": "Sum",
+                                    "valueFontStyle": "auto"
+                                  }
+                                },
+                                "conditionalVisibility": {
+                                  "parameterName": "MetricFunction",
+                                  "comparison": "isEqualTo",
+                                  "value": "Sum"
+                                },
+                                "name": "Metric value - Sum"
+                              },
+                              {
+                                "type": 3,
+                                "content": {
+                                  "version": "KqlItem/1.0",
+                                  "query": "print(toreal(todynamic('{SelectedProperty}').Average))",
+                                  "size": 1,
+                                  "queryType": 0,
+                                  "resourceType": "microsoft.operationalinsights/workspaces",
+                                  "visualization": "stat",
+                                  "statSettings": {
+                                    "valueAggregation": "None",
+                                    "colorSettings": {
+                                      "type": "static",
+                                      "mode": "background",
+                                      "heatmapPalette": "greenRed",
+                                      "thresholdsGrid": []
+                                    },
+                                    "iconSettings": {
+                                      "thresholdsGrid": []
+                                    },
+                                    "tagText": "Average",
+                                    "valueFontStyle": "auto"
+                                  }
+                                },
+                                "conditionalVisibility": {
+                                  "parameterName": "MetricFunction",
+                                  "comparison": "isEqualTo",
+                                  "value": "Average"
+                                },
+                                "name": "Metric value - Average"
+                              }
+                            ]
+                          },
+                          "customWidth": "40",
+                          "name": "Metric value"
+                        },
+                        {
+                          "type": 12,
+                          "content": {
+                            "version": "NotebookGroup/1.0",
+                            "groupType": "editable",
+                            "items": [
+                              {
+                                "type": 1,
+                                "content": {
+                                  "json": "```json\r\n{\r\n\t\"id\": \"Events_{SelectedEvent}\",\r\n\t\"enabled\": true,\r\n\t\"display_name\": \"Number of {SelectedEvent} events\",\r\n\t\"desired_direction\": \"Increase|Decrease|Neutral\",\r\n\t\"function\": \"EventCount\",\r\n\t\"arguments_EventCount\": {\r\n\t\t\"event\": {\r\n\t\t\t\"event_name\": \"{SelectedEvent}\"\r\n\t\t}\r\n\t}\r\n}\r\n```"
+                                },
+                                "conditionalVisibilities": [
+                                  {
+                                    "parameterName": "SelectedEvent",
+                                    "comparison": "isNotEqualTo"
+                                  },
+                                  {
+                                    "parameterName": "MetricFunction",
+                                    "comparison": "isEqualTo",
+                                    "value": "EventCount"
+                                  }
+                                ],
+                                "name": "Metric config (event-based)"
+                              },
+                              {
+                                "type": 1,
+                                "content": {
+                                  "json": "```json\r\n{\r\n\t\"id\": \"Users_{SelectedEvent}\",\r\n\t\"enabled\": true,\r\n\t\"display_name\": \"Users with {SelectedEvent} events\",\r\n\t\"desired_direction\": \"Increase|Decrease|Neutral\",\r\n\t\"function\": \"UserCount\",\r\n\t\"arguments_UserCount\": {\r\n\t\t\"event\": {\r\n\t\t\t\"event_name\": \"{SelectedEvent}\"\r\n\t\t}\r\n\t}\r\n}\r\n```"
+                                },
+                                "conditionalVisibilities": [
+                                  {
+                                    "parameterName": "MetricFunction",
+                                    "comparison": "isEqualTo",
+                                    "value": "UserCount"
+                                  },
+                                  {
+                                    "parameterName": "SelectedEvent",
+                                    "comparison": "isNotEqualTo"
+                                  }
+                                ],
+                                "name": "Metric config - UserCount"
+                              },
+                              {
+                                "type": 1,
+                                "content": {
+                                  "json": "```json\r\n{\r\n\t\"id\": \"Sum_{SelectedEvent}_{SelectedProperty:$.Property}\",\r\n\t\"enabled\": true,\r\n\t\"display_name\": \"Total {SelectedProperty:$.Property} of {SelectedEvent} events\",\r\n\t\"desired_direction\": \"Increase|Decrease|Neutral\",\r\n\t\"function\": \"Sum\",\r\n\t\"arguments_Sum\": {\r\n\t\t\"value\": {\r\n\t\t\t\"event_name\": \"{SelectedEvent}\",\r\n\t\t\t\"event_property\": \"{SelectedProperty:$.Property}\"\r\n\t\t}\r\n\t}\r\n}\r\n```"
+                                },
+                                "conditionalVisibilities": [
+                                  {
+                                    "parameterName": "SelectedEvent",
+                                    "comparison": "isNotEqualTo"
+                                  },
+                                  {
+                                    "parameterName": "SelectedProperty",
+                                    "comparison": "isNotEqualTo"
+                                  },
+                                  {
+                                    "parameterName": "MetricFunction",
+                                    "comparison": "isEqualTo",
+                                    "value": "Sum"
+                                  }
+                                ],
+                                "name": "Metric config (property-based)"
+                              },
+                              {
+                                "type": 1,
+                                "content": {
+                                  "json": "```json\r\n{\r\n\t\"id\": \"Average_{SelectedEvent}_{SelectedProperty:$.Property}\",\r\n\t\"enabled\": true,\r\n\t\"display_name\": \"Average {SelectedProperty:$.Property} per {SelectedEvent} event\",\r\n\t\"desired_direction\": \"Increase|Decrease|Neutral\",\r\n\t\"function\": \"Average\",\r\n\t\"arguments_Average\": {\r\n\t\t\"value\": {\r\n\t\t\t\"event_name\": \"{SelectedEvent}\",\r\n\t\t\t\"event_property\": \"{SelectedProperty:$.Property}\"\r\n\t\t}\r\n\t}\r\n}\r\n```"
+                                },
+                                "conditionalVisibilities": [
+                                  {
+                                    "parameterName": "SelectedEvent",
+                                    "comparison": "isNotEqualTo"
+                                  },
+                                  {
+                                    "parameterName": "SelectedProperty",
+                                    "comparison": "isNotEqualTo"
+                                  },
+                                  {
+                                    "parameterName": "MetricFunction",
+                                    "comparison": "isEqualTo",
+                                    "value": "Average"
+                                  }
+                                ],
+                                "name": "text -- Metric config comparison"
+                              }
+                            ]
+                          },
+                          "customWidth": "60",
+                          "conditionalVisibility": {
+                            "parameterName": "MetricFunction",
+                            "comparison": "isNotEqualTo"
+                          },
+                          "name": "Metric Config"
+                        }
+                      ]
+                    },
+                    "name": "Metric preview"
+                  }
+                ]
+              },
+              "customWidth": "50",
+              "name": "Property and Preview (RHS)"
+            }
+          ]
+        },
+        "name": "Workbook results"
+      }
+    ],
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+  }

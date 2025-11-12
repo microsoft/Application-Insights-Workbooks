@@ -25,6 +25,15 @@
             "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"union\\r\\n(\\r\\n// The most recent interval that is earlier than the end of time range.\\r\\n// This may be earlier than the start of time range by at most 2h.\\r\\nsqlserver_query_runtime_stats\\r\\n| where interval_end_time between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| summarize interval_end_time = max(interval_end_time)\\r\\n),\\r\\n(\\r\\n// latest interval end within time range\\r\\nsqlserver_query_runtime_stats\\r\\n| where interval_end_time >= {timeRange:start} and interval_start_time <= {timeRange:end}\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| summarize interval_end_time = max(interval_end_time)\\r\\n)\\r\\n// return the latest of these times as end of QDS range\\r\\n// if there isn't a complete QDS interval within time range, this will show the latest available interval\\r\\n| summarize qds_end_time = datetime_add(\\\"second\\\", 1, max(interval_end_time)) // make-series treats the end of interval as not inclusive, fudge by 1 second\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
             "isHiddenWhenLocked": true,
             "queryType": 9
+          },
+          {
+            "id": "621902c6-c42c-4102-bd83-08f58a7c4a3a",
+            "version": "KqlParameterItem/1.0",
+            "name": "qdsMissingDataWarningText",
+            "type": 1,
+            "query": "{\"version\":\"AzureDataExplorerQuery/1.0\",\"queryText\":\"sqlserver_database_properties\\r\\n| where sample_time_utc between (({timeRange:start} - 2h) .. {timeRange:end})\\r\\n| where server_name =~ @\\\"{serverName}\\\"\\r\\n| where machine_name =~ @\\\"{machineName}\\\"\\r\\n| where database_id > 4\\r\\n| where is_primary_replica or isnull(is_primary_replica)\\r\\n| where query_store_actual_state_desc != \\\"READ_WRITE\\\"\\r\\n| extend query_store_actual_state_desc = iif(isempty(query_store_actual_state_desc), \\\"<missing>\\\", query_store_actual_state_desc)\\r\\n| distinct database_name, query_store_actual_state_desc\\r\\n| sort by database_name asc\\r\\n| summarize databases = strcat(\\r\\n                              strcat_array(\\r\\n                                          make_list(\\r\\n                                                   database_name,\\r\\n                                                   5\\r\\n                                                   ),\\r\\n                                          \\\", \\\"\\r\\n                                          ),\\r\\n                              iif(\\r\\n                                 dcount(database_name) > 5,\\r\\n                                 strcat(\\\" and \\\", tostring(dcount(database_name) - 5), \\\" more\\\"),\\r\\n                                 \\\"\\\")\\r\\n                              )\\r\\n            by query_store_actual_state_desc\\r\\n| sort by query_store_actual_state_desc asc\\r\\n| extend warning_row = strcat(\\\"| `\\\", query_store_actual_state_desc, \\\"` | \\\", databases, \\\" |\\\")\\r\\n| summarize warning = strcat_array(make_list(warning_row), \\\"\\\\r\\\\n\\\")\\r\\n| where isnotempty(warning)\\r\\n\",\"clusterName\":\"{adxClusterUri}\",\"databaseName\":\"{adxDatabase}\"}",
+            "isHiddenWhenLocked": true,
+            "queryType": 9
           }
         ],
         "style": "above",
@@ -53,6 +62,28 @@
         }
       ],
       "name": "qds_help"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Top query data in the selected time range might be missing or incomplete for some databases because their [Query Store](https://go.microsoft.com/fwlink/?linkid=2213253) state is other than `READ_WRITE`. For more information, see [Best practices for managing Query Store](https://go.microsoft.com/fwlink/?linkid=2198632).\r\n\r\n| Query Store state | Database(s) |\r\n|:--|:--|\r\n{qdsMissingDataWarningText}",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "qdsStartTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "qdsEndTime",
+          "comparison": "isNotEqualTo"
+        },
+        {
+          "parameterName": "qdsMissingDataWarningText",
+          "comparison": "isNotEqualTo"
+        }
+      ],
+      "name": "qds_warning_missing_data"
     },
     {
       "type": 9,
@@ -3137,14 +3168,6 @@
           "parameterName": "selectedIntervalEndTime",
           "comparison": "isNotEqualTo",
           "value": "null"
-        },
-        {
-          "parameterName": "selectedPlanFilename",
-          "comparison": "isNotEqualTo"
-        },
-        {
-          "parameterName": "selectedPlanXml",
-          "comparison": "isNotEqualTo"
         }
       ],
       "name": "download_plan_links"
