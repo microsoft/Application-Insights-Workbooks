@@ -69,19 +69,7 @@
               "durationMs": 86400000
             },
             "isGlobal": true
-          }
-        ],
-        "style": "pills",
-        "queryType": 0,
-        "resourceType": "microsoft.insights/components"
-      },
-      "name": "TimeRangeParameters"
-    },
-    {
-      "type": 9,
-      "content": {
-        "version": "KqlParameterItem/1.0",
-        "parameters": [
+          },
           {
             "id": "9fa0e610-5688-4a8a-9c88-b9ea5a56620f",
             "version": "KqlParameterItem/1.0",
@@ -103,7 +91,8 @@
             "name": "selectedTab",
             "type": 1,
             "isHiddenWhenLocked": true,
-            "value": "Dashboard"
+            "value": "Dashboard",
+            "isGlobal": true
           },
           {
             "id": "6443cb30-3c7a-484c-9d83-0a7799348b32",
@@ -132,13 +121,202 @@
             "queryType": 0,
             "resourceType": "microsoft.insights/components",
             "id": "9298510d-6be1-4c46-bbeb-9bd4df79cd54"
+          },
+          {
+            "id": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+            "version": "KqlParameterItem/1.0",
+            "name": "hideTabs",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "value": ""
           }
         ],
         "style": "pills",
         "queryType": 0,
         "resourceType": "microsoft.insights/components"
       },
-      "name": "HiddenParameters"
+      "name": "TimeRangeParameters",
+      "customWidth": "0",
+      "styleSettings": {
+        "margin": "0 -20px 20px 0"
+      }
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "58b2fbee-3304-4075-bbe1-531e9f1c2ae3",
+            "version": "KqlParameterItem/1.0",
+            "name": "SelectedAgent",
+            "label": "Agent",
+            "type": 2,
+            "isRequired": true,
+            "isGlobal": true,
+            "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where isnotempty(AgentName)\r\n| distinct AgentName\r\n| extend priority=0, DisplayName=AgentName\r\n| union (print AgentName = \"__ALL__\", DisplayName = \"All agents\", priority = 1)\r\n| order by priority, DisplayName\r\n| project value=AgentName, displayName=DisplayName",
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.insights/components",
+            "value": "__ALL__"
+          },
+          {
+            "id": "f42a57f8-69fa-4835-bdd2-cb26871a1eb3",
+            "version": "KqlParameterItem/1.0",
+            "name": "DetectionContent",
+            "type": 1,
+            "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]);\r\nlet tools = dependencies\r\n| extend Operation = tostring(customDimensions[\"gen_ai.operation.name\"])\r\n| where isnotempty(Operation)\r\n| where Operation == \"execute_tool\"\r\n| lookup kind=leftouter (agents) on $left.operation_ParentId == $right.id\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| extend Tool = tostring(customDimensions[\"gen_ai.tool.name\"])\r\n| extend Description = tostring(customDimensions[\"gen_ai.tool.description\"]);\r\ntools\r\n| where success == false\r\n| project timestamp, Tool\r\n| evaluate autocluster()\r\n| where Percent > 60\r\n| order by Percent desc\r\n| take 1\r\n| project Detection = strcat(toint(Percent), \"% of tool failures were on calls to '\", Tool, \"'\")",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "71b8c43c-55aa-4c4a-98f9-60a7e9718c21",
+            "version": "KqlParameterItem/1.0",
+            "name": "AgentOpIdFilter",
+            "type": 1,
+            "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| distinct operation_Id\r\n| take iff(\"{SelectedAgent}\" == \"__ALL__\", 0, 300)\r\n| summarize Num = count(), OpIds=make_list(operation_Id)\r\n| extend FilterText = strcat(```\r\n,\r\n        {\r\n          \"dimension\": {\r\n              \"displayName\": \"Operation Id\",\r\n              \"tables\": [\r\n                  \"dependencies\"\r\n              ],\r\n              \"name\": \"operation/id\",\r\n              \"draftKey\": \"operation/id\"\r\n          },\r\n          \"values\":```, OpIds, \"}\")\r\n| project FilterText = iff(Num > 0, FilterText, \"\")",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "71b8c43c-55aa-4c4a-98f9-60a7e9718c21",
+            "version": "KqlParameterItem/1.0",
+            "name": "AgentErroredOpIdFilter",
+            "type": 1,
+            "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName;\r\nlet agentCalls = dependencies\r\n| lookup kind=inner (agents) on $left.operation_ParentId == $right.id;\r\nunion agents, agentCalls\r\n| extend ErrorType = tostring(customDimensions[\"error.type\"])\r\n| extend ErrorType = iff(success == false and isempty(ErrorType), \"Other\", ErrorType)\r\n| where isnotempty(ErrorType)\r\n| distinct operation_Id\r\n| take iff(\"{SelectedAgent}\" == \"__ALL__\", 0, 300)\r\n| summarize Num = count(), OpIds=make_list(operation_Id)\r\n| extend FilterText = strcat(```\r\n,\r\n        {\r\n          \"dimension\": {\r\n              \"displayName\": \"Operation Id\",\r\n              \"tables\": [\r\n                  \"dependencies\"\r\n              ],\r\n              \"name\": \"operation/id\",\r\n              \"draftKey\": \"operation/id\"\r\n          },\r\n          \"values\":```, OpIds, \"}\")\r\n| project FilterText = iff(Num > 0, FilterText, \"\")",
+            "isHiddenWhenLocked": true,
+            "timeContext": {
+              "durationMs": 0
+            },
+            "timeContextFromParameter": "TimeRange",
+            "queryType": 0,
+            "resourceType": "microsoft.insights/components"
+          },
+          {
+            "id": "74747891-f8e5-4e44-897e-c00836791635",
+            "version": "KqlParameterItem/1.0",
+            "name": "AgentRunsSearchParameters",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "SelectedAgent",
+                  "operator": "!=",
+                  "rightValType": "static",
+                  "rightVal": "__ALL__",
+                  "resultValType": "static",
+                  "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\", \"HideChart\": true,\"IsGenAiFlow\": true,\r\n   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\"           ]         },         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.agent.name\",             \"draftKey\": \"customDimensions/gen_ai.agent.name\",             \"displayName\": \"Agent name\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"{SelectedAgent}\"           ]         }       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\", \"HideChart\": true,\"IsGenAiFlow\": true,\r\n   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\"           ]         }       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
+                }
+              }
+            ]
+          },
+          {
+            "id": "72d7706a-f935-4976-b38c-a3bdcda1bae4",
+            "version": "KqlParameterItem/1.0",
+            "name": "AgentRunsFailuresParameters",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "SelectedAgent",
+                  "operator": "!=",
+                  "rightValType": "static",
+                  "rightVal": "__ALL__",
+                  "resultValType": "static",
+                  "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\",   \"HideChart\": true,   \"IsGenAiFlow\": true,   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [         {           \"dimension\": {             \"displayName\": \"Dependency call status\",             \"tables\": [               \"dependencies\"             ],             \"name\": \"dependency/success\",             \"draftKey\": \"dependency/success\"           },           \"values\": [             \"False\"           ],           \"operator\": {             \"label\": \"=\",             \"value\": \"==\",             \"isSelected\": true           }         },         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\",             \"execute_tool\",             \"chat.completions\",             \"text_completions\",             \"generate_content\"           ]         }{AgentErroredOpIdFilter}       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "resultValType": "static",
+                  "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\", \"HideChart\": true,\"IsGenAiFlow\": true,\r\n   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [          {             \"dimension\": {                 \"displayName\": \"Dependency call status\",                 \"tables\": [                     \"dependencies\"                 ],                 \"name\": \"dependency/success\",                 \"draftKey\": \"dependency/success\"             },             \"values\": [                 \"False\"             ],             \"operator\": {                 \"label\": \"=\",                 \"value\": \"==\",                 \"isSelected\": true             }         },         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\",             \"execute_tool\",             \"chat.completions\",             \"text_completions\",             \"generate_content\"           ]         }       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
+                }
+              }
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components"
+      },
+      "name": "DashboardParameters",
+      "styleSettings": {
+        "margin": "0 -20px 20px 0"
+      },
+      "customWidth": "0",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedTab",
+          "comparison": "isEqualTo",
+          "value": "Dashboard"
+        },
+        {
+          "parameterName": "GenAIDataCheck",
+          "comparison": "isNotEqualTo",
+          "value": "NotFound"
+        }
+      ]
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "toolbar",
+        "links": [
+          {
+            "id": "5f2be271-52c3-429c-aa3b-75ecba2c6ba9",
+            "linkTarget": "OpenBlade",
+            "linkLabel": "Explore in Grafana",
+            "style": "primary",
+            "icon": "Diagnostics",
+            "bladeOpenContext": {
+              "bladeName": "AzureGrafana.ReactView",
+              "extensionName": "Microsoft_Azure_PinToGrafana",
+              "bladeJsonParameters": "{\n  \"GalleryType\": \"microsoft.insights/components\",\n  \"ResourceId\": \"{ResourceId:Id}\",\n  \"ConfigurationId\": \"AgentFramework\",\n  \"QueryParams\": \"{\\\"from\\\":\\\"{TimeRange:startISO}\\\",\\\"to\\\":\\\"{TimeRange:endISO}\\\"}\"\n}"
+            }
+          }
+        ]
+      },
+      "name": "HeaderLinks",
+      "styleSettings": {
+        "padding": "5px 0 0 0",
+        "maxWidth": "250px"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedTab",
+          "comparison": "isEqualTo",
+          "value": "Dashboard"
+        },
+        {
+          "parameterName": "GenAIDataCheck",
+          "comparison": "isNotEqualTo",
+          "value": "NotFound"
+        }
+      ]
     },
     {
       "type": 11,
@@ -158,18 +336,25 @@
             "id": "b7effbfe-5b01-48ed-8442-4f7e4a6b16a1",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "All Agents",
+            "linkLabel": "All agents",
             "subTarget": "AllAgents",
             "style": "link"
           }
         ]
       },
       "name": "Tabs",
-      "conditionalVisibility": {
-        "parameterName": "GenAIDataCheck",
-        "comparison": "isNotEqualTo",
-        "value": "NotFound"
-      }
+      "conditionalVisibilities": [
+        {
+          "parameterName": "GenAIDataCheck",
+          "comparison": "isNotEqualTo",
+          "value": "NotFound"
+        },
+        {
+          "parameterName": "hideTabs",
+          "comparison": "isNotEqualTo",
+          "value": "true"
+        }
+      ]
     },
     {
       "type": 12,
@@ -202,169 +387,6 @@
         "version": "NotebookGroup/1.0",
         "groupType": "editable",
         "items": [
-          {
-            "type": 9,
-            "content": {
-              "version": "KqlParameterItem/1.0",
-              "parameters": [
-                {
-                  "id": "58b2fbee-3304-4075-bbe1-531e9f1c2ae3",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "SelectedAgent",
-                  "label": "Agent",
-                  "type": 2,
-                  "isRequired": true,
-                  "isGlobal": true,
-                  "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where isnotempty(AgentName)\r\n| distinct AgentName\r\n| extend priority=0, DisplayName=AgentName\r\n| union (print AgentName = \"__ALL__\", DisplayName = \"All agents\", priority = 1)\r\n| order by priority, DisplayName\r\n| project value=AgentName, displayName=DisplayName",
-                  "typeSettings": {
-                    "additionalResourceOptions": [],
-                    "showDefault": false
-                  },
-                  "queryType": 0,
-                  "resourceType": "microsoft.insights/components",
-                  "value": "__ALL__"
-                },
-                {
-                  "id": "f42a57f8-69fa-4835-bdd2-cb26871a1eb3",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "DetectionContent",
-                  "type": 1,
-                  "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]);\r\nlet tools = dependencies\r\n| extend Operation = tostring(customDimensions[\"gen_ai.operation.name\"])\r\n| where isnotempty(Operation)\r\n| where Operation == \"execute_tool\"\r\n| lookup kind=leftouter (agents) on $left.operation_ParentId == $right.id\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| extend Tool = tostring(customDimensions[\"gen_ai.tool.name\"])\r\n| extend Description = tostring(customDimensions[\"gen_ai.tool.description\"]);\r\ntools\r\n| where success == false\r\n| project timestamp, Tool\r\n| evaluate autocluster()\r\n| where Percent > 60\r\n| order by Percent desc\r\n| take 1\r\n| project Detection = strcat(toint(Percent), \"% of tool failures were on calls to '\", Tool, \"'\")",
-                  "isHiddenWhenLocked": true,
-                  "timeContext": {
-                    "durationMs": 0
-                  },
-                  "timeContextFromParameter": "TimeRange",
-                  "queryType": 0,
-                  "resourceType": "microsoft.insights/components"
-                },
-                {
-                  "id": "71b8c43c-55aa-4c4a-98f9-60a7e9718c21",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AgentOpIdFilter",
-                  "type": 1,
-                  "query": "dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| distinct operation_Id\r\n| take iff(\"{SelectedAgent}\" == \"__ALL__\", 0, 300)\r\n| summarize Num = count(), OpIds=make_list(operation_Id)\r\n| extend FilterText = strcat(```\r\n,\r\n        {\r\n          \"dimension\": {\r\n              \"displayName\": \"Operation Id\",\r\n              \"tables\": [\r\n                  \"dependencies\"\r\n              ],\r\n              \"name\": \"operation/id\",\r\n              \"draftKey\": \"operation/id\"\r\n          },\r\n          \"values\":```, OpIds, \"}\")\r\n| project FilterText = iff(Num > 0, FilterText, \"\")",
-                  "isHiddenWhenLocked": true,
-                  "timeContext": {
-                    "durationMs": 0
-                  },
-                  "timeContextFromParameter": "TimeRange",
-                  "queryType": 0,
-                  "resourceType": "microsoft.insights/components"
-                },
-                {
-                  "id": "71b8c43c-55aa-4c4a-98f9-60a7e9718c21",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AgentErroredOpIdFilter",
-                  "type": 1,
-                  "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName;\r\nlet agentCalls = dependencies\r\n| lookup kind=inner (agents) on $left.operation_ParentId == $right.id;\r\nunion agents, agentCalls\r\n| extend ErrorType = tostring(customDimensions[\"error.type\"])\r\n| extend ErrorType = iff(success == false and isempty(ErrorType), \"Other\", ErrorType)\r\n| where isnotempty(ErrorType)\r\n| distinct operation_Id\r\n| take iff(\"{SelectedAgent}\" == \"__ALL__\", 0, 300)\r\n| summarize Num = count(), OpIds=make_list(operation_Id)\r\n| extend FilterText = strcat(```\r\n,\r\n        {\r\n          \"dimension\": {\r\n              \"displayName\": \"Operation Id\",\r\n              \"tables\": [\r\n                  \"dependencies\"\r\n              ],\r\n              \"name\": \"operation/id\",\r\n              \"draftKey\": \"operation/id\"\r\n          },\r\n          \"values\":```, OpIds, \"}\")\r\n| project FilterText = iff(Num > 0, FilterText, \"\")",
-                  "isHiddenWhenLocked": true,
-                  "timeContext": {
-                    "durationMs": 0
-                  },
-                  "timeContextFromParameter": "TimeRange",
-                  "queryType": 0,
-                  "resourceType": "microsoft.insights/components"
-                },
-                {
-                  "id": "74747891-f8e5-4e44-897e-c00836791635",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AgentRunsSearchParameters",
-                  "type": 1,
-                  "isHiddenWhenLocked": true,
-                  "criteriaData": [
-                    {
-                      "criteriaContext": {
-                        "leftOperand": "SelectedAgent",
-                        "operator": "!=",
-                        "rightValType": "static",
-                        "rightVal": "__ALL__",
-                        "resultValType": "static",
-                        "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\", \"HideChart\": true,\"IsGenAiFlow\": true,\r\n   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\"           ]         },         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.agent.name\",             \"draftKey\": \"customDimensions/gen_ai.agent.name\",             \"displayName\": \"Agent name\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"{SelectedAgent}\"           ]         }       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
-                      }
-                    },
-                    {
-                      "criteriaContext": {
-                        "operator": "Default",
-                        "resultValType": "static",
-                        "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\", \"HideChart\": true,\"IsGenAiFlow\": true,\r\n   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\"           ]         }       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "id": "72d7706a-f935-4976-b38c-a3bdcda1bae4",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "AgentRunsFailuresParameters",
-                  "type": 1,
-                  "isHiddenWhenLocked": true,
-                  "criteriaData": [
-                    {
-                      "criteriaContext": {
-                        "leftOperand": "SelectedAgent",
-                        "operator": "!=",
-                        "rightValType": "static",
-                        "rightVal": "__ALL__",
-                        "resultValType": "static",
-                        "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\",   \"HideChart\": true,   \"IsGenAiFlow\": true,   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [         {           \"dimension\": {             \"displayName\": \"Dependency call status\",             \"tables\": [               \"dependencies\"             ],             \"name\": \"dependency/success\",             \"draftKey\": \"dependency/success\"           },           \"values\": [             \"False\"           ],           \"operator\": {             \"label\": \"=\",             \"value\": \"==\",             \"isSelected\": true           }         },         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\",             \"execute_tool\",             \"chat.completions\",             \"text_completions\",             \"generate_content\"           ]         }{AgentErroredOpIdFilter}       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
-                      }
-                    },
-                    {
-                      "criteriaContext": {
-                        "operator": "Default",
-                        "resultValType": "static",
-                        "resultVal": "{   \"ResourceId\": \"{ResourceId:id}\", \"HideChart\": true,\"IsGenAiFlow\": true,\r\n   \"FilterSpec\": {     \"originalParams\": {       \"eventTypes\": [         {           \"value\": \"dependency\",           \"tableName\": \"dependencies\",           \"label\": \"Dependency\"         }       ],       \"timeContext\": {         \"durationMs\": \"{TimeRange:seconds}000\",         \"endTime\": \"{TimeRange:endISO}\",         \"createdTime\": \"{TimeRange:startISO}\",         \"isInitialTime\": false,         \"grain\": 1,         \"useDashboardTimeRange\": false       },       \"filter\": [          {             \"dimension\": {                 \"displayName\": \"Dependency call status\",                 \"tables\": [                     \"dependencies\"                 ],                 \"name\": \"dependency/success\",                 \"draftKey\": \"dependency/success\"             },             \"values\": [                 \"False\"             ],             \"operator\": {                 \"label\": \"=\",                 \"value\": \"==\",                 \"isSelected\": true             }         },         {           \"dimension\": {             \"name\": \"customDimensions/gen_ai.operation.name\",             \"draftKey\": \"customDimensions/gen_ai.operation.name\",             \"displayName\": \"GenAI Operation\",             \"tables\": [               \"dependencies\"             ]           },           \"values\": [             \"invoke_agent\",             \"execute_tool\",             \"chat.completions\",             \"text_completions\",             \"generate_content\"           ]         }       ],       \"searchPhrase\": {         \"originalPhrase\": \"\"       }     }   } }"
-                      }
-                    }
-                  ]
-                }
-              ],
-              "style": "pills",
-              "queryType": 0,
-              "resourceType": "microsoft.insights/components"
-            },
-            "name": "DashboardParameters",
-            "conditionalVisibility": {
-              "parameterName": "GenAIDataCheck",
-              "comparison": "isNotEqualTo",
-              "value": "NotFound"
-            },
-            "styleSettings": {
-              "margin": "0 -20px 20px 0"
-            },
-            "customWidth": 0
-          },
-          {
-            "type": 11,
-            "content": {
-              "version": "LinkItem/1.0",
-              "style": "toolbar",
-              "links": [
-                {
-                  "id": "5f2be271-52c3-429c-aa3b-75ecba2c6ba9",
-                  "linkTarget": "OpenBlade",
-                  "linkLabel": "Explore in Grafana",
-                  "style": "primary",
-                  "icon": "Diagnostics",
-                  "bladeOpenContext": {
-                    "bladeName": "AzureGrafana.ReactView",
-                    "extensionName": "Microsoft_Azure_PinToGrafana",
-                    "bladeJsonParameters": "{\n  \"GalleryType\": \"microsoft.insights/components\",\n  \"ResourceId\": \"{ResourceId:Id}\",\n  \"ConfigurationId\": \"AgentFramework\",\n  \"QueryParams\": \"{\\\"from\\\":\\\"{TimeRange:startISO}\\\",\\\"to\\\":\\\"{TimeRange:endISO}\\\"}\"\n}"
-                  }
-                }
-              ]
-            },
-            "name": "HeaderLinks",
-            "styleSettings": {
-              "padding": "5px 0 0 0",
-              "maxWidth": "250px"
-            },
-            "conditionalVisibility": {
-              "parameterName": "GenAIDataCheck",
-              "comparison": "isNotEqualTo",
-              "value": "NotFound"
-            }
-          },
           {
             "type": 12,
             "content": {
@@ -1633,21 +1655,9 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where isnotempty(AgentName);\r\nlet agentCalls = dependencies\r\n| lookup kind=inner (agents) on $left.operation_ParentId == $right.id;\r\nlet agentErrors = union agents, agentCalls\r\n| extend ErrorType = tostring(customDimensions[\"error.type\"])\r\n| extend ErrorType = iff(success == false and isempty(ErrorType), \"Other\", ErrorType)\r\n| where isnotempty(ErrorType)\r\n| summarize Errors = sum(itemCount) by AgentName;\r\nlet agentTokens = dependencies\r\n| where isnotempty(customDimensions[\"gen_ai.request.model\"])\r\n| lookup kind=leftouter (agents) on $left.operation_ParentId == $right.id\r\n| where isnotempty(AgentName)\r\n| extend InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]), OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n| where InputTokens > 0 or OutputTokens > 0\r\n| summarize Tokens = sum((InputTokens + OutputTokens) * itemCount) by AgentName;\r\nagents\r\n| summarize by AgentName\r\n| join kind=leftouter (agentErrors) on AgentName\r\n| join kind=leftouter (agentTokens) on AgentName\r\n| project Name = AgentName, Errors = coalesce(Errors, 0), Tokens = coalesce(Tokens, 0), selectedTab = \"Dashboard\"\r\n| order by Name asc",
-              "size": 0,
+              "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where isnotempty(AgentName);\r\nlet agentCalls = dependencies\r\n| lookup kind=inner (agents) on $left.operation_ParentId == $right.id;\r\nlet agentErrors = union agents, agentCalls\r\n| extend ErrorType = tostring(customDimensions[\"error.type\"])\r\n| extend ErrorType = iff(success == false and isempty(ErrorType), \"Other\", ErrorType)\r\n| where isnotempty(ErrorType)\r\n| summarize Errors = sum(itemCount) by AgentName;\r\nlet agentTokens = dependencies\r\n| where isnotempty(customDimensions[\"gen_ai.request.model\"])\r\n| lookup kind=leftouter (agents) on $left.operation_ParentId == $right.id\r\n| where isnotempty(AgentName)\r\n| extend InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]), OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n| where InputTokens > 0 or OutputTokens > 0\r\n| summarize Tokens = sum((InputTokens + OutputTokens) * itemCount) by AgentName;\r\nagents\r\n| summarize by AgentName\r\n| join kind=leftouter (agentErrors) on AgentName\r\n| join kind=leftouter (agentTokens) on AgentName\r\n| project Name = AgentName, Errors = coalesce(Errors, 0), Tokens = coalesce(Tokens, 0)\r\n| order by Name asc",
+              "size": 3,
               "timeContextFromParameter": "TimeRange",
-              "exportedParameters": [
-                {
-                  "fieldName": "Name",
-                  "parameterName": "SelectedAgent",
-                  "parameterType": 1
-                },
-                {
-                  "fieldName": "selectedTab",
-                  "parameterName": "selectedTab",
-                  "parameterType": 1
-                }
-              ],
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
               "visualization": "table",
@@ -1657,8 +1667,41 @@
                     "columnMatch": "Name",
                     "formatter": 7,
                     "formatOptions": {
-                      "linkTarget": "parameter",
-                      "linkIsContextBlade": false
+                      "linkTarget": "WorkbookTemplate",
+                      "linkIsContextBlade": true,
+                      "workbookContext": {
+                        "componentIdSource": "workbook",
+                        "resourceIdsSource": "workbook",
+                        "templateIdSource": "static",
+                        "typeSource": "workbook",
+                        "gallerySource": "workbook",
+                        "locationSource": "workbook",
+                        "passSpecificParams": true,
+                        "templateParameters": [
+                          {
+                            "name": "SelectedAgent",
+                            "source": "column",
+                            "value": "Name"
+                          },
+                          {
+                            "name": "TimeRange",
+                            "source": "parameter",
+                            "value": "TimeRange"
+                          },
+                          {
+                            "name": "ResourceId",
+                            "source": "parameter",
+                            "value": "ResourceId"
+                          },
+                          {
+                            "name": "hideTabs",
+                            "source": "static",
+                            "value": "true"
+                          }
+                        ],
+                        "templateId": "Community-Workbooks/UsageMetrics/Agents - Overview",
+                        "viewMode": "viewer"
+                      }
                     }
                   },
                   {
@@ -1683,10 +1726,6 @@
                         "maximumFractionDigits": 0
                       }
                     }
-                  },
-                  {
-                    "columnMatch": "selectedTab",
-                    "formatter": 5
                   }
                 ]
               }
