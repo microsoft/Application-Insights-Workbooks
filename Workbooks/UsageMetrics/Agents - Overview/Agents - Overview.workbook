@@ -1662,9 +1662,23 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where isnotempty(AgentName);\r\nlet agentCalls = dependencies\r\n| lookup kind=inner (agents) on $left.operation_ParentId == $right.id;\r\nlet agentErrors = union agents, agentCalls\r\n| extend ErrorType = tostring(customDimensions[\"error.type\"])\r\n| extend ErrorType = iff(success == false and isempty(ErrorType), \"Other\", ErrorType)\r\n| where isnotempty(ErrorType)\r\n| summarize Errors = sum(itemCount) by AgentName;\r\nlet agentTokens = dependencies\r\n| where isnotempty(customDimensions[\"gen_ai.request.model\"])\r\n| lookup kind=leftouter (agents) on $left.operation_ParentId == $right.id\r\n| where isnotempty(AgentName)\r\n| extend InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]), OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n| where InputTokens > 0 or OutputTokens > 0\r\n| summarize Tokens = sum((InputTokens + OutputTokens) * itemCount) by AgentName;\r\nagents\r\n| summarize by AgentName\r\n| join kind=leftouter (agentErrors) on AgentName\r\n| join kind=leftouter (agentTokens) on AgentName\r\n| project Name = AgentName, Errors = coalesce(Errors, 0), Tokens = coalesce(Tokens, 0)\r\n| order by Name asc",
+              "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"])\r\n| where isnotempty(AgentName);\r\nlet agentCalls = dependencies\r\n| lookup kind=inner (agents) on $left.operation_ParentId == $right.id;\r\nlet agentErrors = union agents, agentCalls\r\n| extend ErrorType = tostring(customDimensions[\"error.type\"])\r\n| extend ErrorType = iff(success == false and isempty(ErrorType), \"Other\", ErrorType)\r\n| where isnotempty(ErrorType)\r\n| summarize Errors = sum(itemCount) by AgentName;\r\nlet agentTokens = dependencies\r\n| where isnotempty(customDimensions[\"gen_ai.request.model\"])\r\n| lookup kind=leftouter (agents) on $left.operation_ParentId == $right.id\r\n| where isnotempty(AgentName)\r\n| extend InputTokens = toint(customDimensions[\"gen_ai.usage.input_tokens\"]), OutputTokens = toint(customDimensions[\"gen_ai.usage.output_tokens\"])\r\n| where InputTokens > 0 or OutputTokens > 0\r\n| summarize Tokens = sum((InputTokens + OutputTokens) * itemCount) by AgentName;\r\nlet results = agents\r\n| summarize by AgentName\r\n| join kind=leftouter (agentErrors) on AgentName\r\n| join kind=leftouter (agentTokens) on AgentName\r\n| project Name = AgentName, AgentName, Errors = coalesce(Errors, 0), Tokens = coalesce(Tokens, 0);\r\nlet overall = results\r\n| summarize Errors = sum(Errors), Tokens = sum(Tokens)\r\n| extend Name = \"Overall\", AgentName = \"__ALL__\";\r\nunion (overall | extend SortOrder = 0), (results | extend SortOrder = 1)\r\n| order by SortOrder asc, Name asc\r\n| project-away SortOrder\r\n| project Name, AgentName, Errors, Tokens\r\n| extend Link = \"AgentName\", SelectedTab = \"Dashboard\"",
               "size": 3,
               "timeContextFromParameter": "TimeRange",
+              "exportedParameters": [
+                {
+                  "fieldName": "SelectedTab",
+                  "parameterName": "selectedTab",
+                  "parameterType": 1,
+                  "defaultValue": "AllAgents"
+                },
+                {
+                  "fieldName": "AgentName",
+                  "parameterName": "SelectedAgent",
+                  "parameterType": 1,
+                  "defaultValue": "__ALL__"
+                }
+              ],
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
               "visualization": "table",
@@ -1672,10 +1686,14 @@
                 "formatters": [
                   {
                     "columnMatch": "Name",
-                    "formatter": 7,
+                    "formatter": 1,
+                    "tooltipFormat": {
+                      "tooltip": "Click to switch to the Dashboard, filtered to {0}"
+                    },
                     "formatOptions": {
-                      "linkTarget": "WorkbookTemplate",
-                      "linkIsContextBlade": true,
+                      "linkColumn": "Link",
+                      "linkTarget": "Url",
+                      "linkIsContextBlade": false,
                       "workbookContext": {
                         "componentIdSource": "workbook",
                         "resourceIdsSource": "workbook",
@@ -1733,6 +1751,18 @@
                         "maximumFractionDigits": 0
                       }
                     }
+                  },
+                  {
+                    "columnMatch": "Link",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "AgentName",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "SelectedTab",
+                    "formatter": 5
                   }
                 ]
               }
