@@ -2,9 +2,9 @@
 
 ## Template deployment via Azure SafeDeploy, Managed SDP
 
-Once content is checked into master, the template content is packaged into an npm package, and the release pipeline will publish that npm package to our internal team packaging feed where other dependencies live. That npm package of templates will be picked up by the AppInsights and Workbooks extension's scheduled builds, and deployed via each extension's Managed SDP (Safe Deploy) release train.
+Once content is checked into master, it will be picked up during the next scheduled template package build. That build publishes the npm package to our internal team packaging feed where other dependencies live. That npm package of templates will be picked up by the AppInsights and Workbooks extension's scheduled builds, and deployed via each extension's Managed SDP (Safe Deploy) release train.
 
-* An [official build of the template package is queued](https://msazure.visualstudio.com/One/_build?definitionId=299360) @ noon PST/1pm PDT daily, which packages all the processed templates into a versioned NPM package and uploads the NPM package to an Azure Devops package feed.
+* An [official build of the template package is queued](https://msazure.visualstudio.com/One/_build?definitionId=299360) @ noon PST/1pm PDT daily, which picks up updated templates from the repo, merges in localized content, and packages all the processed templates, into a versioned NPM package and uploads the NPM package to an Azure Devops package feed.
 
 ### Application Insights extension deployment
 
@@ -14,7 +14,7 @@ The Application Insights extension deploys using **Managed SDP** and **Azure Saf
 
 * Every weekday, a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
 
-* The extension is deployed via the [App Insights extension deployment process](https://eng.ms/docs/cloud-ai-platform/azure/aep-platform-infrastructure/observability/application-insights/portal/operations/deployment#deployment-pipeline) <!-- TODO: update link to the Managed SDP / Unified Rollout pipeline for AppInsightsExtension --> following Azure SafeDeploy rules, progressing through stages including:
+* The extension is deployed via the [App Insights extension deployment process](https://eng.ms/docs/cloud-ai-platform/azure/aep-platform-infrastructure/observability/application-insights/portal/operations/deployment#deployment-pipeline) following Azure SafeDeploy rules, progressing through stages including:
 
   * **PPE** (pre-production): [PPE](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=ppe)
   * **StagePreview** (internal): [MPAC](https://portal.azure.com/?feature.canmodifystamps=true&appInsightsExtension=stagepreview) and other non-public cloud test environments
