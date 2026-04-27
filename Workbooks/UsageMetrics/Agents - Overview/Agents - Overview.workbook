@@ -129,6 +129,17 @@
             "type": 1,
             "isHiddenWhenLocked": true,
             "value": ""
+          },
+          {
+            "id": "a3f1c8e2-7b4d-4e9a-b6c5-d8f2e1a0b3c4",
+            "version": "KqlParameterItem/1.0",
+            "name": "MaxGraphDepth",
+            "type": 1,
+            "value": "10",
+            "isHiddenWhenLocked": true,
+            "typeSettings": {
+              "paramValidationRules": []
+            }
           }
         ],
         "style": "pills",
@@ -192,7 +203,7 @@
             "resourceType": "microsoft.insights/components"
           },
           {
-            "id": "71b8c43c-55aa-4c4a-98f9-60a7e9718c21",
+            "id": "af7e6104-2692-4cc8-a3f5-25634bd31478",
             "version": "KqlParameterItem/1.0",
             "name": "AgentErroredOpIdFilter",
             "type": 1,
@@ -338,6 +349,14 @@
             "linkTarget": "parameter",
             "linkLabel": "All agents",
             "subTarget": "AllAgents",
+            "style": "link"
+          },
+          {
+            "id": "c8d4e3f2-a1b5-4c6d-9e7f-0a2b3c4d5e6f",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Cost",
+            "subTarget": "Cost",
             "style": "link"
           }
         ]
@@ -1777,6 +1796,377 @@
           "parameterName": "selectedTab",
           "comparison": "isEqualTo",
           "value": "AllAgents"
+        },
+        {
+          "parameterName": "GenAIDataCheck",
+          "comparison": "isNotEqualTo",
+          "value": "NotFound"
+        }
+      ]
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Agent Cost Summary: cost and token metrics per agent with period-over-period change\r\nlet timeRange = {TimeRange:seconds};\r\nlet currentStart = {TimeRange:start};\r\nlet currentEnd = {TimeRange:end};\r\nlet previousStart = datetime_add(\"second\", -timeRange, currentStart);\r\nlet allSpans = dependencies\r\n| where timestamp between (previousStart .. currentEnd)\r\n| extend parsedDimensions = parse_json(customDimensions)\r\n| extend AgentName = tostring(parsedDimensions[\"gen_ai.agent.name\"])\r\n| extend inputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.input\"])\r\n| extend outputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.output\"])\r\n| extend inputTokens = toint(parsedDimensions[\"gen_ai.usage.input_tokens\"])\r\n| extend outputTokens = toint(parsedDimensions[\"gen_ai.usage.output_tokens\"]);\r\n// Tree edges: child -> parent (excludes top-level self-references)\r\nlet treeEdges = allSpans\r\n| where operation_ParentId != operation_Id\r\n| project source = id, target = operation_ParentId;\r\n// Virtual edges: connect top-level spans to agent spans in the same operation\r\n// This handles flat topologies where spans are siblings sharing operation_Id\r\nlet virtualEdges = allSpans\r\n| where operation_ParentId == operation_Id\r\n| project source = id, sourceOp = operation_Id\r\n| join kind=inner (allSpans | where isnotempty(AgentName) | project target = id, targetOp = operation_Id) on $left.sourceOp == $right.targetOp\r\n| where source != target\r\n| project source, target;\r\nlet edges = treeEdges | union virtualEdges;\r\nlet agentCosts = edges\r\n| make-graph source --> target with allSpans on id\r\n| graph-match (chat)-[e*1..{MaxGraphDepth}]->(agent)\r\n  where isnotempty(agent.AgentName) and (chat.inputCost > 0 or chat.outputCost > 0 or chat.inputTokens > 0 or chat.outputTokens > 0)\r\n  project AgentName = agent.AgentName, inputCost = chat.inputCost, outputCost = chat.outputCost, inputTokens = chat.inputTokens, outputTokens = chat.outputTokens, timestamp = chat.timestamp;\r\nlet currentPeriod = agentCosts\r\n| where timestamp between (currentStart .. currentEnd)\r\n| summarize CurrentCost = sum(inputCost + outputCost), CurrentTokens = sum(inputTokens + outputTokens) by AgentName;\r\nlet previousPeriod = agentCosts\r\n| where timestamp between (previousStart .. currentStart)\r\n| summarize PreviousCost = sum(inputCost + outputCost), PreviousTokens = sum(inputTokens + outputTokens) by AgentName;\r\ncurrentPeriod\r\n| join kind=leftouter (previousPeriod) on AgentName\r\n| extend CostChange = CurrentCost - coalesce(PreviousCost, 0.0)\r\n| extend CostChangePercent = iff(coalesce(PreviousCost, 0.0) > 0, round((CurrentCost - PreviousCost) / PreviousCost * 100, 1), real(null))\r\n| extend TokenChange = CurrentTokens - coalesce(PreviousTokens, 0)\r\n| extend TokenChangePercent = iff(coalesce(PreviousTokens, 0) > 0, round(todouble(CurrentTokens - PreviousTokens) / todouble(PreviousTokens) * 100, 1), real(null))\r\n| project AgentName, EstimatedCost = CurrentCost, CostChange, CostChangePercent, TotalTokens = CurrentTokens, TokenChange, TokenChangePercent\r\n| order by EstimatedCost desc\r\n| limit 100",
+              "size": 1,
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ResourceId}"
+              ],
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "EstimatedCost",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "currency": "USD",
+                        "style": "currency",
+                        "useGrouping": true,
+                        "maximumFractionDigits": 4
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "CostChange",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "currency": "USD",
+                        "style": "currency",
+                        "useGrouping": true,
+                        "maximumFractionDigits": 4
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "CostChangePercent",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "percent",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Estimated Cost",
+                    "formatter": 1,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "currency": "USD",
+                        "style": "currency",
+                        "maximumFractionDigits": 4
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Cost Change",
+                    "formatter": 1,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "currency": "USD",
+                        "style": "currency",
+                        "useGrouping": true,
+                        "maximumFractionDigits": 4
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Cost Change %",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "percent",
+                        "maximumFractionDigits": 2
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total Tokens",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "useGrouping": false
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Token Change %",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "percent",
+                        "maximumFractionDigits": 2
+                      }
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "AgentName",
+                    "label": "Agent name"
+                  },
+                  {
+                    "columnId": "EstimatedCost",
+                    "label": "Estimated cost"
+                  },
+                  {
+                    "columnId": "CostChange",
+                    "label": "Cost change"
+                  },
+                  {
+                    "columnId": "CostChangePercent",
+                    "label": "Cost change %"
+                  },
+                  {
+                    "columnId": "TotalTokens",
+                    "label": "Total tokens"
+                  },
+                  {
+                    "columnId": "TokenChange",
+                    "label": "Token change"
+                  },
+                  {
+                    "columnId": "TokenChangePercent",
+                    "label": "Token change %"
+                  }
+                ]
+              }
+            },
+            "name": "overview"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Cost per Agent Execution: average cost per run over time\r\nlet allSpans = dependencies\r\n| extend parsedDimensions = parse_json(customDimensions)\r\n| extend AgentName = tostring(parsedDimensions[\"gen_ai.agent.name\"])\r\n| extend inputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.input\"])\r\n| extend outputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.output\"])\r\n| extend inputTokens = toint(parsedDimensions[\"gen_ai.usage.input_tokens\"])\r\n| extend outputTokens = toint(parsedDimensions[\"gen_ai.usage.output_tokens\"]);\r\n// Tree edges: child -> parent (excludes top-level self-references)\r\nlet treeEdges = allSpans\r\n| where operation_ParentId != operation_Id\r\n| project source = id, target = operation_ParentId;\r\n// Virtual edges: connect top-level spans to agent spans in the same operation\r\n// This handles flat topologies where spans are siblings sharing operation_Id\r\nlet virtualEdges = allSpans\r\n| where operation_ParentId == operation_Id\r\n| project source = id, sourceOp = operation_Id\r\n| join kind=inner (allSpans | where isnotempty(AgentName) | project target = id, targetOp = operation_Id) on $left.sourceOp == $right.targetOp\r\n| where source != target\r\n| project source, target;\r\nlet edges = treeEdges | union virtualEdges;\r\nlet agentCosts = edges\r\n| make-graph source --> target with allSpans on id\r\n| graph-match (chat)-[e*1..{MaxGraphDepth}]->(agent)\r\n  where isnotempty(agent.AgentName) and (chat.inputCost > 0 or chat.outputCost > 0 or chat.inputTokens > 0 or chat.outputTokens > 0)\r\n  project AgentName = agent.AgentName, inputCost = chat.inputCost, outputCost = chat.outputCost, operation_Id = chat.operation_Id, EventTime = todatetime(agent.timestamp);\r\nagentCosts\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| summarize ExecutionCost = sum(inputCost + outputCost) by operation_Id, AgentName, EventTime\r\n| summarize CostPerExecution = round(avg(ExecutionCost),8) by AgentName, bin(EventTime, {TimeRange:grain})\r\n| project EventTime=todatetime(EventTime), AgentName, CostPerExecution",
+              "size": 0,
+              "aggregation": 5,
+              "title": "Cost per execution",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ResourceId}"
+              ],
+              "visualization": "timechart",
+              "chartSettings": {
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 0,
+                    "options": {
+                      "currency": "USD",
+                      "style": "currency",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 4,
+                      "minimumSignificantDigits": 1
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "49",
+            "name": "costPerAgentExecution"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Cost by Model: total cost grouped by model\r\nlet allSpans = dependencies\r\n| extend parsedDimensions = parse_json(customDimensions)\r\n| extend AgentName = tostring(parsedDimensions[\"gen_ai.agent.name\"])\r\n| extend inputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.input\"])\r\n| extend outputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.output\"])\r\n| extend inputTokens = toint(parsedDimensions[\"gen_ai.usage.input_tokens\"])\r\n| extend outputTokens = toint(parsedDimensions[\"gen_ai.usage.output_tokens\"])\r\n| extend Model = tostring(parsedDimensions[\"gen_ai.request.model\"]);\r\n// Tree edges: child -> parent (excludes top-level self-references)\r\nlet treeEdges = allSpans\r\n| where operation_ParentId != operation_Id\r\n| project source = id, target = operation_ParentId;\r\n// Virtual edges: connect top-level spans to agent spans in the same operation\r\n// This handles flat topologies where spans are siblings sharing operation_Id\r\nlet virtualEdges = allSpans\r\n| where operation_ParentId == operation_Id\r\n| project source = id, sourceOp = operation_Id\r\n| join kind=inner (allSpans | where isnotempty(AgentName) | project target = id, targetOp = operation_Id) on $left.sourceOp == $right.targetOp\r\n| where source != target\r\n| project source, target;\r\nlet edges = treeEdges | union virtualEdges;\r\nlet agentCosts = edges\r\n| make-graph source --> target with allSpans on id\r\n| graph-match (chat)-[e*1..{MaxGraphDepth}]->(agent)\r\n  where isnotempty(agent.AgentName) and (chat.inputCost > 0 or chat.outputCost > 0 or chat.inputTokens > 0 or chat.outputTokens > 0)\r\n  project AgentName = agent.AgentName, inputCost = chat.inputCost, outputCost = chat.outputCost, Model = chat.Model;\r\nagentCosts\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| where isnotempty(Model)\r\n| summarize TotalCost = round(sum(inputCost + outputCost), 4) by Model\r\n| where TotalCost > 0\r\n| order by TotalCost desc",
+              "size": 0,
+              "title": "Cost by models",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ResourceId}"
+              ],
+              "visualization": "barchart",
+              "graphSettings": {
+                "type": 0,
+                "topContent": {
+                  "columnMatch": "Model",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "TotalCost",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "chartSettings": {
+                "yAxis": [
+                  "TotalCost"
+                ],
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 0,
+                    "options": {
+                      "currency": "USD",
+                      "style": "currency",
+                      "useGrouping": true,
+                      "maximumFractionDigits": 4,
+                      "minimumSignificantDigits": 1
+                    }
+                  }
+                }
+              },
+              "mapSettings": {
+                "locInfo": "LatLong",
+                "sizeSettings": "TotalCost",
+                "sizeAggregation": "Sum",
+                "legendMetric": "TotalCost",
+                "legendAggregation": "Sum",
+                "itemColorSettings": {
+                  "type": "heatmap",
+                  "colorAggregation": "Sum",
+                  "nodeColorField": "TotalCost",
+                  "heatmapPalette": "greenRed"
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "costByModel"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Trace-Level Cost Table: per-run cost, token, and duration rollup\r\nlet allSpans = dependencies\r\n| extend parsedDimensions = parse_json(customDimensions)\r\n| extend AgentName = tostring(parsedDimensions[\"gen_ai.agent.name\"])\r\n| extend inputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.input\"])\r\n| extend outputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.output\"])\r\n| extend inputTokens = toint(parsedDimensions[\"gen_ai.usage.input_tokens\"])\r\n| extend outputTokens = toint(parsedDimensions[\"gen_ai.usage.output_tokens\"])\r\n| extend Model = tostring(parsedDimensions[\"gen_ai.request.model\"]);\r\n// Tree edges: child -> parent (excludes top-level self-references)\r\nlet treeEdges = allSpans\r\n| where operation_ParentId != operation_Id\r\n| project source = id, target = operation_ParentId;\r\n// Virtual edges: connect top-level spans to agent spans in the same operation\r\n// This handles flat topologies where spans are siblings sharing operation_Id\r\nlet virtualEdges = allSpans\r\n| where operation_ParentId == operation_Id\r\n| project source = id, sourceOp = operation_Id\r\n| join kind=inner (allSpans | where isnotempty(AgentName) | project target = id, targetOp = operation_Id) on $left.sourceOp == $right.targetOp\r\n| where source != target\r\n| project source, target;\r\nlet edges = treeEdges | union virtualEdges;\r\nlet agentCosts = edges\r\n| make-graph source --> target with allSpans on id\r\n| graph-match (chat)-[e*1..{MaxGraphDepth}]->(agent)\r\n  where isnotempty(agent.AgentName) and (chat.inputCost > 0 or chat.outputCost > 0 or chat.inputTokens > 0 or chat.outputTokens > 0)\r\n  project AgentName = agent.AgentName, WorkflowName = agent.AgentName, inputCost = chat.inputCost, outputCost = chat.outputCost, inputTokens = chat.inputTokens, outputTokens = chat.outputTokens, Model = chat.Model, operation_Id = chat.operation_Id, chatItemId = chat.itemId, timestamp = chat.timestamp, agentDuration = agent.duration;\r\nagentCosts\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| summarize [\"Total Cost\"] = round(sum(inputCost + outputCost), 4), [\"Input Tokens\"] = sum(inputTokens), [\"Output Tokens\"] = sum(outputTokens), [\"Total Tokens\"] = sum(inputTokens + outputTokens), Model = any(Model), [\"Duration (ms)\"] = max(agentDuration), timestamp = min(timestamp), chatItemId = take_any(chatItemId) by operation_Id, AgentName, WorkflowName\r\n| project [\"Trace ID\"] = operation_Id, [\"Total Cost\"], [\"Agent\"] = AgentName, [\"Workflow\"] = WorkflowName, Model, [\"Input Tokens\"], [\"Output Tokens\"], [\"Total Tokens\"], [\"Duration (ms)\"], itemId = chatItemId, timestamp\r\n| order by [\"Total Cost\"] desc\r\n| take 100",
+              "size": 0,
+              "title": "Most expensive conversations/workflows",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ResourceId}"
+              ],
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Trace ID",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "DependencyDetails",
+                      "linkIsContextBlade": true,
+                      "appInsightsContext": {
+                        "resourceIdSource": "workbook",
+                        "secondaryIdSource": "column",
+                        "secondaryId": "itemId"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Total Cost",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "palette": "blue"
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "currency",
+                        "currency": "USD",
+                        "minimumFractionDigits": 4
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "Duration (ms)",
+                    "formatter": 1,
+                    "numberFormat": {
+                      "unit": 23,
+                      "options": {
+                        "style": "decimal"
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "itemId",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "timestamp",
+                    "formatter": 5
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "Trace ID",
+                    "label": "Conversation/trace ID"
+                  },
+                  {
+                    "columnId": "Total Cost",
+                    "label": "Cost"
+                  },
+                  {
+                    "columnId": "Agent",
+                    "label": "Agent name"
+                  },
+                  {
+                    "columnId": "Workflow",
+                    "label": "Workflow name"
+                  },
+                  {
+                    "columnId": "Model",
+                    "label": "Model"
+                  },
+                  {
+                    "columnId": "Input Tokens",
+                    "label": "Input tokens"
+                  },
+                  {
+                    "columnId": "Output Tokens",
+                    "label": "Output tokens"
+                  },
+                  {
+                    "columnId": "Total Tokens",
+                    "label": "Total tokens"
+                  },
+                  {
+                    "columnId": "Duration (ms)",
+                    "label": "Duration"
+                  }
+                ]
+              },
+              "sortBy": []
+            },
+            "name": "traceLevelCost"
+          }
+        ]
+      },
+      "name": "CostTab",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "selectedTab",
+          "comparison": "isEqualTo",
+          "value": "Cost"
         },
         {
           "parameterName": "GenAIDataCheck",
