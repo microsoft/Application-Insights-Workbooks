@@ -2103,9 +2103,11 @@
                       "style": "currency",
                       "useGrouping": true,
                       "maximumFractionDigits": 4,
-                      "minimumSignificantDigits": 1
+                      "minimumSignificantDigits": 1,
+                      "maximumSignificantDigits": 4
                     }
-                  }
+                  },
+                  "min": 0
                 }
               }
             },
@@ -2156,7 +2158,8 @@
                       "style": "currency",
                       "useGrouping": true,
                       "maximumFractionDigits": 4,
-                      "minimumSignificantDigits": 1
+                      "minimumSignificantDigits": 1,
+                      "maximumSignificantDigits": 4
                     }
                   }
                 }
@@ -2182,9 +2185,9 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "// Trace-Level Cost Table: per-run cost, token, and duration rollup\r\nlet allSpans = dependencies\r\n| extend parsedDimensions = parse_json(customDimensions)\r\n| extend AgentName = tostring(parsedDimensions[\"gen_ai.agent.name\"])\r\n| extend inputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.input\"])\r\n| extend outputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.output\"])\r\n| extend inputTokens = toint(parsedDimensions[\"gen_ai.usage.input_tokens\"])\r\n| extend outputTokens = toint(parsedDimensions[\"gen_ai.usage.output_tokens\"])\r\n| extend Model = tostring(parsedDimensions[\"gen_ai.request.model\"]);\r\n// Tree edges: child -> parent (excludes top-level self-references)\r\nlet treeEdges = allSpans\r\n| where operation_ParentId != operation_Id\r\n| project source = id, target = operation_ParentId;\r\n// Virtual edges: connect top-level spans to agent spans in the same operation\r\n// This handles flat topologies where spans are siblings sharing operation_Id\r\nlet virtualEdges = allSpans\r\n| where operation_ParentId == operation_Id\r\n| project source = id, sourceOp = operation_Id\r\n| join kind=inner (allSpans | where isnotempty(AgentName) | project target = id, targetOp = operation_Id) on $left.sourceOp == $right.targetOp\r\n| where source != target\r\n| project source, target;\r\nlet edges = treeEdges | union virtualEdges;\r\nlet agentCosts = edges\r\n| make-graph source --> target with allSpans on id\r\n| graph-match (chat)-[e*1..{MaxGraphDepth}]->(agent)\r\n  where isnotempty(agent.AgentName) and (chat.inputCost > 0 or chat.outputCost > 0 or chat.inputTokens > 0 or chat.outputTokens > 0)\r\n  project AgentName = agent.AgentName, WorkflowName = agent.AgentName, inputCost = chat.inputCost, outputCost = chat.outputCost, inputTokens = chat.inputTokens, outputTokens = chat.outputTokens, Model = chat.Model, operation_Id = chat.operation_Id, chatItemId = chat.itemId, timestamp = chat.timestamp, agentDuration = agent.duration;\r\nagentCosts\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| summarize [\"Total Cost\"] = round(sum(inputCost + outputCost), 4), [\"Input Tokens\"] = sum(inputTokens), [\"Output Tokens\"] = sum(outputTokens), [\"Total Tokens\"] = sum(inputTokens + outputTokens), Model = any(Model), [\"Duration (ms)\"] = max(agentDuration), timestamp = min(timestamp), chatItemId = take_any(chatItemId) by operation_Id, AgentName, WorkflowName\r\n| project [\"Trace ID\"] = operation_Id, [\"Total Cost\"], [\"Agent\"] = AgentName, [\"Workflow\"] = WorkflowName, Model, [\"Input Tokens\"], [\"Output Tokens\"], [\"Total Tokens\"], [\"Duration (ms)\"], itemId = chatItemId, timestamp\r\n| order by [\"Total Cost\"] desc\r\n| take 100",
+              "query": "// Trace-Level Cost Table: per-run cost, token, and duration rollup\r\nlet allSpans = dependencies\r\n| extend parsedDimensions = parse_json(customDimensions)\r\n| extend AgentName = tostring(parsedDimensions[\"gen_ai.agent.name\"])\r\n| extend inputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.input\"])\r\n| extend outputCost = todouble(parsedDimensions[\"microsoft.gen_ai.cost.output\"])\r\n| extend inputTokens = toint(parsedDimensions[\"gen_ai.usage.input_tokens\"])\r\n| extend outputTokens = toint(parsedDimensions[\"gen_ai.usage.output_tokens\"])\r\n| extend Model = tostring(parsedDimensions[\"gen_ai.request.model\"]);\r\n// Tree edges: child -> parent (excludes top-level self-references)\r\nlet treeEdges = allSpans\r\n| where operation_ParentId != operation_Id\r\n| project source = id, target = operation_ParentId;\r\n// Virtual edges: connect top-level spans to agent spans in the same operation\r\n// This handles flat topologies where spans are siblings sharing operation_Id\r\nlet virtualEdges = allSpans\r\n| where operation_ParentId == operation_Id\r\n| project source = id, sourceOp = operation_Id\r\n| join kind=inner (allSpans | where isnotempty(AgentName) | project target = id, targetOp = operation_Id) on $left.sourceOp == $right.targetOp\r\n| where source != target\r\n| project source, target;\r\nlet edges = treeEdges | union virtualEdges;\r\nlet agentCosts = edges\r\n| make-graph source --> target with allSpans on id\r\n| graph-match (chat)-[e*1..{MaxGraphDepth}]->(agent)\r\n  where isnotempty(agent.AgentName) and (chat.inputCost > 0 or chat.outputCost > 0 or chat.inputTokens > 0 or chat.outputTokens > 0)\r\n  project AgentName = agent.AgentName, inputCost = chat.inputCost, outputCost = chat.outputCost, inputTokens = chat.inputTokens, outputTokens = chat.outputTokens, Model = chat.Model, operation_Id = chat.operation_Id, chatItemId = chat.itemId, timestamp = chat.timestamp, agentDuration = agent.duration;\r\nagentCosts\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| summarize [\"Total Cost\"] = round(sum(inputCost + outputCost), 4), [\"Input Tokens\"] = sum(inputTokens), [\"Output Tokens\"] = sum(outputTokens), [\"Total Tokens\"] = sum(inputTokens + outputTokens), Models = make_set(Model), [\"Duration (ms)\"] = max(agentDuration), timestamp = min(timestamp), chatItemId = take_any(chatItemId) by operation_Id, AgentName\r\n| extend Model = iff(array_length(Models) > 1, \"Multiple\", tostring(Models[0]))\r\n| project [\"Trace ID\"] = operation_Id, [\"Total Cost\"], [\"Agent\"] = AgentName, Model, [\"Input Tokens\"], [\"Output Tokens\"], [\"Total Tokens\"], [\"Duration (ms)\"], itemId = chatItemId, timestamp\r\n| order by [\"Total Cost\"] desc\r\n| take 100",
               "size": 0,
-              "title": "Most expensive conversations/workflows",
+              "title": "Most expensive traces",
               "timeContextFromParameter": "TimeRange",
               "queryType": 0,
               "resourceType": "microsoft.insights/components",
@@ -2199,7 +2202,7 @@
                     "formatter": 7,
                     "formatOptions": {
                       "linkTarget": "DependencyDetails",
-                      "linkIsContextBlade": true,
+                      "linkIsContextBlade": false,
                       "appInsightsContext": {
                         "resourceIdSource": "workbook",
                         "secondaryIdSource": "column",
@@ -2244,7 +2247,7 @@
                 "labelSettings": [
                   {
                     "columnId": "Trace ID",
-                    "label": "Conversation/trace ID"
+                    "label": "Trace ID"
                   },
                   {
                     "columnId": "Total Cost",
@@ -2253,10 +2256,6 @@
                   {
                     "columnId": "Agent",
                     "label": "Agent name"
-                  },
-                  {
-                    "columnId": "Workflow",
-                    "label": "Workflow name"
                   },
                   {
                     "columnId": "Model",
