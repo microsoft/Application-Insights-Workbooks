@@ -1006,172 +1006,83 @@
                     "groupType": "editable",
                     "items": [
                       {
-                        "type": 9,
+                        "type": 1,
                         "content": {
-                          "version": "KqlParameterItem/1.0",
-                          "parameters": [
-                            {
-                              "id": "b12df505-b281-40d9-9ac3-e36dbc6c443c",
-                              "version": "KqlParameterItem/1.0",
-                              "name": "Evaluator",
-                              "type": 2,
-                              "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]), AgentId=tostring(customDimensions[\"gen_ai.agent.id\"]);\r\ncustomEvents\r\n| where name == \"gen_ai.evaluation.result\"\r\n| extend Evaluator = tostring(customDimensions[\"gen_ai.evaluation.name\"])\r\n| extend AgentId = tostring(customDimensions[\"gen_ai.agent.id\"])\r\n| lookup (agents) on AgentId\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| distinct Evaluator\r\n| project value = Evaluator, display = Evaluator, is_selected = false",
-                              "typeSettings": {
-                                "additionalResourceOptions": [],
-                                "showDefault": false
-                              },
-                              "timeContext": {
-                                "durationMs": 2592000000
-                              },
-                              "timeContextFromParameter": "TimeRange",
-                              "queryType": 0,
-                              "resourceType": "microsoft.insights/components",
-                              "value": null,
-                              "label": "Evaluation"
-                            },
-                            {
-                              "id": "aaf0d4fb-e443-4def-9577-73bd1df95d2b",
-                              "version": "KqlParameterItem/1.0",
-                              "name": "Threshold",
-                              "type": 1,
-                              "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]), AgentId=tostring(customDimensions[\"gen_ai.agent.id\"]);\r\ncustomEvents\r\n| where name == \"gen_ai.evaluation.result\"\r\n| where customDimensions[\"gen_ai.evaluation.name\"] == \"{Evaluator}\"\r\n| extend success = customDimensions[\"gen_ai.evaluation.score.label\"] == \"pass\"\r\n| extend AgentId = tostring(customDimensions[\"gen_ai.agent.id\"])\r\n| lookup (agents) on AgentId\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| extend InternalProperties = todynamic(tostring(customDimensions.internal_properties))\r\n| project timestamp,\r\n    Evaluator = tostring(customDimensions[\"gen_ai.evaluation.name\"]),\r\n    Score = todouble(customDimensions[\"gen_ai.evaluation.score.value\"]),\r\n    Label = tostring(customDimensions[\"gen_ai.evaluation.score.label\"]),\r\n    Threshold = todouble(InternalProperties[\"gen_ai.evaluation.threshold\"]),\r\n    Min = todouble(InternalProperties[\"gen_ai.evaluation.min_value\"]),\r\n    Max = todouble(InternalProperties[\"gen_ai.evaluation.max_value\"]),\r\n    Error = tostring(customDimensions[\"error.type\"])\r\n| order by timestamp desc\r\n| where isnotempty(Threshold)\r\n| project Threshold\r\n| take 1",
-                              "isHiddenWhenLocked": true,
-                              "timeContext": {
-                                "durationMs": 2592000000
-                              },
-                              "timeContextFromParameter": "TimeRange",
-                              "queryType": 0,
-                              "resourceType": "microsoft.insights/components"
-                            },
-                            {
-                              "id": "b17ef56a-dc31-4624-b426-c9e580e1e651",
-                              "version": "KqlParameterItem/1.0",
-                              "name": "EvaluationCardSearchParameters4",
-                              "type": 1,
-                              "isHiddenWhenLocked": true,
-                              "query": "let invokeAgents = materialize(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend\r\n    AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]),\r\n    AgentId = tostring(customDimensions[\"gen_ai.agent.id\"]),\r\n    operation_Id = tostring(operation_Id)\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or AgentName == \"{SelectedAgent}\"\r\n| where isnotempty(operation_Id)\r\n| project operation_Id, invokeTs = timestamp, AgentId, AgentName, spanId = id\r\n);\r\n\r\nlet responseOps = materialize(\r\nunion isfuzzy=true dependencies, customEvents\r\n| extend\r\n    responseId = tostring(customDimensions[\"gen_ai.response.id\"]),\r\n    operation_Id = tostring(operation_Id)\r\n| where isnotempty(responseId) and isnotempty(operation_Id)\r\n| summarize arg_max(timestamp, operation_Id) by responseId\r\n| project responseId, responseOperationId = operation_Id\r\n);\r\n\r\nlet evalBase = materialize(\r\ncustomEvents\r\n| where name == \"gen_ai.evaluation.result\"\r\n| where tostring(customDimensions[\"gen_ai.evaluation.name\"]) == \"{Evaluator}\"\r\n| extend EventOperationIdRaw = tostring(operation_Id)\r\n| extend EventOperationId = EventOperationIdRaw\r\n| extend responseId = tostring(customDimensions[\"gen_ai.response.id\"])\r\n| extend EvalAgentId = tostring(customDimensions[\"gen_ai.agent.id\"])\r\n| project itemId, evalTs = timestamp, EventOperationId, responseId, EvalAgentId, parentId = tostring(operation_ParentId)\r\n);\r\n\r\nlet responseCorrelatedOps =\r\nevalBase\r\n| where isnotempty(responseId)\r\n| join kind=inner (responseOps) on responseId\r\n| summarize Latest = max(evalTs) by operation_Id = responseOperationId;\r\n\r\nlet parentCorrelatedOps =\r\nevalBase\r\n| where isnotempty(parentId)\r\n| join kind=inner (invokeAgents | project spanId, operation_Id) on $left.parentId == $right.spanId\r\n| summarize Latest = max(evalTs) by operation_Id;\r\n\r\nunion responseCorrelatedOps, parentCorrelatedOps\r\n| summarize Latest = max(Latest) by operation_Id\r\n| join kind=leftouter (invokeAgents | distinct operation_Id | extend HasAgentMatch = 1) on operation_Id\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or HasAgentMatch == 1\r\n| order by Latest desc\r\n| take 300\r\n| summarize Num = count(), OpIds = make_list(operation_Id)\r\n| extend BaseFilter = iff(\r\n    \"{SelectedAgent}\" != \"__ALL__\",\r\n    \"{         \\\"dimension\\\": {             \\\"name\\\": \\\"customDimensions/gen_ai.agent.name\\\",             \\\"draftKey\\\": \\\"customDimensions/gen_ai.agent.name\\\",             \\\"displayName\\\": \\\"Agent name\\\",             \\\"tables\\\": [               \\\"dependencies\\\"             ]           },           \\\"values\\\": [             \\\"{SelectedAgent}\\\"           ]         }\",\r\n    \"{         \\\"dimension\\\": {             \\\"name\\\": \\\"customDimensions/gen_ai.operation.name\\\",             \\\"draftKey\\\": \\\"customDimensions/gen_ai.operation.name\\\",             \\\"displayName\\\": \\\"GenAI Operation\\\",             \\\"tables\\\": [               \\\"dependencies\\\"             ]           },           \\\"values\\\": [             \\\"invoke_agent\\\"           ]         }\"\r\n)\r\n| extend OpFilter = iff(Num > 0, strcat(\r\n        \", {          \\\"dimension\\\": {              \\\"displayName\\\": \\\"Operation Id\\\",              \\\"tables\\\": [                  \\\"dependencies\\\"              ],              \\\"name\\\": \\\"operation/id\\\",              \\\"draftKey\\\": \\\"operation/id\\\"          },          \\\"values\\\":\",\r\n        OpIds,\r\n        \"}\"\r\n), \"\")\r\n| project BladeJson = strcat(\r\n    \"{   \\\"ResourceId\\\": \\\"{ResourceId:id}\\\", \\\"HideChart\\\": true, \\\"IsGenAiFlow\\\": true,   \\\"FilterSpec\\\": {     \\\"originalParams\\\": {       \\\"sort\\\": \\\"evaluationsAsc\\\",       \\\"timeContext\\\": {         \\\"durationMs\\\": \\\"{TimeRange:seconds}000\\\",         \\\"endTime\\\": \\\"{TimeRange:endISO}\\\",         \\\"createdTime\\\": \\\"{TimeRange:startISO}\\\",         \\\"isInitialTime\\\": false,         \\\"grain\\\": 1,         \\\"useDashboardTimeRange\\\": false       },       \\\"filter\\\": [\",\r\n    BaseFilter,\r\n    OpFilter,\r\n    \"],       \\\"searchPhrase\\\": {         \\\"originalPhrase\\\": \\\"\\\"       }     }   } }\"\r\n)",
-                              "timeContext": {
-                                "durationMs": 0
-                              },
-                              "timeContextFromParameter": "TimeRange",
-                              "queryType": 0,
-                              "resourceType": "microsoft.insights/components"
-                            },
-                            {
-                              "id": "d82a10c7-3a83-4cbf-9750-fcf1572ecc32",
-                              "version": "KqlParameterItem/1.0",
-                              "name": "EvaluationCardHasResults4",
-                              "type": 1,
-                              "isHiddenWhenLocked": true,
-                              "query": "let invokeAgents = materialize(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend\r\n    AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]),\r\n    AgentId = tostring(customDimensions[\"gen_ai.agent.id\"]),\r\n    operation_Id = tostring(operation_Id)\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or AgentName == \"{SelectedAgent}\"\r\n| where isnotempty(operation_Id)\r\n| project operation_Id, invokeTs = timestamp, AgentId, AgentName, spanId = id\r\n);\r\n\r\nlet responseOps = materialize(\r\nunion isfuzzy=true dependencies, customEvents\r\n| extend\r\n    responseId = tostring(customDimensions[\"gen_ai.response.id\"]),\r\n    operation_Id = tostring(operation_Id)\r\n| where isnotempty(responseId) and isnotempty(operation_Id)\r\n| summarize arg_max(timestamp, operation_Id) by responseId\r\n| project responseId, responseOperationId = operation_Id\r\n);\r\n\r\nlet evalBase = materialize(\r\ncustomEvents\r\n| where name == \"gen_ai.evaluation.result\"\r\n| where tostring(customDimensions[\"gen_ai.evaluation.name\"]) == \"{Evaluator}\"\r\n| extend responseId = tostring(customDimensions[\"gen_ai.response.id\"])\r\n| project evalTs = timestamp, responseId, parentId = tostring(operation_ParentId)\r\n);\r\n\r\nlet responseCorrelatedOps =\r\nevalBase\r\n| where isnotempty(responseId)\r\n| join kind=inner (responseOps) on responseId\r\n| summarize Latest = max(evalTs) by operation_Id = responseOperationId;\r\n\r\nlet parentCorrelatedOps =\r\nevalBase\r\n| where isnotempty(parentId)\r\n| join kind=inner (invokeAgents | project spanId, operation_Id) on $left.parentId == $right.spanId\r\n| summarize Latest = max(evalTs) by operation_Id;\r\n\r\nunion responseCorrelatedOps, parentCorrelatedOps\r\n| summarize Latest = max(Latest) by operation_Id\r\n| join kind=leftouter (invokeAgents | distinct operation_Id | extend HasAgentMatch = 1) on operation_Id\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or HasAgentMatch == 1\r\n| summarize Num = count()\r\n| project HasResults = iff(Num > 0, \"true\", \"false\")",
-                              "timeContext": {
-                                "durationMs": 0
-                              },
-                              "timeContextFromParameter": "TimeRange",
-                              "queryType": 0,
-                              "resourceType": "microsoft.insights/components"
-                            }
-                          ],
-                          "style": "formHorizontal",
-                          "queryType": 0,
-                          "resourceType": "microsoft.insights/components"
+                          "json": "#### Evaluations Summary"
                         },
-                        "customWidth": "70",
-                        "name": "EvaluationParameters4"
-                      },
-                      {
-                        "type": 11,
-                        "content": {
-                          "version": "LinkItem/1.0",
-                          "style": "paragraph",
-                          "links": [
-                            {
-                              "id": "f68e2234-4b44-41f7-90b2-2f79cf2f7a08",
-                              "linkTarget": "OpenBlade",
-                              "linkLabel": "View Traces",
-                              "style": "secondary",
-                              "linkIsContextBlade": true,
-                              "bladeOpenContext": {
-                                "bladeName": "SearchV2Blade",
-                                "extensionName": "AppInsightsExtension",
-                                "bladeJsonParameters": "{EvaluationCardSearchParameters4}"
-                              }
-                            }
-                          ]
-                        },
-                        "customWidth": "30",
-                        "conditionalVisibility": {
-                          "parameterName": "EvaluationCardHasResults4",
-                          "comparison": "isEqualTo",
-                          "value": "true"
-                        },
-                        "name": "EvaluationOpenBlade4",
+                        "customWidth": "0",
+                        "name": "EvaluationsSummaryTitle",
                         "styleSettings": {
-                          "margin": "0 0 10px 10px"
+                          "margin": "0 0 5px 5px"
                         }
                       },
                       {
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let agents = dependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]), AgentId=tostring(customDimensions[\"gen_ai.agent.id\"]);\r\ncustomEvents\r\n| where name == \"gen_ai.evaluation.result\"\r\n| where customDimensions[\"gen_ai.evaluation.name\"] == \"{Evaluator}\"\r\n| extend success = customDimensions[\"gen_ai.evaluation.score.label\"] == \"pass\"\r\n| extend AgentId = tostring(customDimensions[\"gen_ai.agent.id\"])\r\n| lookup (agents) on AgentId\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| extend InternalProperties = todynamic(tostring(customDimensions.internal_properties))\r\n| project timestamp,\r\n    //Evaluator = tostring(customDimensions[\"gen_ai.evaluation.name\"]),\r\n    Score = todouble(customDimensions[\"gen_ai.evaluation.score.value\"]),\r\n    Label = tostring(customDimensions[\"gen_ai.evaluation.score.label\"]),\r\n    //Threshold = todouble(InternalProperties[\"gen_ai.evaluation.threshold\"]),\r\n    //Min = todouble(InternalProperties[\"gen_ai.evaluation.min_value\"]),\r\n    //Max = todouble(InternalProperties[\"gen_ai.evaluation.max_value\"]),\r\n    Error = tostring(customDimensions[\"error.type\"])\r\n| extend Label = case(\r\n    isnotempty(Error), \"Errored\",\r\n    //Label == \"pass\", \"Pass\",\r\n    //Label == \"fail\", \"Fail\",\r\n    \"Run\")\r\n| project-away Error",
+                          "query": "let invokeAgents = materialize(\r\ndependencies\r\n| where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\"\r\n| extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]), AgentId=tostring(customDimensions[\"gen_ai.agent.id\"])\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| project operation_Id, AgentId, AgentName, spanId = id\r\n);\r\nlet responseOps = materialize(\r\nunion isfuzzy=true dependencies, customEvents\r\n| extend responseId = tostring(customDimensions[\"gen_ai.response.id\"]),\r\n    operation_Id = tostring(operation_Id)\r\n| where isnotempty(responseId) and isnotempty(operation_Id)\r\n| summarize arg_max(timestamp, operation_Id) by responseId\r\n| project responseId, responseOperationId = operation_Id\r\n);\r\nlet evalBase = materialize(\r\ncustomEvents\r\n| where name == \"gen_ai.evaluation.result\"\r\n| extend Evaluator = tostring(customDimensions[\"gen_ai.evaluation.name\"])\r\n| where isnotempty(Evaluator)\r\n| extend Score = todouble(customDimensions[\"gen_ai.evaluation.score.value\"])\r\n| where isnan(Score) == false\r\n| extend responseId = tostring(customDimensions[\"gen_ai.response.id\"])\r\n| extend AgentId = tostring(customDimensions[\"gen_ai.agent.id\"])\r\n| lookup (dependencies | where customDimensions[\"gen_ai.operation.name\"] == \"invoke_agent\" | extend AgentName = tostring(customDimensions[\"gen_ai.agent.name\"]), AgentId = tostring(customDimensions[\"gen_ai.agent.id\"]) | summarize AgentName = take_any(AgentName) by AgentId) on AgentId\r\n| where \"{SelectedAgent}\" == \"__ALL__\" or \"{SelectedAgent}\" == AgentName\r\n| project itemId, Evaluator, Score, itemCount, responseId, parentId = tostring(operation_ParentId)\r\n);\r\nlet evalStats = evalBase\r\n| summarize Runs = sum(itemCount), [\"Avg Score\"] = round(avg(Score), 2) by Evaluation = Evaluator;\r\nlet responseCorrelatedOps = evalBase\r\n| where isnotempty(responseId)\r\n| join kind=inner (responseOps) on responseId\r\n| summarize by Evaluator, operation_Id = responseOperationId;\r\nlet parentCorrelatedOps = evalBase\r\n| where isnotempty(parentId)\r\n| join kind=inner (invokeAgents | project spanId, operation_Id) on $left.parentId == $right.spanId\r\n| summarize by Evaluator, operation_Id;\r\nlet evalOpIds = union responseCorrelatedOps, parentCorrelatedOps\r\n| summarize OpIds = make_set(operation_Id, 300) by Evaluation = Evaluator;\r\nevalStats\r\n| join kind=leftouter (evalOpIds) on Evaluation\r\n| project Evaluation, Runs, [\"Avg Score\"], OpIds = coalesce(OpIds, dynamic([]))\r\n| order by Runs desc",
                           "size": 1,
-                          "aggregation": 3,
-                          "noDataMessage": "Pick an evaluation from the dropdown above",
+                          "noDataMessage": "No evaluation results were found in the time range",
                           "timeContextFromParameter": "TimeRange",
                           "queryType": 0,
                           "resourceType": "microsoft.insights/components",
-                          "visualization": "scatterchart",
-                          "chartSettings": {
-                            "yAxis": [
-                              "Score"
-                            ],
-                            "group": "Label",
-                            "createOtherGroup": null,
-                            "seriesLabelSettings": [
+                          "visualization": "table",
+                          "gridSettings": {
+                            "formatters": [
                               {
-                                "seriesName": "Errored",
-                                "label": "Score for Errored Runs",
-                                "color": "purple"
-                              },
-                              {
-                                "seriesName": "$_thresholdLine",
-                                "label": "Threshold score",
-                                "color": "red"
-                              },
-                              {
-                                "seriesName": "Run",
-                                "label": "Score",
-                                "color": "blue"
-                              }
-                            ],
-                            "customThresholdLine": "{Threshold}",
-                            "customThresholdLineStyle": 5,
-                            "xSettings": {
-                              "label": ""
-                            },
-                            "ySettings": {
-                              "numberFormatSettings": {
-                                "unit": 0,
-                                "options": {
-                                  "style": "decimal",
-                                  "useGrouping": true,
-                                  "maximumFractionDigits": 2
+                                "columnMatch": "Evaluation",
+                                "formatter": 7,
+                                "formatOptions": {
+                                  "linkTarget": "OpenBlade",
+                                  "linkIsContextBlade": true,
+                                  "bladeOpenContext": {
+                                    "bladeName": "SearchV2Blade",
+                                    "extensionName": "AppInsightsExtension",
+                                    "bladeJsonParameters": "{\r\n  \"ResourceId\": \"{ResourceId:id}\",\r\n  \"HideChart\": true, \"IsGenAiFlow\": true,\r\n  \"FilterSpec\": {\r\n    \"originalParams\": {\r\n      \"sort\": \"evaluationsAsc\",\r\n      \"timeContext\": {\r\n        \"durationMs\": \"{TimeRange:seconds}000\",\r\n        \"endTime\": \"{TimeRange:endISO}\",\r\n        \"createdTime\": \"{TimeRange:startISO}\",\r\n        \"isInitialTime\": false,\r\n        \"grain\": 1,\r\n        \"useDashboardTimeRange\": false\r\n      },\r\n      \"filter\": [\r\n        {\r\n          \"dimension\": {\r\n            \"name\": \"customDimensions/gen_ai.operation.name\",\r\n            \"draftKey\": \"customDimensions/gen_ai.operation.name\",\r\n            \"displayName\": \"GenAI Operation\",\r\n            \"tables\": [\r\n              \"dependencies\"\r\n            ]\r\n          },\r\n          \"values\": [\r\n            \"invoke_agent\"\r\n          ]\r\n        },\r\n        {\r\n          \"dimension\": {\r\n            \"displayName\": \"Operation Id\",\r\n            \"tables\": [\r\n              \"dependencies\"\r\n            ],\r\n            \"name\": \"operation/id\",\r\n            \"draftKey\": \"operation/id\"\r\n          },\r\n          \"values\": {OpIds_column}\r\n        }\r\n      ],\r\n      \"searchPhrase\": {\r\n        \"originalPhrase\": \"\"\r\n      }\r\n    }\r\n  }\r\n}"
+                                  },
+                                  "customColumnWidthSetting": "60%"
                                 }
                               },
-                              "min": 0
-                            }
+                              {
+                                "columnMatch": "Runs",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 17,
+                                  "options": {
+                                    "style": "decimal",
+                                    "useGrouping": true,
+                                    "maximumFractionDigits": 0
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "Avg Score",
+                                "formatter": 1,
+                                "numberFormat": {
+                                  "unit": 0,
+                                  "options": {
+                                    "style": "decimal",
+                                    "useGrouping": true,
+                                    "maximumFractionDigits": 2
+                                  }
+                                }
+                              },
+                              {
+                                "columnMatch": "OpIds",
+                                "formatter": 5
+                              }
+                            ]
                           }
                         },
-                        "name": "EvaluationQuery4"
+                        "name": "EvaluationsSummaryGrid"
                       }
                     ]
                   },
                   "customWidth": "50",
-                  "name": "EvaluationGroup4",
+                  "name": "EvaluationsSummaryGroup",
                   "styleSettings": {
-                    "margin": "10px",
-                    "padding": "10px 10px 0 10px",
+                    "margin": "10px 10px 0 10px",
+                    "padding": "10px 0 10px 5px",
                     "showBorder": true
                   }
                 },
