@@ -188,6 +188,9 @@
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Resource}"
+        ],
         "parameters": [
           {
             "id": "f25f8d3a-a6c6-4e4e-928a-48c2848c2377",
@@ -633,7 +636,8 @@
           }
         ],
         "style": "pills",
-        "queryType": 12
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
       },
       "conditionalVisibility": {
         "parameterName": "x",
@@ -3694,7 +3698,7 @@
             "version": "KqlParameterItem/1.0",
             "name": "CombinedWaitTabMessages",
             "type": 1,
-            "query": "let i1 = iif('{isWaitsamplingenabled}' == 'no',\r\n    \"#### Query store wait sampling is not enabled on the server.\", \"\");\r\nlet i2 = iif('{isWaitsamplingenabled}' == 'Yes' and '{isWaitLogsSentToLogAnalytics}' == 'No',\r\n    \"#### Wait statistics logs not configured — enable `PostgreSQLFlexQueryStoreWaitStats` in diagnostic settings to view IO wait events.\", \"\");\r\nlet i3 = iif('{isWaitsamplingenabled}' == 'Yes' and '{isWaitLogsSentToLogAnalytics}' == 'Yes' and '{HasWaitSampleData}' == 'No',\r\n    \"#### No wait events found in the selected time range. If you recently configured logging, allow up to 30 minutes for data to appear.\", \"\");\r\nprint result = strcat(i1, i2, i3)",
+            "query": "let i1 = iif('{isWaitsamplingenabled}' == 'No',\r\n    \"#### Query store wait sampling is not enabled on the server.\", \"\");\r\nlet i2 = iif('{isWaitsamplingenabled}' == 'Yes' and '{isWaitLogsSentToLogAnalytics}' == 'No',\r\n    \"#### Wait statistics logs not configured — enable `PostgreSQLFlexQueryStoreWaitStats` in diagnostic settings to view IO wait events.\", \"\");\r\nlet i3 = iif('{isWaitsamplingenabled}' == 'Yes' and '{isWaitLogsSentToLogAnalytics}' == 'Yes' and '{HasWaitSampleData}' == 'No',\r\n    \"#### No wait events found in the selected time range. If you recently configured logging, allow up to 30 minutes for data to appear.\", \"\");\r\nprint result = strcat(i1, i2, i3)",
             "crossComponentResources": [
               "{Resource}"
             ],
@@ -3735,6 +3739,31 @@
       "name": "CombinedWaitTabMessages"
     },
     {
+      "type": 1,
+      "content": {
+        "json": "### IO wait events\r\n\r\nThis section helps you find which queries spent the most time waiting on disk IO during the selected time range. Wait events such as `IO:DataFileRead` and `IO:WALWrite` are sampled by Query Store; their counts here are summed across the window, so higher means more waiting.\r\n\r\n**Start here:**\r\n1. Pick a value for **Top N wait events** (how many distinct wait events to analyze).\r\n2. Pick a value for **Top queries per wait event** (how many worst-offender queries to show per wait event).\r\n3. Review the chart, then select a row in the query grid to inspect that query's SQL text below.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "wait section intro"
+    },
+    {
       "type": 9,
       "content": {
         "version": "KqlParameterItem/1.0",
@@ -3743,17 +3772,27 @@
             "id": "c2575916-cafe-4f40-90b8-914a668084d7",
             "version": "KqlParameterItem/1.0",
             "name": "MaxCount",
+            "label": "Top N wait events",
             "type": 2,
             "isRequired": true,
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
             },
-            "jsonData": "[\r\n { \"value\":\"5\", \"label\":\"5\",\"selected\":true },\r\n  { \"value\":\"10\", \"label\":\"10\" },\r\n   { \"value\":\"10\", \"label\":\"15\" },\r\n    { \"value\":\"10\", \"label\":\"20\" }\r\n]",
-            "timeContext": {
-              "durationMs": 86400000
+            "jsonData": "[\r\n  { \"value\":\"5\",  \"label\":\"5\", \"selected\":true },\r\n  { \"value\":\"10\", \"label\":\"10\" },\r\n  { \"value\":\"15\", \"label\":\"15\" },\r\n  { \"value\":\"20\", \"label\":\"20\" }\r\n]"
+          },
+          {
+            "id": "f3a7c4e1-9b2d-4e8a-b0c5-7d3e9a2f1b88",
+            "version": "KqlParameterItem/1.0",
+            "name": "TopQueriesPerEvent",
+            "label": "Top queries per wait event",
+            "type": 2,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
             },
-            "value": "10"
+            "jsonData": "[\r\n  { \"value\":\"1\",  \"label\":\"1\", \"selected\":true },\r\n  { \"value\":\"3\",  \"label\":\"3\" },\r\n  { \"value\":\"5\",  \"label\":\"5\" }\r\n]"
           }
         ],
         "style": "pills",
@@ -3783,21 +3822,30 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "\r\nlet graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\n//let graphgrain=15m;\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet Topwaits = \r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n | where EventType=='IO'\r\n| extend WaitEvent = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| summarize max_calls = max(Calls) by WaitEvent\r\n| where max_calls > 0\r\n| top {MaxCount} by max_calls desc\r\n| project WaitEvent;\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n| where EventType=='IO'\r\n| extend Events = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| where Events in (Topwaits)\r\n| extend  EVENT_TIME_GRAPHGRAIN = bin(todatetime(EndTime),1m)\r\n| make-series max(Calls) default=0 on EVENT_TIME_GRAPHGRAIN from TimeStart to TimeEnd step graphgrain by Events\r\n\r\n",
+        "query": "\r\nlet graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\n//let graphgrain=15m;\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet Topwaits = \r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n | where EventType=='IO'\r\n| extend WaitEvent = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| summarize max_calls = sum(Calls) by WaitEvent\r\n| where max_calls > 0\r\n| top {MaxCount} by max_calls desc\r\n| project WaitEvent;\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n| where EventType=='IO'\r\n| extend Events = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| where Events in (Topwaits)\r\n| extend  EVENT_TIME_GRAPHGRAIN = bin(todatetime(EndTime),1m)\r\n| make-series sum(Calls) default=0 on EVENT_TIME_GRAPHGRAIN from TimeStart to TimeEnd step graphgrain by Events\r\n\r\n",
         "size": 0,
-        "aggregation": 2,
         "title": "Top sampled wait events. Data is plotted at a granularity of {ChartGrain}",
         "queryType": 0,
         "resourceType": "microsoft.dbforpostgresql/flexibleservers",
         "crossComponentResources": [
           "{Resource}"
         ],
-        "visualization": "areachart",
+        "visualization": "barchart",
         "tileSettings": {
           "showBorder": false
         },
         "chartSettings": {
-          "showLegend": true
+          "xAxis": "EVENT_TIME_GRAPHGRAIN",
+          "showLegend": true,
+          "xSettings": {
+            "numberFormatSettings": {
+              "unit": 0,
+              "options": {
+                "style": "decimal",
+                "useGrouping": true
+              }
+            }
+          }
         }
       },
       "conditionalVisibilities": [
@@ -3823,16 +3871,21 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "\r\nlet graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\n//let graphgrain=15m;\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet Topwaits = \r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n | where EventType=='IO'\r\n| extend WaitEvent = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| summarize max_calls = max(Calls) by WaitEvent\r\n| where max_calls > 0\r\n| top {MaxCount} by max_calls desc\r\n| project WaitEvent;\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10) // exclude azure super user  and system calls\r\n| where QueryId !=0\r\n| where EventType=='IO'\r\n| extend Events = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| where Events in (Topwaits)\r\n| extend  EVENT_TIME_GRAPHGRAIN = bin(todatetime(EndTime),1m)\r\n| summarize ['calls'] = max(Calls) by ['query identifier'] = QueryId, ['event type'] = Events\r\n| order by ['calls']\r\n\r\n",
-        "size": 0,
+        "query": "\r\nlet graphgrain=iff({TimeRange:grain}<15m,15m, {TimeRange:grain});\r\n//let graphgrain=15m;\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet Topwaits =\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10)\r\n| where QueryId != 0\r\n| where EventType == 'IO'\r\n| extend WaitEvent = strcat(iff(isempty(EventType), 'No Waits', EventType), \":\", Event)\r\n| summarize total_calls = sum(Calls) by WaitEvent\r\n| where total_calls > 0\r\n| top {MaxCount} by total_calls desc\r\n| project WaitEvent;\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10)\r\n| where QueryId != 0\r\n| where EventType == 'IO'\r\n| extend Events = strcat(iff(isempty(EventType), 'No Waits', EventType), ':', Event)\r\n| where Events in (Topwaits)\r\n| summarize TotalCalls = sum(Calls) by QueryIdStr = QueryId, Events\r\n| top-nested {MaxCount} of Events     by EventTotal = sum(TotalCalls) desc,\r\n  top-nested {TopQueriesPerEvent}          of QueryIdStr by QueryTotal = sum(TotalCalls) desc\r\n| project ['event type']       = Events,\r\n          ['query identifier'] = QueryIdStr,\r\n          ['calls']            = QueryTotal\r\n| order by ['event type'] asc, ['calls'] desc\r\n",
+        "size": 1,
         "aggregation": 2,
-        "title": "Top sampled wait events by query identier",
+        "title": "Top sampled wait events by query identifier",
+        "exportFieldName": "query identifier",
+        "exportParameterName": "SelectedWQid",
         "queryType": 0,
         "resourceType": "microsoft.dbforpostgresql/flexibleservers",
         "crossComponentResources": [
           "{Resource}"
         ],
         "visualization": "table",
+        "gridSettings": {
+          "filter": true
+        },
         "tileSettings": {
           "showBorder": false
         },
@@ -3860,44 +3913,36 @@
       "name": "io wait events grid view"
     },
     {
-      "type": 9,
+      "type": 1,
       "content": {
-        "version": "KqlParameterItem/1.0",
-        "crossComponentResources": [
-          "{Resource}"
-        ],
-        "parameters": [
-          {
-            "id": "030fe58d-bd1d-4043-9230-94a287a75653",
-            "version": "KqlParameterItem/1.0",
-            "name": "WaitSamplingQueryIds",
-            "type": 1,
-            "query": "let TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\nlet Topwaits = \r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10)\r\n| where QueryId !=0\r\n| where EventType=='IO'\r\n| extend WaitEvent = iff(isempty(EventType), 'No waits', strcat(EventType, \":\", Event))\r\n| summarize max_calls = max(Calls) by WaitEvent\r\n| where max_calls > 0\r\n| top {MaxCount} by max_calls desc\r\n| project WaitEvent;\r\n{QueryWaitSamplingTable}\r\n| where EndTime >= TimeStart and EndTime <= TimeEnd\r\n| where UserId !in (0, 10)\r\n| where QueryId !=0\r\n| where EventType=='IO'\r\n| extend WaitEvent = iff(isempty(EventType), 'No waits', strcat(EventType, \":\", Event))\r\n| where WaitEvent in (Topwaits)\r\n| distinct QueryId\r\n| summarize result = strcat_array(make_list(QueryId), ',')\r\n| project result",
-            "crossComponentResources": [
-              "{Resource}"
-            ],
-            "isHiddenWhenLocked": true,
-            "queryType": 0,
-            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
-          }
-        ],
-        "style": "pills",
-        "queryType": 0,
-        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+        "json": "💡 **Tip:** Select any row in the table above to drill down into the query text for that specific query. Pick a different row at any time to switch to that query, or use the **↩ clear selection** button next to the table to reset and see all queries again.",
+        "style": "upsell"
       },
-      "conditionalVisibility": {
-        "parameterName": "x",
-        "comparison": "isEqualTo",
-        "value": "y"
-      },
-      "name": "wait sampling collect query ids"
+      "conditionalVisibilities": [
+        {
+          "parameterName": "HasWaitSampleData",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "isEmitQueryTextEnabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
+        }
+      ],
+      "name": "tip select row for query text"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nlet queryids = dynamic([{WaitSamplingQueryIds}]);\r\nPGSQLQueryStoreQueryText\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where QueryId in (queryids)\r\n| summarize ['encountered from'] = min(TimeGenerated),  ['encountered to'] = max(TimeGenerated), count = count() by ['query identifier'] = QueryId, ['query text'] = QueryText",
-        "size": 0,
+        "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\nPGSQLQueryStoreQueryText\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where QueryId in ('{SelectedWQid}')\r\n| summarize ['encountered from'] = min(TimeGenerated),  ['encountered to'] = max(TimeGenerated), count = count() by ['query identifier'] = QueryId, ['query text'] = QueryText",
+        "size": 1,
         "aggregation": 2,
         "title": "Query text variations for wait sampling queries for the period analyzed",
         "noDataMessage": "No query text data available. Ensure that the PostgreSQLQueryStoreSqlText category is enabled in Diagnostic Settings, and data is being sent to Log Analytics. Also ensure you have at least Reader role granted on the PGSQLQueryStoreQueryText table so that you can read data from it.",
@@ -3909,6 +3954,16 @@
         ],
         "visualization": "table",
         "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "query identifier",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "GenericDetails",
+                "linkIsContextBlade": true
+              }
+            }
+          ],
           "rowLimit": 10000,
           "filter": true
         },
@@ -3936,14 +3991,13 @@
           "value": "Yes"
         },
         {
-          "parameterName": "WaitSamplingQueryIds",
-          "comparison": "isNotEqualTo",
-          "value": ""
-        },
-        {
           "parameterName": "isEmitQueryTextEnabled",
           "comparison": "isEqualTo",
           "value": "Yes"
+        },
+        {
+          "parameterName": "SelectedWQid",
+          "comparison": "isNotEqualTo"
         }
       ],
       "name": "querytext variation wait sampling"
@@ -3956,16 +4010,6 @@
       },
       "conditionalVisibilities": [
         {
-          "parameterName": "iopstab",
-          "comparison": "isEqualTo",
-          "value": "wait"
-        },
-        {
-          "parameterName": "isWaitsamplingenabled",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        },
-        {
           "parameterName": "HasWaitSampleData",
           "comparison": "isEqualTo",
           "value": "Yes"
@@ -3974,6 +4018,16 @@
           "parameterName": "IsServerPrimaryCheck",
           "comparison": "isEqualTo",
           "value": "Yes"
+        },
+        {
+          "parameterName": "isWaitsamplingenabled",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        },
+        {
+          "parameterName": "iopstab",
+          "comparison": "isEqualTo",
+          "value": "wait"
         }
       ],
       "name": "how to interpret wait event information"
