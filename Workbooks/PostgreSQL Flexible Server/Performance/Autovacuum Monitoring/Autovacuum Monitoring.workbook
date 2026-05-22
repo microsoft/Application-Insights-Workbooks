@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## Autovacuum monitoring\r\n\r\nThis troubleshooting guide assesses the health of autovacuum and vacuum on Azure Database for PostgreSQL Flexible Server. Autovacuum removes dead tuples to free disk space and improve query performance, and it updates the visibility map so PostgreSQL can skip pages that no longer contain outdated or deleted rows.\r\n\r\nAutovacuum also prevents transaction ID wraparound, which would otherwise stop the server from accepting writes. Use the sections below to identify bloat, blocked vacuums, throttling, and tuning opportunities before they become incidents.\r\n\r\n### Diagnostic steps\r\n\r\nFollow these steps in order to systematically diagnose the issue.\r\n\r\nStep | Description\r\n--- | ---\r\n**Analysis period** | Choose the time interval to analyze.\r\n**Database** | Choose the database to analyze. Select **All** for all databases on the server, or pick a specific database to narrow the analysis.\r\n**Bloat** | Review the bloat ratio for each database.\r\n**Tuples** | Compare live vs dead tuples, and counts of inserts, updates, and deletes.\r\n**Vacuum and analyze** | Track how many tables were vacuumed and analyzed in each database.\r\n**Autovacuum workers** | Monitor autovacuum worker execution count.\r\n**Autovacuum per table** | Review autovacuum activity at the table level, including anti-wraparound runs and cancellations.\r\n**Enhanced metrics** | Track maximum transaction IDs in use and the oldest backend xmin.\r\n**Vacuum throttling overview** | Identify when cost-based delay settings are slowing autovacuum.\r\n**Insights** | Automatically detected autovacuum tuning opportunities and configuration warnings.\r\n**Configuration** | Review current autovacuum-related server parameters, their defaults, and which have been modified.\r\n\r\n### Scope and limits\r\n\r\n- Only databases and schemas with **more than 100 live tuples and more than 1,000 dead tuples** are shown. Counts here may not match the totals on your server.\r\n- The guide analyzes up to **30 databases** per server (**10** on the Burstable SKU), in order of database creation (OID).\r\n- When a server exceeds the database cap, a warning is displayed in the main view.",
+        "json": "## Autovacuum monitoring\r\n\r\nThis troubleshooting guide assesses the health of autovacuum and vacuum on Azure Database for PostgreSQL Flexible Server. Autovacuum removes dead tuples to free disk space and improve query performance, and it updates the visibility map so PostgreSQL can skip pages that no longer contain outdated or deleted rows.\r\n\r\nAutovacuum also prevents transaction ID wraparound, which would otherwise stop the server from accepting writes. Use the sections below to identify bloat, blocked vacuums, throttling, and tuning opportunities before they become incidents.\r\n\r\n### Diagnostic steps\r\n\r\nFollow these steps in order to systematically diagnose the issue.\r\n\r\nStep | Description\r\n--- | ---\r\n**Analysis period** | Choose the time interval to analyze.\r\n**Database** | Choose the database to analyze. Select **All** for all databases on the server, or pick a specific database to narrow the analysis.\r\n**Bloat** | Review the bloat ratio for each database.\r\n**Tuples** | Compare live vs dead tuples, and counts of inserts, updates, and deletes.\r\n**Vacuum and analyze** | Track how many tables were vacuumed and analyzed in each database.\r\n**Autovacuum activity** | Track autovacuum run volume, durations, worker saturation, and per‑table activity.\r\n**Autovacuum per table** | Review autovacuum activity at the table level, including anti-wraparound runs and cancellations.\r\n**Enhanced metrics** | Track maximum transaction IDs in use and the oldest backend xmin.\r\n**Vacuum throttling overview** | Identify when cost-based delay settings are slowing autovacuum.\r\n**Insights** | Automatically detected autovacuum tuning opportunities and configuration warnings.\r\n**Configuration** | Review current autovacuum-related server parameters, their defaults, and which have been modified.\r\n\r\n### Scope and limits\r\n\r\n- Only databases and schemas with **more than 100 live tuples and more than 1,000 dead tuples** are shown. Counts here may not match the totals on your server.\r\n- The guide analyzes up to **30 databases** per server (**10** on the Burstable SKU), in order of database creation (OID).\r\n- When a server exceeds the database cap, a warning is displayed in the main view.",
         "style": "info"
       },
       "name": "autovacuum monitoring header"
@@ -48,7 +48,7 @@
             "isRequired": true,
             "isGlobal": true,
             "value": {
-              "durationMs": 2419200000
+              "durationMs": 86400000
             },
             "typeSettings": {
               "selectableValues": [
@@ -1406,6 +1406,19 @@
             "queryType": 0,
             "resourceType": "microsoft.dbforpostgresql/flexibleservers",
             "id": "ed8ed351-868f-4a48-b9b2-ddcab0dcb1e8"
+          },
+          {
+            "id": "699f7e57-280c-4aa8-aa7a-aab94d24074e",
+            "version": "KqlParameterItem/1.0",
+            "name": "IsAVDataExists",
+            "type": 1,
+            "query": "let dbFilter = '{Database}';\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| take 1\r\n| count\r\n| extend avdata = iff(Count > 0, 'Yes', 'No')\r\n| project avdata",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
           }
         ],
         "style": "above",
@@ -1540,6 +1553,11 @@
           }
         ]
       },
+      "conditionalVisibility": {
+        "parameterName": "QualifiedDatabasesCount",
+        "comparison": "isEqualTo",
+        "value": "Yes"
+      },
       "name": "warnings about the section"
     },
     {
@@ -1619,7 +1637,7 @@
             "id": "5187a9fe-7e5c-4223-bcdf-e4e229bcffdf",
             "cellValue": "tab",
             "linkTarget": "parameter",
-            "linkLabel": "Autovacuum workers",
+            "linkLabel": "Autovacuum activity",
             "subTarget": "vacuumworkers",
             "style": "link"
           },
@@ -3495,17 +3513,43 @@
               ],
               "parameters": [
                 {
-                  "id": "ce0608cf-c3d2-4028-a10d-99de6533df91",
+                  "id": "2f5a7b41-0b8a-4f2b-9d62-2a4d3c6b9e10",
                   "version": "KqlParameterItem/1.0",
-                  "name": "IsAVDataExists",
+                  "name": "PeakConcurrentRuns",
                   "type": 1,
-                  "query": "let graphgrain=iff({TimeRange:grain}<30m,30m,{TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{PostgreSQLLogs}\r\n| where TimeGenerated >= TimeStart and TimeGenerated <= TimeEnd\r\n| where Message contains \"automatic vacuum of table\"\r\n| extend database_schema_table = extract_all(@\"automatic vacuum of table \"\"(?P<database>[^.\"\"]+)+\\.(?P<schema>[^.]+)\\.(?P<table>[^\"\"]+)\"\"\", Message)\r\n| extend database_schema_table=substring(tostring(database_schema_table), 1, strlen(tostring(database_schema_table))-2)\r\n| extend database_schema_table = todynamic(database_schema_table)\r\n| extend database = tostring(database_schema_table[0]), schema = tostring(database_schema_table[1]), table = tostring(database_schema_table[2])\r\n| where database =='{Database}'\r\n|limit 5\r\n|count\r\n| extend avdata = iff(Count>0,'Yes','No')\r\n|project avdata",
+                  "query": "let dbFilter = '{Database}';\r\nlet stepBin  = 1s;\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| where isnotnull(elapsed_time) and todouble(elapsed_time) > 0\r\n| extend endTime   = TimeGenerated\r\n| extend startTime = TimeGenerated - (1s * todouble(elapsed_time))\r\n| extend startBin  = bin(startTime, stepBin)\r\n| extend endBin    = bin(endTime,   stepBin)\r\n| extend bins      = range(startBin, endBin, stepBin)\r\n| mv-expand binTime = bins to typeof(datetime)\r\n| summarize ConcurrentRuns = count() by binTime\r\n| summarize PeakRuns = max(ConcurrentRuns)\r\n| extend PeakRuns = iff(isnull(PeakRuns), 0, PeakRuns)\r\n| project tostring(PeakRuns)",
                   "crossComponentResources": [
                     "{Resource}"
                   ],
                   "isHiddenWhenLocked": true,
                   "queryType": 0,
                   "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+                },
+                {
+                  "id": "07a5b4d2-2c41-4e16-8f6f-7d3f5b9a2c45",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IsWorkersSaturated",
+                  "type": 1,
+                  "isHiddenWhenLocked": true,
+                  "criteriaData": [
+                    {
+                      "criteriaContext": {
+                        "leftOperand": "PeakConcurrentRuns",
+                        "operator": ">=",
+                        "rightValType": "param",
+                        "rightVal": "fetch_autovacuum_max_workers",
+                        "resultValType": "static",
+                        "resultVal": "Yes"
+                      }
+                    },
+                    {
+                      "criteriaContext": {
+                        "operator": "Default",
+                        "resultValType": "static",
+                        "resultVal": "No"
+                      }
+                    }
+                  ]
                 }
               ],
               "style": "pills",
@@ -3517,184 +3561,157 @@
               "comparison": "isEqualTo",
               "value": "y"
             },
-            "name": "conditional check to see if autovacuum execution should show"
+            "name": "autovacuum activity hidden checks"
           },
           {
             "type": 1,
             "content": {
-              "json": "#### To view information about autovacuum execution, select a database parameter at the top of the troubleshooting guide.",
+              "json": "### Autovacuum activity\r\n\r\nA server-wide view of autovacuum runs in the selected time range. Use the trend chart to spot when activity spikes, the trigger breakdown to identify regular versus emergency runs (anti-wraparound, failsafe), and the per-database grid to see which databases drive the load.\r\n\r\nIf the worker saturation banner appears, autovacuum reached `autovacuum_max_workers` at least once during the window, which means additional vacuum work had to wait. For per-table detail and drilldown into individual runs, switch to the **Autovacuum per table** tab.",
+              "style": "info"
+            },
+            "name": "autovacuum activity intro"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "#### No autovacuum entries were found in the PostgreSQL server logs for the selected window. Verify that the database has activity and that `PostgreSQLLogs` is being sent to the Log Analytics workspace.",
               "style": "info"
             },
             "conditionalVisibility": {
-              "parameterName": "Database",
+              "parameterName": "IsAVDataExists",
               "comparison": "isEqualTo",
-              "value": "All"
+              "value": "No"
             },
-            "name": "check what the setting of databases is to determine rendering"
+            "name": "autovacuum activity empty state"
           },
           {
             "type": 1,
             "content": {
-              "json": "#### It appears that there are no autovacuum entries in the PostgreSQL Server logs within the specified time range, or that the logs are not being sent to the Log Analytics workspace. Please refer to the error message at the top of the troubleshooting guide for further details.",
-              "style": "info"
+              "json": "**Autovacuum workers were saturated**\r\n\r\nIn this window, autovacuum reached `autovacuum_max_workers` ({fetch_autovacuum_max_workers}) at least once. When all worker slots are busy, additional tables that need vacuuming have to wait. Consider raising `autovacuum_max_workers` together with `autovacuum_vacuum_cost_limit`, or reducing the workload driving the bloat. See the **Configuration** tab for current values.",
+              "style": "warning"
             },
             "conditionalVisibilities": [
-              {
-                "parameterName": "Database",
-                "comparison": "isNotEqualTo",
-                "value": "All"
-              },
-              {
-                "parameterName": "IsAVDataExists",
-                "comparison": "isEqualTo",
-                "value": "No"
-              }
-            ],
-            "name": "inform that there are no autovacuum entries"
-          },
-          {
-            "type": 1,
-            "content": {
-              "json": "#### The grouping order for the grid view is as follows:\r\n\r\n**Database -> Schema -> Table**",
-              "style": "info"
-            },
-            "conditionalVisibilities": [
-              {
-                "parameterName": "Database",
-                "comparison": "isNotEqualTo",
-                "value": "All"
-              },
               {
                 "parameterName": "IsAVDataExists",
                 "comparison": "isEqualTo",
                 "value": "Yes"
+              },
+              {
+                "parameterName": "IsWorkersSaturated",
+                "comparison": "isEqualTo",
+                "value": "Yes"
               }
             ],
-            "name": "the grouping order for the grid is as follows information"
+            "name": "autovacuum activity saturation banner"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let graphgrain=iff({TimeRange:grain}<30m,30m,{TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{PostgreSQLLogs}\r\n| where TimeGenerated >= TimeStart and TimeGenerated <= TimeEnd\r\n| where Message contains \"automatic vacuum of table\"\r\n| distinct TimeGenerated,Message\r\n| extend database_schema_table = extract_all(@\"automatic vacuum of table \"\"(?P<database>[^.\"\"]+)+\\.(?P<schema>[^.]+)\\.(?P<table>[^\"\"]+)\"\"\", Message)\r\n| extend database_schema_table=substring(tostring(database_schema_table), 1, strlen(tostring(database_schema_table))-2)\r\n| extend database_schema_table = todynamic(database_schema_table)\r\n| extend database = tostring(database_schema_table[0]), schema = tostring(database_schema_table[1]), table = tostring(database_schema_table[2])\r\n| where database =='{Database}'\r\n| summarize ['execution count'] = count() by bin (TimeGenerated, 1m), schema\r\n| project-rename ['time generated'] = TimeGenerated\r\n| order by ['time generated'], ['execution count']",
-              "size": 1,
-              "title": "Execution of autovacuum on tables in database {Database}",
+              "query": "let dbFilter = '{Database}';\r\nlet binSize  = iff({TimeRange:grain} < 5m, 5m, {TimeRange:grain});\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize Runs = count() by bin(TimeGenerated, binSize), database\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Autovacuum runs over time (by database)",
+              "noDataMessage": "No autovacuum runs in the selected window.",
               "queryType": 0,
               "resourceType": "microsoft.dbforpostgresql/flexibleservers",
               "crossComponentResources": [
                 "{Resource}"
               ],
-              "visualization": "piechart",
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "Group",
-                    "formatter": 1
-                  },
-                  {
-                    "columnMatch": "count_",
-                    "formatter": 0,
-                    "numberFormat": {
-                      "unit": 17,
-                      "options": {
-                        "style": "decimal"
-                      }
-                    }
-                  }
-                ],
-                "rowLimit": 10000,
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "database",
-                    "schema",
-                    "table"
-                  ]
-                }
-              },
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "database",
-                  "formatter": 1
-                },
-                "subtitleContent": {
-                  "columnMatch": "schema",
-                  "formatter": 1
-                },
-                "leftContent": {
-                  "columnMatch": "count_",
-                  "formatter": 12,
-                  "formatOptions": {
-                    "palette": "auto"
-                  },
-                  "numberFormat": {
-                    "unit": 17,
-                    "options": {
-                      "maximumSignificantDigits": 3,
-                      "maximumFractionDigits": 2
-                    }
-                  }
-                },
-                "rightContent": {
-                  "columnMatch": "table",
-                  "formatter": 1
-                },
-                "secondaryContent": {
-                  "columnMatch": "TimeGenerated"
-                },
-                "showBorder": true,
-                "sortCriteriaField": "count_",
-                "sortOrderField": 2
-              },
+              "visualization": "linechart",
               "chartSettings": {
+                "xAxis": "TimeGenerated",
+                "yAxis": [
+                  "Runs"
+                ],
+                "group": "database",
+                "createOtherGroup": 10,
                 "showLegend": true,
                 "ySettings": {
                   "numberFormatSettings": {
                     "unit": 17,
                     "options": {
                       "style": "decimal",
-                      "useGrouping": true
+                      "maximumFractionDigits": 0
                     }
                   }
                 }
-              },
-              "mapSettings": {
-                "locInfo": "LatLong",
-                "sizeSettings": "count_",
-                "sizeAggregation": "Sum",
-                "legendMetric": "count_",
-                "legendAggregation": "Sum",
-                "itemColorSettings": {
-                  "type": "heatmap",
-                  "colorAggregation": "Sum",
-                  "nodeColorField": "count_",
-                  "heatmapPalette": "greenRed"
-                }
               }
             },
-            "customWidth": "50",
-            "conditionalVisibilities": [
-              {
-                "parameterName": "Database",
-                "comparison": "isNotEqualTo",
-                "value": "All"
-              },
-              {
-                "parameterName": "IsAVDataExists",
-                "comparison": "isEqualTo",
-                "value": "Yes"
-              }
-            ],
-            "name": "conditional checks for the final section showing"
+            "customWidth": "100",
+            "conditionalVisibility": {
+              "parameterName": "IsAVDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "autovacuum activity trend"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "let graphgrain=iff({TimeRange:grain}<30m,30m,{TimeRange:grain});\r\nlet TimeStart = todatetime('{GlobalStartTime}');\r\nlet TimeEnd = todatetime('{GlobalEndTime}');\r\n{PostgreSQLLogs}\r\n| where TimeGenerated >= TimeStart and TimeGenerated <= TimeEnd\r\n| where Message contains \"automatic vacuum of table\"\r\n| distinct TimeGenerated,Message\r\n| extend database_schema_table = extract_all(@\"automatic vacuum of table \"\"(?P<database>[^.\"\"]+)+\\.(?P<schema>[^.]+)\\.(?P<table>[^\"\"]+)\"\"\", Message)\r\n| extend database_schema_table=substring(tostring(database_schema_table), 1, strlen(tostring(database_schema_table))-2)\r\n| extend database_schema_table = todynamic(database_schema_table)\r\n| extend database = tostring(database_schema_table[0]), schema = tostring(database_schema_table[1]), table = tostring(database_schema_table[2])\r\n| project TimeGenerated, database, schema,table\r\n| where database !in('azure_sys','azure_maintenance')\r\n| summarize ['execution count'] = count() by bin (TimeGenerated,graphgrain), schema, table\r\n| project-rename ['time generated'] = TimeGenerated \r\n| order by ['time generated'], ['execution count']",
-              "size": 1,
-              "title": "Execution of autovacuum on tables in database {Database} by schema",
-              "showExportToExcel": true,
+              "query": "let dbFilter = '{Database}';\r\nlet binSize  = iff({TimeRange:grain} < 5m, 5m, {TimeRange:grain});\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| extend trigger = case(\r\n    is_failsafe,        'Failsafe',\r\n    is_antiwraparound,  'Anti-wraparound',\r\n    is_aggressive,      'Aggressive',\r\n                        'Regular')\r\n| summarize Runs = count() by bin(TimeGenerated, binSize), trigger\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Autovacuum runs by trigger type",
+              "noDataMessage": "No autovacuum runs in the selected window.",
+              "queryType": 0,
+              "resourceType": "microsoft.dbforpostgresql/flexibleservers",
+              "crossComponentResources": [
+                "{Resource}"
+              ],
+              "visualization": "areachart",
+              "chartSettings": {
+                "xAxis": "TimeGenerated",
+                "yAxis": [
+                  "Runs"
+                ],
+                "group": "trigger",
+                "createOtherGroup": 0,
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Regular",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Aggressive",
+                    "color": "yellow"
+                  },
+                  {
+                    "seriesName": "Anti-wraparound",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "Failsafe",
+                    "color": "red"
+                  }
+                ],
+                "showLegend": true,
+                "ySettings": {
+                  "numberFormatSettings": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 0
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "IsAVDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "autovacuum activity by trigger"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let dbFilter = '{Database}';\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize\r\n    Runs               = count(),\r\n    AntiWraparoundRuns = countif(is_antiwraparound),\r\n    TablesTouched      = dcount(database_table),\r\n    TotalSec           = round(todouble(sum(elapsed_time)), 1)\r\n    by database\r\n| order by Runs desc\r\n| project\r\n    ['database']         = database,\r\n    ['runs']             = Runs,\r\n    ['tables touched']   = TablesTouched,\r\n    ['anti-wraparound']  = AntiWraparoundRuns,\r\n    ['total seconds']    = TotalSec",
+              "size": 0,
+              "title": "Activity by database",
+              "noDataMessage": "No autovacuum runs in the selected window.",
               "queryType": 0,
               "resourceType": "microsoft.dbforpostgresql/flexibleservers",
               "crossComponentResources": [
@@ -3704,134 +3721,123 @@
               "gridSettings": {
                 "formatters": [
                   {
-                    "columnMatch": "Group",
-                    "formatter": 1
+                    "columnMatch": "runs",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "blue",
+                      "customColumnWidthSetting": "20ch"
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
                   },
                   {
-                    "columnMatch": "count_",
+                    "columnMatch": "tables touched",
                     "formatter": 0,
                     "numberFormat": {
                       "unit": 17,
                       "options": {
-                        "style": "decimal"
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "anti-wraparound",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "red",
+                      "customColumnWidthSetting": "20ch"
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "total seconds",
+                    "formatter": 8,
+                    "formatOptions": {
+                      "palette": "blueDark",
+                      "customColumnWidthSetting": "20ch"
+                    },
+                    "numberFormat": {
+                      "unit": 17,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 2
                       }
                     }
                   }
                 ],
-                "rowLimit": 10000,
-                "filter": true,
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "schema",
-                    "table"
-                  ],
-                  "expandTopLevel": false
-                }
-              },
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "database",
-                  "formatter": 1
-                },
-                "subtitleContent": {
-                  "columnMatch": "schema",
-                  "formatter": 1
-                },
-                "leftContent": {
-                  "columnMatch": "count_",
-                  "formatter": 12,
-                  "formatOptions": {
-                    "palette": "auto"
-                  },
-                  "numberFormat": {
-                    "unit": 17,
-                    "options": {
-                      "maximumSignificantDigits": 3,
-                      "maximumFractionDigits": 2
-                    }
-                  }
-                },
-                "rightContent": {
-                  "columnMatch": "table",
-                  "formatter": 1
-                },
-                "secondaryContent": {
-                  "columnMatch": "TimeGenerated"
-                },
-                "showBorder": true,
-                "sortCriteriaField": "count_",
-                "sortOrderField": 2
-              },
-              "chartSettings": {
-                "createOtherGroup": 100,
-                "showLegend": true
-              },
-              "mapSettings": {
-                "locInfo": "LatLong",
-                "sizeSettings": "count_",
-                "sizeAggregation": "Sum",
-                "legendMetric": "count_",
-                "legendAggregation": "Sum",
-                "itemColorSettings": {
-                  "type": "heatmap",
-                  "colorAggregation": "Sum",
-                  "nodeColorField": "count_",
-                  "heatmapPalette": "greenRed"
-                }
+                "rowLimit": 200,
+                "filter": true
               }
             },
             "customWidth": "50",
-            "conditionalVisibilities": [
-              {
-                "parameterName": "Database",
-                "comparison": "isNotEqualTo",
-                "value": "All"
-              },
-              {
-                "parameterName": "IsAVDataExists",
-                "comparison": "isEqualTo",
-                "value": "Yes"
-              }
-            ],
-            "name": "warnings for the final section and parameters which check for them"
+            "conditionalVisibility": {
+              "parameterName": "IsAVDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "autovacuum activity by database"
           },
           {
             "type": 1,
             "content": {
-              "json": "The graph and grid view displayed above present valuable insights into the frequency of autovacuum worker executions within a database.",
+              "json": "The trend chart shows total autovacuum runs over time, broken down by database. The chart on the left categorises those runs by trigger type so you can spot when **Anti-wraparound** or **Failsafe** runs appear (which usually indicate trouble). The grid on the right ranks databases by activity. For per-table detail, switch to the **Autovacuum per table** tab.",
               "style": "info"
             },
-            "conditionalVisibilities": [
-              {
-                "parameterName": "Database",
-                "comparison": "isNotEqualTo",
-                "value": "All"
-              },
-              {
-                "parameterName": "IsAVDataExists",
-                "comparison": "isEqualTo",
-                "value": "Yes"
-              }
-            ],
-            "name": "the graph and grid displayed above information"
+            "conditionalVisibility": {
+              "parameterName": "IsAVDataExists",
+              "comparison": "isEqualTo",
+              "value": "Yes"
+            },
+            "name": "autovacuum activity footer"
           }
         ],
         "exportParameters": true
       },
       "conditionalVisibilities": [
         {
-          "parameterName": "QualifiedDatabasesCount",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        },
-        {
           "parameterName": "tab",
           "comparison": "isEqualTo",
           "value": "vacuumworkers"
+        },
+        {
+          "parameterName": "QualifiedDatabasesCount",
+          "comparison": "isEqualTo",
+          "value": "Yes"
         }
       ],
-      "name": "autovacuum workers in progress"
+      "name": "autovacuum activity tab"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "#### No autovacuum entries were found in the PostgreSQL server logs for the selected window. Verify that the database has activity and that `PostgreSQLLogs` is being sent to the Log Analytics workspace.",
+        "style": "info"
+      },
+      "conditionalVisibilities": [
+        {
+          "parameterName": "IsAVDataExists",
+          "comparison": "isEqualTo",
+          "value": "No"
+        },
+        {
+          "parameterName": "QualifiedDatabasesCount",
+          "comparison": "isEqualTo",
+          "value": "Yes"
+        }
+      ],
+      "name": "autovacuum per table empty state"
     },
     {
       "type": 1,
@@ -3857,7 +3863,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let summary = {ParsedAutovacuumLogs}\r\n| summarize\r\n    TotalRuns = count(),\r\n    TablesVacuumed = dcount(database_table),\r\n    AntiWraparoundRuns = countif(is_antiwraparound),\r\n    FailsafeRuns = countif(is_failsafe),\r\n    TotalSecondsVacuuming = round(todouble(sum(elapsed_time)), 1),\r\n    PeakBlockedTuples = max(tuples_dead_not_removed);\r\nlet cancelled = toscalar({PostgreSQLLogs}\r\n    | where TimeGenerated >= todatetime('{GlobalStartTime}') and TimeGenerated <= todatetime('{GlobalEndTime}')\r\n    | where Message has \"canceling autovacuum task\"\r\n    | count);\r\nsummary\r\n| project Metric = 'Total runs',                Value = todouble(TotalRuns),              Tooltip = 'Total autovacuum runs in the selected time range across all tables.',                                                                                                                                                            Order = 1\r\n| union (summary | project Metric = 'Tables vacuumed',          Value = todouble(TablesVacuumed),         Tooltip = 'Number of distinct tables that received at least one autovacuum run.',                                                                                                                                                Order = 2)\r\n| union (summary | project Metric = 'Anti-wraparound runs',     Value = todouble(AntiWraparoundRuns),     Tooltip = 'Runs triggered because the table age crossed autovacuum_freeze_max_age (default 200 million XIDs). Cost throttling still applies. Normal at scale but worth monitoring.',                                              Order = 3)\r\n| union (summary | project Metric = 'Failsafe runs',            Value = todouble(FailsafeRuns),           Tooltip = 'Runs that bypassed cost throttling, index cleanup, and truncation because the table approached transaction ID exhaustion. Triggered at vacuum_failsafe_age (default 1.6 billion). Any non-zero value is serious.',     Order = 4)\r\n| union (summary | project Metric = 'Cancelled runs',           Value = todouble(cancelled),              Tooltip = 'Autovacuum runs killed by conflicting locks. Persistent cancellations prevent tables from being cleaned and lead to bloat. Anti-wraparound and failsafe runs cannot be cancelled this way.',                          Order = 5)\r\n| union (summary | project Metric = 'Total seconds vacuuming',  Value = TotalSecondsVacuuming,            Tooltip = 'Sum of elapsed time spent in autovacuum across all runs.',                                                                                                                                                              Order = 6)\r\n| union (summary | project Metric = 'Peak blocked tuples',      Value = todouble(PeakBlockedTuples),      Tooltip = 'Highest observed count of dead tuples that vacuum could not remove because an open transaction snapshot might still need them. Persistent values indicate a vacuum blocker.',                                          Order = 7)\r\n| order by Order asc\r\n| project Metric, Value, Tooltip",
+        "query": "let dbFilter = '{Database}';\r\nlet summary = {ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize\r\n    TotalRuns             = count(),\r\n    TablesVacuumed        = dcount(database_table),\r\n    AntiWraparoundRuns    = countif(is_antiwraparound),\r\n    TotalSecondsVacuuming = round(todouble(sum(elapsed_time)), 1),\r\n    AvgSecondsVacuuming   = round(todouble(avg(elapsed_time)), 2),\r\n    MaxSecondsVacuuming   = round(todouble(max(elapsed_time)), 1),\r\n    PeakBlockedTuples     = max(tuples_dead_not_removed);\r\nlet cancelled = toscalar({PostgreSQLLogs}\r\n    | where TimeGenerated >= todatetime('{GlobalStartTime}') and TimeGenerated <= todatetime('{GlobalEndTime}')\r\n    | where Message has \"canceling autovacuum task\"\r\n    | count);\r\nsummary\r\n| project Metric = 'Total runs',                    Value = todouble(TotalRuns),           Tooltip = 'Total autovacuum runs in the selected time range across all tables.',                                                                                                                                                          Order = 1\r\n| union (summary | project Metric = 'Tables vacuumed',              Value = todouble(TablesVacuumed),      Tooltip = 'Number of distinct tables that received at least one autovacuum run.',                                                                                                                                              Order = 2)\r\n| union (summary | project Metric = 'Anti-wraparound runs',         Value = todouble(AntiWraparoundRuns),  Tooltip = 'Runs triggered because the table age crossed autovacuum_freeze_max_age (default 200 million transaction IDs). Cost throttling still applies. These runs are normal at scale but should be monitored.',                Order = 3)\r\n| union (summary | project Metric = 'Cancelled runs',               Value = todouble(cancelled),           Tooltip = 'Autovacuum runs cancelled by conflicting locks. Persistent cancellations prevent tables from being cleaned and lead to bloat. Anti-wraparound runs cannot be cancelled this way.',                                Order = 4)\r\n| union (summary | project Metric = 'Total time vacuuming (s)',     Value = TotalSecondsVacuuming,         Tooltip = 'Sum of elapsed time across all autovacuum runs in the selected window. High values indicate either many runs or a few very long ones. Review the per-table breakdown for details.',                                  Order = 5)\r\n| union (summary | project Metric = 'Average run duration (s)',     Value = AvgSecondsVacuuming,           Tooltip = 'Mean elapsed time per autovacuum run. A growing average over time can indicate table bloat or insufficient autovacuum resources.',                                                                                  Order = 6)\r\n| union (summary | project Metric = 'Longest single run (s)',       Value = MaxSecondsVacuuming,           Tooltip = 'Longest single autovacuum run in the selected window. Compare with your maintenance window. A run that exceeds the window may indicate an under-provisioned worker or a very large table.',                          Order = 7)\r\n| union (summary | project Metric = 'Peak blocked tuples',          Value = todouble(PeakBlockedTuples),   Tooltip = 'Highest observed count of dead tuples that vacuum could not remove because an open transaction snapshot might still need them. Persistent values indicate a vacuum blocker.',                                        Order = 8)\r\n| order by Order asc\r\n| project Metric, Value, Tooltip",
         "size": 4,
         "title": "Key autovacuum signals",
         "queryType": 0,
@@ -3888,8 +3894,7 @@
               "unit": 17,
               "options": {
                 "style": "decimal",
-                "maximumFractionDigits": 1,
-                "useGrouping": true
+                "maximumFractionDigits": 2
               }
             }
           },
@@ -3934,7 +3939,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{ParsedAutovacuumLogs}\r\n| summarize VacuumRuns = count(), AntiWraparoundRuns = countif(is_antiwraparound) by schema_table\r\n| top 10 by VacuumRuns desc\r\n| order by VacuumRuns desc",
+        "query": "let dbFilter = '{Database}';\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize VacuumRuns = count(), AntiWraparoundRuns = countif(is_antiwraparound) by database_table\r\n| top 10 by VacuumRuns desc\r\n| order by VacuumRuns desc",
         "size": 0,
         "title": "Top 10 tables by vacuum run count",
         "queryType": 0,
@@ -3944,7 +3949,7 @@
         ],
         "visualization": "barchart",
         "chartSettings": {
-          "xAxis": "schema_table",
+          "xAxis": "database_table",
           "yAxis": [
             "VacuumRuns",
             "AntiWraparoundRuns"
@@ -3958,7 +3963,7 @@
             },
             {
               "seriesName": "VacuumRuns",
-              "label": "Total runs",
+              "label": "Runs in top 10",
               "color": "blue"
             }
           ]
@@ -3986,7 +3991,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{ParsedAutovacuumLogs}\r\n| summarize PeakNonRemovableDeadTuples = max(tuples_dead_not_removed) by schema_table\r\n| where PeakNonRemovableDeadTuples > 0\r\n| top 10 by PeakNonRemovableDeadTuples desc\r\n| order by PeakNonRemovableDeadTuples desc",
+        "query": "let dbFilter = '{Database}';\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize PeakNonRemovableDeadTuples = max(tuples_dead_not_removed) by database_table\r\n| where PeakNonRemovableDeadTuples > 0\r\n| top 10 by PeakNonRemovableDeadTuples desc\r\n| order by PeakNonRemovableDeadTuples desc",
         "size": 0,
         "title": "Top 10 tables by peak non-removable dead tuples",
         "queryType": 0,
@@ -4021,7 +4026,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "{ParsedAutovacuumLogs}\r\n| summarize \r\n    TotalVacuumSeconds = round(todouble(sum(elapsed_time)), 2),\r\n    LongestRunSeconds = round(todouble(max(elapsed_time)), 2),\r\n    VacuumRuns = count()\r\n    by schema_table\r\n| top 10 by VacuumRuns desc\r\n| project schema_table, TotalVacuumSeconds, LongestRunSeconds, VacuumRuns\r\n| order by TotalVacuumSeconds desc",
+        "query": "let dbFilter = '{Database}';\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize \r\n    TotalVacuumSeconds = round(todouble(sum(elapsed_time)), 2),\r\n    LongestRunSeconds = round(todouble(max(elapsed_time)), 2),\r\n    VacuumRuns = count()\r\n    by database_table\r\n| top 10 by VacuumRuns desc\r\n| project database_table, TotalVacuumSeconds, LongestRunSeconds, VacuumRuns\r\n| order by TotalVacuumSeconds desc",
         "size": 0,
         "title": "Top 10 tables by total time spent vacuuming",
         "queryType": 0,
@@ -4031,7 +4036,7 @@
         ],
         "visualization": "barchart",
         "chartSettings": {
-          "group": "schema_table",
+          "group": "database_table",
           "createOtherGroup": 10,
           "showLegend": true,
           "ySettings": {
@@ -4107,7 +4112,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "let graphgrain = 1d;\r\n{ParsedAutovacuumLogs}\r\n| summarize \r\n    ['vacuum count'] = count(),\r\n    ['anti-wraparound runs'] = countif(is_antiwraparound),\r\n    ['tuples removed'] = round(avg(tuples_removed)),\r\n    ['tuples remain'] = round(avg(tuples_remain)),\r\n    ['tuples dead but not removed'] = round(avg(tuples_dead_not_removed)),\r\n    ['index scans'] = round(avg(index_scans), 1),\r\n    ['elapsed time'] = round(avg(elapsed_time), 2)\r\n    by bin(TimeGenerated, graphgrain), database, schema, table\r\n| project-rename ['time generated'] = TimeGenerated\r\n| order by ['time generated'] desc",
+        "query": "let graphgrain = 1d;\r\nlet dbFilter = '{Database}';\r\n{ParsedAutovacuumLogs}\r\n| where dbFilter == 'All' or database == dbFilter\r\n| summarize \r\n    ['vacuum count'] = count(),\r\n    ['anti-wraparound runs'] = countif(is_antiwraparound),\r\n    ['tuples removed'] = round(avg(tuples_removed)),\r\n    ['tuples remain'] = round(avg(tuples_remain)),\r\n    ['tuples dead but not removed'] = round(avg(tuples_dead_not_removed)),\r\n    ['index scans'] = round(avg(index_scans), 1),\r\n    ['elapsed time'] = round(avg(elapsed_time), 2)\r\n    by bin(TimeGenerated, graphgrain), database, schema, table\r\n| project-rename ['time generated'] = TimeGenerated\r\n| order by ['time generated'] desc",
         "size": 0,
         "exportedParameters": [
           {
@@ -4238,7 +4243,7 @@
         "version": "KqlItem/1.0",
         "query": "let AVDate = todatetime('{AVHistoryTime}');\r\nlet AVDatabase = '{AVHistoryDatabase}';\r\nlet AVSchema = '{AVHistorySchema}';\r\nlet AVTable = '{AVHistoryTable}';\r\n{ParsedAutovacuumLogs}\r\n| where startofday(TimeGenerated) == startofday(AVDate)\r\n| where database == AVDatabase and schema == AVSchema and table == AVTable\r\n| project\r\n    ['time generated'] = TimeGenerated,\r\n    database, schema, table,\r\n    ['tuples removed'] = tuples_removed,\r\n    ['tuples remain'] = tuples_remain,\r\n    ['tuples dead but not removed'] = tuples_dead_not_removed,\r\n    ['index scans'] = index_scans,\r\n    ['elapsed time'] = elapsed_time,\r\n    ['anti-wraparound'] = is_antiwraparound,\r\n    ['autovacuum log'] = Message\r\n| order by ['time generated'] desc",
         "size": 0,
-        "title": "Detailed autovacuum activity for {AVHistoryDatabase}.{AVHistorySchema}.{AVHistoryTable} on {AVHistoryTime:date}",
+        "title": "Detailed autovacuum activity for {AVHistoryDatabase}.{AVHistorySchema}.{AVHistoryTable}",
         "showExportToExcel": true,
         "queryType": 0,
         "resourceType": "microsoft.dbforpostgresql/flexibleservers",
@@ -4296,7 +4301,8 @@
               }
             }
           ],
-          "rowLimit": 10000
+          "rowLimit": 10000,
+          "filter": true
         },
         "sortBy": []
       },
@@ -4372,7 +4378,7 @@
         ],
         "timeContextFromParameter": "TimeRange",
         "timeContext": {
-          "durationMs": 2419200000
+          "durationMs": 86400000
         },
         "metrics": [
           {
@@ -4422,7 +4428,7 @@
         ],
         "timeContextFromParameter": "TimeRange",
         "timeContext": {
-          "durationMs": 2419200000
+          "durationMs": 86400000
         },
         "metrics": [
           {
@@ -4456,69 +4462,6 @@
       "styleSettings": {
         "showBorder": true
       }
-    },
-    {
-      "type": 12,
-      "content": {
-        "version": "NotebookGroup/1.0",
-        "groupType": "editable",
-        "items": [
-          {
-            "type": 1,
-            "content": {
-              "json": "\r\n### Vacuum delay monitor\r\n\r\nThis graph tracks the frequency of `VacuumDelay` wait events captured from `pg_stat_activity` snapshots taken every 5 minutes. A high count of these events may indicate that autovacuum operations are being throttled excessively due to cost-based delay settings, potentially leading to slower cleanup and increased bloat in PostgreSQL tables. Monitoring this helps identify when tuning vacuum cost parameters might be necessary to maintain optimal database performance.\r\n",
-              "style": "info"
-            },
-            "name": "vacuumdelayInfo"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "let Start_Time = todatetime('{GlobalStartTime}');\r\nlet End_Time = todatetime('{GlobalEndTime}');\r\n{PostgreSQLFlexSessions}\r\n| where TimeGenerated >= Start_Time and TimeGenerated <= End_Time\r\n| where WaitEvent == \"VacuumDelay\"\r\n| make-series VacuumDelayCount = count() on TimeGenerated from Start_Time to End_Time step {TimeRange:grain}\r\n\r\n",
-              "size": 0,
-              "aggregation": 2,
-              "timeBrushParameterName": "TimeRange",
-              "queryType": 0,
-              "resourceType": "microsoft.dbforpostgresql/flexibleservers",
-              "crossComponentResources": [
-                "{Resource}"
-              ],
-              "visualization": "areachart",
-              "chartSettings": {
-                "showLegend": true
-              }
-            },
-            "name": "vacuumdelay"
-          },
-          {
-            "type": 1,
-            "content": {
-              "json": "\r\n### Recommendations\r\n- **Lower delay settings**: Reduce **autovacuum_vacuum_cost_delay** to speed up vacuum.\r\n- **Raise cost limits**: Increase **autovacuum_vacuum_cost_limit** to allow more work before throttling.\r\n- **Target key tables**: Use table-specific settings for high-bloat or high-traffic tables.\r\n- **Watch trends**: Use the graph to spot delay spikes and adjust tuning accordingly.\r\n",
-              "style": "info"
-            },
-            "name": "vacuumdelayInfoRecommendations1"
-          }
-        ]
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "tab",
-          "comparison": "isEqualTo",
-          "value": "vacuumdelay"
-        },
-        {
-          "parameterName": "IsServerPrimary",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        },
-        {
-          "parameterName": "x",
-          "comparison": "isEqualTo",
-          "value": "z"
-        }
-      ],
-      "name": "vacuumdelaygroup"
     },
     {
       "type": 12,
