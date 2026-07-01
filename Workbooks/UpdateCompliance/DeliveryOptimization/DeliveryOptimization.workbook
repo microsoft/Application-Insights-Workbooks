@@ -557,7 +557,7 @@
                   "id": "c4d3e5f6-a1b2-4c3d-8e9f-0a1b2c3d4e5f",
                   "cellValue": "selTab",
                   "linkTarget": "parameter",
-                  "linkLabel": "Microsoft Connected Cache",
+                  "linkLabel": "Microsoft Connected Cache (MCC)",
                   "subTarget": "CacheNode",
                   "style": "link"
                 }
@@ -1694,7 +1694,7 @@
                       {
                         "type": 1,
                         "content": {
-                          "json": "Daily download volume trend per Cache Node ID. Use the filters above to narrow by specific cache node or content type."
+                          "json": "**Daily MCC Download volume by Cache node source**\n\nDaily download volume trend per Cache Node ID. Use the filters above to narrow by specific cache node or content type."
                         },
                         "name": "TimechartDescription"
                       },
@@ -1704,7 +1704,7 @@
                           "version": "KqlItem/1.0",
                           "query": "let _SnapshotTime = datetime({DOSnapshotTime});\nlet _selectedTypes = dynamic([{selectedContentType}]);\nlet _selectedNodes = dynamic([{selectedCacheNodeId}]);\nUCDOStatus\n| where TimeGenerated == _SnapshotTime\n| where isnotnull(CacheNodeDetails) and array_length(CacheNodeDetails) > 0\n| where array_length(_selectedTypes) == 0 or 'value::all' in (_selectedTypes) or ContentType in (_selectedTypes)\n| mv-expand CacheNodeDetail = CacheNodeDetails\n| extend CacheNodeId = tostring(CacheNodeDetail.Id),\n         Date = todatetime(CacheNodeDetail.Date),\n         Bytes = tolong(CacheNodeDetail.Bytes)\n| where isnotempty(CacheNodeId)\n| where array_length(_selectedNodes) == 0 or 'value::all' in (_selectedNodes) or CacheNodeId in (_selectedNodes)\n| summarize TotalBytes = sum(Bytes) by CacheNodeId, Date\n| project Date, CacheNodeId, TotalBytes\n| order by Date asc",
                           "size": 0,
-                          "title": "Download volume by Cache node source",
+                          "title": "",
                           "noDataMessage": "No cache node download data found for the selected filters.",
                           "queryType": 0,
                           "resourceType": "microsoft.operationalinsights/workspaces",
@@ -1735,12 +1735,19 @@
                         "name": "CacheNodeDailyTimechart"
                       },
                       {
+                        "type": 1,
+                        "content": {
+                          "json": "**Cache Node Summary (Aggregated Past 28 Days)**\n\nAggregated summary per cache node over the last 28 days"
+                        },
+                        "name": "TableDescription"
+                      },
+                      {
                         "type": 3,
                         "content": {
                           "version": "KqlItem/1.0",
-                          "query": "let _SnapshotTime = datetime({DOSnapshotTime});\nlet _selectedContentType = dynamic([{selectedContentType}]);\nlet _selectedCacheNodes = dynamic([{selectedCacheNodeId}]);\nUCDOStatus\n| where TimeGenerated == _SnapshotTime\n| where isnotnull(CacheNodeDetails) and array_length(CacheNodeDetails) > 0\n| where array_length(_selectedContentType) == 0 or 'value::all' in (_selectedContentType) or ContentType in (_selectedContentType)\n| mv-expand CacheNodeDetail = CacheNodeDetails\n| extend CacheNodeId = tostring(CacheNodeDetail.Id),\n         Date = todatetime(CacheNodeDetail.Date),\n         Bytes = tolong(CacheNodeDetail.Bytes)\n| where isnotempty(CacheNodeId)\n| where array_length(_selectedCacheNodes) == 0 or 'value::all' in (_selectedCacheNodes) or CacheNodeId in (_selectedCacheNodes)\n| summarize DownloadVolume = sum(Bytes),\n            LastKnownDownloadDate = max(Date),\n            DevicesThatDownloaded = dcount(AzureADDeviceId)\n  by CacheNodeId\n| order by DownloadVolume desc\n| extend DrillDownQuery = strcat('let _SnapshotTime = datetime({DOSnapshotTime});\\nUCDOStatus\\n| where TimeGenerated == _SnapshotTime\\n| where isnotnull(CacheNodeDetails) and array_length(CacheNodeDetails) > 0\\n| mv-expand CacheNodeDetail = CacheNodeDetails\\n| extend _CacheNodeId = tostring(CacheNodeDetail.Id)\\n| where _CacheNodeId == \"', CacheNodeId, '\"\\n| summarize by AzureADDeviceId, OSVersion\\n| order by AzureADDeviceId asc\\n| take 1000')",
+                          "query": "let _SnapshotTime = datetime({DOSnapshotTime});\nlet _selectedContentType = dynamic([{selectedContentType}]);\nlet _selectedCacheNodes = dynamic([{selectedCacheNodeId}]);\nUCDOStatus\n| where TimeGenerated == _SnapshotTime\n| where isnotnull(CacheNodeDetails) and array_length(CacheNodeDetails) > 0\n| where array_length(_selectedContentType) == 0 or 'value::all' in (_selectedContentType) or ContentType in (_selectedContentType)\n| mv-expand CacheNodeDetail = CacheNodeDetails\n| extend CacheNodeId = tostring(CacheNodeDetail.Id),\n         Date = todatetime(CacheNodeDetail.Date),\n         Bytes = tolong(CacheNodeDetail.Bytes)\n| where isnotempty(CacheNodeId)\n| where array_length(_selectedCacheNodes) == 0 or 'value::all' in (_selectedCacheNodes) or CacheNodeId in (_selectedCacheNodes)\n| summarize MCCDownloadVolume = sum(Bytes),\n            LastKnownDownloadDate = max(Date),\n            DevicesThatDownloaded = dcount(AzureADDeviceId)\n  by CacheNodeId\n| order by MCCDownloadVolume desc\n| extend DrillDownQuery = strcat('let _SnapshotTime = datetime({DOSnapshotTime});\\nlet _targetCacheNode = \"', CacheNodeId, '\";\\nlet _selectedContentType = dynamic([', \"{selectedContentType}\", ']);\\nUCDOStatus\\n| where TimeGenerated == _SnapshotTime\\n| where isnotnull(CacheNodeDetails) and array_length(CacheNodeDetails) > 0\\n| where array_length(_selectedContentType) == 0 or ContentType in (_selectedContentType)\\n| mv-apply d = CacheNodeDetails on (\\n    where tostring(d.Id) == _targetCacheNode\\n    | summarize BytesDownloaded = sum(tolong(d.Bytes)), LastKnownDate = max(todatetime(d.Date))\\n)\\n| where BytesDownloaded > 0\\n| summarize BytesDownloaded = sum(BytesDownloaded), LastKnownDate = max(LastKnownDate) by AzureADDeviceId, OSVersion\\n| extend DownloadVolume = case(\\n    BytesDownloaded >= 1099511627776, strcat(round(todouble(BytesDownloaded) / 1099511627776, 2), \" TiB\"),\\n    BytesDownloaded >= 1073741824, strcat(round(todouble(BytesDownloaded) / 1073741824, 2), \" GiB\"),\\n    BytesDownloaded >= 1048576, strcat(round(todouble(BytesDownloaded) / 1048576, 2), \" MiB\"),\\n    BytesDownloaded >= 1024, strcat(round(todouble(BytesDownloaded) / 1024, 2), \" KiB\"),\\n    strcat(BytesDownloaded, \" Bytes\"))\\n| order by BytesDownloaded desc\\n| project AzureADDeviceId, OSVersion, DownloadVolume, LastKnownDate\\n| take 1000')",
                           "size": 0,
-                          "title": "Cache Node Summary (Aggregated Past 28 Days)",
+                          "title": "",
                           "noDataMessage": "No cache node data found for the selected filters.",
                           "exportFieldName": "CacheNodeId",
                           "exportParameterName": "drillDownCacheNodeId",
@@ -1752,7 +1759,7 @@
                           "gridSettings": {
                             "formatters": [
                               {
-                                "columnMatch": "DownloadVolume",
+                                "columnMatch": "MCCDownloadVolume",
                                 "formatter": 0,
                                 "numberFormat": {
                                   "unit": 2,
@@ -1815,8 +1822,8 @@
                                 "label": "Cache node ID"
                               },
                               {
-                                "columnId": "DownloadVolume",
-                                "label": "Download volume"
+                                "columnId": "MCCDownloadVolume",
+                                "label": "MCC Download volume"
                               },
                               {
                                 "columnId": "LastKnownDownloadDate",
