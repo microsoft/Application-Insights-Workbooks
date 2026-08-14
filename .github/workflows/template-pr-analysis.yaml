@@ -1,0 +1,82 @@
+name: Template PR Analysis
+
+# Advisory-only: analyzes templates changed in a PR and posts the analyzer
+# warnings/errors as a sticky PR comment. This workflow never fails the build.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+
+      - name: Build analyzer
+        working-directory: scripts
+        run: |
+          npm ci
+          npm run build
+
+      - name: Determine changed templates
+        id: changed
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          files=$(git diff --name-only --diff-filter=d "$base" "$head" \
+            | grep -Ei '\.(workbook|json)$' || true)
+          {
+            echo "files<<EOF"
+            echo "$files"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run analyzer
+        id: analyze
+        if: steps.changed.outputs.files != ''
+        run: |
+          mapfile -t f <<< "${{ steps.changed.outputs.files }}"
+          set +e
+          out=$(node scripts/dist/AnalyzeTemplates.js --severity:2 "${f[@]}" 2>&1)
+          set -e
+          # The analyzer's exit code only reflects errors/critical, so count
+          # actual finding lines (any severity) to decide what to report.
+          findings=$(printf '%s\n' "$out" \
+            | grep -Ec ': (Critical|Error|Warning|Information|Verbose) [A-Z0-9]+:' || true)
+          echo "findings=$findings" >> "$GITHUB_OUTPUT"
+          {
+            echo "report<<EOF"
+            echo "$out"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        if: steps.changed.outputs.files != ''
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: template-analysis
+          message: |
+            ### 🔎 Workbook Template Analysis
+            ${{ steps.analyze.outputs.findings == '0' && '✅ No issues found in changed templates.' || '⚠️ The analyzer reported the following. This is advisory only and does not block the PR.' }}
+
+            <details><summary>Analyzer output</summary>
+
+            ```
+            ${{ steps.analyze.outputs.report }}
+            ```
+            </details>
+
+            <sub>Analyzed changed <code>.workbook</code>/<code>.json</code> files at <code>--severity:2</code> (warnings and above).</sub>
