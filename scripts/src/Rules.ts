@@ -2,8 +2,7 @@
 
 import { BestPracticeRule, BestPracticeRuleResult, SerializedNotebook, SeverityLevel } from "./Interfaces";
 import { isEmpty, isNullOrWhitespace, notNullOrUndefined } from "./Utils";
-
-const JsonPath = require('jsonpath');
+import * as JsonPath from "./JsonPath";
 
 // these regexs are copied here so this file can be reused in the github as well, self contained.
 /** regex for finding params in brackets, including any format specifiers, like :escape, which can be used in query steps */
