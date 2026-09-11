@@ -3,9 +3,9 @@
   "items": [
     {
       "type": 1,
-      "name": "migration-internal-draft-notice",
+      "name": "metrics-source-guidance",
       "content": {
-        "json": "## Internal migration draft\nSelect a **Log Analytics workspace** and explicit IoT resource IDs. Legacy only is the safe default. Select **Legacy/new cutover** and enter the actual cutover UTC to combine histories without overlap, or select **New only**. One cutover applies to the selected resources; use separate selections for different cutover times. Device views select one IoT resource.\n\nThese are unpublished definitions. WorkbookTemplate links retain their community template IDs and propagate the migration parameters, but currently open the public, unmigrated templates unless a reviewer binds the targets to matching internal copies. Do not use those public targets as migration validation. No browser rendering or navigation has been tested."
+        "json": "# IoT Edge health snapshot\nSelect the subscription, workspace, IoT resource and time range. **Legacy only** uses the existing collector data. Select **New only** for the migrated collector, or **Combine legacy and new history** to join the two at your actual cutover time without overlap."
       }
     },
     {
@@ -68,56 +68,11 @@
             "label": "Metrics source",
             "isRequired": true,
             "value": "Legacy",
-            "jsonData": "[{\"value\": \"Legacy\", \"label\": \"Legacy only\"}, {\"value\": \"New\", \"label\": \"New only\"}, {\"value\": \"Cutover\", \"label\": \"Legacy/new cutover\"}]",
+            "jsonData": "[{\"value\": \"Legacy\", \"label\": \"Legacy only\"}, {\"value\": \"New\", \"label\": \"New only\"}, {\"value\": \"Cutover\", \"label\": \"Combine legacy and new history\"}]",
             "typeSettings": {
               "additionalResourceOptions": [],
               "showDefault": false
             }
-          },
-          {
-            "id": "0021cb85-46b4-5acd-a082-e4fa44f97167",
-            "version": "KqlParameterItem/1.0",
-            "name": "MetricsCutoverUtc",
-            "type": 1,
-            "label": "Cutover UTC (required in cutover mode)",
-            "value": "",
-            "description": "Enter the actual UTC boundary, for example YYYY-MM-DDTHH:mm:ssZ. Legacy rows are strictly before it; new rows are at or after it. No automatic boundary or raw overlapping union."
-          },
-          {
-            "id": "f1a256d1-1227-554b-9c1a-cac191f8e0a1",
-            "version": "KqlParameterItem/1.0",
-            "name": "MetricsCutoverEffective",
-            "type": 1,
-            "isHiddenWhenLocked": true,
-            "criteriaData": [
-              {
-                "criteriaContext": {
-                  "leftOperand": "MetricsSourceMode",
-                  "operator": "!=",
-                  "rightValType": "static",
-                  "rightVal": "Cutover",
-                  "resultValType": "static",
-                  "resultVal": "not-applicable"
-                }
-              },
-              {
-                "criteriaContext": {
-                  "leftOperand": "MetricsCutoverUtc",
-                  "operator": "is Empty",
-                  "rightValType": "static",
-                  "resultValType": "static",
-                  "resultVal": "not-set"
-                }
-              },
-              {
-                "criteriaContext": {
-                  "operator": "Default",
-                  "rightValType": "static",
-                  "resultValType": "param",
-                  "resultVal": "MetricsCutoverUtc"
-                }
-              }
-            ]
           },
           {
             "id": "979649a8-9b99-407e-bd77-79ce9223ae1f",
@@ -165,6 +120,76 @@
               ],
               "allowCustom": true
             }
+          }
+        ],
+        "style": "pills"
+      }
+    },
+    {
+      "type": 9,
+      "name": "metrics-cutover-input",
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "0021cb85-46b4-5acd-a082-e4fa44f97167",
+            "version": "KqlParameterItem/1.0",
+            "name": "MetricsCutoverUtc",
+            "type": 1,
+            "label": "Cutover time (UTC)",
+            "value": "",
+            "description": "Enter YYYY-MM-DDTHH:mm:ssZ. Use the actual changeover time, not the current time."
+          }
+        ],
+        "style": "pills"
+      },
+      "conditionalVisibility": {
+        "parameterName": "MetricsSourceMode",
+        "comparison": "isEqualTo",
+        "value": "Cutover"
+      }
+    },
+    {
+      "type": 9,
+      "name": "metrics-effective-cutover",
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "f1a256d1-1227-554b-9c1a-cac191f8e0a1",
+            "version": "KqlParameterItem/1.0",
+            "name": "MetricsCutoverEffective",
+            "type": 1,
+            "isHiddenWhenLocked": true,
+            "criteriaData": [
+              {
+                "criteriaContext": {
+                  "leftOperand": "MetricsSourceMode",
+                  "operator": "!=",
+                  "rightValType": "static",
+                  "rightVal": "Cutover",
+                  "resultValType": "static",
+                  "resultVal": "not-applicable"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "leftOperand": "MetricsCutoverUtc",
+                  "operator": "is Empty",
+                  "rightValType": "static",
+                  "resultValType": "static",
+                  "resultVal": "not-set"
+                }
+              },
+              {
+                "criteriaContext": {
+                  "operator": "Default",
+                  "rightValType": "static",
+                  "resultValType": "param",
+                  "resultVal": "MetricsCutoverUtc"
+                }
+              }
+            ]
           }
         ],
         "style": "pills"
@@ -530,7 +555,7 @@
             "type": 1,
             "label": "Metrics query status",
             "query": "// BEGIN IoT Edge migration normalization\nlet EdgeMode = '{MetricsSourceMode:escape}';\nlet EdgeCutover = todatetime('{MetricsCutoverEffective:escape}');\nlet EdgeSelection = pack_array(\"{IoTResources:escape}\");\nlet EdgeResourceIds = parse_json(tolower(tostring(iff(gettype(EdgeSelection) == \"array\", EdgeSelection, pack_array(tostring(EdgeSelection))))));\nlet EdgeLegacy = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, Origin:string, Name:string, Val:real, Tags:string, _ResourceId:string) []),\n    InsightsMetrics\n    | where Origin == \"iot.azm.ms\"\n    | where EdgeMode == \"Legacy\" or (EdgeMode == \"Cutover\" and TimeGenerated < EdgeCutover)\n    | project TimeGenerated, Name, Val = todouble(Val), Tags = tostring(Tags),\n        ResourceId = tolower(_ResourceId), SourceTable = \"InsightsMetrics\";\nlet EdgeNew = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, Origin:string, Name:string, Value:real, Tags:string, ResourceId:string) []),\n    IoTEdgeMetrics_CL\n    | where Origin == \"iot.azm.ms\"\n    | where EdgeMode == \"New\" or (EdgeMode == \"Cutover\" and TimeGenerated >= EdgeCutover)\n    | project TimeGenerated, Name, Val = todouble(Value), Tags = tostring(Tags),\n        ResourceId = tolower(ResourceId), SourceTable = \"IoTEdgeMetrics_CL\";\nlet EdgeMetrics = union EdgeLegacy, EdgeNew\n    | where isnotempty(ResourceId) and ResourceId in (EdgeResourceIds);\n// END IoT Edge migration normalization\nEdgeMetrics\n| where TimeGenerated between ({timeRange:start} .. {timeRange:end})\n| where tostring(parse_json(Tags).edge_device) == '{SelectedDevice:escape}'\n| summarize LegacyRows = countif(SourceTable == \"InsightsMetrics\"), NewRows = countif(SourceTable == \"IoTEdgeMetrics_CL\")\n| project State = case(\n    EdgeMode !in (\"Legacy\", \"New\", \"Cutover\") or (EdgeMode == \"Cutover\" and isnull(EdgeCutover)), \"InvalidCutover\",\n    LegacyRows > 0 and NewRows > 0, \"Transition\",\n    LegacyRows > 0, \"LegacyOnly\",\n    NewRows > 0, \"NewOnly\", \"Empty\")",
-            "isHiddenWhenLocked": false,
+            "isHiddenWhenLocked": true,
             "description": "A blank or pending value means the query has not produced a state. It does not mean no metrics exist. Check unresolved inputs and query errors.",
             "queryType": 0,
             "resourceType": "microsoft.operationalinsights/workspaces",
@@ -563,16 +588,9 @@
     },
     {
       "type": 1,
-      "name": "migration-state-label",
-      "content": {
-        "json": "### Metrics query diagnostics\nMode: {MetricsSourceMode}. Effective cutover input: {MetricsCutoverEffective}.\n\nMetrics state: {MetricsDataState}. A blank or pending state means the query has not resolved, not that telemetry is absent. Check that subscription, workspace, IoT resource, time range and (for device views) device are selected. The Metrics query status control above exposes the query result; use its parameter editor and query error details if it remains blank. Empty is shown only after the query returns that state."
-      }
-    },
-    {
-      "type": 1,
       "name": "migration-invalid-cutover",
       "content": {
-        "json": "## Invalid cutover\nEnter a valid UTC timestamp for Legacy/new cutover mode, or select Legacy only or New only. No eligible combined history is shown until the boundary is valid."
+        "json": "## Enter a valid cutover time\nTo combine history, enter the actual UTC cutover timestamp. Legacy samples are used before this time and new samples at or after it. Alternatively, select Legacy only or New only."
       },
       "conditionalVisibility": {
         "parameterName": "MetricsDataState",
@@ -584,7 +602,7 @@
       "type": 1,
       "name": "migration-empty-state",
       "content": {
-        "json": "## No eligible IoT Edge metrics\n\nState: {MetricsDataState}. Check workspace access, the selected IoT ARM resource, device, time range, source mode, and cutover UTC. An invalid/missing cutover returns no rows rather than overlapping histories. Missing tables or no eligible rows are an empty state, not proof that a collector is broken. Query/authorization errors must be investigated separately. Non-finite base/quantile samples can be absent while finite `_sum`/`_count` components remain.\n\n[Collection setup](https://aka.ms/edgemon-docs)"
+        "json": "## No metrics in this selection\nNo matching IoT Edge metrics were returned. Check the selected workspace, IoT resource, device, time range and metrics source. If the collector has stopped, select a time range when it was running. Query or access errors must be resolved separately.\n\n[Set up metrics collection](https://aka.ms/edgemon-docs)"
       },
       "conditionalVisibility": {
         "parameterName": "MetricsDataState",
