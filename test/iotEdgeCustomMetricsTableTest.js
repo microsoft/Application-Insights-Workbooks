@@ -9,6 +9,9 @@ const TABLE_PATTERN = /^(?:|[A-Za-z][A-Za-z0-9_]*_CL)$/;
 const BEGIN = '// BEGIN IoT Edge migration normalization\n';
 const END = '// END IoT Edge migration normalization\n';
 const TABLE_CALL = "table('{MetricsTableNameEffective:escape}')";
+// These expected digests come from base commit
+// 359e102e9823a25f39674572d82dfa2b786376fc. They lock the retained metric
+// bodies against future drift; the independent review also compared base to head.
 const FILES = {
   'Workbooks/IoTHub/IoT Edge/IoT Edge.workbook': [2, '2241cb94444bf1a6341739aeb40b4dd0b0a66ad02ded82864588b47257938198'],
   'Workbooks/IoTHub/IoT Edge device details/IoT Edge device details.workbook': [47, '3158ad77ef4a36017fddea9f34b9006a9135bb542ef6cbeb7d609eaf5b508ee3'],
