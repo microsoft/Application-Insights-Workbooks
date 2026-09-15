@@ -46,7 +46,7 @@ function normalizedQueries(document) {
 }
 
 function effectiveTable(input) {
-  return input === undefined || input === null || input === '' ? DEFAULT_TABLE : input;
+  return typeof input === 'string' && /^[A-Za-z][A-Za-z0-9_]*_CL$/.test(input) ? input : DEFAULT_TABLE;
 }
 
 function metricState(mode, cutoverIsValid, legacyRows, newRows) {
@@ -79,7 +79,15 @@ describe('IoT Edge custom metrics table contract', function () {
       assert.strictEqual(effective[0].isHiddenWhenLocked, true, relativePath);
       assert.strictEqual(effective[0].criteriaData[0].criteriaContext.operator, 'is Empty', relativePath);
       assert.strictEqual(effective[0].criteriaData[0].criteriaContext.resultVal, DEFAULT_TABLE, relativePath);
-      assert.strictEqual(effective[0].criteriaData[1].criteriaContext.resultVal, 'MetricsTableName', relativePath);
+      const rules = effective[0].criteriaData.map(rule => rule.criteriaContext);
+      assert.strictEqual(rules[1].leftOperand, 'MetricsTableName', relativePath);
+      assert.strictEqual(rules[1].operator, 'regex', relativePath);
+      assert.strictEqual(rules[1].rightVal, '^[A-Za-z][A-Za-z0-9_]*_CL$', relativePath);
+      assert.strictEqual(rules[1].resultValType, 'param', relativePath);
+      assert.strictEqual(rules[1].resultVal, 'MetricsTableName', relativePath);
+      assert.strictEqual(rules[2].operator, 'Default', relativePath);
+      assert.strictEqual(rules[2].resultValType, 'static', relativePath);
+      assert.strictEqual(rules[2].resultVal, DEFAULT_TABLE, relativePath);
     });
   });
 
@@ -88,6 +96,8 @@ describe('IoT Edge custom metrics table contract', function () {
     assert.strictEqual(effectiveTable(''), DEFAULT_TABLE);
     assert.strictEqual(effectiveTable(DEFAULT_TABLE), DEFAULT_TABLE);
     assert.strictEqual(effectiveTable('ContosoEdgeMetrics_CL'), 'ContosoEdgeMetrics_CL');
+    assert.strictEqual(effectiveTable("IoTEdgeMetrics_CL') | take 1; //"), DEFAULT_TABLE);
+    assert.strictEqual(effectiveTable('not-a-table'), DEFAULT_TABLE);
   });
 
   it('rejects invalid and malicious table identifiers before query substitution', function () {
