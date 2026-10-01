@@ -12,7 +12,7 @@ The template content is packaged and deployed inside the Application Insights Ex
 
 The Application Insights extension deploys using **Managed SDP** and **Azure SafeDeploy** rules. Full rollout to all production regions takes approximately **8 days**.
 
-* Every weekday, a daily build of the Application Insights Azure Portal extension takes place. This build consumes the NPM package from the ADO package feed.
+* Every week, a build of the Application Insights Azure Portal extension takes place, normally on Monday. This build consumes the NPM package from the ADO package feed.
 
 * The extension is deployed via the [App Insights extension deployment process](https://eng.ms/docs/cloud-ai-platform/azure/aep-platform-infrastructure/observability/application-insights/portal/operations/deployment#deployment-pipeline) following Azure SafeDeploy rules, progressing through stages including:
 
@@ -26,7 +26,7 @@ The Application Insights extension deploys using **Managed SDP** and **Azure Saf
 
 Newer Workbooks views, supporting at-scale Insights views and Workbooks and  Dashboard preview views use the same template package, but are deployed via the [Workbooks Azure Portal extension deployment process](https://eng.ms/docs/cloud-ai-platform/azure-edge-platform-aep/aep-health-standards/observability/workbooks-experiences/workbooks-docs/operations/standarddeployment), which follows a similar Managed SDP (Safe Deploy) process but with less frequent releases.
 
-* The Workbooks extension builds and releases on **Monday and Wednesday**.
+* Every week, a build of the Workbooks extension takes place, normally on Monday. This build consumes the NPM package from the ADO package feed.
 * Deployment follows the same Managed SDP and Azure SafeDeploy staging rules as the Application Insights extension.
 
   * **ReleaseValidation** (pre-production): [PPE](https://portal.azure.com/?feature.canmodifystamps=true&Microsoft_Azure_WorkbooksExtension=releaseValidation)
