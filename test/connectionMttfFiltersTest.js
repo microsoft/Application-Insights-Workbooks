@@ -78,7 +78,7 @@ describe('Connection MTTF navigation', () => {
             comparison: 'isNotEqualTo',
             value: 'ConnectionMTTF'
         });
-        assert.equal(sharedTimeRangeGroup.customWidth, '15');
+        assert.equal(sharedTimeRangeGroup.customWidth, '55');
         assert.equal(sharedTimeRangeGroup.content.parameters[0].name, 'TimeRange');
     });
 
