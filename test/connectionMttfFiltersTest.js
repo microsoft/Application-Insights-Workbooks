@@ -1,0 +1,138 @@
+const assert = require('chai').assert;
+const fs = require('fs');
+const path = require('path');
+
+const workbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
+    'AtScale', 'Connection MTTF', 'Connection MTTF.workbook');
+const workbook = JSON.parse(fs.readFileSync(workbookPath, 'utf8'));
+
+function flattenItems(items) {
+    return items.flatMap(item => [item, ...flattenItems(item.content.items || [])]);
+}
+
+function normalizeQuery(query) {
+    return query.split(/\r?\n/).map(line => line.trim()).join('\n');
+}
+
+function sourcePipelines(query, table) {
+    const pattern = new RegExp(`(?:^|\\n)${table}\\n((?:\\|[^\\n]*(?:\\n|$))+)`, 'g');
+    return Array.from(normalizeQuery(query).matchAll(pattern), match => match[1]);
+}
+
+const items = flattenItems(workbook.items);
+const parameters = items.find(item => item.name === 'parameters_general').content.parameters;
+const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
+const resourceFilter = '| where _ResourceId in~ ({HostPools})';
+const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion) or GatewayRegion == "", "Unknown", GatewayRegion)';
+const gatewayFilter = "| where '*' in ({GatewayRegion}) or GatewayLocation in ({GatewayRegion})";
+const gatewayReads = dataViews.flatMap(item =>
+    sourcePipelines(item.content.query, 'WVDMultiLinkAdd').slice(1)
+        .map((pipeline, index) => ({ name: `${item.name} link read ${index + 1}`, pipeline })));
+
+describe('Connection MTTF filtering', () => {
+    it('covers every data view and downstream link read', () => {
+        assert.sameMembers(dataViews.map(item => item.name), [
+            'MTTFBarChart', 'MTTFHistogram', 'MTTFUnifiedDetail', 'MTTFTransportDetail',
+            'MTTFGatewayDetail', 'MTTFUnifiedConnections', 'MTTFTransportConnections',
+            'MTTFGatewayConnections'
+        ]);
+        assert.lengthOf(gatewayReads, 6);
+    });
+
+    it('cascades subscriptions and resource groups into the host pool scope', () => {
+        const resourceGroups = parameters.find(parameter => parameter.name === 'ResourceGroups');
+        const hostPools = parameters.find(parameter => parameter.name === 'HostPools');
+        assert.deepEqual(resourceGroups.crossComponentResources, ['{Subscriptions}']);
+        assert.deepEqual(hostPools.crossComponentResources, ['{Subscriptions}']);
+        assert.include(hostPools.query, 'resourceGroup in ({ResourceGroups})');
+    });
+
+    it('keeps the top gateway and client filters required with an All selection', () => {
+        for (const name of ['GatewayRegion', 'ClientType', 'ClientVersion']) {
+            const parameter = parameters.find(parameter => parameter.name === name);
+            assert.isTrue(parameter.isRequired, name);
+            assert.isTrue(parameter.multiSelect, name);
+            assert.equal(parameter.quote, "'", name);
+            assert.equal(parameter.delimiter, ',', name);
+            assert.deepEqual(parameter.value, ['value::all'], name);
+            assert.include(parameter.typeSettings.additionalResourceOptions, 'value::all', name);
+            assert.equal(parameter.typeSettings.selectAllValue, '*', name);
+            assert.equal(parameter.timeContextFromParameter, 'TimeRange', name);
+            assert.deepEqual(parameter.crossComponentResources, ['{HostPools}'], name);
+        }
+    });
+
+    it('keeps client option queries scoped to upstream filters', () => {
+        for (const name of ['ClientType', 'ClientVersion']) {
+            const query = parameters.find(parameter => parameter.name === name).query;
+            const connections = sourcePipelines(query, 'WVDConnections');
+            assert.lengthOf(connections, 1, name);
+            assert.include(connections[0], resourceFilter, name);
+            assert.include(connections[0],
+                "| where '*' in ({GatewayRegion}) or CorrelationId in (_GatewayAllowed)", name);
+            if (name === 'ClientVersion') {
+                assert.include(connections[0],
+                    "| where '*' in ({ClientType}) or ClientType in ({ClientType})", name);
+            }
+        }
+    });
+
+    for (const item of dataViews) {
+        it(`${item.name} applies time, resource, gateway and client filters`, () => {
+            assert.equal(item.content.timeContextFromParameter, 'TimeRange');
+            assert.deepEqual(item.content.crossComponentResources, ['{HostPools}']);
+
+            const connections = sourcePipelines(item.content.query, 'WVDConnections');
+            assert.lengthOf(connections, 1);
+            assert.include(connections[0], resourceFilter);
+            assert.include(connections[0],
+                "| where '*' in ({GatewayRegion}) or CorrelationId in (_GatewayAllowed)");
+            for (const name of ['ClientType', 'ClientVersion']) {
+                assert.include(connections[0],
+                    `| where '*' in ({${name}}) or ${name} in ({${name}})`);
+            }
+
+            const gatewaySelection = sourcePipelines(item.content.query, 'WVDMultiLinkAdd')[0];
+            assert.include(gatewaySelection, resourceFilter);
+            assert.include(gatewaySelection, '| where _FilterGateway');
+            assert.include(gatewaySelection,
+                '| extend _GR = iff(isempty(GatewayRegion) or GatewayRegion == "", "Unknown", GatewayRegion)');
+            assert.include(gatewaySelection, '| where _GR in ({GatewayRegion})');
+            assert.include(gatewaySelection, '| distinct CorrelationId');
+            assert.include(item.content.query, "let _FilterGateway = '*' !in ({GatewayRegion});");
+
+            const errors = sourcePipelines(item.content.query, 'WVDErrors');
+            assert.lengthOf(errors, 1);
+            assert.include(errors[0], resourceFilter);
+        });
+    }
+
+    for (const { name, pipeline } of gatewayReads) {
+        it(`${name} filters gateway rows before aggregation`, () => {
+            assert.include(pipeline, resourceFilter);
+            assert.include(pipeline, gatewayNormalization);
+            assert.include(pipeline, gatewayFilter);
+            assert.isBelow(pipeline.indexOf(gatewayNormalization), pipeline.indexOf(gatewayFilter));
+            assert.isBelow(pipeline.indexOf(gatewayFilter), pipeline.indexOf('| summarize'));
+            assert.match(pipeline,
+                /\| join kind=inner (?:SelectedConnections|\(SelectedConnections \| project CorrelationId\)|GatewayFiltered) on CorrelationId/);
+        });
+    }
+
+    for (const selection of [['WUS2'], ['Unknown'], ['WUS2', 'EUS2'], ['*']]) {
+        it(`preserves the gateway row predicate for ${selection.join(', ')}`, () => {
+            const formatted = selection.map(value => `'${value}'`).join(',');
+            for (const { name, pipeline } of gatewayReads) {
+                const expanded = pipeline.replace(/\{GatewayRegion\}/g, formatted);
+                assert.include(expanded,
+                    `| where '*' in (${formatted}) or GatewayLocation in (${formatted})`, name);
+            }
+        });
+    }
+
+    it('uses the same filtered query for the histogram and chart', () => {
+        assert.equal(
+            items.find(item => item.name === 'MTTFBarChart').content.query,
+            items.find(item => item.name === 'MTTFHistogram').content.query);
+    });
+});
