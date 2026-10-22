@@ -24,7 +24,7 @@ function sourcePipelines(query, table) {
 
 const items = flattenItems(workbook.items);
 const parameters = items.find(item => item.name === 'parameters_general').content.parameters;
-const navigationMttfParameterGroups = ['parameters_mttf_timerange', 'parameters_mttf_filters']
+const navigationMttfParameterGroups = ['parameters_mttf_filters']
     .map(name => navigationWorkbook.items.find(item => item.name === name));
 const navigationMttfParameters = navigationMttfParameterGroups
     .flatMap(item => item.content.parameters);
@@ -47,6 +47,7 @@ describe('Connection MTTF navigation', () => {
             .find(parameter => parameter.name === 'selectedTab');
 
         assert.equal(selectedTab.value, 'Overview');
+        assert.isTrue(selectedTab.isGlobal);
         assert.isTrue(selectedTab.isHiddenWhenLocked);
         for (const group of navigationMttfParameterGroups) {
             assert.isBelow(navigationWorkbook.items.indexOf(generalParameters),
@@ -58,6 +59,10 @@ describe('Connection MTTF navigation', () => {
                 value: 'ConnectionMTTF'
             }, group.name);
         }
+        assert.deepEqual(navigationMttfParameterGroups[0].content.parameters
+            .map(parameter => parameter.name),
+        ['MTTFTimeRange', 'GatewayRegion', 'ClientType', 'ClientVersion']);
+        assert.notProperty(navigationMttfParameterGroups[0], 'customWidth');
         for (const name of ['MTTFTimeRange', 'GatewayRegion', 'ClientType', 'ClientVersion']) {
             assert.deepEqual(
                 navigationMttfParameters.find(parameter => parameter.name === name),
