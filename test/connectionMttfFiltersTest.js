@@ -24,8 +24,10 @@ function sourcePipelines(query, table) {
 
 const items = flattenItems(workbook.items);
 const parameters = items.find(item => item.name === 'parameters_general').content.parameters;
-const navigationParameters = navigationWorkbook.items
-    .find(item => item.name === 'parameters_general').content.parameters;
+const navigationMttfParameterGroups = ['parameters_mttf_timerange', 'parameters_mttf_filters']
+    .map(name => navigationWorkbook.items.find(item => item.name === name));
+const navigationMttfParameters = navigationMttfParameterGroups
+    .flatMap(item => item.content.parameters);
 const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
 const resourceFilter = '| where _ResourceId in~ ({HostPools})';
 const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion) or GatewayRegion == "", "Unknown", GatewayRegion)';
@@ -37,18 +39,32 @@ const gatewayReads = dataViews.flatMap(item =>
 describe('Connection MTTF navigation', () => {
     const reportTabs = navigationWorkbook.items.find(item => item.name === 'ReportTabs').content.links;
 
-    it('places the shared filters above the report tabs', () => {
-        const parameterGroupIndex = navigationWorkbook.items
-            .findIndex(item => item.name === 'parameters_general');
+    it('places MTTF-specific filters above the report tabs', () => {
         const reportTabsIndex = navigationWorkbook.items.findIndex(item => item.name === 'ReportTabs');
 
-        assert.isBelow(parameterGroupIndex, reportTabsIndex);
-        for (const name of ['GatewayRegion', 'ClientType', 'ClientVersion']) {
+        for (const group of navigationMttfParameterGroups) {
+            assert.isBelow(navigationWorkbook.items.indexOf(group), reportTabsIndex, group.name);
+            assert.deepEqual(group.conditionalVisibility, {
+                parameterName: 'selectedTab',
+                comparison: 'isEqualTo',
+                value: 'ConnectionMTTF'
+            }, group.name);
+        }
+        for (const name of ['MTTFTimeRange', 'GatewayRegion', 'ClientType', 'ClientVersion']) {
             assert.deepEqual(
-                navigationParameters.find(parameter => parameter.name === name),
+                navigationMttfParameters.find(parameter => parameter.name === name),
                 parameters.find(parameter => parameter.name === name),
                 name);
         }
+
+        const sharedTimeRangeGroup = navigationWorkbook.items
+            .find(item => item.name === 'parameters_timerange');
+        assert.deepEqual(sharedTimeRangeGroup.conditionalVisibility, {
+            parameterName: 'selectedTab',
+            comparison: 'isNotEqualTo',
+            value: 'ConnectionMTTF'
+        });
+        assert.equal(sharedTimeRangeGroup.content.parameters[0].name, 'TimeRange');
     });
 
     it('places the tab between Connection Performance and Users', () => {
@@ -65,7 +81,7 @@ describe('Connection MTTF navigation', () => {
     it('loads the Connection MTTF template when selected', () => {
         const link = reportTabs.find(tab => tab.linkLabel === 'Connection MTTF');
         const group = navigationWorkbook.items.find(item =>
-            item.conditionalVisibility?.value === link.subTarget);
+            item.type === 12 && item.conditionalVisibility?.value === link.subTarget);
 
         assert.equal(link.subTarget, 'ConnectionMTTF');
         assert.equal(group.content.loadFromTemplateId,
@@ -89,6 +105,18 @@ describe('Connection MTTF filtering', () => {
         assert.deepEqual(resourceGroups.crossComponentResources, ['{Subscriptions}']);
         assert.deepEqual(hostPools.crossComponentResources, ['{Subscriptions}']);
         assert.include(hostPools.query, 'resourceGroup in ({ResourceGroups})');
+        assert.equal(hostPools.timeContextFromParameter, 'MTTFTimeRange');
+    });
+
+    it('offers 7, 14 and 30 days plus custom with 7 days selected', () => {
+        const timeRange = parameters.find(parameter => parameter.name === 'MTTFTimeRange');
+
+        assert.deepEqual(
+            timeRange.typeSettings.selectableValues.map(value => value.durationMs),
+            [604800000, 1209600000, 2592000000]);
+        assert.isTrue(timeRange.typeSettings.allowCustom);
+        assert.deepEqual(timeRange.value, { durationMs: 604800000 });
+        assert.isUndefined(parameters.find(parameter => parameter.name === 'TimeRange'));
     });
 
     it('keeps the top gateway and client filters required with an All selection', () => {
@@ -101,7 +129,7 @@ describe('Connection MTTF filtering', () => {
             assert.deepEqual(parameter.value, ['value::all'], name);
             assert.include(parameter.typeSettings.additionalResourceOptions, 'value::all', name);
             assert.equal(parameter.typeSettings.selectAllValue, '*', name);
-            assert.equal(parameter.timeContextFromParameter, 'TimeRange', name);
+            assert.equal(parameter.timeContextFromParameter, 'MTTFTimeRange', name);
             assert.deepEqual(parameter.crossComponentResources, ['{HostPools}'], name);
         }
     });
@@ -123,7 +151,7 @@ describe('Connection MTTF filtering', () => {
 
     for (const item of dataViews) {
         it(`${item.name} applies time, resource, gateway and client filters`, () => {
-            assert.equal(item.content.timeContextFromParameter, 'TimeRange');
+            assert.equal(item.content.timeContextFromParameter, 'MTTFTimeRange');
             assert.deepEqual(item.content.crossComponentResources, ['{HostPools}']);
 
             const connections = sourcePipelines(item.content.query, 'WVDConnections');
