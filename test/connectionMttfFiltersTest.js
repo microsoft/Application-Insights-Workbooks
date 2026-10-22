@@ -40,9 +40,17 @@ describe('Connection MTTF navigation', () => {
     const reportTabs = navigationWorkbook.items.find(item => item.name === 'ReportTabs').content.links;
 
     it('places MTTF-specific filters above the report tabs', () => {
+        const generalParameters = navigationWorkbook.items
+            .find(item => item.name === 'parameters_general');
         const reportTabsIndex = navigationWorkbook.items.findIndex(item => item.name === 'ReportTabs');
+        const selectedTab = generalParameters.content.parameters
+            .find(parameter => parameter.name === 'selectedTab');
 
+        assert.equal(selectedTab.value, 'Overview');
+        assert.isTrue(selectedTab.isHiddenWhenLocked);
         for (const group of navigationMttfParameterGroups) {
+            assert.isBelow(navigationWorkbook.items.indexOf(generalParameters),
+                navigationWorkbook.items.indexOf(group), group.name);
             assert.isBelow(navigationWorkbook.items.indexOf(group), reportTabsIndex, group.name);
             assert.deepEqual(group.conditionalVisibility, {
                 parameterName: 'selectedTab',
