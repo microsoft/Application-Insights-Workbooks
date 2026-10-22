@@ -49,6 +49,7 @@ describe('Connection MTTF navigation', () => {
         assert.equal(selectedTab.value, 'Overview');
         assert.isTrue(selectedTab.isGlobal);
         assert.isTrue(selectedTab.isHiddenWhenLocked);
+        assert.equal(generalParameters.customWidth, '45');
         for (const group of navigationMttfParameterGroups) {
             assert.isBelow(navigationWorkbook.items.indexOf(generalParameters),
                 navigationWorkbook.items.indexOf(group), group.name);
@@ -61,7 +62,7 @@ describe('Connection MTTF navigation', () => {
         }
         assert.deepEqual(navigationMttfParameterGroups[0].content.parameters
             .map(parameter => parameter.name),
-        ['MTTFTimeRange', 'GatewayRegion', 'ClientType', 'ClientVersion']);
+            ['MTTFTimeRange', 'GatewayRegion', 'ClientType', 'ClientVersion']);
         assert.notProperty(navigationMttfParameterGroups[0], 'customWidth');
         for (const name of ['MTTFTimeRange', 'GatewayRegion', 'ClientType', 'ClientVersion']) {
             assert.deepEqual(
@@ -77,6 +78,7 @@ describe('Connection MTTF navigation', () => {
             comparison: 'isNotEqualTo',
             value: 'ConnectionMTTF'
         });
+        assert.equal(sharedTimeRangeGroup.customWidth, '15');
         assert.equal(sharedTimeRangeGroup.content.parameters[0].name, 'TimeRange');
     });
 
