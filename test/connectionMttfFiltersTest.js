@@ -24,6 +24,8 @@ function sourcePipelines(query, table) {
 
 const items = flattenItems(workbook.items);
 const parameters = items.find(item => item.name === 'parameters_general').content.parameters;
+const navigationParameters = navigationWorkbook.items
+    .find(item => item.name === 'parameters_general').content.parameters;
 const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
 const resourceFilter = '| where _ResourceId in~ ({HostPools})';
 const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion) or GatewayRegion == "", "Unknown", GatewayRegion)';
@@ -34,6 +36,20 @@ const gatewayReads = dataViews.flatMap(item =>
 
 describe('Connection MTTF navigation', () => {
     const reportTabs = navigationWorkbook.items.find(item => item.name === 'ReportTabs').content.links;
+
+    it('places the shared filters above the report tabs', () => {
+        const parameterGroupIndex = navigationWorkbook.items
+            .findIndex(item => item.name === 'parameters_general');
+        const reportTabsIndex = navigationWorkbook.items.findIndex(item => item.name === 'ReportTabs');
+
+        assert.isBelow(parameterGroupIndex, reportTabsIndex);
+        for (const name of ['GatewayRegion', 'ClientType', 'ClientVersion']) {
+            assert.deepEqual(
+                navigationParameters.find(parameter => parameter.name === name),
+                parameters.find(parameter => parameter.name === name),
+                name);
+        }
+    });
 
     it('places the tab between Connection Performance and Users', () => {
         const labels = reportTabs.map(link => link.linkLabel);
