@@ -5,6 +5,9 @@ const path = require('path');
 const workbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
     'AtScale', 'Connection MTTF', 'Connection MTTF.workbook');
 const workbook = JSON.parse(fs.readFileSync(workbookPath, 'utf8'));
+const navigationWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
+    'AtScale', 'WVD Insights', 'WVDWorkbookV2.workbook');
+const navigationWorkbook = JSON.parse(fs.readFileSync(navigationWorkbookPath, 'utf8'));
 
 function flattenItems(items) {
     return items.flatMap(item => [item, ...flattenItems(item.content.items || [])]);
@@ -28,6 +31,31 @@ const gatewayFilter = "| where '*' in ({GatewayRegion}) or GatewayLocation in ({
 const gatewayReads = dataViews.flatMap(item =>
     sourcePipelines(item.content.query, 'WVDMultiLinkAdd').slice(1)
         .map((pipeline, index) => ({ name: `${item.name} link read ${index + 1}`, pipeline })));
+
+describe('Connection MTTF navigation', () => {
+    const reportTabs = navigationWorkbook.items.find(item => item.name === 'ReportTabs').content.links;
+
+    it('places the tab between Connection Performance and Users', () => {
+        const labels = reportTabs.map(link => link.linkLabel);
+        const connectionPerformanceIndex = labels.indexOf('Connection Performance');
+
+        assert.deepEqual(labels.slice(connectionPerformanceIndex, connectionPerformanceIndex + 3), [
+            'Connection Performance',
+            'Connection MTTF',
+            'Users'
+        ]);
+    });
+
+    it('loads the Connection MTTF template when selected', () => {
+        const link = reportTabs.find(tab => tab.linkLabel === 'Connection MTTF');
+        const group = navigationWorkbook.items.find(item =>
+            item.conditionalVisibility?.value === link.subTarget);
+
+        assert.equal(link.subTarget, 'ConnectionMTTF');
+        assert.equal(group.content.loadFromTemplateId,
+            'community-Workbooks/Windows Virtual Desktop/AtScale/Connection MTTF');
+    });
+});
 
 describe('Connection MTTF filtering', () => {
     it('covers every data view and downstream link read', () => {
