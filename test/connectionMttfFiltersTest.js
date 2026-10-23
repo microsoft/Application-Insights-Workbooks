@@ -23,9 +23,10 @@ function sourcePipelines(query, table) {
 }
 
 const items = flattenItems(workbook.items);
+const navigationItems = flattenItems(navigationWorkbook.items);
 const parameters = items.find(item => item.name === 'parameters_general').content.parameters;
 const navigationMttfParameterGroups = ['parameters_mttf_filters']
-    .map(name => navigationWorkbook.items.find(item => item.name === name));
+    .map(name => navigationItems.find(item => item.name === name));
 const navigationMttfParameters = navigationMttfParameterGroups
     .flatMap(item => item.content.parameters);
 const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
@@ -40,18 +41,24 @@ describe('Connection MTTF navigation', () => {
     const reportTabs = navigationWorkbook.items.find(item => item.name === 'ReportTabs').content.links;
 
     it('places MTTF-specific filters above the report tabs', () => {
-        const generalParameters = navigationWorkbook.items
+        const parameterLayout = navigationWorkbook.items
+            .find(item => item.name === 'parameters_layout');
+        const generalParameters = navigationItems
             .find(item => item.name === 'parameters_general');
         const reportTabsIndex = navigationWorkbook.items.findIndex(item => item.name === 'ReportTabs');
         const selectedTab = generalParameters.content.parameters
             .find(parameter => parameter.name === 'selectedTab');
 
+        assert.deepEqual(parameterLayout.content.items.map(item => item.name),
+            ['parameters_general', 'parameters_timerange']);
+        assert.isTrue(parameterLayout.content.exportParameters);
+        assert.equal(parameterLayout.styleSettings.maxWidth, '1350px');
         assert.equal(selectedTab.value, 'Overview');
         assert.isTrue(selectedTab.isGlobal);
         assert.isTrue(selectedTab.isHiddenWhenLocked);
-        assert.equal(generalParameters.customWidth, '45');
+        assert.equal(generalParameters.customWidth, '80');
         for (const group of navigationMttfParameterGroups) {
-            assert.isBelow(navigationWorkbook.items.indexOf(generalParameters),
+            assert.isBelow(navigationWorkbook.items.indexOf(parameterLayout),
                 navigationWorkbook.items.indexOf(group), group.name);
             assert.isBelow(navigationWorkbook.items.indexOf(group), reportTabsIndex, group.name);
             assert.deepEqual(group.conditionalVisibility, {
@@ -71,14 +78,14 @@ describe('Connection MTTF navigation', () => {
                 name);
         }
 
-        const sharedTimeRangeGroup = navigationWorkbook.items
+        const sharedTimeRangeGroup = navigationItems
             .find(item => item.name === 'parameters_timerange');
         assert.deepEqual(sharedTimeRangeGroup.conditionalVisibility, {
             parameterName: 'selectedTab',
             comparison: 'isNotEqualTo',
             value: 'ConnectionMTTF'
         });
-        assert.equal(sharedTimeRangeGroup.customWidth, '55');
+        assert.equal(sharedTimeRangeGroup.customWidth, '20');
         assert.equal(sharedTimeRangeGroup.content.parameters[0].name, 'TimeRange');
     });
 
