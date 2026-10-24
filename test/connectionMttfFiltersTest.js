@@ -56,7 +56,7 @@ describe('Connection MTTF navigation', () => {
         assert.equal(selectedTab.value, 'Overview');
         assert.isTrue(selectedTab.isGlobal);
         assert.isTrue(selectedTab.isHiddenWhenLocked);
-        assert.equal(generalParameters.customWidth, '80');
+        assert.equal(generalParameters.customWidth, '100');
         for (const group of navigationMttfParameterGroups) {
             assert.isBelow(navigationWorkbook.items.indexOf(parameterLayout),
                 navigationWorkbook.items.indexOf(group), group.name);
