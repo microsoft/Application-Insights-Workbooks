@@ -18,12 +18,22 @@ describe('Validating Defender CSPM capability coverage...', () => {
         ['ServerlessContainers', 'Serverless containers']
     ];
 
-    it('projects all eight Azure CSPM component settings', () => {
+    it('projects all eight Azure CSPM components in portal top-to-bottom order', () => {
         const projection = cspm.content.query.split('| project subscriptionId,')[1];
         assert.isString(projection, 'The CSPM table must retain its subscription column');
         const columns = [...projection.matchAll(/(\w+)\s*=\s*extensions\.(\w+)/g)];
-        assert.sameMembers(columns.map(match => match[1]), capabilities.map(([name]) => name));
+        assert.deepEqual(columns.map(match => match[1]), capabilities.map(([name]) => name));
         columns.forEach(match => assert.equal(match[1], match[2], 'Each column must use its own extension setting'));
+    });
+
+    it('keeps the subscription first and component labels in portal order', () => {
+        assert.deepEqual(cspm.content.gridSettings.labelSettings.map(item => item.columnId),
+            ['subscriptionId', ...capabilities.map(([name]) => name)]);
+    });
+
+    it('keeps the subscription first and component formatters in portal order', () => {
+        assert.deepEqual(cspm.content.gridSettings.formatters.map(item => item.columnMatch),
+            ['subscriptionId', ...capabilities.map(([name]) => name)]);
     });
 
     it('retains enabled subscriptions with empty or unreported extensions', () => {
