@@ -20,20 +20,41 @@ function metrics(item) {
 }
 
 describe('Policy Plans insights review regressions', () => {
-    it('warns about incomplete evaluation evidence even when Guide is off', () => {
-        const notices = queries.filter(item => item.name.endsWith(' source readiness'));
-        assert.lengthOf(notices, 3);
-        for (const item of notices) {
-            assert.notProperty(item, 'conditionalVisibility', item.name);
-            assert.match(item.content.query,
-                /let IncompleteEvidence = toscalar\(SideRows[\s\S]*countif\(Outcome == "Unavailable"[\s\S]*Mode in \("Partially available", "Unavailable"\)/,
+    it('keeps the approved preview label without diagnostic rows or introductory disclosures', () => {
+        const tabs = items.find(item => item.name === 'Workbook tabs').content.links;
+        assert.equal(tabs.find(link => link.subTarget === 'comparison').linkLabel,
+            'Compare CA to policy plans (Preview)');
+        for (const item of items) {
+            assert.notEqual(item.name, 'Live source status');
+            assert.isFalse(item.name.endsWith(' source readiness'), item.name);
+            assert.notInclude(['Live data disclosure', 'Synthetic data disclosure', 'Workbook usage guidance'],
                 item.name);
-            assert.include(item.content.query, 'IncompleteEvidence, "Incomplete evaluation evidence:', item.name);
-            assert.include(item.content.query, 'zero does not establish no impact', item.name);
+            assert.notInclude(JSON.stringify(item.content), 'Review Live source status', item.name);
         }
     });
 
-    it('rejects mixed presets and individuals instead of silently querying a subset', () => {
+    it('separates comparison presets from conditional individual pickers and retains query guards', () => {
+        const parameters = items.filter(item => item.type === 9)
+            .flatMap(item => item.content.parameters);
+        for (const [side, defaultValue] of [
+            ['SelectionA', 'aggregate-enabled-ca'], ['SelectionB', 'aggregate-enabled-rules']
+        ]) {
+            const mode = parameters.find(parameter => parameter.name === `${side}Mode`);
+            assert.isFalse(mode.multiSelect, side);
+            assert.equal(mode.value, defaultValue, side);
+            assert.include(JSON.parse(mode.jsonData).map(option => option.value), 'individual', side);
+            const individuals = items.find(item => item.name === `${side} individuals`);
+            assert.deepEqual(individuals.conditionalVisibility, {
+                parameterName: `${side}Mode`, comparison: 'isEqualTo', value: 'individual'
+            });
+            const picker = individuals.content.parameters[0];
+            assert.equal(picker.name, side);
+            assert.isTrue(picker.multiSelect, side);
+            assert.isFalse(picker.isRequired, side);
+            assert.deepEqual(picker.value, [], side);
+            assert.notInclude(picker.query, 'let Presets=', side);
+            assert.include(picker.query, 'selected=false', side);
+        }
         const consumers = queries.filter(item => item.content.query.includes('let InputA ='));
         assert.isNotEmpty(consumers);
         for (const item of consumers) {
@@ -46,10 +67,50 @@ describe('Policy Plans insights review regressions', () => {
                 'let SelectionAResolved = InventoryReady and ValidSelection(InputA)', item.name);
             assert.include(item.content.query,
                 'let SelectionBResolved = InventoryReady and ValidSelection(InputB)', item.name);
+            if (item.content.query.includes('{SelectionAMode:base64}')) {
+                for (const side of ['SelectionA', 'SelectionB']) {
+                    assert.include(item.content.query,
+                        `iff(base64_decode_tostring('{${side}Mode:base64}') == "individual", dynamic([{${side}}]), ` +
+                        `pack_array(base64_decode_tostring('{${side}Mode:base64}')))`, item.name);
+                }
+            }
         }
-        const comparison = queries.find(item => item.name === 'Compare CA to CAv2 source readiness');
-        assert.include(comparison.content.query, 'not(SelectionInputsValid)', comparison.name);
-        assert.include(comparison.content.query, 'Clear the preset before choosing individual objects', comparison.name);
+    });
+
+    it('supports multiple individual policies and rules in both reporting views', () => {
+        const parameters = items.filter(item => item.type === 9)
+            .flatMap(item => item.content.parameters);
+        for (const [identity, groupName] of [
+            ['user', 'user reporting'], ['servicePrincipal', 'servicePrincipal reporting']
+        ]) {
+            const name = `Policy_${identity}`;
+            const mode = parameters.find(parameter => parameter.name === `${name}Mode`);
+            assert.isDefined(mode, identity);
+            assert.isFalse(mode.multiSelect, identity);
+            assert.equal(mode.value, 'aggregate-all-enabled', identity);
+            const individualBlock = items.find(item => item.name === `${name} individuals`);
+            assert.deepEqual(individualBlock.conditionalVisibility, {
+                parameterName: `${name}Mode`, comparison: 'isEqualTo', value: 'individual'
+            });
+            const picker = individualBlock.content.parameters[0];
+            assert.equal(picker.name, name);
+            assert.isTrue(picker.multiSelect, identity);
+            assert.equal(picker.quote, '"', identity);
+            assert.equal(picker.delimiter, ',', identity);
+            assert.deepEqual(picker.value, [], identity);
+            assert.isFalse(picker.isRequired, identity);
+            assert.notInclude(picker.query, 'let Presets=', identity);
+            const group = items.find(item => item.name === groupName);
+            const consumers = flatten(group.content.items).filter(item => item.type === 3);
+            assert.isNotEmpty(consumers, identity);
+            for (const item of consumers) {
+                assert.include(item.content.query,
+                    `let InputA = iff(base64_decode_tostring('{${name}Mode:base64}') == "individual", ` +
+                    `dynamic([{${name}}]), pack_array(base64_decode_tostring('{${name}Mode:base64}')));`,
+                    item.name);
+                assert.notInclude(item.content.query, `{${name}:base64}`, item.name);
+            }
+        }
     });
 
     it('restores user action reporting and drilldown without adding comparison or workload cards', () => {
