@@ -231,7 +231,8 @@ describe('Connection MTTF navigation', () => {
             comparison: 'isNotEqualTo',
             value: 'ConnectionMTTF'
         });
-        assert.equal(sharedTimeRangeGroup.customWidth, '20');
+        assert.equal(sharedTimeRangeGroup.customWidth, '100',
+            'Time Range must occupy a full-width row below the shared resource filters');
         assert.equal(sharedTimeRangeGroup.content.parameters[0].name, 'TimeRange');
     });
 
