@@ -8,6 +8,9 @@ const workbook = JSON.parse(fs.readFileSync(workbookPath, 'utf8'));
 const navigationWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
     'AtScale', 'WVD Insights', 'WVDWorkbookV2.workbook');
 const navigationWorkbook = JSON.parse(fs.readFileSync(navigationWorkbookPath, 'utf8'));
+const overviewWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
+    'AtScale', 'Overview', 'Overview.workbook');
+const overviewWorkbook = JSON.parse(fs.readFileSync(overviewWorkbookPath, 'utf8'));
 const reliabilityWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
     'AtScale', 'Connection Reliability', 'Connection Reliability.workbook');
 const reliabilityWorkbook = JSON.parse(fs.readFileSync(reliabilityWorkbookPath, 'utf8'));
@@ -168,25 +171,42 @@ const mttfQueries = [
 describe('Connection MTTF navigation', () => {
     const reportTabs = navigationWorkbook.items.find(item => item.name === 'ReportTabs').content.links;
 
+    it('makes shared Overview filters available for template merging at workbook scope', () => {
+        const overviewIndex = navigationWorkbook.items.findIndex(item => item.name === 'Overview');
+        assert.isAtLeast(overviewIndex, 0);
+        const outerParameters = navigationWorkbook.items.slice(0, overviewIndex)
+            .filter(item => item.type === 9)
+            .flatMap(item => item.content.parameters);
+        const overviewParameters = overviewWorkbook.items
+            .filter(item => item.type === 9)
+            .flatMap(item => item.content.parameters);
+
+        assert.isNotEmpty(overviewParameters);
+        for (const parameter of overviewParameters) {
+            const matches = outerParameters.filter(outer => outer.name === parameter.name);
+            assert.lengthOf(matches, 1, `${parameter.name} must be declared once at workbook scope`);
+            assert.equal(matches[0].type, parameter.type, parameter.name);
+        }
+    });
+
     it('places MTTF-specific filters above the report tabs', () => {
-        const parameterLayout = navigationWorkbook.items
-            .find(item => item.name === 'parameters_layout');
-        const generalParameters = navigationItems
+        const generalParameters = navigationWorkbook.items
             .find(item => item.name === 'parameters_general');
+        const sharedTimeRangeGroup = navigationWorkbook.items
+            .find(item => item.name === 'parameters_timerange');
         const reportTabsIndex = navigationWorkbook.items.findIndex(item => item.name === 'ReportTabs');
         const selectedTab = generalParameters.content.parameters
             .find(parameter => parameter.name === 'selectedTab');
 
-        assert.deepEqual(parameterLayout.content.items.map(item => item.name),
-            ['parameters_general', 'parameters_timerange']);
-        assert.isTrue(parameterLayout.content.exportParameters);
-        assert.equal(parameterLayout.styleSettings.maxWidth, '1350px');
+        assert.isBelow(navigationWorkbook.items.indexOf(generalParameters),
+            navigationWorkbook.items.indexOf(sharedTimeRangeGroup));
+        assert.equal(generalParameters.styleSettings.maxWidth, '1350px');
         assert.equal(selectedTab.value, 'Overview');
         assert.isTrue(selectedTab.isGlobal);
         assert.isTrue(selectedTab.isHiddenWhenLocked);
         assert.equal(generalParameters.customWidth, '100');
         for (const group of navigationMttfParameterGroups) {
-            assert.isBelow(navigationWorkbook.items.indexOf(parameterLayout),
+            assert.isBelow(navigationWorkbook.items.indexOf(sharedTimeRangeGroup),
                 navigationWorkbook.items.indexOf(group), group.name);
             assert.isBelow(navigationWorkbook.items.indexOf(group), reportTabsIndex, group.name);
             assert.deepEqual(group.conditionalVisibility, {
@@ -206,8 +226,6 @@ describe('Connection MTTF navigation', () => {
                 name);
         }
 
-        const sharedTimeRangeGroup = navigationItems
-            .find(item => item.name === 'parameters_timerange');
         assert.deepEqual(sharedTimeRangeGroup.conditionalVisibility, {
             parameterName: 'selectedTab',
             comparison: 'isNotEqualTo',
