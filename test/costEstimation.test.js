@@ -2,28 +2,39 @@ const assert = require('chai').assert;
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const Validator = require('jsonschema').Validator;
 
 const workbook = JSON.parse(fs.readFileSync(path.join(
     __dirname, '..', 'Workbooks', 'Azure Security Center', 'Cost Estimation', 'CostEstimation.workbook'
 ), 'utf8'));
+const workbookSchema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'schema', 'workbook.json'), 'utf8'));
 const optionalGroupName = 'Optional serverless CSPM estimates';
+const controlsName = 'CSPM serverless controls';
 const scopes = [
     {
         name: 'subscriptionGroup', mode: '0', originalItems: 23,
+        api: 'azureapiplans', notes: 'text - 6',
         serversSelection: 'AzureP1P2', serversPlan: 'azureServersPlanVal'
     },
     {
         name: 'tenantGroup', mode: '1', originalItems: 22,
+        api: 'azureapiplanstenant', notes: 'text - 6 - Copy',
         serversSelection: 'AzureP1P2tenant', serversPlan: 'azureServersPlanValTenant'
     }
 ];
 
 describe('Cost estimation workbook', () => {
-    it('preserves original content apart from the corrected Servers expressions', () => {
+    it('preserves original content apart from the Servers corrections and concise serverless guidance', () => {
         const baseline = JSON.parse(JSON.stringify(workbook));
         for (const scope of scopes) {
             const group = baseline.items.find(item => item.name === scope.name);
-            group.content.items = group.content.items.filter(item => item.name !== optionalGroupName);
+            group.content.items = group.content.items.filter(item =>
+                item.name !== optionalGroupName && item.name !== controlsName);
+            const notes = group.content.items.find(item => item.name === scope.notes);
+            notes.content.json = notes.content.json
+                .replace(/\r\n\r\n\* ###### \*\*Serverless (?:protection|containers)\*\*[^\r\n]*/g, '')
+                .replace('with base billing for Servers, Databases and Storages',
+                    'but billing only applies for Servers, Databases and Storages');
             const table = group.content.items.find(item => item.name.startsWith('pricing grid with total'));
             // Normalize only the intentional Servers fixes when comparing with the original snapshot.
             table.content.query = table.content.query
@@ -39,10 +50,11 @@ describe('Cost estimation workbook', () => {
     for (const scope of scopes) {
         describe(scope.name, () => {
             const group = workbook.items.find(item => item.name === scope.name);
+            const controls = group.content.items.find(item => item.name === controlsName);
             const optional = group.content.items.find(item => item.name === optionalGroupName);
-            const selector = optional.content.items.find(item => item.name === 'Additional estimate options');
+            const conditions = optional.content.items.find(item => item.name === 'Serverless estimate conditions');
             const details = optional.content.items.find(item => item.name === 'Serverless estimate details');
-            const options = details.content.items.find(item => item.name === 'CSPM serverless options');
+            const options = details.content.items.find(item => item.name === 'Serverless forecast inputs');
             const results = details.content.items.find(item => item.name === 'Serverless estimate results');
             const summary = results.content.items.find(item => item.name === 'Serverless CSPM summary');
             const estimates = results.content.items.find(item => item.name === 'Serverless CSPM resource estimates');
@@ -73,8 +85,19 @@ describe('Cost estimation workbook', () => {
                 assert.notInclude(table.content.query, '{azureIsServersSelected}');
             });
 
-            it('appends the estimates after the original visuals and hides them by default', () => {
-                assert.lengthOf(group.content.items, scope.originalItems + 1);
+            it('places both switches immediately below Azure API Plan', () => {
+                const apiIndex = group.content.items.findIndex(item => item.name === scope.api);
+                assert.strictEqual(group.content.items[apiIndex + 1], controls);
+                assert.strictEqual(controls.content.style, 'above');
+                assert.deepEqual(controls.content.parameters.map(parameter => parameter.name),
+                    ['serverlessProtection', 'serverlessContainers']);
+                assert.deepEqual(controls.conditionalVisibility, {
+                    parameterName: 'istenantlevel', comparison: 'isEqualTo', value: scope.mode
+                });
+            });
+
+            it('keeps estimates after the original visuals and reveals them through the component switches', () => {
+                assert.lengthOf(group.content.items, scope.originalItems + 2);
                 assert.strictEqual(group.content.items[group.content.items.length - 1], optional);
                 assert.strictEqual(optional.content.exportParameters, false);
                 assert.deepEqual(optional.conditionalVisibility, {
@@ -82,18 +105,10 @@ describe('Cost estimation workbook', () => {
                     comparison: 'isEqualTo',
                     value: scope.mode
                 });
-                const show = selector.content.parameters.find(item => item.name === 'showServerlessEstimates');
-                assert.strictEqual(selector.content.style, 'above');
-                assert.strictEqual(show.label, 'Serverless estimates');
-                assert.strictEqual(show.type, 10);
-                assert.strictEqual(show.value, '0');
-                assert.deepEqual(show.typeSettings, { additionalResourceOptions: [], showDefault: false });
-                assert.deepEqual(JSON.parse(show.jsonData), [
-                    { value: '0', label: 'Hide', selected: true },
-                    { value: '1', label: 'Show' }
-                ]);
+                assert.strictEqual(conditions.content.style, 'pills');
+                assert.isTrue(conditions.content.parameters.every(parameter => parameter.isHiddenWhenLocked));
                 assert.deepEqual(details.conditionalVisibility, {
-                    parameterName: 'showServerlessEstimates',
+                    parameterName: 'serverlessComponentsIncluded',
                     comparison: 'isEqualTo',
                     value: '1'
                 });
@@ -101,7 +116,7 @@ describe('Cost estimation workbook', () => {
 
             it('keeps both components independently excluded by default', () => {
                 for (const name of ['serverlessProtection', 'serverlessContainers']) {
-                    const parameter = options.content.parameters.find(item => item.name === name);
+                    const parameter = controls.content.parameters.find(item => item.name === name);
                     assert.strictEqual(parameter.type, 10);
                     assert.isAtMost(parameter.label.length, 22);
                     assert.strictEqual(parameter.value, '0');
@@ -113,8 +128,68 @@ describe('Cost estimation workbook', () => {
                 assert.strictEqual(options.content.parameters.find(item => item.name === 'serverlessUsage').value, '{}');
             });
 
+            it('describes assets and subscription or account component enablement in both tooltips', () => {
+                const protection = controls.content.parameters.find(item => item.name === 'serverlessProtection');
+                const containers = controls.content.parameters.find(item => item.name === 'serverlessContainers');
+                for (const parameter of [protection, containers]) {
+                    assert.include(parameter.description, 'Defender CSPM and its ' + parameter.label + ' component are enabled');
+                    assert.include(parameter.description, 'subscriptions or accounts');
+                    assert.include(parameter.description, 'Environment settings');
+                    assert.include(parameter.description, 'does not enable the component');
+                }
+                for (const asset of ['Azure Function Apps', 'Azure Web Apps', 'AWS Lambda functions']) {
+                    assert.include(protection.description, asset);
+                }
+                for (const asset of ['Azure Container Apps (ACA)', 'Azure Container Instances (ACI)', 'ECS on AWS Fargate']) {
+                    assert.include(containers.description, asset);
+                }
+                assert.include(containers.description, 'running containers');
+                assert.include(containers.description, 'Registry access');
+            });
+
+            it('requires a selected CSPM plan and at least one included component to reveal forecasts', () => {
+                const selected = conditions.content.parameters.find(item => item.name === 'serverlessCspmSelected');
+                const included = conditions.content.parameters.find(item => item.name === 'serverlessComponentsIncluded');
+                for (const parameter of [selected, included]) {
+                    for (const { criteriaContext: criteria } of parameter.criteriaData) {
+                        assert.include(['=', 'Default'], criteria.operator);
+                    }
+                }
+                const evaluate = (parameter, values) => parameter.criteriaData.find(({ criteriaContext: criteria }) =>
+                    criteria.operator === 'Default' || values[criteria.leftOperand] === criteria.rightVal
+                ).criteriaContext.resultVal;
+                for (const azure of ['false', 'true']) {
+                    for (const aws of ['false', 'true']) {
+                        for (const protection of ['0', '1']) {
+                            for (const containers of ['0', '1']) {
+                                const cspm = evaluate(selected, { azureIsDcspm: azure, awsIsDcspm: aws });
+                                assert.strictEqual(cspm, azure === 'true' || aws === 'true' ? '1' : '0');
+                                assert.strictEqual(evaluate(included, {
+                                    serverlessCspmSelected: cspm,
+                                    serverlessProtection: protection,
+                                    serverlessContainers: containers
+                                }), cspm === '1' && (protection === '1' || containers === '1') ? '1' : '0');
+                            }
+                        }
+                    }
+                }
+            });
+
+            it('uses schema-valid criteria for every hidden condition, not just the first array item', () => {
+                for (const parameter of conditions.content.parameters) {
+                    for (const criteria of parameter.criteriaData) {
+                        const schema = {
+                            $id: workbookSchema.$id,
+                            $ref: '#/definitions/criteriaDataItem',
+                            definitions: workbookSchema.definitions
+                        };
+                        assert.deepEqual(new Validator().validate(criteria, schema).errors, []);
+                    }
+                }
+            });
+
             it('never makes the original visuals depend on optional inputs', () => {
-                const originalItems = group.content.items.filter(item => item !== optional);
+                const originalItems = group.content.items.filter(item => item !== optional && item !== controls);
                 assert.notInclude(JSON.stringify(originalItems), '{serverless');
                 assert.notInclude(JSON.stringify(originalItems), '"parameterName":"serverless');
                 assert.notProperty(estimates.content, 'exportedParameters');
@@ -131,10 +206,10 @@ describe('Cost estimation workbook', () => {
                 assert.deepEqual(warning.conditionalVisibility, {
                     parameterName: 'serverlessInputsReady', comparison: 'isEqualTo', value: '0'
                 });
-                const selected = selector.content.parameters.find(item => item.name === 'serverlessCspmSelected');
+                const selected = conditions.content.parameters.find(item => item.name === 'serverlessCspmSelected');
                 assert.isTrue(selected.criteriaData.filter(item => item.criteriaContext.operator !== 'Default')
-                    .every(item => item.criteriaContext.operator === '=='));
-                assert.include(warning.content.json, 'original charts, tables, and Grand total above are not changed or hidden');
+                    .every(item => item.criteriaContext.operator === '='));
+                assert.include(warning.content.json, 'A component cost stays blank until all its inputs are valid');
                 assert.include(summary.content.title, 'not included above');
             });
 
@@ -207,19 +282,35 @@ describe('Cost estimation workbook', () => {
                 ]);
             });
 
-            it('keeps detailed guidance optional and documents separation from the original totals', () => {
-                const guidance = details.content.items.find(item => item.name === 'Serverless forecast guidance');
-                const help = options.content.parameters.find(item => item.name === 'serverlessHelp');
-                assert.strictEqual(help.value, '0');
-                assert.deepEqual(JSON.parse(help.jsonData), [
-                    { value: '0', label: 'Hide', selected: true },
-                    { value: '1', label: 'Show' }
-                ]);
-                assert.deepEqual(guidance.conditionalVisibility, {
-                    parameterName: 'serverlessHelp', comparison: 'isEqualTo', value: '1'
-                });
-                assert.include(guidance.content.json, 'not added to the original CSPM columns or Grand total');
-                assert.include(guidance.content.json, 'missing telemetry is unknown');
+            it('replaces the removed sections with two concise bullets immediately after the CSPM bullet', () => {
+                const notes = group.content.items.find(item => item.name === scope.notes).content.json;
+                const bullets = notes.split('\r\n\r\n');
+                const base = bullets.findIndex(bullet => bullet.startsWith('* ###### Microsoft Defender CSPM'));
+                assert.isAtLeast(base, 0);
+                assert.match(bullets[base + 1], /^\* ###### \*\*Serverless protection\*\*/);
+                assert.match(bullets[base + 2], /^\* ###### \*\*Serverless containers\*\*/);
+                for (const bullet of bullets.slice(base + 1, base + 3)) {
+                    assert.isBelow(bullet.length, 750);
+                    assert.include(bullet, 'Defender CSPM and its Serverless');
+                    assert.include(bullet, '**Include in estimate**');
+                    assert.include(bullet, '$5/month');
+                    assert.include(bullet, 'selected discount');
+                }
+                assert.include(bullets[base + 1], '8 resources');
+                assert.include(bullets[base + 2], '2 containers');
+                const serialized = JSON.stringify(group);
+                for (const removed of [
+                    'Serverless forecast overview', 'Serverless forecast guidance',
+                    '### Optional serverless CSPM estimates', 'Input and pricing help',
+                    'serverlessHelp', 'showServerlessEstimates'
+                ]) {
+                    assert.notInclude(serialized, removed);
+                }
+                const usage = options.content.parameters.find(item => item.name === 'serverlessUsage');
+                assert.notInclude(usage.description, 'guidance below');
+                assert.include(usage.description, '"functions":40');
+                assert.include(usage.description, '"fargate":20');
+                assert.include(usage.description, 'not missing telemetry');
             });
         });
     }
