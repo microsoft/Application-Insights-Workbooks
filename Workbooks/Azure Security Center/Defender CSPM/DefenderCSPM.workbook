@@ -389,7 +389,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## Settings & monitoring\nThe eight components below follow the Defender CSPM Settings page from top to bottom. This view reads **CloudPosture only**, so a shared extension enabled under another plan cannot incorrectly mark the CSPM toggle as enabled. Missing extensions remain visible as **Not reported**; a missing plan is **Plan not reported**, not disabled. Configuration includes reported exclusions and operation details. The table displays at most 1,000 rows (eight per Azure subscription); select at most 125 subscriptions to see every component.\n\nAPI sensitive-data insights also require **Sensitive data discovery**. Full **Serverless containers** features require **Registry access**. Initial discovery can take up to 24 hours for some features. Enablement alone does not establish feature availability or scanning success; check the [current requirements and cloud support](https://learn.microsoft.com/azure/defender-for-cloud/tutorial-enable-cspm-plan#enable-the-components-of-the-defender-cspm-plan)."
+        "json": "## Settings & monitoring\nEach component has its own compact status table. Read left to right across the first row, then the second row, to follow the Defender CSPM Settings page. The panels read **CloudPosture only**; shared extensions on other plans do not change the CSPM toggle shown here.\n\n**Green:** enabled. **Red:** disabled, failed, or conflicting. **Amber:** missing, unknown, or a non-successful operation. A missing plan is **Plan not reported**, not disabled. **CIEM** means Cloud Infrastructure and Entitlements Management. Use **Show advanced extension diagnostics** below for exclusions, raw configuration, and operation details.\n\nEach panel displays up to 1,000 selected Azure subscriptions; narrow the selection if needed. Configuration is not proof of scanning coverage or absence of risk. API sensitive-data insights also require **Sensitive data discovery**; full **Serverless containers** features require **Registry access**. Some initial discovery takes up to 24 hours. Review the [current feature requirements and cloud support](https://learn.microsoft.com/azure/defender-for-cloud/tutorial-enable-cspm-plan#enable-the-components-of-the-defender-cspm-plan)."
       },
       "conditionalVisibility": {
         "parameterName": "tab",
@@ -402,8 +402,8 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "title": "Defender CSPM components in Settings page order",
-        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend component = dynamic([{\"order\":1,\"label\":\"Agentless scanning for machines\",\"name\":\"AgentlessVmScanning\"},{\"order\":2,\"label\":\"Kubernetes API access\",\"name\":\"AgentlessDiscoveryForKubernetes\"},{\"order\":3,\"label\":\"Registry access\",\"name\":\"ContainerRegistriesVulnerabilityAssessments\"},{\"order\":4,\"label\":\"Sensitive data discovery\",\"name\":\"SensitiveDataDiscovery\"},{\"order\":5,\"label\":\"Cloud Infrastructure and Entitlements Management (CIEM)\",\"name\":\"EntraPermissionsManagement\"},{\"order\":6,\"label\":\"API Security Posture Management\",\"name\":\"ApiPosture\"},{\"order\":7,\"label\":\"Serverless protection\",\"name\":\"AgentlessServerlessPosture\"},{\"order\":8,\"label\":\"Serverless containers\",\"name\":\"ServerlessContainers\"}])\n| mv-expand component\n| extend componentOrder = toint(component[\"order\"]), Component = tostring(component[\"label\"]), ExtensionName = tostring(component[\"name\"])\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = ExtensionName =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\")),\n    Configuration = make_set(iff(matched, extension.additionalExtensionProperties, dynamic(null))),\n    OperationStatus = make_set(iff(matched, extension.operationStatus, dynamic(null)))\n    by subscriptionId, subscriptionName, componentOrder, Component, ExtensionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by componentOrder asc, subscriptionName asc, subscriptionId asc\n| project subscriptionId, subscriptionName, Component, Status, PricingTier = pricingTier, ExtensionName, Configuration, OperationStatus",
+        "title": "Agentless scanning for machines",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"AgentlessVmScanning\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -413,7 +413,7 @@
         "visualization": "table",
         "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
         "gridSettings": {
-          "filter": true,
+          "filter": false,
           "rowLimit": 1000,
           "formatters": [
             {
@@ -475,32 +475,8 @@
               "label": "Subscription"
             },
             {
-              "columnId": "subscriptionName",
-              "label": "Subscription name"
-            },
-            {
-              "columnId": "Component",
-              "label": "Component"
-            },
-            {
               "columnId": "Status",
-              "label": "Configuration status"
-            },
-            {
-              "columnId": "PricingTier",
-              "label": "CSPM pricing tier"
-            },
-            {
-              "columnId": "ExtensionName",
-              "label": "Extension API name"
-            },
-            {
-              "columnId": "Configuration",
-              "label": "Reported configuration"
-            },
-            {
-              "columnId": "OperationStatus",
-              "label": "Enablement operation details"
+              "label": "Status"
             }
           ]
         }
@@ -510,29 +486,18 @@
         "comparison": "isEqualTo",
         "value": "main"
       },
-      "name": "settings_monitoring",
+      "name": "settings_agentless_scanning",
       "styleSettings": {
         "showBorder": true
-      }
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### Reported extensions across Defender plans\nThis diagnostic inventory includes every returned extension name, including newer capabilities not in the eight-component Settings layout. Shared extensions keep their source plan and subplan. Raw enablement is not effective coverage: check plan status, entitlements, exclusions, operation details, and resource-level settings. Plans without extension data remain visible. Resource Graph returns at most 1,000 rows per table; narrow subscriptions before exporting large inventories."
       },
-      "conditionalVisibility": {
-        "parameterName": "tab",
-        "comparison": "isEqualTo",
-        "value": "main"
-      },
-      "name": "extension_inventory_guidance"
+      "customWidth": "25"
     },
     {
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "title": "Raw subscription-level extension inventory",
-        "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n| mv-expand extension = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n| project subscriptionId, Plan = name, PricingTier = tostring(properties.pricingTier), SubPlan = tostring(properties.subPlan),\n    ExtensionName = iff(isempty(tostring(extension.name)), \"No extension data\", tostring(extension.name)),\n    ReportedEnablement = iff(isempty(tostring(extension.isEnabled)), \"Not reported\", tostring(extension.isEnabled)),\n    Configuration = extension.additionalExtensionProperties, OperationStatus = extension.operationStatus\n| order by Plan asc, ExtensionName asc, subscriptionId asc",
+        "title": "Kubernetes API access",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"AgentlessDiscoveryForKubernetes\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
         "size": 1,
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
@@ -540,9 +505,9 @@
           "{subscriptions}"
         ],
         "visualization": "table",
-        "noDataMessage": "No subscription-level pricing data was returned. Check scope and access; no data does not prove that extensions are absent.",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
         "gridSettings": {
-          "filter": true,
+          "filter": false,
           "rowLimit": 1000,
           "formatters": [
             {
@@ -550,6 +515,51 @@
               "formatter": 15,
               "formatOptions": {
                 "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
               }
             }
           ],
@@ -559,32 +569,8 @@
               "label": "Subscription"
             },
             {
-              "columnId": "Plan",
-              "label": "Source plan"
-            },
-            {
-              "columnId": "PricingTier",
-              "label": "Pricing tier"
-            },
-            {
-              "columnId": "SubPlan",
-              "label": "Subplan"
-            },
-            {
-              "columnId": "ExtensionName",
-              "label": "Extension API name"
-            },
-            {
-              "columnId": "ReportedEnablement",
-              "label": "Raw enablement"
-            },
-            {
-              "columnId": "Configuration",
-              "label": "Reported configuration"
-            },
-            {
-              "columnId": "OperationStatus",
-              "label": "Enablement operation details"
+              "columnId": "Status",
+              "label": "Status"
             }
           ]
         }
@@ -594,10 +580,677 @@
         "comparison": "isEqualTo",
         "value": "main"
       },
-      "name": "extension_inventory",
+      "name": "settings_kubernetes_api_access",
       "styleSettings": {
         "showBorder": true
-      }
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "title": "Registry access",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"ContainerRegistriesVulnerabilityAssessments\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
+        "size": 1,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscriptions}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
+        "gridSettings": {
+          "filter": false,
+          "rowLimit": 1000,
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "settings_registry_access",
+      "styleSettings": {
+        "showBorder": true
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "title": "Sensitive data discovery",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"SensitiveDataDiscovery\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
+        "size": 1,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscriptions}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
+        "gridSettings": {
+          "filter": false,
+          "rowLimit": 1000,
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "settings_sensitive_data_discovery",
+      "styleSettings": {
+        "showBorder": true
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "title": "CIEM",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"EntraPermissionsManagement\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
+        "size": 1,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscriptions}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
+        "gridSettings": {
+          "filter": false,
+          "rowLimit": 1000,
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "settings_ciem",
+      "styleSettings": {
+        "showBorder": true
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "title": "API Security Posture Management",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"ApiPosture\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
+        "size": 1,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscriptions}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
+        "gridSettings": {
+          "filter": false,
+          "rowLimit": 1000,
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "settings_api_security_posture",
+      "styleSettings": {
+        "showBorder": true
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "title": "Serverless protection",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"AgentlessServerlessPosture\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
+        "size": 1,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscriptions}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
+        "gridSettings": {
+          "filter": false,
+          "rowLimit": 1000,
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "settings_serverless_protection",
+      "styleSettings": {
+        "showBorder": true
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "title": "Serverless containers",
+        "query": "resourcecontainers\n| where type =~ \"microsoft.resources/subscriptions\"\n| project subscriptionId, subscriptionName = name\n| join kind=leftouter (\n    securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n    | where name =~ \"CloudPosture\"\n    | project subscriptionId, pricingTier = tostring(properties.pricingTier), extensions = properties.extensions\n) on subscriptionId\n| extend targetExtension = \"ServerlessContainers\"\n| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))\n| extend matched = targetExtension =~ tostring(extension.name), rawState = tolower(tostring(extension.isEnabled))\n| summarize reported = countif(matched),\n    enabled = countif(matched and rawState == \"true\"),\n    disabled = countif(matched and rawState == \"false\"),\n    unknown = countif(matched and rawState !in (\"true\", \"false\")),\n    failed = countif(matched and extension.operationStatus.code =~ \"Failed\"),\n    operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ (\"Succeeded\", \"Failed\"))\n    by subscriptionId, subscriptionName, pricingTier\n| extend Status = case(\n    pricingTier =~ \"Free\", \"Plan disabled\",\n    pricingTier !~ \"Standard\", \"Plan not reported\",\n    failed > 0, \"Operation failed\",\n    operationUnknown > 0, \"Operation not successful\",\n    enabled > 0 and disabled > 0, \"Conflicting\",\n    reported == 0, \"Not reported\",\n    unknown > 0, \"Unknown\",\n    enabled > 0, \"Enabled\",\n    disabled > 0, \"Disabled\",\n    \"Unknown\")\n| order by subscriptionName asc, subscriptionId asc\n| project subscriptionId, Status",
+        "size": 1,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{subscriptions}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Azure subscriptions were returned. Check the subscription selection and permissions; missing configuration does not mean healthy coverage.",
+        "gridSettings": {
+          "filter": false,
+          "rowLimit": 1000,
+          "formatters": [
+            {
+              "columnMatch": "subscriptionId",
+              "formatter": 15,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "colors",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "green",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Plan disabled",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Operation failed",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflicting",
+                    "representation": "redBright",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "orange",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "subscriptionId",
+              "label": "Subscription"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "settings_serverless_containers",
+      "styleSettings": {
+        "showBorder": true
+      },
+      "customWidth": "25"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "loadType": "explicit",
+        "loadButtonText": "Show advanced extension diagnostics",
+        "title": "Advanced extension diagnostics",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Reported extensions across Defender plans\nThis diagnostic inventory includes every returned extension name, including newer capabilities not in the eight-component Settings layout. Shared extensions keep their source plan and subplan. Raw enablement is not effective coverage: check plan status, entitlements, exclusions, operation details, and resource-level settings. Plans without extension data remain visible. Resource Graph returns at most 1,000 rows per table; narrow subscriptions before exporting large inventories."
+            },
+            "conditionalVisibility": {
+              "parameterName": "tab",
+              "comparison": "isEqualTo",
+              "value": "main"
+            },
+            "name": "extension_inventory_guidance"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "title": "Raw subscription-level extension inventory",
+              "query": "securityresources\n| where type =~ \"microsoft.security/pricings\"\n| where id =~ strcat(\"/subscriptions/\", subscriptionId, \"/providers/Microsoft.Security/pricings/\", name)\n| mv-expand extension = iff(array_length(properties.extensions) > 0, properties.extensions, dynamic([{}]))\n| project subscriptionId, Plan = name, PricingTier = tostring(properties.pricingTier), SubPlan = tostring(properties.subPlan),\n    ExtensionName = iff(isempty(tostring(extension.name)), \"No extension data\", tostring(extension.name)),\n    ReportedEnablement = iff(isempty(tostring(extension.isEnabled)), \"Not reported\", tostring(extension.isEnabled)),\n    Configuration = extension.additionalExtensionProperties, OperationStatus = extension.operationStatus\n| order by Plan asc, ExtensionName asc, subscriptionId asc",
+              "size": 1,
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{subscriptions}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No subscription-level pricing data was returned. Check scope and access; no data does not prove that extensions are absent.",
+              "gridSettings": {
+                "filter": true,
+                "rowLimit": 1000,
+                "formatters": [
+                  {
+                    "columnMatch": "subscriptionId",
+                    "formatter": 15,
+                    "formatOptions": {
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "subscriptionId",
+                    "label": "Subscription"
+                  },
+                  {
+                    "columnId": "Plan",
+                    "label": "Source plan"
+                  },
+                  {
+                    "columnId": "PricingTier",
+                    "label": "Pricing tier"
+                  },
+                  {
+                    "columnId": "SubPlan",
+                    "label": "Subplan"
+                  },
+                  {
+                    "columnId": "ExtensionName",
+                    "label": "Extension API name"
+                  },
+                  {
+                    "columnId": "ReportedEnablement",
+                    "label": "Raw enablement"
+                  },
+                  {
+                    "columnId": "Configuration",
+                    "label": "Reported configuration"
+                  },
+                  {
+                    "columnId": "OperationStatus",
+                    "label": "Enablement operation details"
+                  }
+                ]
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "tab",
+              "comparison": "isEqualTo",
+              "value": "main"
+            },
+            "name": "extension_inventory",
+            "styleSettings": {
+              "showBorder": true
+            }
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "tab",
+        "comparison": "isEqualTo",
+        "value": "main"
+      },
+      "name": "extension_diagnostics"
     },
     {
       "type": 3,

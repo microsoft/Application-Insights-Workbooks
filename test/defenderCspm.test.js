@@ -7,23 +7,26 @@ describe('Validating Defender CSPM settings and findings...', () => {
     const workbookPath = path.join('Workbooks', 'Azure Security Center', 'Defender CSPM', 'DefenderCSPM.workbook');
     const workbook = JSON.parse(fs.readFileSync(workbookPath, 'utf8'));
     const components = [
-        ['AgentlessVmScanning', 'Agentless scanning for machines'],
-        ['AgentlessDiscoveryForKubernetes', 'Kubernetes API access'],
-        ['ContainerRegistriesVulnerabilityAssessments', 'Registry access'],
-        ['SensitiveDataDiscovery', 'Sensitive data discovery'],
-        ['EntraPermissionsManagement', 'Cloud Infrastructure and Entitlements Management (CIEM)'],
-        ['ApiPosture', 'API Security Posture Management'],
-        ['AgentlessServerlessPosture', 'Serverless protection'],
-        ['ServerlessContainers', 'Serverless containers']
+        ['AgentlessVmScanning', 'Agentless scanning for machines', 'settings_agentless_scanning'],
+        ['AgentlessDiscoveryForKubernetes', 'Kubernetes API access', 'settings_kubernetes_api_access'],
+        ['ContainerRegistriesVulnerabilityAssessments', 'Registry access', 'settings_registry_access'],
+        ['SensitiveDataDiscovery', 'Sensitive data discovery', 'settings_sensitive_data_discovery'],
+        ['EntraPermissionsManagement', 'CIEM', 'settings_ciem'],
+        ['ApiPosture', 'API Security Posture Management', 'settings_api_security_posture'],
+        ['AgentlessServerlessPosture', 'Serverless protection', 'settings_serverless_protection'],
+        ['ServerlessContainers', 'Serverless containers', 'settings_serverless_containers']
     ];
+    const flatten = items => items.flatMap(entry => [entry, ...flatten(entry.content.items || [])]);
+    const allItems = flatten(workbook.items);
     const item = name => {
-        const result = workbook.items.find(candidate => candidate.name === name);
+        const result = allItems.find(candidate => candidate.name === name);
         assert.exists(result, `Missing workbook item: ${name}`);
         return result;
     };
-    const settings = item('settings_monitoring').content.query;
+    const cards = components.map(([, , name]) => item(name));
+    const settings = cards[0].content.query;
     const newTables = [
-        'mdc_plans_enabled', 'settings_monitoring', 'extension_inventory',
+        'mdc_plans_enabled', 'extension_inventory',
         'findings_counts', 'all_recommendations', 'detailed_findings'
     ];
 
@@ -46,28 +49,40 @@ describe('Validating Defender CSPM settings and findings...', () => {
     });
 
     it('has unique item names and parameter IDs', () => {
-        const names = workbook.items.map(entry => entry.name);
+        const names = allItems.map(entry => entry.name);
         assert.equal(new Set(names).size, names.length);
-        const parameterIds = workbook.items.filter(entry => entry.type === 9)
+        const parameterIds = allItems.filter(entry => entry.type === 9)
             .flatMap(entry => entry.content.parameters.map(parameter => parameter.id));
         assert.equal(new Set(parameterIds).size, parameterIds.length);
     });
 
-    it('defines exactly the eight components in Settings page scroll order', () => {
-        const match = settings.match(/\| extend component = dynamic\((\[[^\r\n]+\])\)/);
-        assert.isNotNull(match);
-        const definitions = JSON.parse(match[1]);
-        assert.deepEqual(definitions.map(component => [component.name, component.label]), components);
-        assert.deepEqual(definitions.map(component => component.order), [1, 2, 3, 4, 5, 6, 7, 8]);
-        assert.include(settings, 'componentOrder = toint(component["order"]), Component = tostring(component["label"]), ExtensionName = tostring(component["name"])');
-        assert.include(settings, '| order by componentOrder asc, subscriptionName asc, subscriptionId asc');
+    it('shows eight individual components in two rows of four in Settings page order', () => {
+        const visibleCards = workbook.items.filter(entry => entry.name.startsWith('settings_') && entry.type === 3);
+        assert.deepEqual(visibleCards.map(entry => entry.name), components.map(([, , name]) => name));
+        assert.deepEqual(visibleCards.map(entry => entry.content.title), components.map(([, title]) => title));
+        const firstIndex = workbook.items.indexOf(cards[0]);
+        assert.deepEqual(workbook.items.slice(firstIndex, firstIndex + 8), cards);
+        for (let row = 0; row < 2; row++) {
+            assert.equal(cards.slice(row * 4, row * 4 + 4)
+                .reduce((width, card) => width + Number(card.customWidth), 0), 100);
+        }
+        assert.notInclude(allItems.map(entry => entry.name), 'settings_monitoring');
+    });
+
+    it('uses identical status logic in all cards with only the target extension changing', () => {
+        const normalize = query => query.replace(/\| extend targetExtension = "[A-Za-z0-9]+"/, '| extend targetExtension = "{component}"');
+        components.forEach(([extension, , name]) => {
+            const query = item(name).content.query;
+            assert.include(query, `| extend targetExtension = "${extension}"`);
+            assert.equal(normalize(query), normalize(settings));
+        });
     });
 
     it('keeps subscriptions with no plan or extensions in a left-joined baseline', () => {
         assert.match(settings, /^resourcecontainers\n\| where type =~ "microsoft.resources\/subscriptions"/);
         assert.include(settings, '| join kind=leftouter (');
         assert.include(settings, '| mv-expand extension = iff(array_length(extensions) > 0, extensions, dynamic([{}]))');
-        assert.include(settings, 'by subscriptionId, subscriptionName, componentOrder, Component, ExtensionName, pricingTier');
+        assert.include(settings, 'by subscriptionId, subscriptionName, pricingTier');
         assert.notMatch(settings, /\| where .*matched/);
     });
 
@@ -104,16 +119,64 @@ describe('Validating Defender CSPM settings and findings...', () => {
         });
     });
 
-    it('preserves exclusions and enablement operation failures without painting missing data green', () => {
+    it('preserves operation failures and keeps exclusions available without painting missing data green', () => {
         assert.include(settings, 'failed = countif(matched and extension.operationStatus.code =~ "Failed")');
         assert.include(settings, 'operationUnknown = countif(matched and isnotempty(tostring(extension.operationStatus.code)) and tostring(extension.operationStatus.code) !in~ ("Succeeded", "Failed"))');
-        assert.include(settings, 'Configuration = make_set(iff(matched, extension.additionalExtensionProperties, dynamic(null)))');
-        assert.include(settings, 'OperationStatus = make_set(iff(matched, extension.operationStatus, dynamic(null)))');
-        const thresholds = item('settings_monitoring').content.gridSettings.formatters
+        assert.include(item('extension_inventory').content.query, 'Configuration = extension.additionalExtensionProperties');
+        assert.include(item('extension_inventory').content.query, 'OperationStatus = extension.operationStatus');
+        const thresholds = cards[0].content.gridSettings.formatters
             .find(formatter => formatter.columnMatch === 'Status').formatOptions.thresholdsGrid;
         assert.deepEqual(thresholds.filter(threshold => threshold.representation === 'green')
             .map(threshold => threshold.thresholdValue), ['Enabled']);
         assert.equal(thresholds.find(threshold => threshold.operator === 'Default').representation, 'orange');
+    });
+
+    components.forEach(([extension, title, name]) => {
+        it(`${title} has a compact, independent subscription/status table`, () => {
+            const card = item(name);
+            assert.equal(card.type, 3);
+            assert.equal(card.customWidth, '25');
+            assert.equal(card.content.visualization, 'table');
+            assert.equal(card.content.size, 1);
+            assert.equal(card.content.queryType, 1);
+            assert.equal(card.content.resourceType, 'microsoft.resourcegraph/resources');
+            assert.deepEqual(card.content.crossComponentResources, ['{subscriptions}']);
+            assert.deepEqual(card.conditionalVisibility, {
+                parameterName: 'tab', comparison: 'isEqualTo', value: 'main'
+            });
+            assert.isTrue(card.styleSettings.showBorder);
+            assert.isFalse(card.content.gridSettings.filter);
+            assert.equal(card.content.gridSettings.rowLimit, 1000);
+            assert.deepEqual(card.content.gridSettings.labelSettings, [
+                { columnId: 'subscriptionId', label: 'Subscription' },
+                { columnId: 'Status', label: 'Status' }
+            ]);
+            assert.include(card.content.query, `| extend targetExtension = "${extension}"`);
+            assert.include(card.content.query, 'matched = targetExtension =~ tostring(extension.name)');
+            assert.include(card.content.query, '| order by subscriptionName asc, subscriptionId asc');
+            assert.match(card.content.query, /\| project subscriptionId, Status$/);
+            assert.isNotEmpty(card.content.noDataMessage);
+            const thresholds = card.content.gridSettings.formatters
+                .find(formatter => formatter.columnMatch === 'Status').formatOptions.thresholdsGrid;
+            assert.deepEqual(thresholds.filter(threshold => threshold.representation === 'green')
+                .map(threshold => threshold.thresholdValue), ['Enabled']);
+            assert.equal(thresholds.find(threshold => threshold.operator === 'Default').representation, 'orange');
+        });
+    });
+
+    it('defers the detailed inventory behind the advanced diagnostics button', () => {
+        const group = item('extension_diagnostics');
+        assert.equal(group.type, 12);
+        assert.equal(group.content.groupType, 'editable');
+        assert.equal(group.content.loadType, 'explicit');
+        assert.equal(group.content.loadButtonText, 'Show advanced extension diagnostics');
+        assert.deepEqual(group.conditionalVisibility, {
+            parameterName: 'tab', comparison: 'isEqualTo', value: 'main'
+        });
+        assert.deepEqual(group.content.items.map(entry => entry.name), [
+            'extension_inventory_guidance', 'extension_inventory'
+        ]);
+        assert.notInclude(workbook.items.map(entry => entry.name), 'extension_inventory');
     });
 
     it('reports all pricing plans and does not infer enablement from a stale subplan', () => {
@@ -207,7 +270,9 @@ describe('Validating Defender CSPM settings and findings...', () => {
         });
         const guidance = item('settings_monitoring_guidance').content.json;
         assert.include(guidance, 'CloudPosture only');
-        assert.include(guidance, '125 subscriptions');
+        assert.include(guidance, 'Each component has its own compact status table');
+        assert.include(guidance, 'Each panel displays up to 1,000 selected Azure subscriptions');
+        assert.notInclude(guidance, '125 subscriptions');
         assert.include(guidance, '**Sensitive data discovery**');
         assert.include(guidance, '**Registry access**');
         const findings = item('all_findings_guidance').content.json;

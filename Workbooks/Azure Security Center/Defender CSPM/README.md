@@ -4,7 +4,7 @@
 
 ## Settings page order
 
-The **Defender CSPM** tab shows plan configurations followed by a full-width **Settings & monitoring** table. Components appear in the same top-to-bottom order as the Defender CSPM Settings page:
+The **Defender CSPM** tab shows plan configurations followed by eight compact **Settings & monitoring** tables, one per component. Each panel shows just **Subscription** and its color-coded **Status**. The first four panels form the first row and the remaining four form the second row. Read left to right, then down, to follow the Defender CSPM Settings page:
 
 | Order | Settings component | Extension API name |
 | --- | --- | --- |
@@ -17,11 +17,11 @@ The **Defender CSPM** tab shows plan configurations followed by a full-width **S
 | 7 | Serverless protection | `AgentlessServerlessPosture` |
 | 8 | Serverless containers | `ServerlessContainers` |
 
-The Settings table uses subscription-level `CloudPosture` configurations only. Each selected Azure subscription remains in the result even when its plan or extension settings are missing. Settings on shared plans such as Servers, Containers, or Storage cannot turn a disabled CSPM setting green. Resource-level pricing overrides are excluded.
+Each Settings panel uses subscription-level `CloudPosture` configurations only. Each selected Azure subscription remains in every panel even when its plan or extension settings are missing. Settings on shared plans such as Servers, Containers, or Storage cannot turn a disabled CSPM setting green. Resource-level pricing overrides are excluded.
 
-Only an explicit enabled value under a Standard plan is green. Disabled plans, failed or unrecognized enablement operations, conflicting declarations, missing extensions, missing plans, and unknown values have distinct states. Reported exclusions, additional configuration, and operation details are retained.
+Only an explicit enabled value under a Standard plan is green. Disabled plans, failed or unrecognized enablement operations, conflicting declarations, missing extensions, missing plans, and unknown values have distinct states. **CIEM** is the compact panel title for Cloud Infrastructure and Entitlements Management.
 
-The plan table lists every reported subscription-level pricing plan instead of using a fixed list. Pricing tier, subplan, and reported resource coverage are separate fields; a stale paid subplan cannot make a Free plan appear enabled. The raw extension inventory preserves source plans, subplans, and every emitted extension name, including capabilities beyond the eight-component layout. Raw enablement is not proof of effective coverage.
+The plan table lists every reported subscription-level pricing plan instead of using a fixed list. Pricing tier, subplan, and reported resource coverage are separate fields; a stale paid subplan cannot make a Free plan appear enabled. Select **Show advanced extension diagnostics** below the panels to load the raw extension inventory. This detail stays hidden until requested and preserves source plans, subplans, exclusions, additional configuration, operation details, and every emitted extension name, including capabilities beyond the eight-component layout. Raw enablement is not proof of effective coverage.
 
 ## Findings
 
@@ -37,7 +37,7 @@ The server-side status selector defaults to all states and can select unhealthy,
 ### Completeness and interpretation
 
 - Each table displays at most 1,000 rows. The findings totals are aggregated server-side before the detail limit. Compare totals with displayed rows and narrow subscriptions, assessment status, or the server-side search if needed.
-- The Settings table has eight rows per Azure subscription. Select at most 125 subscriptions to fit all components within the table limit. Narrow the scope further if other inventories exceed the limit.
+- Each Settings panel has one row per selected Azure subscription and displays at most 1,000 subscriptions. The combined eight-rows-per-subscription table is no longer used. Narrow the scope if a panel or another inventory exceeds its limit.
 - No results, a missing extension, or missing severity/risk information does not mean disabled, supported, scanned, or healthy. Verify permissions, scope, reporting delay, configuration, and product availability.
 - These are Resource Graph views, not a complete export of the Cloud Security Graph, API inventory, runtime alerts, or every Defender portal finding. API endpoint sensitive-information details and some serverless vulnerability experiences require the relevant product portal.
 - Subscription configuration does not establish multicloud connector configuration, effective resource-level settings, entitlement, or scanning success.
@@ -56,4 +56,4 @@ Run the focused regression tests from the repository root:
 npx mocha test/defenderCspm.test.js
 ```
 
-Use [the workbook testing guide](../../../Documentation/Testing.md) to import the template through Advanced Mode. Verify all four tabs, subscription selection, Settings row order, missing/disabled states, findings search, totals versus detail rows, and retained attack-path drill-downs. Use an appropriately authorized account and do not publish tenant findings or resource identifiers in screenshots.
+Use [the workbook testing guide](../../../Documentation/Testing.md) to import the template through Advanced Mode. Verify all four tabs, subscription selection, the two rows of four Settings panels, per-component missing/disabled states, the advanced diagnostics button, findings search, totals versus detail rows, and retained attack-path drill-downs. Use an appropriately authorized account and do not publish tenant findings or resource identifiers in screenshots.
