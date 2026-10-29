@@ -2,6 +2,7 @@ const assert = require('chai').assert;
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const Validator = require('jsonschema').Validator;
 
 const workbook = JSON.parse(fs.readFileSync(path.join(
@@ -14,17 +15,43 @@ const scopes = [
     {
         name: 'subscriptionGroup', mode: '0', originalItems: 23,
         api: 'azureapiplans', notes: 'text - 6',
+        discount: 'discount', discountHelper: 'discountToMultiply', originalDiscount: '',
         serversSelection: 'AzureP1P2', serversPlan: 'azureServersPlanVal'
     },
     {
         name: 'tenantGroup', mode: '1', originalItems: 22,
         api: 'azureapiplanstenant', notes: 'text - 6 - Copy',
+        discount: 'discounttenant', discountHelper: 'discounttomultiplytenant', originalDiscount: '5',
         serversSelection: 'AzureP1P2tenant', serversPlan: 'azureServersPlanValTenant'
     }
 ];
 
+function discountFactor(parameter, value) {
+    const selected = parameter.criteriaData.find(({ criteriaContext: criteria }) => {
+        switch (criteria.operator) {
+            case 'is Empty': return value === '' || value === null || value === undefined;
+            case '=': return String(value) === criteria.rightVal;
+            case 'isNotNull': return value !== null && value !== undefined;
+            case 'Default': return true;
+            default: assert.fail('Unexpected discount operator: ' + criteria.operator);
+        }
+    }).criteriaContext;
+    if (selected.resultValType === 'static') return Number(selected.resultVal);
+    assert.strictEqual(selected.resultValType, 'expression');
+    assert.strictEqual(selected.resultVal, '(100-{discountVal})/100.0');
+    const expression = selected.resultVal.replace('{discountVal}', String(value));
+    assert.match(expression, /^\(100-\d+\)\/100\.0$/);
+    return vm.runInNewContext(expression, Object.create(null), { timeout: 100 });
+}
+
+function queryStrings(value) {
+    if (!value || typeof value !== 'object') return [];
+    return Object.entries(value).flatMap(([key, child]) =>
+        key === 'query' && typeof child === 'string' ? [child] : queryStrings(child));
+}
+
 describe('Cost estimation workbook', () => {
-    it('preserves original content apart from the Servers corrections and concise serverless guidance', () => {
+    it('preserves original content apart from the discount hardening, Servers corrections, and concise guidance', () => {
         const baseline = JSON.parse(JSON.stringify(workbook));
         for (const scope of scopes) {
             const group = baseline.items.find(item => item.name === scope.name);
@@ -35,6 +62,16 @@ describe('Cost estimation workbook', () => {
                 .replace(/\r\n\r\n\* ###### \*\*Serverless (?:protection|containers)\*\*[^\r\n]*/g, '')
                 .replace('with base billing for Servers, Databases and Storages',
                     'but billing only applies for Servers, Databases and Storages');
+            const discount = group.content.items.find(item => item.name === scope.discount)
+                .content.parameters.find(parameter => parameter.name === 'discountVal');
+            discount.value = scope.originalDiscount;
+            delete discount.description;
+            const multiplier = group.content.items.find(item => item.name === scope.discountHelper)
+                .content.parameters.find(parameter => parameter.name === 'discountToMultiplyVal');
+            multiplier.criteriaData.shift();
+            for (const { criteriaContext: criteria } of multiplier.criteriaData) {
+                if (criteria.operator === '=') criteria.operator = '==';
+            }
             const table = group.content.items.find(item => item.name.startsWith('pricing grid with total'));
             // Normalize only the intentional Servers fixes when comparing with the original snapshot.
             table.content.query = table.content.query
@@ -59,6 +96,87 @@ describe('Cost estimation workbook', () => {
             const summary = results.content.items.find(item => item.name === 'Serverless CSPM summary');
             const estimates = results.content.items.find(item => item.name === 'Serverless CSPM resource estimates');
             const warning = details.content.items.find(item => item.name === 'Serverless forecast input warning');
+            const discountItem = group.content.items.find(item => item.name === scope.discount);
+            const discount = discountItem.content.parameters.find(parameter => parameter.name === 'discountVal');
+            const multiplierItem = group.content.items.find(item => item.name === scope.discountHelper);
+            const multiplier = multiplierItem.content.parameters.find(parameter =>
+                parameter.name === 'discountToMultiplyVal');
+
+            it('defaults the planning discount to zero without requiring agreement-pricing access', () => {
+                assert.strictEqual(discount.value, '0');
+                assert.notProperty(discount, 'query');
+                assert.notProperty(discountItem.content, 'query');
+                assert.include(discount.description, 'Optional manual planning discount');
+                assert.include(discount.description, 'Defaults to 0%');
+                assert.include(discount.description, 'no tenant-wide or subscription-wide percentage is inferred');
+            });
+
+            it('uses the full-price multiplier for zero, cleared, null, and uninitialized discounts', () => {
+                assert.strictEqual(multiplier.criteriaData[0].criteriaContext.operator, 'is Empty');
+                assert.strictEqual(multiplier.criteriaData[0].criteriaContext.resultVal, '1.0');
+                for (const value of ['0', 0, '', null, undefined]) {
+                    assert.strictEqual(discountFactor(multiplier, value), 1);
+                }
+                for (const price of [0, 0.625, 5, 15, 50, 7000]) {
+                    assert.strictEqual(price * discountFactor(multiplier, '0'), price);
+                    assert.strictEqual(price * discountFactor(multiplier, ''), price);
+                }
+            });
+
+            it('evaluates every whole-number discount from zero to one hundred correctly', () => {
+                for (let percentage = 0; percentage <= 100; percentage++) {
+                    const factor = discountFactor(multiplier, String(percentage));
+                    assert.strictEqual(factor, (100 - percentage) / 100);
+                    assert.isAtLeast(factor, 0);
+                    assert.isAtMost(factor, 1);
+                    assert.isTrue(Number.isFinite(factor));
+                }
+                assert.strictEqual(100 * discountFactor(multiplier, '20'), 80);
+                assert.strictEqual(7000 * discountFactor(multiplier, '100'), 0);
+            });
+
+            it('keeps invalid percentages blocked while allowing the cleared zero-discount case', () => {
+                const rule = discount.typeSettings.paramValidationRules[0];
+                assert.isTrue(rule.match);
+                const validation = new RegExp(rule.regExp);
+                for (const value of ['', '0', '20', '99', '100']) assert.match(value, validation);
+                for (const value of ['-1', '101', '20.5', '20%', 'abc', ' ', 'NaN', 'Infinity']) {
+                    assert.notMatch(value, validation);
+                }
+            });
+
+            it('uses schema-valid discount controls and guards for every criterion', () => {
+                const parameterSchema = {
+                    $id: workbookSchema.$id,
+                    $ref: '#/definitions/parameter',
+                    definitions: workbookSchema.definitions
+                };
+                assert.deepEqual(new Validator().validate(discountItem, parameterSchema).errors, []);
+                assert.deepEqual(new Validator().validate(multiplierItem, parameterSchema).errors, []);
+                for (const criteria of multiplier.criteriaData) {
+                    assert.deepEqual(new Validator().validate(criteria, {
+                        ...parameterSchema, $ref: '#/definitions/criteriaDataItem'
+                    }).errors, []);
+                }
+            });
+
+            it('substitutes a numeric full-price factor into queries and merge expressions at zero discount', () => {
+                const queries = queryStrings(group);
+                assert.isNotEmpty(queries);
+                for (const query of queries) assert.notInclude(query, '{discountVal}');
+                const discounted = queries.filter(query => query.includes('{discountToMultiplyVal}'));
+                assert.isNotEmpty(discounted);
+                for (const value of ['0', '']) {
+                    const literal = discountFactor(multiplier, value).toFixed(1);
+                    assert.strictEqual(literal, '1.0');
+                    for (const query of discounted) {
+                        const expanded = query.replaceAll('{discountToMultiplyVal}', literal);
+                        assert.notInclude(expanded, '{discountToMultiplyVal}');
+                        assert.notMatch(expanded, /\b(?:NaN|Infinity|undefined)\b/);
+                        if (expanded.trimStart().startsWith('{')) assert.isObject(JSON.parse(expanded));
+                    }
+                }
+            });
 
             it('uses a numeric selection flag and skips empty server counts in Azure price expressions', () => {
                 const parameters = group.content.items.flatMap(item => item.content.parameters || []);
