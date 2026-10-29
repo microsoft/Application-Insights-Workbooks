@@ -43,10 +43,12 @@ function finalStatement(query) {
     return normalized.slice(start + '\n);\n'.length);
 }
 
-function durationHoursFor(query, events, windowStart, windowEnd) {
+function durationSecondsFor(query, events, windowStart, windowEnd) {
     const normalized = normalizeQuery(query);
     const lookback = normalized.match(/let Lookback = (\d+)d;/);
     assert.isNotNull(lookback);
+    assert.include(normalized,
+        "| extend DurationSeconds = datetime_diff('second', WindowedEnd, WindowedStart)");
 
     const stateFor = field => {
         const match = normalized.match(
@@ -74,17 +76,16 @@ function durationHoursFor(query, events, windowStart, windowEnd) {
     const windowedStart = Math.max(connectedTime ?? windowStartMs, windowStartMs);
     const windowedEnd = Math.min(endTime ?? windowEndMs, windowEndMs);
     return windowedEnd > windowedStart
-        ? (windowedEnd - windowedStart) / (60 * 60 * 1000)
+        ? Math.floor(windowedEnd / 1000) - Math.floor(windowedStart / 1000)
         : null;
 }
 
-function mttfBucketFor(query, totalDurationHours, disruptionCount) {
+function mttfBucketFor(query, totalDurationSeconds, disruptionCount) {
     const caseBlock = normalizeQuery(query)
         .match(/\| extend MTTFBin = case\(\n([\s\S]*?)\n\)/);
     assert.isNotNull(caseBlock);
 
-    const infinite = caseBlock[1].match(
-        /DisruptionCount == 0 or MeanTimeToFailureHours >= ([\d.]+), "([^"]+)"/);
+    const infinite = caseBlock[1].match(/DisruptionCount == 0, "([^"]+)"/);
     assert.isNotNull(infinite);
     const thresholds = Array.from(caseBlock[1].matchAll(
         /MeanTimeToFailureHours < ([\d.]+),\s*"([^"]+)"/g));
@@ -92,37 +93,13 @@ function mttfBucketFor(query, totalDurationHours, disruptionCount) {
     assert.isNotNull(fallback);
 
     const meanTimeToFailure = disruptionCount > 0
-        ? totalDurationHours / disruptionCount
+        ? totalDurationSeconds / disruptionCount / 3600
         : 0;
-    if (disruptionCount === 0 || meanTimeToFailure >= Number(infinite[1])) {
-        return infinite[2];
+    if (disruptionCount === 0) {
+        return infinite[1];
     }
     const threshold = thresholds.find(match => meanTimeToFailure < Number(match[1]));
     return threshold ? threshold[2] : fallback[1];
-}
-
-function multiLinkLabelsFor(query, rows) {
-    const normalized = normalizeQuery(query);
-    const gatewayUnknown = normalized.match(
-        /GatewayLocation = iff\(isempty\(GatewayRegion\) or GatewayRegion == "", "([^"]+)", GatewayRegion\)/);
-    const transportUnavailable = normalized.match(
-        /TransportCapability = coalesce\(TransportCapability, "([^"]+)"\)/);
-    const gatewayUnavailable = normalized.match(
-        /GatewayLocation = coalesce\(GatewayLocation, "([^"]+)"\)/);
-    assert.isNotNull(gatewayUnknown);
-    assert.isNotNull(transportUnavailable);
-    assert.isNotNull(gatewayUnavailable);
-
-    if (!rows.length) {
-        return {
-            transport: transportUnavailable[1],
-            gateway: gatewayUnavailable[1]
-        };
-    }
-    return {
-        transport: rows[0].transportCapability || 'Other',
-        gateway: rows[0].gatewayRegion || gatewayUnknown[1]
-    };
 }
 
 const items = flattenItems(workbook.items);
@@ -135,32 +112,23 @@ const navigationMttfParameters = navigationMttfParameterGroups
     .flatMap(item => item.content.parameters);
 const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
 const resourceFilter = '| where _ResourceId in~ ({HostPools})';
-const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion) or GatewayRegion == "", "Unknown", GatewayRegion)';
+const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion), "Unknown", GatewayRegion)';
 const gatewayFilter = "| where '*' in ({GatewayRegion}) or GatewayLocation in ({GatewayRegion})";
-// The first two reads select connections for the top gateway filter (_GatewayAllowed, _HasMultiLink).
-const gatewayReads = dataViews.flatMap(item =>
-    sourcePipelines(item.content.query, 'WVDMultiLinkAdd').slice(2)
+const transportReads = dataViews.flatMap(item =>
+    sourcePipelines(item.content.query, 'WVDMultiLinkAdd')
         .map((pipeline, index) => ({ name: `${item.name} link read ${index + 1}`, pipeline })));
 const windowLets = [
     'let WindowStart = {MTTFTimeRange:start};',
-    'let WindowEnd = min_of({MTTFTimeRange:end}, now());',
-    'let Lookback = 7d;'
+    'let WindowEnd = min_of({MTTFTimeRange:end}, now());'
 ].join('\n');
 const timeLookback = '| where TimeGenerated between ((WindowStart - Lookback) .. WindowEnd)';
 const timeWindow = '| where TimeGenerated between (WindowStart .. WindowEnd)';
-const gatewayFilterLet = "let _FilterGateway = '*' !in ({GatewayRegion});";
-const gatewayUnavailableLet =
-    "let _GatewayUnavailableSelected = _FilterGateway and 'Unavailable' in ({GatewayRegion});";
-const gatewayConnectionFilter = "| where '*' in ({GatewayRegion}) or CorrelationId in (_GatewayAllowed) " +
-    'or (_GatewayUnavailableSelected and CorrelationId !in (_HasMultiLink))';
-const hasMultiLinkTail =
-    [timeLookback, resourceFilter, '| where _GatewayUnavailableSelected', '| distinct CorrelationId'];
 const windowedDuration = [
     '| where isnotempty(ConnectedTime) or (isempty(StartedTime) and isnotempty(EndTime))',
     '| extend WindowedStart = max_of(coalesce(ConnectedTime, WindowStart), WindowStart)',
     '| extend WindowedEnd = min_of(coalesce(EndTime, WindowEnd), WindowEnd)',
     '| where WindowedEnd > WindowedStart',
-    "| extend DurationHours = datetime_diff('second', WindowedEnd, WindowedStart) / 3600.0"
+    "| extend DurationSeconds = datetime_diff('second', WindowedEnd, WindowedStart)"
 ].join('\n');
 const kqlParameters = parameters.filter(parameter => parameter.queryType === 0);
 const mttfQueries = [
@@ -259,13 +227,13 @@ describe('Connection MTTF navigation', () => {
 });
 
 describe('Connection MTTF filtering', () => {
-    it('covers every data view and downstream link read', () => {
+    it('covers every data view and transport enrichment read', () => {
         assert.sameMembers(dataViews.map(item => item.name), [
             'MTTFBarChart', 'MTTFHistogram', 'MTTFUnifiedDetail', 'MTTFTransportDetail',
             'MTTFGatewayDetail', 'MTTFUnifiedConnections', 'MTTFTransportConnections',
             'MTTFGatewayConnections'
         ]);
-        assert.lengthOf(gatewayReads, 6);
+        assert.lengthOf(transportReads, 4);
     });
 
     it('cascades subscriptions and resource groups into the host pool scope', () => {
@@ -288,7 +256,7 @@ describe('Connection MTTF filtering', () => {
         assert.isUndefined(parameters.find(parameter => parameter.name === 'TimeRange'));
     });
 
-    it('sets every MTTF query range in the query with a lookback for sessions open at the start', () => {
+    it('uses the selected range for filter options and preserves lookback for data views', () => {
         assert.sameMembers(kqlParameters.map(parameter => parameter.name),
             ['GatewayRegion', 'ClientType', 'ClientVersion']);
         for (const { name, content } of mttfQueries) {
@@ -298,8 +266,14 @@ describe('Connection MTTF filtering', () => {
             const query = normalizeQuery(content.query);
             assert.equal(query.slice(0, windowLets.length + 1), `${windowLets}\n`, name);
             assert.lengthOf(query.match(/\{MTTFTimeRange\b/g), 2, name);
+            const isParameter = kqlParameters.includes(content);
+            if (isParameter) {
+                assert.notMatch(query, /\bLookback\b/, name);
+            } else {
+                assert.include(query, 'let Lookback = 7d;', name);
+            }
             for (const [table, timeFilter] of [
-                ['WVDConnections', timeLookback],
+                ['WVDConnections', isParameter ? timeWindow : timeLookback],
                 ['WVDMultiLinkAdd', timeLookback],
                 ['WVDErrors', timeWindow]
             ]) {
@@ -333,20 +307,22 @@ describe('Connection MTTF filtering', () => {
             const connections = sourcePipelines(query, 'WVDConnections');
             assert.lengthOf(connections, 1, name);
             assert.include(connections[0], resourceFilter, name);
-            assert.include(connections[0].split('\n'), gatewayConnectionFilter, name);
-            const lines = normalizeQuery(query).split('\n');
-            assert.include(lines, gatewayFilterLet, name);
-            assert.include(lines, gatewayUnavailableLet, name);
-            assert.deepEqual(letBlock(query, '_HasMultiLink').split('\n').slice(2), hasMultiLinkTail, name);
+            assert.notInclude(query, 'WVDMultiLinkAdd', name);
+            const aggregationEnd = connections[0].indexOf('by CorrelationId');
+            assert.isAtLeast(aggregationEnd, 0, name);
+            for (const field of ['GatewayRegion', 'ClientType',
+                ...(name === 'ClientVersion' ? ['ClientVersion'] : [])]) {
+                assert.include(connections[0].slice(0, aggregationEnd),
+                    `take_anyif(${field}, isnotempty(${field}))`, name);
+            }
+            assert.include(connections[0], gatewayNormalization, name);
+            assert.include(connections[0], gatewayFilter, name);
+            assert.isAbove(connections[0].indexOf(gatewayNormalization), aggregationEnd, name);
+            assert.isAbove(connections[0].indexOf(gatewayFilter),
+                connections[0].indexOf(gatewayNormalization), name);
             if (name === 'ClientVersion') {
                 assert.include(connections[0],
                     "| where '*' in ({ClientType}) or ClientType in ({ClientType})", name);
-                const aggregationEnd = connections[0].indexOf('by CorrelationId');
-                assert.isAtLeast(aggregationEnd, 0, name);
-                for (const field of ['ClientType', 'ClientVersion']) {
-                    assert.include(connections[0].slice(0, aggregationEnd),
-                        `take_anyif(${field}, isnotempty(${field}))`, name);
-                }
                 assert.isAbove(connections[0].indexOf("| where '*' in ({ClientType})"),
                     aggregationEnd, name);
             }
@@ -360,7 +336,6 @@ describe('Connection MTTF filtering', () => {
             const connections = sourcePipelines(item.content.query, 'WVDConnections');
             assert.lengthOf(connections, 1);
             assert.include(connections[0], resourceFilter);
-            assert.include(connections[0].split('\n'), gatewayConnectionFilter);
             const aggregationEnd = connections[0].indexOf('by CorrelationId');
             assert.isAtLeast(aggregationEnd, 0);
             for (const [field, state] of [
@@ -371,7 +346,7 @@ describe('Connection MTTF filtering', () => {
             }
             assert.isAbove(connections[0].indexOf(windowedDuration), aggregationEnd,
                 'durations must be clipped to the selected range after correlation');
-            assert.lengthOf(connections[0].match(/\bDurationHours\s*=/g), 1);
+            assert.lengthOf(connections[0].match(/\bDurationSeconds\s*=/g), 1);
             assert.notInclude(connections[0], 'isnotempty(ConnectedTime) and isnotempty(EndTime)');
             for (const name of ['ClientType', 'ClientVersion']) {
                 const filter = `| where '*' in ({${name}}) or ${name} in ({${name}})`;
@@ -382,17 +357,16 @@ describe('Connection MTTF filtering', () => {
                     `${name} must filter correlated connections, not individual lifecycle events`);
             }
 
-            const gatewaySelection = sourcePipelines(item.content.query, 'WVDMultiLinkAdd')[0];
-            assert.include(gatewaySelection, resourceFilter);
-            assert.include(gatewaySelection, '| where _FilterGateway');
-            assert.include(gatewaySelection,
-                '| extend _GR = iff(isempty(GatewayRegion) or GatewayRegion == "", "Unknown", GatewayRegion)');
-            assert.include(gatewaySelection, '| where _GR in ({GatewayRegion})');
-            assert.include(gatewaySelection, '| distinct CorrelationId');
-            const lines = normalizeQuery(item.content.query).split('\n');
-            assert.include(lines, gatewayFilterLet);
-            assert.include(lines, gatewayUnavailableLet);
-            assert.deepEqual(letBlock(item.content.query, '_HasMultiLink').split('\n').slice(2), hasMultiLinkTail);
+            assert.include(connections[0].slice(0, aggregationEnd),
+                'GatewayRegion = take_anyif(GatewayRegion, isnotempty(GatewayRegion))');
+            assert.include(connections[0], gatewayNormalization);
+            assert.include(connections[0], gatewayFilter);
+            assert.isAbove(connections[0].indexOf(gatewayNormalization), aggregationEnd,
+                'empty lifecycle fields must not override a populated connection gateway');
+            assert.isAbove(connections[0].indexOf(gatewayFilter),
+                connections[0].indexOf(gatewayNormalization));
+            assert.notInclude(item.content.query, '_GatewayAllowed');
+            assert.notInclude(item.content.query, '_HasMultiLink');
 
             const errors = sourcePipelines(item.content.query, 'WVDErrors');
             assert.lengthOf(errors, 1);
@@ -400,25 +374,24 @@ describe('Connection MTTF filtering', () => {
         });
     }
 
-    for (const { name, pipeline } of gatewayReads) {
-        it(`${name} filters gateway rows before aggregation`, () => {
+    for (const { name, pipeline } of transportReads) {
+        it(`${name} enriches selected connections without re-filtering link gateways`, () => {
             assert.include(pipeline, resourceFilter);
-            assert.include(pipeline, gatewayNormalization);
-            assert.include(pipeline, gatewayFilter);
-            assert.isBelow(pipeline.indexOf(gatewayNormalization), pipeline.indexOf(gatewayFilter));
-            assert.isBelow(pipeline.indexOf(gatewayFilter), pipeline.indexOf('| summarize'));
+            assert.notInclude(pipeline, '{GatewayRegion}');
+            assert.notInclude(pipeline, 'GatewayLocation');
             assert.match(pipeline,
-                /\| join kind=inner (?:SelectedConnections|\(SelectedConnections \| project CorrelationId\)|GatewayFiltered) on CorrelationId/);
+                /\| join kind=inner (?:SelectedConnections|\(SelectedConnections \| project CorrelationId\)) on CorrelationId/);
         });
     }
 
     for (const selection of [['WUS2'], ['Unknown'], ['WUS2', 'EUS2'], ['*']]) {
-        it(`preserves the gateway row predicate for ${selection.join(', ')}`, () => {
+        it(`preserves the connection gateway predicate for ${selection.join(', ')}`, () => {
             const formatted = selection.map(value => `'${value}'`).join(',');
-            for (const { name, pipeline } of gatewayReads) {
+            for (const item of dataViews) {
+                const pipeline = sourcePipelines(item.content.query, 'WVDConnections')[0];
                 const expanded = pipeline.replace(/\{GatewayRegion\}/g, formatted);
                 assert.include(expanded,
-                    `| where '*' in (${formatted}) or GatewayLocation in (${formatted})`, name);
+                    `| where '*' in (${formatted}) or GatewayLocation in (${formatted})`, item.name);
             }
         });
     }
@@ -440,7 +413,7 @@ describe('Connection MTTF calculation results', () => {
             {
                 name: 'still connected with a Connected event inside the lookback',
                 events: [{ state: 'Connected', time: '2026-01-04T00:00:00Z' }],
-                expected: 24
+                expected: 86400
             },
             {
                 name: 'still connected with its last Connected event outside the lookback',
@@ -454,7 +427,7 @@ describe('Connection MTTF calculation results', () => {
                     { state: 'Connected', time: '2026-01-01T00:01:00Z' },
                     { state: 'Completed', time: '2026-01-10T03:00:00Z' }
                 ],
-                expected: 3
+                expected: 10800
             },
             {
                 name: 'connected before the range and completed inside it',
@@ -462,7 +435,7 @@ describe('Connection MTTF calculation results', () => {
                     { state: 'Connected', time: '2026-01-09T23:00:00Z' },
                     { state: 'Completed', time: '2026-01-10T05:00:00Z' }
                 ],
-                expected: 5
+                expected: 18000
             },
             {
                 name: 'connected inside the range with completion telemetry after the range',
@@ -470,7 +443,23 @@ describe('Connection MTTF calculation results', () => {
                     { state: 'Connected', time: '2026-01-10T02:00:00Z' },
                     { state: 'Completed', time: '2026-01-11T01:00:00Z' }
                 ],
-                expected: 22
+                expected: 79200
+            },
+            {
+                name: 'ten-second connection retains its full duration',
+                events: [
+                    { state: 'Connected', time: '2026-01-10T02:00:00Z' },
+                    { state: 'Completed', time: '2026-01-10T02:00:10Z' }
+                ],
+                expected: 10
+            },
+            {
+                name: 'half-hour connection is not truncated to zero hours',
+                events: [
+                    { state: 'Connected', time: '2026-01-10T02:00:00Z' },
+                    { state: 'Completed', time: '2026-01-10T02:30:00Z' }
+                ],
+                expected: 1800
             },
             {
                 name: 'only Started telemetry',
@@ -490,56 +479,58 @@ describe('Connection MTTF calculation results', () => {
         ];
 
         for (const testCase of cases) {
-            const actual = durationHoursFor(query, testCase.events, windowStart, windowEnd);
+            const actual = durationSecondsFor(query, testCase.events, windowStart, windowEnd);
             if (testCase.expected === null) {
                 assert.isNull(actual, testCase.name);
             } else {
-                assert.closeTo(actual, testCase.expected, 0.000001, testCase.name);
+                assert.equal(actual, testCase.expected, testCase.name);
             }
         }
     });
 
-    it('assigns exact duration boundaries and both Infinite fallbacks to MTTF buckets', () => {
-        for (const [totalDurationHours, disruptionCount, expected] of [
-            [0, 0, 'Infinite'],
-            [0.5, 1, '0 - 1 hrs'],
-            [1, 1, '1 - 2 hrs'],
-            [2, 1, '2 - 3 hrs'],
-            [3, 1, '3 - 4 hrs'],
-            [4, 1, '4 - 5 hrs'],
-            [5, 1, '5 - 6 hrs'],
-            [6, 1, '6 - 7 hrs'],
-            [7, 1, '7 - 8 hrs'],
-            [8, 1, '8 - 9 hrs'],
-            [9, 1, '9 - 10 hrs'],
-            [19.999, 2, '9 - 10 hrs'],
-            [10, 1, 'Infinite'],
-            [20, 2, 'Infinite']
-        ]) {
-            assert.equal(mttfBucketFor(query, totalDurationHours, disruptionCount), expected,
-                `${totalDurationHours} hours / ${disruptionCount} disruptions`);
+    it('converts seconds to hours only after per-user aggregation in every view', () => {
+        for (const item of dataViews) {
+            assert.notInclude(letBlock(item.content.query, 'Connections'), '/ 3600.0', item.name);
+            assert.match(item.content.query,
+                /TotalDurationSeconds\s*= sum\(DurationSeconds\)/, item.name);
+            assert.include(item.content.query,
+                'MeanTimeToFailureHours = iff(DisruptionCount > 0, TotalDurationSeconds / todouble(DisruptionCount) / 3600.0, todouble(0))',
+                item.name);
         }
     });
 
-    it('describes active, completed, unavailable, and unknown telemetry semantics', () => {
-        const description = items.find(item => item.name === 'MTTFDescription').content.json;
-
-        assert.include(description,
-            'Still-connected sessions are included only when their Connected event is available within the 7-day lookback.');
-        assert.include(description,
-            'Completed sessions are also included when a Completed event falls in the selected range');
-        assert.include(description,
-            'Connections without MultiLink telemetry are grouped as **Unavailable**');
-        assert.include(description,
-            '**Unknown** is reserved for a present MultiLink row with an empty gateway region.');
+    it('separates finite 10+ MTTF from zero-failure Infinite in every view', () => {
+        const cases = [
+            [0, 0, 'Infinite'],
+            [36000, 0, 'Infinite'],
+            [10, 1, '0 - 1 hrs'],
+            [1800, 1, '0 - 1 hrs'],
+            [3600, 1, '1 - 2 hrs'],
+            [7200, 1, '2 - 3 hrs'],
+            [10800, 1, '3 - 4 hrs'],
+            [14400, 1, '4 - 5 hrs'],
+            [18000, 1, '5 - 6 hrs'],
+            [21600, 1, '6 - 7 hrs'],
+            [25200, 1, '7 - 8 hrs'],
+            [28800, 1, '8 - 9 hrs'],
+            [32400, 1, '9 - 10 hrs'],
+            [71999, 2, '9 - 10 hrs'],
+            [36000, 1, '10+ hrs'],
+            [72000, 2, '10+ hrs']
+        ];
+        for (const item of dataViews) {
+            for (const [totalDurationSeconds, disruptionCount, expected] of cases) {
+                assert.equal(mttfBucketFor(item.content.query, totalDurationSeconds, disruptionCount),
+                    expected, `${item.name}: ${totalDurationSeconds} seconds / ${disruptionCount} disruptions`);
+            }
+        }
     });
+
 });
 
-describe('Connection MTTF unavailable MultiLink data', () => {
+describe('Connection MTTF optional MultiLink transport', () => {
     const queryOf = name => items.find(item => item.name === name).content.query;
     const transportUnavailable = '| extend TransportCapability = coalesce(TransportCapability, "Unavailable")';
-    const gatewayUnavailable = '| extend GatewayLocation = coalesce(GatewayLocation, "Unavailable")';
-    const gatewayRowsJoin = '| join kind=leftouter GatewayRows on CorrelationId';
 
     for (const name of ['MTTFTransportDetail', 'MTTFUnifiedConnections', 'MTTFTransportConnections',
         'MTTFGatewayConnections']) {
@@ -558,47 +549,28 @@ describe('Connection MTTF unavailable MultiLink data', () => {
         });
     }
 
-    it('MTTFGatewayDetail groups connections without gateway rows as Unavailable', () => {
-        const lines = finalStatement(queryOf('MTTFGatewayDetail')).split('\n');
-        const join = lines.indexOf(gatewayRowsJoin);
+    it('groups connection gateways without requiring MultiLink telemetry', () => {
+        const query = queryOf('MTTFGatewayDetail');
 
-        assert.equal(lines[0], 'SelectedConnections');
-        assert.isAtLeast(join, 0);
-        assert.isAbove(lines.indexOf(gatewayUnavailable), join);
+        assert.notInclude(query, 'WVDMultiLinkAdd');
+        assert.include(letBlock(query, 'SelectedConnections'),
+            '| project CorrelationId, GatewayLocation');
+        assert.deepEqual(finalStatement(query).split('\n'), [
+            'SelectedConnections',
+            '| summarize ConnectionCount = dcount(CorrelationId) by GatewayLocation',
+            '| order by ConnectionCount desc'
+        ]);
     });
 
-    it('MTTFGatewayConnections drills into Unavailable gateway connections', () => {
-        const lines = letBlock(queryOf('MTTFGatewayConnections'), 'GatewayFiltered').split('\n');
-        const join = lines.indexOf(gatewayRowsJoin);
-        const coalesce = lines.indexOf(gatewayUnavailable);
-
-        assert.equal(lines[0], 'SelectedConnections');
-        assert.isAtLeast(join, 0);
-        assert.isAbove(coalesce, join);
-        assert.isAbove(lines.indexOf('| where GatewayLocation == SelectedGateway'), coalesce);
-    });
-
-    it('distinguishes absent telemetry from a present row with an unknown gateway', () => {
+    it('selects connection gateways before optional transport enrichment', () => {
         const query = queryOf('MTTFGatewayConnections');
 
-        assert.deepEqual(multiLinkLabelsFor(query, []), {
-            transport: 'Unavailable',
-            gateway: 'Unavailable'
-        });
-        assert.deepEqual(multiLinkLabelsFor(query, [{
-            gatewayRegion: '',
-            transportCapability: 'Other'
-        }]), {
-            transport: 'Other',
-            gateway: 'Unknown'
-        });
-        assert.deepEqual(multiLinkLabelsFor(query, [{
-            gatewayRegion: 'WUS2',
-            transportCapability: 'UDP Shortpath'
-        }]), {
-            transport: 'UDP Shortpath',
-            gateway: 'WUS2'
-        });
+        assert.include(letBlock(query, 'SelectedConnections'),
+            '| where GatewayLocation == SelectedGateway');
+        assert.notInclude(query, 'GatewayRows');
+        assert.notInclude(query, 'GatewayFiltered');
+        assert.include(letBlock(query, 'LinkTransport'),
+            '| join kind=inner (SelectedConnections | project CorrelationId) on CorrelationId');
     });
 
     it('does not use N/A for unavailable MultiLink data', () => {
@@ -607,29 +579,38 @@ describe('Connection MTTF unavailable MultiLink data', () => {
         }
     });
 
-    it('always offers Unknown and Unavailable in the gateway filter', () => {
+    it('sources gateway options from connections and offers Unknown rather than Unavailable', () => {
         const query = parameters.find(parameter => parameter.name === 'GatewayRegion').query;
 
+        assert.notInclude(query, 'WVDMultiLinkAdd');
+        assert.notInclude(query, 'Unavailable');
+        assert.include(query,
+            '| summarize GatewayRegion = take_anyif(GatewayRegion, isnotempty(GatewayRegion)) by CorrelationId');
+        assert.include(query, gatewayNormalization);
         assert.deepEqual(normalizeQuery(query).split('\n').slice(-3), [
-            '| union (datatable(GatewayLocation:string)["Unknown", "Unavailable"])',
+            '| union (datatable(GatewayLocation:string)["Unknown"])',
             '| distinct GatewayLocation',
             '| order by GatewayLocation asc'
         ]);
     });
 
-    it('labels connection durations as time within the selected range', () => {
+    it('displays in-range minutes without rounding before MTTF aggregation', () => {
         for (const name of ['MTTFUnifiedConnections', 'MTTFTransportConnections', 'MTTFGatewayConnections']) {
             const setting = items.find(item => item.name === name).content.gridSettings.labelSettings
-                .find(label => label.columnId === 'DurationHours');
-            assert.equal(setting?.label, 'Duration in Range (hrs)', name);
+                .find(label => label.columnId === 'DurationMinutes');
+            assert.equal(setting?.label, 'Duration in Range (min)', name);
+            assert.include(finalStatement(queryOf(name)),
+                '| extend DurationMinutes = round(DurationSeconds / 60.0, 2)', name);
+            assert.notInclude(letBlock(queryOf(name), 'Connections'), 'round(', name);
+            assert.notInclude(letBlock(queryOf(name), 'SelectedUsers'), 'round(', name);
         }
     });
 });
 
 describe('Connection MultiLink availability', () => {
     for (const [name, workbookItems, expectedQueryCount] of [
-        ['MTTF', items, 11],
-        ['navigation', navigationItems, 3],
+        ['MTTF', items, 4],
+        ['navigation', navigationItems, 0],
         ['Reliability', reliabilityItems, 3]
     ]) {
         it(`${name} keeps every MultiLink read optional without adding synthetic events`, () => {
