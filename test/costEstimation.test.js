@@ -14,13 +14,13 @@ const controlsName = 'CSPM serverless controls';
 const scopes = [
     {
         name: 'subscriptionGroup', mode: '0', originalItems: 23,
-        api: 'azureapiplans', notes: 'text - 6',
+        api: 'azureapiplans', apiParameter: 'azureAPIPlanVal', notes: 'text - 6',
         discount: 'discount', discountHelper: 'discountToMultiply', originalDiscount: '',
         serversSelection: 'AzureP1P2', serversPlan: 'azureServersPlanVal'
     },
     {
         name: 'tenantGroup', mode: '1', originalItems: 22,
-        api: 'azureapiplanstenant', notes: 'text - 6 - Copy',
+        api: 'azureapiplanstenant', apiParameter: 'azureAPIPlanValTenant', notes: 'text - 6 - Copy',
         discount: 'discounttenant', discountHelper: 'discounttomultiplytenant', originalDiscount: '5',
         serversSelection: 'AzureP1P2tenant', serversPlan: 'azureServersPlanValTenant'
     }
@@ -51,7 +51,7 @@ function queryStrings(value) {
 }
 
 describe('Cost estimation workbook', () => {
-    it('preserves original content apart from the discount hardening, Servers corrections, and concise guidance', () => {
+    it('preserves original content apart from intentional defaults, discount guards, Servers corrections, and guidance', () => {
         const baseline = JSON.parse(JSON.stringify(workbook));
         for (const scope of scopes) {
             const group = baseline.items.find(item => item.name === scope.name);
@@ -62,6 +62,11 @@ describe('Cost estimation workbook', () => {
                 .replace(/\r\n\r\n\* ###### \*\*Serverless (?:protection|containers)\*\*[^\r\n]*/g, '')
                 .replace('with base billing for Servers, Databases and Storages',
                     'but billing only applies for Servers, Databases and Storages');
+            const api = group.content.items.find(item => item.name === scope.api)
+                .content.parameters.find(parameter => parameter.name === scope.apiParameter);
+            api.description = scope.mode === '0' ? 'API sub plan' : 'Azure API Plan';
+            if (scope.mode === '0') api.value = '7000';
+            else delete api.value;
             const discount = group.content.items.find(item => item.name === scope.discount)
                 .content.parameters.find(parameter => parameter.name === 'discountVal');
             discount.value = scope.originalDiscount;
@@ -101,6 +106,40 @@ describe('Cost estimation workbook', () => {
             const multiplierItem = group.content.items.find(item => item.name === scope.discountHelper);
             const multiplier = multiplierItem.content.parameters.find(parameter =>
                 parameter.name === 'discountToMultiplyVal');
+
+            it('defaults the API plan explicitly to Plan 1 and keeps all other plans available', () => {
+                const apiItem = group.content.items.find(item => item.name === scope.api);
+                const api = apiItem.content.parameters.find(parameter => parameter.name === scope.apiParameter);
+                const plans = JSON.parse(api.jsonData);
+                assert.strictEqual(api.value, '200');
+                assert.deepEqual(plans.filter(plan => plan.selected), [
+                    { value: 200, label: 'Defender for API Plan 1', selected: true }
+                ]);
+                assert.deepEqual(plans.map(plan => plan.value), [200, 700, 5000, 7000, 50000]);
+                assert.isTrue(api.isRequired);
+                assert.strictEqual(Number(api.value) * discountFactor(multiplier, '0'), 200);
+                assert.deepEqual(new Validator().validate(apiItem, {
+                    $id: workbookSchema.$id,
+                    $ref: '#/definitions/parameter',
+                    definitions: workbookSchema.definitions
+                }).errors, []);
+            });
+
+            it('uses the manually selected API tier rather than automatically sizing it from traffic', () => {
+                const api = group.content.items.find(item => item.name === scope.api)
+                    .content.parameters.find(parameter => parameter.name === scope.apiParameter);
+                assert.notProperty(api, 'query');
+                assert.include(api.description, 'Choose the plan manually');
+                assert.include(api.description, 'does not automatically select a tier from traffic');
+                assert.include(api.description, 'overages are not included');
+                const summaryQuery = group.content.items.find(item => item.name === 'pricing grid sum').content.query;
+                assert.include(summaryQuery,
+                    "defenderForApiCost = iff(tolong('{AzureAPISubPlans}')==1, tolong('{" +
+                    scope.apiParameter + "}'), 0)");
+                for (const plan of JSON.parse(api.jsonData)) {
+                    assert.strictEqual(plan.value * discountFactor(multiplier, '0'), plan.value);
+                }
+            });
 
             it('defaults the planning discount to zero without requiring agreement-pricing access', () => {
                 assert.strictEqual(discount.value, '0');
