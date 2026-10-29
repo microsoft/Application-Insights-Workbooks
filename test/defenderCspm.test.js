@@ -1,4 +1,4 @@
-﻿const assert = require('chai').assert;
+const assert = require('chai').assert;
 const fs = require('fs');
 const path = require('path');
 const Validator = require('jsonschema').Validator;

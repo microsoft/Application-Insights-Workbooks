@@ -1,4 +1,4 @@
-﻿# Defender CSPM workbook
+# Defender CSPM workbook
 
 [DefenderCSPM.workbook](./DefenderCSPM.workbook) is the native Defender CSPM gallery template. It retains the secure-score overview, attack-path investigation, and attack-path remediation views, and adds complete subscription-level configuration diagnostics and broader findings views.
 
