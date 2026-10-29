@@ -153,7 +153,7 @@ platforms.
 Recognized native AWS/GCP provenance takes precedence over Arc representation.
 Code-specific source/provider names identify DevOps; missing/new provenance
 remains **Other**, visible in the overview and its own tab. External or unresolved
-connectors are2026-10-29T21:46:05Z not labeled native Azure merely because a generic Azure source
+connectors are not labeled native Azure merely because a generic Azure source
 or Azure-hosted connector ID is present. Raw connector platform/ID and source
 remain visible for investigation.
 
