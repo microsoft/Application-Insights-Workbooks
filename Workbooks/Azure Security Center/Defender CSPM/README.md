@@ -27,16 +27,24 @@ The plan table lists every reported subscription-level pricing plan instead of u
 
 The **All findings** tab queries both Resource Graph assessment types:
 
-- `microsoft.security/assessments`: all reported recommendations, including newer individual vulnerability recommendations, risk details, and additional context.
-- `microsoft.security/assessments/subassessments`: detailed findings, parent recommendation keys, remediation, resource details, and additional data.
+- `microsoft.security/assessments`: all reported recommendation types, including newer individual vulnerability recommendations.
+- `microsoft.security/assessments/subassessments`: detailed-finding types and their parent recommendation keys.
 
 Neither table uses a fixed recommendation-ID or title list, nor does it exclude non-Azure records or healthy, not-applicable, or unknown statuses. Records from connected clouds are included when Defender for Cloud publishes them at the selected subscription scopes. Findings are not attributed to an extension by guessing from recommendation titles.
 
 The server-side status selector defaults to all states and can select unhealthy, healthy, not-applicable, or other/unknown records exactly. The server-side search matches the reported ID and properties. For example, narrow by a resource ID, recommendation name, or vulnerability identifier. Both parameters use the workbook `escape` formatter. The grid's search box filters only rows already returned.
 
+### Compact lists and selected-record context
+
+**Maximum list rows** defaults to 100 and offers 25, 50, 100, or 250 rows, with an additional server-side cap of 250. Sorting and the selected limit are applied before extracting the list's remaining scalar fields. Large raw metadata, risk, resource-detail, and additional-data objects are not included in every list row. This avoids the multi-megabyte responses that a wide 1,000-row query can produce.
+
+Select a recommendation or detailed-finding row to load its complete reported context below that list. Each context query is scoped to the selected record ID, the selected subscriptions, and the same status/search filters, and returns at most one record. Full metadata/status objects, risk, resource details, and additional data are returned as complete JSON strings for consistent grid rendering and remain available in that view and its export. A stale selection that no longer matches the filters returns no record rather than unrelated data.
+
+Recommendation severity uses metadata first, then `additionalData.Severity` and `additionalData.severity`, so individual SQL recommendations retain their reported severity. Remediation uses the reported metadata and SQL additional-data fallbacks. Lists show a labelled **512-character preview** and a truncation flag; complete remediation remains in selected context and its export. The reported `status.firstEvaluationDate` is exposed as **First evaluated (UTC)** in both lists and context; missing dates remain empty rather than being inferred. Full metadata/status objects are also retained in selected context.
+
 ### Completeness and interpretation
 
-- Each table displays at most 1,000 rows. The findings totals are aggregated server-side before the detail limit. Compare totals with displayed rows and narrow subscriptions, assessment status, or the server-side search if needed.
+- Recommendation and detailed-finding lists show the selected maximum of 25-250 rows, not every matching record. Their server-side totals are computed before that limit, and the completeness notice uses the selected limit. These are bounded lists, not a complete paginated export. Narrow subscriptions, assessment status, or server-side search when more records match.
 - Each Settings panel has one row per selected Azure subscription and displays at most 1,000 subscriptions. The combined eight-rows-per-subscription table is no longer used. Narrow the scope if a panel or another inventory exceeds its limit.
 - No results, a missing extension, or missing severity/risk information does not mean disabled, supported, scanned, or healthy. Verify permissions, scope, reporting delay, configuration, and product availability.
 - These are Resource Graph views, not a complete export of the Cloud Security Graph, API inventory, runtime alerts, or every Defender portal finding. API endpoint sensitive-information details and some serverless vulnerability experiences require the relevant product portal.
@@ -56,4 +64,4 @@ Run the existing repository workbook validators from the repository root:
 npm test -- test\jsonValidationTest.js --grep "Validating Workbooks" --timeout 30000
 ```
 
-Use [the workbook testing guide](../../../Documentation/Testing.md) to import the template through Advanced Mode. Verify all four tabs, subscription selection, the two rows of four Settings panels, per-component missing/disabled states, the advanced diagnostics button, findings search, totals versus detail rows, and retained attack-path drill-downs. Use an appropriately authorized account and do not publish tenant findings or resource identifiers in screenshots.
+Use [the workbook testing guide](../../../Documentation/Testing.md) to import the template through Advanced Mode. Verify all four tabs, subscription selection, the two rows of four Settings panels, per-component missing/disabled states, the advanced diagnostics button, findings status/search/row-limit controls, totals versus list rows, row-selected full context, and retained attack-path drill-downs. Use an appropriately authorized account and do not publish tenant findings or resource identifiers in screenshots.
