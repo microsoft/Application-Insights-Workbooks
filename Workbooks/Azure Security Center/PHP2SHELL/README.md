@@ -1,9 +1,10 @@
 # PHP2SHELL exposure and investigation
 
 A read-only Azure Monitor workbook in **Defender for Cloud > Workbooks >
-Community**, beside **Log4j Vulnerability**. The subscription picker, tabbed
-layout, finding grids, resource links, and exports follow the Log4j template.
-The existing Log4j workbook is unchanged.
+Community**, beside **Log4j Vulnerability**. Organization overview and environment
+tabs combine visible evidence over the selected tenant/subscription scope; the
+workload selector narrows the shared recommendation views. This is not a census
+of an entire organization. The existing Log4j workbook is unchanged.
 
 ## Open the workbook
 
@@ -19,15 +20,41 @@ gallery. A repository change alone does not publish to the Azure portal.
 
 ## Included views
 
-| Tab | Contents |
+| Surface | Contents |
 | --- | --- |
-| Overview and coverage | Exact CVE matches in individual recommendations and legacy grouped subassessments; reported plan/component settings; assessment-source context. |
-| Machines | Reported machine CVEs; ARM VM/VMSS/Arc inventory candidates; copyable Defender XDR PHP inventory and CVE queries. |
-| Containers | Reported image CVEs; ACR/AKS/Arc Kubernetes/Container Apps/ACI candidates; configured Container Apps/ACI image references; running-image investigation guidance. |
-| Web apps and exposure | App Service apps and slots, reported runtime/public-access configuration, WAF policies, front ends/public IPs, PHP/CVE text-match attack paths, and cross-cutting hardening context. |
-| DevOps | Connected Azure DevOps/GitHub/GitLab repository inventory, exact CVE findings, PHP/Composer keyword candidates, code/IaC/dependency/secret recommendation metadata, and SBOM/code-to-cloud pivots. |
-| Alerts and hunting | Defender for Cloud alert candidates and opt-in queries for ten collected telemetry sources, with source-specific collection and scope notes. |
-| Response and verification | Microsoft guidance, first fixed PHP releases, mitigation boundaries, patch verification, and customer handoff checklist. |
+| Organization overview (default) | Combined recommendation/CVE summary, one findings table, broader posture evidence, discovered connectors, Azure anchor plan/component evidence and machine inventory gaps. |
+| Azure, AWS, GCP, Hybrid / Arc, DevOps, Other / external | The same findings/posture surface narrowed by reported native provenance and workload. Unknown and external sources remain visible rather than inheriting the Azure hosting subscription. |
+| Unified findings | Exact advisory CVEs in current individual recommendations; tenant-scoped CVE enrichment; scanner/per-CVE version evidence, image/repository context, risk and native finding links. |
+| Connectors and coverage | Connector discovery independent of finding volume, explicit Free/Standard/Not reported plan evidence, disconnected Arc inventory and software-inventory gaps. Discovery is not successful scan evidence. |
+| Additional inventory and hunting (off by default) | Retained Machines, Containers, Web apps/exposure, DevOps, Alerts/hunting and Response/verification sections. These independent sources have explicit subscription/workspace scope exceptions. |
+
+### Lessons applied from the Log4j update
+
+The comparison used
+[microsoft/Application-Insights-Workbooks#3259](https://github.com/microsoft/Application-Insights-Workbooks/pull/3259)
+at commit `7b451ec02554136ebeceb57a7487a0403b65a12f`, including its
+[scanner-version review comment](https://github.com/microsoft/Application-Insights-Workbooks/pull/3259#discussion_r4418079573).
+
+| Lesson | PHP2SHELL change |
+| --- | --- |
+| Start with the organization/environment, not overlapping scanner/workload findings tables. | Use seven environment tabs and one shared recommendation classifier, summary and findings table. Retain the detailed PHP investigation sections behind an explicit opt-in. |
+| Azure anchor subscriptions are not native cloud provenance or external entitlements. | Use reported source, connector platform and Arc cloud metadata; known AWS/GCP takes precedence over Arc representation. Unresolved/external metadata remains Other. |
+| A connector can exist without vulnerability findings. | Discover connectors from ARM independently of assessment volume and preserve empty offerings. Export offering names, not raw payloads or assumed health. |
+| The current model is individual assessments with global CVE metadata. | Remove deprecated grouped queries; use SoftwareUpdate/ServiceUpgrade and a tenant-scoped deduplicated CVE left join with explicit assessment/resource subscription filters. |
+| Missing inventory/risk/plan metadata is not a successful scan. | Retain unknown states and disconnected Arc machines; exclude known AKS node resource groups from the machine-gap view. No paid-plan condition gates visible findings. |
+| Top-level version fields are not sufficient. | Preserve labeled assessment, MDVM and alternate-scanner fallbacks, and prefer the individual CVE's FixedVersion after CVE expansion. |
+
+Log4j-specific CVEs, Java/JAR support claims and broad Log4j package matching were
+**not** copied. PHP2SHELL attribution remains restricted to its two advisory CVEs.
+The PHP interpreter, Composer dependencies, source constraints, posture, WAF
+mitigation and runtime behavior remain different evidence classes. Existing PHP
+regression tests and opt-in telemetry/privacy boundaries are retained.
+
+The existing PHP2SHELL review comments were also addressed: DevOps matching uses
+the provider-qualified security-connector hierarchy rather than any `/devops/`
+segment; Front Door diagnostic categories match classic and Standard/Premium
+case variants; and collected endpoint queries bind Log Analytics `TimeGenerated`
+rather than assuming native XDR's time schema.
 
 The target advisory identifiers are **CVE-2026-109618** and **CVE-2026-109619**.
 The workbook links the public
@@ -52,6 +79,14 @@ recommendation, alert, or exploit signature.
 - **Advanced posture:** Defender CSPM and applicable connectors/scanners for
   explorer, attack paths, and code-to-cloud context. Subscription configuration
   does not resolve resource overrides or connected-cloud effective coverage.
+- **Serverless applicability:** eligible
+  [Serverless protection](https://learn.microsoft.com/azure/defender-for-cloud/serverless-protection)
+  and [Serverless Containers](https://learn.microsoft.com/azure/defender-for-cloud/posture-for-serverless-containers)
+  require their supported Defender CSPM components, permissions and platforms;
+  full Serverless Containers features require Registry access. Verify
+  portal-specific package assessment and exclusions without weakening network
+  controls. Package/image posture is not a promise of PHP-interpreter inventory,
+  complete runtime-layer assessment or EDR.
 - **DevOps:** a supported connector, repository permissions and completed scans.
   Not all foundational DevOps inventory/findings require paid Defender CSPM.
   Scanner/platform/language support and licensing differ. Composer packages and
@@ -72,17 +107,41 @@ recommendation, alert, or exploit signature.
   connector does not ingest those TVM tables. Endpoint event hunts require
   separately ingested raw event tables if run in this workbook.
 
-All Resource Graph queries inherit the subscription picker. Recommendations,
-inventory and pricing are current state, not the alert/log time range.
-Azure resource log hunts additionally filter workload `_SubscriptionId`.
-SecurityAlert records with no Azure resource mapping and endpoint event hunts
-remain explicitly **workspace/device scoped**. Native portal/XDR links do not
-inherit the workbook's scope; reapply it there.
+All assessment/resource Resource Graph sources explicitly filter the selected
+subscription IDs. The unified CVE detail query runs at **tenant scope** because
+`microsoft.security/cvedetails` is global; only that public CVE lookup is not
+subscription-filtered. A deduplicated left join preserves findings without
+visible metadata. Recommendations, inventory and pricing are current state, not
+the alert/log time range.
+
+The summary, unified findings and broader posture share the same environment and
+workload classifier. Connector discovery is environment scoped but not narrowed
+by the recommendation workload selector. The machine-gap panel applies to
+All/Machines workloads; Azure subscription plan evidence appears only in
+Organization overview and is not an entitlement verdict for external clouds.
+
+**Additional source-scope exceptions:** the retained detailed ARM/DevOps grids
+use selected Azure anchor subscriptions, not the organization Environment or
+Recommendation workload filters. Azure resource log hunts additionally filter
+workload `_SubscriptionId`. SecurityAlert records with no Azure resource mapping
+and endpoint event hunts remain **workspace/device scoped**. These differences
+are called out before the extra controls. Native portal/XDR links do not inherit
+the workbook's scope; reapply it there.
+
+Collected
+[DeviceProcessEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/deviceprocessevents),
+[DeviceNetworkEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/devicenetworkevents)
+and [DeviceFileEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/devicefileevents)
+use Log Analytics `TimeGenerated`; the queries export `Timestamp = TimeGenerated`
+for the existing grid labels. Native Defender XDR uses `Timestamp`: convert the
+workspace query's time references rather than pasting it unchanged. The two TVM
+inventory/vulnerability code blocks remain native Advanced Hunting queries.
 
 Detail tables are bounded to 1,000 rows. A full table may be truncated; narrow the
 scope or use native queries/export for complete results. Counts are not an
-estate-wide inventory denominator. Individual and grouped vulnerability findings
-can overlap during the schema transition and must not be added together.
+estate-wide inventory denominator. Counts use distinct recommendation IDs rather
+than adding overlapping scanner rows. Grouped recommendations were deprecated on
+2026-07-31 and are no longer queried as current PHP2SHELL coverage.
 See [the recommendation schema transition](https://learn.microsoft.com/azure/defender-for-cloud/transition-grouped-individual-recommendations).
 
 **No rows is not clearance.** Separate confirmed scanner CVE evidence,
@@ -90,6 +149,22 @@ configuration/inventory candidates and behavioral heuristics. Unknown/missing
 plan or component configuration is **Not reported**, not Disabled. A plan set
 to Standard does not prove successful scanning. Scan lag, retention, RBAC,
 unsupported builds and missing collection can all produce gaps.
+
+### Version and provenance evidence
+
+Detected versions prefer the assessment field, then MDVM scanner evidence, then
+the first reported alternate scanner. Fixed versions prefer the **per-CVE**
+field after expansion, then assessment, MDVM and alternate-scanner evidence.
+Empty arrays/objects/null text do not mask valid fallback versions. The exported
+source columns identify the selected evidence path. This preserves relevant
+version evidence without pretending to merge every scanner payload or establish
+vendor-backport/effective-runtime patch closure.
+
+Native AWS/GCP source/provider evidence takes precedence over Arc representation.
+Code-specific metadata identifies DevOps; Docker Hub/JFrog and unclassified
+connectors remain Other. An unresolved connector is not labeled Azure solely
+because it is stored in Azure. Raw reported source, connector platform/ID and
+resource type remain visible for investigation.
 
 ## Mitigation and privacy boundaries
 
@@ -115,49 +190,48 @@ any exported evidence according to the customer's handling policy.
 From the repository root:
 
 ```powershell
-npm test -- --grep 'Validating Workbooks|Validating Gallery|PHP2SHELL' --timeout 10000
+npm test -- --grep 'Validating Workbooks|Validating Gallery|PHP2SHELL' --timeout 15000
 git diff --check
 ```
 
 The focused regression tests check gallery placement, unique/localizable steps,
-scope and time controls, CVE/schema handling, optional-source gates, conservative
-coverage states, privacy boundaries, and the HTTP hunt thresholds.
+scope and time controls, environment/provenance handling, current CVE metadata,
+version-field precedence, independent connector discovery, optional-source gates,
+conservative coverage states, privacy boundaries and the HTTP hunt thresholds.
+Version-precedence unit cases evaluate the published coalesce argument order;
+they are not execution of a live vulnerability assessment.
 
-Author validation on 2026-10-29 also included Kusto.Language syntax/type/output
-analysis of all 34 workbook, parameter and copyable Advanced Hunting queries,
-and read-only Azure Resource Graph execution of the finding, coverage, App
-Service, configured-container, WAF and DevOps pipelines. Only validation aggregates
-were retrieved; no customer records are embedded in the template.
+For this update, **54 focused tests passed**. All **32** current workbook,
+parameter and native TVM code-block queries also passed **622 Kusto.Language
+syntax/type/output-label checks** across applicable environment, workload,
+representative subscription and time selections. The endpoint schemas omit
+native XDR `Timestamp`, reproducing the old column-resolution failure before
+the `TimeGenerated` fix and passing afterward. No live tenant/telemetry
+validation is claimed for this revision.
 
-Query-only synthetic fixtures on the actual Resource Graph engine confirmed:
-
-- Legacy array, singular-ID, nested-CVE, string-array and case-variant findings
-  matched; unrelated-prefix and Healthy controls did not.
-- Individual array/JSON-string CVE details, native identifiers and serverless
-  resource types were retained; unrelated, Healthy and empty controls did not
-  produce findings.
-- Missing/empty component data remained unknown; both boolean and string
-  Enabled/Disabled states and Free-tier rows were preserved.
-- HTTP POST/5xx, count, byte-size and fixed-bin boundary controls returned only
-  the two expected positive cases.
-
-These fixtures were evaluated inside read-only queries, not ingested into Azure.
-They do not demonstrate exploitation, real vulnerable assets, or product
-detection effectiveness. Optional Log Analytics tables and portal rendering
-still require validation in the customer's authorized environment.
+The previous PHP2SHELL revision's read-only/live fixture evidence does not
+automatically validate these changed queries. Kusto.Language syntax, type and
+output-shape validation across the current environment/workload combinations
+must accompany the regression tests. Static/parser checks and query-only
+synthetic fixtures do not demonstrate exploitation, real vulnerable assets,
+successful collection or product detection effectiveness. No customer records
+are embedded in the template.
 
 Before gallery release, also validate in Azure:
 
 1. Import through Advanced Editor and verify every tab, parameter, link, grid
    and export in the portal.
 2. With authorized read-only access, run each Resource Graph query in the
-   intended subscription scopes, including both finding schemas and absent
-   pricing/component data.
+   intended subscription scopes, including absent CVE metadata and missing
+   pricing/component data. Confirm the intended tenant/account explicitly; do
+   not silently use a default CLI/corporate session.
 3. Exercise no-plan/no-data, supported/unsupported sources, explicit missing-table
    and access errors, real CVE findings if available, mixed mapped/unmapped
-   alerts, and optional endpoint workspace scope.
+   alerts, optional endpoint workspace scope, empty-offering connectors,
+   native-cloud Arc provenance and disconnected inventory.
 4. Verify the HTTP threshold boundaries and legitimate negative controls with
-   approved synthetic fixtures; do not run exploitation.
+   approved synthetic fixtures; do not run exploitation. Exercise every
+   environment/workload selection and scanner/per-CVE version-only cases.
 5. Confirm the source and guidance links remain current. A schema/parser test
    alone is not live rendering, product coverage, or detection-effectiveness
    validation.

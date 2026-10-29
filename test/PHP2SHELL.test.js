@@ -77,31 +77,40 @@ describe('PHP2SHELL workbook', () => {
         assert.match(prerequisites.content.json, /Missing tables and access errors remain visible/);
     });
 
-    it('provides seven working tab targets with overview as the first selection', () => {
-        const tabs = workbook.items.find(item => item.type === 11).content.links;
-        const groups = workbook.items.filter(item => item.type === 12);
+    it('defaults to organization overview with seven environment tabs and a workload filter', () => {
+        const tabs = workbook.items.find(item => item.name === 'Organization and environment tabs').content.links;
         assert.lengthOf(tabs, 7);
-        assert.equal(tabs[0].subTarget, 'Overview');
+        assert.equal(tabs[0].subTarget, 'All');
         assert.deepEqual(
             tabs.map(tab => tab.subTarget).sort(),
-            groups.map(group => group.conditionalVisibility.value).sort()
+            ['All', 'Azure', 'AWS', 'GCP', 'Hybrid', 'DevOps', 'Other'].sort()
         );
         for (const tab of tabs) {
-            assert.equal(tab.cellValue, 'SelectedTab');
+            assert.equal(tab.cellValue, 'Environment');
             assert.equal(tab.linkTarget, 'parameter');
         }
+        assert.equal(parameters.find(parameter => parameter.name === 'Environment').value, 'All');
+        assert.equal(parameters.find(parameter => parameter.name === 'Workload').value, 'All');
+        const sections = nodes.find(node => node.item.name === 'Additional investigation section tabs').item.content.links;
+        assert.deepEqual(sections.map(tab => tab.subTarget), ['Machines', 'Containers', 'Exposure', 'DevOps', 'Hunting', 'Response']);
     });
 
-    it('scopes every Resource Graph query and workspace discovery to the subscription picker', () => {
+    it('explicitly scopes ARG assessments/resources while allowing tenant-only CVE metadata', () => {
         const subscription = parameters.find(parameter => parameter.name === 'Subscription');
         assert.equal(subscription.type, 6);
         assert.isTrue(subscription.multiSelect);
         for (const { item } of queries.filter(node => node.item.content.queryType === 1)) {
-            assert.deepEqual(item.content.crossComponentResources, ['{Subscription}'], item.name);
+            assert.include(item.content.query, '| where subscriptionId in~ ({Subscription:subid})', item.name);
+            assert.deepEqual(
+                item.content.crossComponentResources,
+                [item.name === 'Unified PHP2SHELL findings' ? 'value::tenant' : '{Subscription}'],
+                item.name
+            );
         }
         const workspace = parameters.find(parameter => parameter.name === 'Workspace');
         assert.equal(workspace.queryType, 1);
         assert.deepEqual(workspace.crossComponentResources, ['{Subscription}']);
+        assert.include(workspace.query, '| where subscriptionId in~ ({Subscription:subid})');
         assert.deepEqual(workspace.value, []);
         assert.notExists(workbook.fallbackResourceIds);
         assert.notMatch(JSON.stringify(workbook), /\/subscriptions\/[0-9a-f]{8}-[0-9a-f-]{27,}/i);
@@ -110,32 +119,38 @@ describe('PHP2SHELL workbook', () => {
 
     it('matches exact advisory identifiers after expanding individual CVE details', () => {
         for (const name of [
-            'Individual CVE finding overview',
-            'All individual CVE findings and CSPM risk context',
-            'Individual machine CVE findings',
-            'Individual container image CVE findings',
-            'DevOps exact CVE dependency findings'
+            'PHP2SHELL organization summary',
+            'Unified PHP2SHELL findings'
         ]) {
             const kql = query(name);
             assert.include(kql, "type =~ 'microsoft.security/assessments'");
             assert.include(kql, 'properties.additionalData.CvesDetails');
-            assert.match(kql, /mv-expand Cve = Cves limit 2000/);
+            assert.match(kql, /mv-expand CveDetail = CvesDetails limit 2000/);
             assert.include(kql, "where CVE in~ ('CVE-2026-109618', 'CVE-2026-109619')");
             assert.include(kql, "properties.status.code) =~ 'Unhealthy'");
+            assert.include(kql, "recommendationCategory in~ ('SoftwareUpdate', 'ServiceUpgrade')");
             assert.notMatch(kql, /assessmentKey\s*==/);
+            assert.notMatch(kql, /pricingTier|CloudPosture|where .*RiskLevel|AllPHP|AllLog4j/);
         }
     });
 
-    it('supports grouped array and singular-CVE schemas without treating them as additive totals', () => {
-        const kql = query('Grouped CVE findings');
-        assert.include(kql, 'properties.additionalData.cve');
-        assert.include(kql, 'array_length(Cves) > 0');
-        assert.include(kql, 'properties.additionalData.vulnerabilityDetails.cveId');
-        assert.include(kql, 'tostring(properties.id)');
-        assert.include(kql, "Cve['title']");
-        assert.notInclude(kql, 'Cve.title');
-        assert.include(kql, "where CVE in~ ('CVE-2026-109618', 'CVE-2026-109619')");
-        assert.include(text, 'do not add their row counts together');
+    it('uses the current recommendation schema without retired grouped queries or scanner double-counting', () => {
+        assert.notInclude(queries.map(node => node.item.content.query).join('\n'), 'microsoft.security/assessments/subassessments');
+        assert.include(text, 'deprecated on 2026-07-31');
+        assert.include(query('PHP2SHELL organization summary'), 'dcount(AssessmentId)');
+        assert.notInclude(query('Unified PHP2SHELL findings'), 'mv-expand Scanner');
+        assert.include(text, 'not scanner totals');
+    });
+
+    it('left-joins deduplicated tenant CVE metadata without dropping unmatched findings', () => {
+        const kql = query('Unified PHP2SHELL findings');
+        const lookup = kql.split("type =~ 'microsoft.security/cvedetails'")[1].split(') on CVE')[0];
+        assert.include(kql, 'join kind=leftouter');
+        assert.include(lookup, 'arg_max(MetadataRank, properties) by CVE');
+        assert.notInclude(lookup, 'subscriptionId');
+        assert.include(kql, 'Unknown - not reported');
+        assert.include(kql, 'Not visible - verify tenant/read access');
+        assert.notMatch(kql, /where isnotempty\(MetadataCVE\)|join kind=inner/);
     });
 
     it('preserves subscriptions and empty extension arrays and distinguishes missing from disabled', () => {
@@ -150,12 +165,78 @@ describe('PHP2SHELL workbook', () => {
         assert.notMatch(kql, /where .*pricingTier.*Standard|where .*isEnabled/);
     });
 
-    it('uses the same machine resource-type tokens in the overview and machine details', () => {
-        const machineTypes = kql => kql.match(/ResourceType has_any \(([^)]+)\)/)[1];
-        assert.equal(
-            machineTypes(query('Individual CVE finding overview')),
-            machineTypes(query('Individual machine CVE findings'))
-        );
+    it('uses one classifier and environment/workload filter contract across recommendation surfaces', () => {
+        const names = ['PHP2SHELL organization summary', 'Unified PHP2SHELL findings', 'Environment posture evidence'];
+        const classifiers = names.map(name => query(name).match(/\| extend Environment = [^\n]+\n\| extend Workload = [^\n]+/)[0]);
+        assert.equal(new Set(classifiers).size, 1);
+        for (const name of names) {
+            const kql = query(name);
+            assert.include(kql, "'{Environment}' == 'All' or Environment == '{Environment}'");
+            assert.include(kql, "'{Workload}' == 'All' or Workload == '{Workload}'");
+            assert.include(kql, 'properties.cloudMetadata.provider');
+            assert.include(kql, 'properties.environmentName');
+            assert.notMatch(kql, /Environment\s*=\s*subscriptionId|Environment\s*=\s*resourceGroup/);
+        }
+    });
+
+    it('keeps native AWS/GCP Arc provenance ahead of Hybrid and unresolved connectors out of Azure', () => {
+        const kql = query('Unified PHP2SHELL findings');
+        const classifier = kql.match(/\| extend Environment = ([^\n]+)/)[1];
+        assert.isBelow(classifier.indexOf("ArcCloudProvider =~ 'AWS'"), classifier.indexOf("'Hybrid'"));
+        assert.isBelow(classifier.indexOf("ArcCloudProvider =~ 'GCP'"), classifier.indexOf("'Hybrid'"));
+        assert.include(classifier, "CloudSource =~ 'Azure' and (isempty(ConnectorId) or ConnectorPlatform =~ 'Azure')");
+        assert.include(classifier, "'DockerHub', 'JFrog'");
+        assert.include(classifier, "AssessmentId matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/'");
+        assert.match(classifier, /'Azure', 'Other'\)$/);
+        assert.include(text, 'not assumed to be native Azure');
+    });
+
+    it('discovers connectors without requiring findings or offerings and exports names rather than payloads', () => {
+        const kql = query('Environment connector inventory');
+        assert.match(kql, /^resources/);
+        assert.include(kql, "'microsoft.security/securityconnectors'");
+        assert.notInclude(kql, 'securityresources');
+        assert.include(kql, 'dynamic([{}])');
+        assert.include(kql, 'Offering.offeringType');
+        assert.notMatch(kql, /where .*offering|where .*health|where .*scan|where .*Workload/);
+        assert.include(kql, 'AnchorSubscription');
+        assert.include(kql, 'health, complete scope and scan completion not verified');
+    });
+
+    describe('provider-qualified DevOps hierarchy', () => {
+        const pattern = query('Unified PHP2SHELL findings').match(/AssessmentId matches regex '([^']+)'/)[1];
+        const matcher = new RegExp(pattern.replace(/^\(\?i\)/, ''), 'i');
+
+        it('shares the structural predicate across classification, repository views and workload exclusions', () => {
+            assert.notMatch(queries.map(node => node.item.content.query).join('\n'), /(?:AssessmentId|id) !?contains '\/devops\/'/);
+            assert.include(query('DevOps PHP keyword candidates'), `where id matches regex '${pattern}'`);
+            assert.include(query('DevOps hardening metadata without secret contents'), `where id matches regex '${pattern}'`);
+            assert.include(query('Exposure identity and secrets recommendation context'), `where not(id matches regex '${pattern}')`);
+        });
+
+        for (const [label, resource, expected] of [
+            ['resource group named devops', '/subscriptions/s/resourceGroups/devops/providers/Microsoft.Compute/virtualMachines/app/providers/Microsoft.Security/assessments/a', false],
+            ['VM named devops', '/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/devops/providers/Microsoft.Security/assessments/a', false],
+            ['Arc machine named devops', '/subscriptions/s/resourceGroups/rg/providers/Microsoft.HybridCompute/machines/devops/providers/Microsoft.Security/assessments/a', false],
+            ['connector named devops without a DevOps hierarchy', '/subscriptions/s/resourceGroups/rg/providers/Microsoft.Security/securityConnectors/devops/providers/Microsoft.Security/assessments/a', false],
+            ['unrelated path segment', '/subscriptions/s/resourceGroups/rg/custom/devops/default', false],
+            ['GitHub connector hierarchy', '/subscriptions/s/resourceGroups/rg/providers/Microsoft.Security/securityConnectors/code/devops/default/githubOwners/org/repos/repo/providers/Microsoft.Security/assessments/a', true],
+            ['case-variant hierarchy', '/subscriptions/s/resourceGroups/rg/PROVIDERS/MICROSOFT.SECURITY/SECURITYCONNECTORS/code/DEVOPS/default/githubOwners/org/repos/repo', true],
+            ['repository and resource group both named devops', '/subscriptions/s/resourceGroups/devops/providers/Microsoft.Security/securityConnectors/code/devops/default/githubOwners/org/repos/devops', true]
+        ]) {
+            it(`handles ${label}`, () => assert.equal(matcher.test(resource), expected));
+        }
+    });
+
+    it('retains disconnected Arc inventory and distinguishes inventory gaps from PHP evidence', () => {
+        const kql = query('Machine inventory and connection gaps');
+        assert.include(kql, 'properties.cloudMetadata.provider');
+        assert.include(kql, 'properties.status');
+        assert.notMatch(kql, /where .*Connected|where .*Disconnected/);
+        assert.include(kql, 'microsoft.security/softwareinventories');
+        assert.include(kql, 'properties.nodeResourceGroup');
+        assert.include(kql, 'where isempty(IsKubernetesNode)');
+        assert.include(kql, 'not proof of a complete PHP scan');
     });
 
     it('retains apps, slots and unknown runtimes as candidates rather than asserting vulnerability', () => {
@@ -182,7 +263,7 @@ describe('PHP2SHELL workbook', () => {
     });
 
     it('retains all CVE resource types and reported CSPM risk rather than dropping serverless findings', () => {
-        const kql = query('All individual CVE findings and CSPM risk context');
+        const kql = query('Unified PHP2SHELL findings');
         assert.include(kql, 'properties.risk.level');
         assert.include(kql, 'properties.risk.riskFactors');
         assert.include(kql, 'properties.risk.attackPathsReferences');
@@ -198,18 +279,37 @@ describe('PHP2SHELL workbook', () => {
         assert.notInclude(kql, 'microsoft.serviceNetworking/trafficControllers/webApplicationFirewallPolicies');
     });
 
+    describe('Front Door diagnostic category matching', () => {
+        const filter = query('Front Door WAF request match context').match(/Category (=~|==) '([^']+)'/);
+        for (const [category, expected] of [
+            ['FrontDoorWebApplicationFirewallLog', true],
+            ['FrontdoorWebApplicationFirewallLog', true],
+            ['ApplicationGatewayFirewallLog', false]
+        ]) {
+            it(`evaluates ${category} as ${expected}`, () => {
+                const actual = filter[1] === '=~' ? category.toLowerCase() === filter[2].toLowerCase() : category === filter[2];
+                assert.equal(actual, expected);
+            });
+        }
+    });
+
     it('does not execute optional logs until an explicit source and workspace are chosen', () => {
+        assert.equal(parameters.find(parameter => parameter.name === 'ShowDetails').value, 'Off');
         const source = parameters.find(parameter => parameter.name === 'LogSource');
         assert.equal(source.value, 'None');
         const choices = JSON.parse(source.jsonData).filter(choice => choice.value !== 'None');
         assert.lengthOf(choices, 10);
         const logs = queries.filter(node => node.item.content.queryType === 0);
         assert.lengthOf(logs, 11);
-        for (const { item } of logs) {
+        for (const { item, ancestors } of logs) {
             assert.deepEqual(item.content.crossComponentResources, ['{Workspace}']);
             assert.equal(item.content.timeContextFromParameter, 'TimeRange');
             assert.include(item.content.query, '{TimeRange}');
             assert.equal(item.conditionalVisibility.parameterName, 'LogSource');
+            assert.isTrue(ancestors.some(parent =>
+                parent.conditionalVisibility?.parameterName === 'ShowDetails' &&
+                parent.conditionalVisibility.value === 'On'
+            ), item.name);
         }
         for (const choice of choices) {
             assert.lengthOf(logs.filter(node =>
@@ -218,6 +318,45 @@ describe('PHP2SHELL workbook', () => {
             ), 1, choice.value);
         }
         assert.notMatch(logs.map(node => node.item.content.query).join('\n'), /isfuzzy|best_effort|datatable|catch/i);
+        assert.include(text, 'do **not** inherit the Environment or Recommendation workload filters');
+    });
+
+    describe('version evidence regression', () => {
+        const kql = query('Unified PHP2SHELL findings');
+
+        it('supports assessment, MDVM and alternate-scanner versions without blank empty-array fallbacks', () => {
+            assert.include(kql, 'properties.additionalData.ScannersDetails');
+            assert.include(kql, 'ScannersDetails.mdvm.DetectedSoftwareVersions');
+            assert.include(kql, 'FirstScanner.DetectedSoftwareVersions');
+            assert.include(kql, 'FirstScanner.FixedVersion');
+            assert.include(kql, "in ('', '[]', '{}', 'null')");
+            assert.include(kql, 'DetectedVersionSource');
+            assert.include(kql, 'FixedVersionSource');
+            assert.include(kql, 'bag_keys(ScannersDetails)[0]');
+        });
+
+        it('resolves per-CVE fixes only after expansion and before assessment/scanner fallbacks', () => {
+            assert.isBelow(kql.indexOf('mv-expand CveDetail'), kql.indexOf('CveDetail.FixedVersion'));
+            assert.include(kql, "FixedVersion = coalesce(CveFixed, AssessmentFixed, MdvmFixed, FirstScannerFixed, 'Not reported')");
+        });
+
+        const precedence = kql.match(/FixedVersion = coalesce\(([^)]+)\)/)[1].split(', ');
+        const resolve = evidence => {
+            for (const token of precedence) {
+                if (token.startsWith("'")) return token.slice(1, -1);
+                if (evidence[token] !== undefined && evidence[token] !== null && evidence[token] !== '') return evidence[token];
+            }
+            throw new Error('Published fixed-version expression has no fallback');
+        };
+        for (const [label, evidence, expected] of [
+            ['per-CVE beats shared assessment', { CveFixed: '8.3.36', AssessmentFixed: '8.3.35', MdvmFixed: '8.3.34' }, '8.3.36'],
+            ['assessment before scanner', { AssessmentFixed: '8.4.27', MdvmFixed: '8.4.26' }, '8.4.27'],
+            ['MDVM-only evidence', { MdvmFixed: '8.2.35' }, '8.2.35'],
+            ['alternate-scanner-only evidence', { FirstScannerFixed: '8.5.12' }, '8.5.12'],
+            ['empty normalized evidence stays unknown', { CveFixed: '', AssessmentFixed: '', MdvmFixed: '', FirstScannerFixed: '' }, 'Not reported']
+        ]) {
+            it(`evaluates the published coalesce order: ${label}`, () => assert.equal(resolve(evidence), expected));
+        }
     });
 
     it('uses Azure workload subscription scope without mislabeling unmapped or endpoint evidence', () => {
@@ -241,6 +380,20 @@ describe('PHP2SHELL workbook', () => {
             assert.notInclude(node.item.content.query, '_SubscriptionId');
         }
     });
+
+    for (const name of [
+        'Endpoint web worker child process heuristic',
+        'Endpoint direct worker network heuristic',
+        'Endpoint PHP family file write heuristic'
+    ]) {
+        it(`binds the Log Analytics time schema for ${name}`, () => {
+            const kql = query(name);
+            assert.include(kql, 'where TimeGenerated {TimeRange}');
+            assert.include(kql, 'project Timestamp = TimeGenerated,');
+            assert.notInclude(kql, 'where Timestamp');
+            assert.include(kql, 'order by Timestamp desc');
+        });
+    }
 
     it('keeps TVM inventory in copyable Defender XDR queries, not Log Analytics', () => {
         const executed = queries.map(node => node.item.content.query).join('\n');
