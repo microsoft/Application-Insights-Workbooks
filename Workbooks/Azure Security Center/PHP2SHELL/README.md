@@ -47,8 +47,8 @@ at commit `7b451ec02554136ebeceb57a7487a0403b65a12f`, including its
 Log4j-specific CVEs, Java/JAR support claims and broad Log4j package matching were
 **not** copied. PHP2SHELL attribution remains restricted to its two advisory CVEs.
 The PHP interpreter, Composer dependencies, source constraints, posture, WAF
-mitigation and runtime behavior remain different evidence classes. Existing PHP
-regression tests and opt-in telemetry/privacy boundaries are retained.
+mitigation and runtime behavior remain different evidence classes. Repository
+template validation and opt-in telemetry/privacy boundaries are retained.
 
 The existing PHP2SHELL review comments were also addressed: DevOps matching uses
 the provider-qualified security-connector hierarchy rather than any `/devops/`
@@ -128,6 +128,41 @@ and endpoint event hunts remain **workspace/device scoped**. These differences
 are called out before the extra controls. Native portal/XDR links do not inherit
 the workbook's scope; reapply it there.
 
+## Azure WAF data already included
+
+Set **Additional inventory and hunting** to **On** to access these existing
+report views:
+
+| Azure WAF items | Workbook location | Data source / prerequisite |
+| --- | --- | --- |
+| Front Door and Application Gateway WAF policy inventory, reported mode/state, managed rulesets and custom-rule counts | **Web apps and exposure > WAF policy candidates** | Azure Resource Graph; Reader access to the selected subscriptions/resources. Both Front Door object-shaped and Application Gateway array-shaped custom rules are handled. |
+| Application Gateway, Front Door/CDN and public-IP configuration context, including reported firewall-policy references and inline WAF mode | **Web apps and exposure > Front-end / public-IP inventory candidates** | Azure Resource Graph. This is candidate configuration inventory, not an end-to-end route/association or PHP exposure map. |
+| Application Gateway request-side rule/action summaries, policy IDs and ruleset versions | **Alerts and hunting > Optional collected source > AGWFirewallLogs** | Existing resource-specific Application Gateway WAF diagnostics collected into a readable Log Analytics workspace. The selector does not automatically substitute legacy AzureDiagnostics records. |
+| Front Door request-side rule/action summaries and policy mode when reported | **Alerts and hunting > Optional collected source > AzureDiagnostics - Front Door WAF** | Existing FrontDoorWebApplicationFirewallLog diagnostics in the selected workspace. Category matching is case-insensitive to cover classic and Standard/Premium spellings. |
+
+For logs, choose the workspace containing the selected table and the desired
+time range. Azure resource log queries also filter the selected workload
+subscription IDs. Missing tables/access failures remain explicit errors; no rows
+does not establish coverage, prevention or no malicious activity.
+
+WAF resource inventory and collected WAF logs do **not** require Defender CSPM
+to be enabled. They do require the relevant Azure WAF resources, permissions
+and, for telemetry, approved diagnostic collection and traffic through the
+applicable WAF. Defender CSPM adds separate posture/risk context; it does not
+enable WAF or diagnostic settings. This workbook changes none of those settings.
+
+Validate actual policy association, effective mode, exclusions, direct-origin
+bypass and application impact independently. A logged match/Block action alone
+is not end-to-end enforcement or PHP2SHELL attribution. Front Door response-side
+PHP2SHELL mitigation does not emit WAF logs/hit counts according to the linked
+Microsoft guidance, so this report does not fabricate an effectiveness counter.
+
+See [Front Door WAF monitoring](https://learn.microsoft.com/azure/web-application-firewall/afds/waf-front-door-monitor)
+and the [Application Gateway WAF log schema](https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwfirewalllogs)
+for the supported collection/schema contracts.
+
+## Endpoint time schemas and evidence limits
+
 Collected
 [DeviceProcessEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/deviceprocessevents),
 [DeviceNetworkEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/devicenetworkevents)
@@ -190,32 +225,21 @@ any exported evidence according to the customer's handling policy.
 From the repository root:
 
 ```powershell
-npm test -- --grep 'Validating Workbooks|Validating Gallery|PHP2SHELL' --timeout 15000
+npm test -- --grep 'Validating Workbooks|Validating Gallery' --timeout 15000
 git diff --check
 ```
 
-The focused regression tests check gallery placement, unique/localizable steps,
-scope and time controls, environment/provenance handling, current CVE metadata,
-version-field precedence, independent connector discovery, optional-source gates,
-conservative coverage states, privacy boundaries and the HTTP hunt thresholds.
-Version-precedence unit cases evaluate the published coalesce argument order;
-they are not execution of a live vulnerability assessment.
+The existing repository validators check workbook/gallery format, template
+registration, unique/localizable identifiers and hardcoded-resource conventions.
+No standalone PHP2SHELL test file is included. These format checks do not replace
+KQL syntax/type/output-shape validation, portal rendering or authorized
+source/coverage verification.
 
-For this update, **54 focused tests passed**. All **32** current workbook,
-parameter and native TVM code-block queries also passed **622 Kusto.Language
-syntax/type/output-label checks** across applicable environment, workload,
-representative subscription and time selections. The endpoint schemas omit
-native XDR `Timestamp`, reproducing the old column-resolution failure before
-the `TimeGenerated` fix and passing afterward. No live tenant/telemetry
-validation is claimed for this revision.
-
-The previous PHP2SHELL revision's read-only/live fixture evidence does not
-automatically validate these changed queries. Kusto.Language syntax, type and
-output-shape validation across the current environment/workload combinations
-must accompany the regression tests. Static/parser checks and query-only
-synthetic fixtures do not demonstrate exploitation, real vulnerable assets,
-successful collection or product detection effectiveness. No customer records
-are embedded in the template.
+This update removes the standalone test and clarifies the existing Azure WAF
+views; the workbook queries are unchanged. Earlier author validation results are
+historical, not a claim that removed tests still run or that customer telemetry
+and detection effectiveness have been validated. No customer records are
+embedded in the template.
 
 Before gallery release, also validate in Azure:
 
