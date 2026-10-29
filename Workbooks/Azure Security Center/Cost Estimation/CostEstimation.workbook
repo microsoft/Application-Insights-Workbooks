@@ -2953,7 +2953,7 @@
                       {
                         "type": 1,
                         "content": {
-                          "json": "### Optional serverless CSPM estimates\r\nThe original charts, tables, and Grand total above remain unchanged. This separate breakdown forecasts additional serverless costs only; do not assume they are already included in the original totals.\r\n\r\nSelect the Azure or AWS **Defender CSPM** plan above, then include either serverless component below. Both default to **Exclude**. These options do not enable paid features or change your cloud resources."
+                          "json": "### Optional serverless CSPM estimates\r\nThe original charts, tables, and Grand total above remain unchanged. This separate summary forecasts additional serverless costs only; do not assume they are already included in the original totals.\r\n\r\nSelect the Azure or AWS **Defender CSPM** plan above, then include either serverless component below. Both default to **Exclude**. Costs are rolled up by cloud and component in at most four rows. Set **Resource details** to **Show** only when you need per-scope workload counts, billable units, or missing-input details. These options do not enable paid features or change your cloud resources."
                         },
                         "name": "Serverless forecast overview"
                       },
@@ -3094,7 +3094,7 @@
                       {
                         "type": 1,
                         "content": {
-                          "json": "**Optional serverless estimate incomplete.** Enter valid monthly averages for every scope listed below. Explicitly enter zero when no resources are eligible; do not use zero for missing telemetry. Missing or invalid costs remain blank in this optional table. The original charts, tables, and Grand total above are not changed or hidden. Alternatively, set the relevant serverless switch to Exclude.",
+                          "json": "**Optional serverless estimate incomplete.** Enter valid monthly averages for every selected scope. Set **Resource details** to **Show** to identify missing values. Explicitly enter zero when no resources are eligible; do not use zero for missing telemetry. A component's summary cost remains blank if any of its inputs are missing or invalid. The original charts, tables, and Grand total above are not changed or hidden. Alternatively, set the relevant serverless switch to Exclude.",
                           "style": "warning"
                         },
                         "name": "Serverless forecast input warning",
@@ -3105,86 +3105,191 @@
                         }
                       },
                       {
-                        "type": 3,
+                        "type": 12,
                         "content": {
-                          "version": "KqlItem/1.0",
-                          "query": "resourcecontainers\r\n| where type =~ \"microsoft.resources/subscriptions\"\r\n| where tolower(\"{azureIsDcspm}\") == \"true\"\r\n| project Cloud = \"Azure\", ScopeKey = tolower(subscriptionId), Subscription = tolower(subscriptionId)\r\n| project Cloud = \"Azure\", ScopeKey, Subscription, SecurityConnectorId = \"\"\r\n| union (\r\nresources\r\n| where type =~ \"microsoft.security/securityconnectors\"\r\n| where tostring(properties.environmentName) =~ \"aws\"\r\n| where tolower(\"{awsIsDcspm}\") == \"true\"\r\n| extend SecurityConnectorId = tolower(id)\r\n| where tolower(\"{AWSSecurityConnectors}\") has SecurityConnectorId\r\n| extend ScopeKey = tolower(iff(isnotempty(tostring(properties.hierarchyIdentifier)), tostring(properties.hierarchyIdentifier), SecurityConnectorId))\r\n| summarize SecurityConnectorId = min(SecurityConnectorId) by ScopeKey\r\n| extend Cloud = \"AWS\"\r\n| project Cloud = \"AWS\", ScopeKey, Subscription = \"\", SecurityConnectorId\r\n)\r\n| extend ForecastMap = todynamic(tolower(\"{serverlessUsage:escapejson}\"))\r\n| extend Usage = coalesce(ForecastMap[ScopeKey], ForecastMap[tolower(Cloud)]), UsageSource = iff(isnotnull(ForecastMap[ScopeKey]), \"Per-scope forecast\", \"Explicit cloud default\")\r\n| extend Functions = todouble(Usage.functions), WebApps = todouble(Usage.webapps), ACA = todouble(Usage.aca), ACI = todouble(Usage.aci), Lambda = todouble(Usage.lambda), Fargate = todouble(Usage.fargate)\r\n| extend ProtectionValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.functions) in (\"long\", \"real\") and Functions >= 0.0 and Functions < 1000000000000.0 and gettype(Usage.webapps) in (\"long\", \"real\") and WebApps >= 0.0 and WebApps < 1000000000000.0, false), coalesce(gettype(Usage.lambda) in (\"long\", \"real\") and Lambda >= 0.0 and Lambda < 1000000000000.0, false))\r\n| extend ContainersValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.aca) in (\"long\", \"real\") and ACA >= 0.0 and ACA < 1000000000000.0 and gettype(Usage.aci) in (\"long\", \"real\") and ACI >= 0.0 and ACI < 1000000000000.0, false), coalesce(gettype(Usage.fargate) in (\"long\", \"real\") and Fargate >= 0.0 and Fargate < 1000000000000.0, false))\r\n| extend ProtectionMissing = tolong(\"{serverlessProtection}\") == 1 and not(ProtectionValid), ContainersMissing = tolong(\"{serverlessContainers}\") == 1 and not(ContainersValid)\r\n| extend Workloads = iff(Cloud == \"Azure\", dynamic([\"functions\", \"webapps\", \"aca\", \"aci\"]), dynamic([\"lambda\", \"fargate\"]))\r\n| mv-expand Workloads\r\n| extend Workload = tostring(Workloads)\r\n| extend IsProtection = Workload in (\"functions\", \"webapps\", \"lambda\")\r\n| where (IsProtection and tolong(\"{serverlessProtection}\") == 1) or (not(IsProtection) and tolong(\"{serverlessContainers}\") == 1)\r\n| extend MonthlyAverage = todouble(Usage[Workload]), ResourcesPerUnit = iff(IsProtection, 8.0, 2.0)\r\n| extend InputValid = coalesce(gettype(Usage[Workload]) in (\"long\", \"real\") and MonthlyAverage >= 0.0 and MonthlyAverage < 1000000000000.0, false)\r\n| extend BillableUnits = iff(InputValid, MonthlyAverage / ResourcesPerUnit, real(null))\r\n| extend MonthlyCost = BillableUnits * 5.0 * {discountToMultiplyVal}\r\n| project Cloud, ScopeKey, Workload, MonthlyAverage, ResourcesPerUnit, BillableUnits, MonthlyCost, Status = iff(InputValid, strcat(\"Manual monthly-average forecast: \", UsageSource), \"Input required: nonnegative number below 1,000,000,000,000\")\r\n| order by Cloud asc, ScopeKey asc, Workload asc",
-                          "size": 0,
-                          "title": "Additional serverless CSPM cost (not included above)",
-                          "queryType": 1,
-                          "resourceType": "microsoft.resourcegraph/resources",
-                          "crossComponentResources": [
-                            "{Subscriptions}"
-                          ],
-                          "showExportToExcel": true,
-                          "exportToExcelOptions": "all",
-                          "gridSettings": {
-                            "rowLimit": 10000,
-                            "filter": true,
-                            "formatters": [
-                              {
-                                "columnMatch": "MonthlyCost",
-                                "formatter": 18,
-                                "formatOptions": {
-                                  "thresholdsOptions": "icons",
-                                  "thresholdsGrid": [
+                          "version": "NotebookGroup/1.0",
+                          "groupType": "editable",
+                          "exportParameters": true,
+                          "items": [
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "resourcecontainers\r\n| where type =~ \"microsoft.resources/subscriptions\"\r\n| where tolower(\"{azureIsDcspm}\") == \"true\"\r\n| project Cloud = \"Azure\", ScopeKey = tolower(subscriptionId), Subscription = tolower(subscriptionId)\r\n| project Cloud = \"Azure\", ScopeKey, Subscription, SecurityConnectorId = \"\"\r\n| union (\r\nresources\r\n| where type =~ \"microsoft.security/securityconnectors\"\r\n| where tostring(properties.environmentName) =~ \"aws\"\r\n| where tolower(\"{awsIsDcspm}\") == \"true\"\r\n| extend SecurityConnectorId = tolower(id)\r\n| where tolower(\"{AWSSecurityConnectors}\") has SecurityConnectorId\r\n| extend ScopeKey = tolower(iff(isnotempty(tostring(properties.hierarchyIdentifier)), tostring(properties.hierarchyIdentifier), SecurityConnectorId))\r\n| summarize SecurityConnectorId = min(SecurityConnectorId) by ScopeKey\r\n| extend Cloud = \"AWS\"\r\n| project Cloud = \"AWS\", ScopeKey, Subscription = \"\", SecurityConnectorId\r\n)\r\n| extend ForecastMap = todynamic(tolower(\"{serverlessUsage:escapejson}\"))\r\n| extend Usage = coalesce(ForecastMap[ScopeKey], ForecastMap[tolower(Cloud)]), UsageSource = iff(isnotnull(ForecastMap[ScopeKey]), \"Per-scope forecast\", \"Explicit cloud default\")\r\n| extend Functions = todouble(Usage.functions), WebApps = todouble(Usage.webapps), ACA = todouble(Usage.aca), ACI = todouble(Usage.aci), Lambda = todouble(Usage.lambda), Fargate = todouble(Usage.fargate)\r\n| extend ProtectionValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.functions) in (\"long\", \"real\") and Functions >= 0.0 and Functions < 1000000000000.0 and gettype(Usage.webapps) in (\"long\", \"real\") and WebApps >= 0.0 and WebApps < 1000000000000.0, false), coalesce(gettype(Usage.lambda) in (\"long\", \"real\") and Lambda >= 0.0 and Lambda < 1000000000000.0, false))\r\n| extend ContainersValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.aca) in (\"long\", \"real\") and ACA >= 0.0 and ACA < 1000000000000.0 and gettype(Usage.aci) in (\"long\", \"real\") and ACI >= 0.0 and ACI < 1000000000000.0, false), coalesce(gettype(Usage.fargate) in (\"long\", \"real\") and Fargate >= 0.0 and Fargate < 1000000000000.0, false))\r\n| extend ProtectionMissing = tolong(\"{serverlessProtection}\") == 1 and not(ProtectionValid), ContainersMissing = tolong(\"{serverlessContainers}\") == 1 and not(ContainersValid)\r\n| extend Workloads = iff(Cloud == \"Azure\", dynamic([\"functions\", \"webapps\", \"aca\", \"aci\"]), dynamic([\"lambda\", \"fargate\"]))\r\n| mv-expand Workloads\r\n| extend Workload = tostring(Workloads)\r\n| extend IsProtection = Workload in (\"functions\", \"webapps\", \"lambda\")\r\n| where (IsProtection and tolong(\"{serverlessProtection}\") == 1) or (not(IsProtection) and tolong(\"{serverlessContainers}\") == 1)\r\n| extend MonthlyAverage = todouble(Usage[Workload]), ResourcesPerUnit = iff(IsProtection, 8.0, 2.0)\r\n| extend InputValid = coalesce(gettype(Usage[Workload]) in (\"long\", \"real\") and MonthlyAverage >= 0.0 and MonthlyAverage < 1000000000000.0, false)\r\n| extend BillableUnits = iff(InputValid, MonthlyAverage / ResourcesPerUnit, real(null))\r\n| extend MonthlyCost = BillableUnits * 5.0 * {discountToMultiplyVal}\r\n| summarize MonthlyCost = sum(MonthlyCost), MissingInputs = countif(not(InputValid)) by Cloud, Component = iff(IsProtection, \"Serverless protection\", \"Serverless containers\")\r\n| project Cloud, Component, MonthlyCost = iff(MissingInputs == 0, MonthlyCost, real(null)), Status = iff(MissingInputs == 0, \"Complete forecast\", \"Input required: show resource details\")\r\n| order by Cloud asc, Component asc",
+                                "size": 0,
+                                "title": "Additional serverless CSPM cost (not included above)",
+                                "queryType": 1,
+                                "resourceType": "microsoft.resourcegraph/resources",
+                                "crossComponentResources": [
+                                  "{Subscriptions}"
+                                ],
+                                "showExportToExcel": true,
+                                "exportToExcelOptions": "all",
+                                "gridSettings": {
+                                  "rowLimit": 4,
+                                  "formatters": [
                                     {
-                                      "operator": "Default",
-                                      "thresholdValue": null,
-                                      "representation": "Blank",
-                                      "text": "{0}"
+                                      "columnMatch": "MonthlyCost",
+                                      "formatter": 18,
+                                      "formatOptions": {
+                                        "thresholdsOptions": "icons",
+                                        "thresholdsGrid": [
+                                          {
+                                            "operator": "Default",
+                                            "thresholdValue": null,
+                                            "representation": "Blank",
+                                            "text": "{0}"
+                                          }
+                                        ],
+                                        "customColumnWidthSetting": "20ch"
+                                      },
+                                      "numberFormat": {
+                                        "unit": 0,
+                                        "options": {
+                                          "currency": "USD",
+                                          "style": "currency",
+                                          "maximumFractionDigits": 2
+                                        }
+                                      }
                                     }
                                   ],
-                                  "customColumnWidthSetting": "20ch"
+                                  "labelSettings": [
+                                    {
+                                      "columnId": "Cloud",
+                                      "label": "Cloud"
+                                    },
+                                    {
+                                      "columnId": "Component",
+                                      "label": "Component"
+                                    },
+                                    {
+                                      "columnId": "MonthlyCost",
+                                      "label": "Monthly cost (USD)"
+                                    },
+                                    {
+                                      "columnId": "Status",
+                                      "label": "Input status"
+                                    }
+                                  ]
                                 },
-                                "numberFormat": {
-                                  "unit": 0,
-                                  "options": {
-                                    "currency": "USD",
-                                    "style": "currency",
-                                    "maximumFractionDigits": 2
+                                "noDataMessage": "No eligible scopes were returned. Select an accessible Azure subscription or AWS account and its Defender CSPM plan above, then include a serverless component."
+                              },
+                              "name": "Serverless CSPM summary"
+                            },
+                            {
+                              "type": 9,
+                              "content": {
+                                "version": "KqlParameterItem/1.0",
+                                "style": "above",
+                                "parameters": [
+                                  {
+                                    "id": "71dc3d71-518a-45b0-98b2-7dc99e58c285",
+                                    "version": "KqlParameterItem/1.0",
+                                    "name": "showServerlessResourceDetails",
+                                    "label": "Resource details",
+                                    "type": 10,
+                                    "isRequired": true,
+                                    "value": "0",
+                                    "typeSettings": {
+                                      "additionalResourceOptions": [],
+                                      "showDefault": false
+                                    },
+                                    "jsonData": "[{\"value\":\"0\",\"label\":\"Hide\",\"selected\":true},{\"value\":\"1\",\"label\":\"Show\"}]"
                                   }
-                                }
+                                ]
+                              },
+                              "name": "Serverless resource detail options"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "resourcecontainers\r\n| where type =~ \"microsoft.resources/subscriptions\"\r\n| where tolower(\"{azureIsDcspm}\") == \"true\"\r\n| project Cloud = \"Azure\", ScopeKey = tolower(subscriptionId), Subscription = tolower(subscriptionId)\r\n| project Cloud = \"Azure\", ScopeKey, Subscription, SecurityConnectorId = \"\"\r\n| union (\r\nresources\r\n| where type =~ \"microsoft.security/securityconnectors\"\r\n| where tostring(properties.environmentName) =~ \"aws\"\r\n| where tolower(\"{awsIsDcspm}\") == \"true\"\r\n| extend SecurityConnectorId = tolower(id)\r\n| where tolower(\"{AWSSecurityConnectors}\") has SecurityConnectorId\r\n| extend ScopeKey = tolower(iff(isnotempty(tostring(properties.hierarchyIdentifier)), tostring(properties.hierarchyIdentifier), SecurityConnectorId))\r\n| summarize SecurityConnectorId = min(SecurityConnectorId) by ScopeKey\r\n| extend Cloud = \"AWS\"\r\n| project Cloud = \"AWS\", ScopeKey, Subscription = \"\", SecurityConnectorId\r\n)\r\n| extend ForecastMap = todynamic(tolower(\"{serverlessUsage:escapejson}\"))\r\n| extend Usage = coalesce(ForecastMap[ScopeKey], ForecastMap[tolower(Cloud)]), UsageSource = iff(isnotnull(ForecastMap[ScopeKey]), \"Per-scope forecast\", \"Explicit cloud default\")\r\n| extend Functions = todouble(Usage.functions), WebApps = todouble(Usage.webapps), ACA = todouble(Usage.aca), ACI = todouble(Usage.aci), Lambda = todouble(Usage.lambda), Fargate = todouble(Usage.fargate)\r\n| extend ProtectionValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.functions) in (\"long\", \"real\") and Functions >= 0.0 and Functions < 1000000000000.0 and gettype(Usage.webapps) in (\"long\", \"real\") and WebApps >= 0.0 and WebApps < 1000000000000.0, false), coalesce(gettype(Usage.lambda) in (\"long\", \"real\") and Lambda >= 0.0 and Lambda < 1000000000000.0, false))\r\n| extend ContainersValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.aca) in (\"long\", \"real\") and ACA >= 0.0 and ACA < 1000000000000.0 and gettype(Usage.aci) in (\"long\", \"real\") and ACI >= 0.0 and ACI < 1000000000000.0, false), coalesce(gettype(Usage.fargate) in (\"long\", \"real\") and Fargate >= 0.0 and Fargate < 1000000000000.0, false))\r\n| extend ProtectionMissing = tolong(\"{serverlessProtection}\") == 1 and not(ProtectionValid), ContainersMissing = tolong(\"{serverlessContainers}\") == 1 and not(ContainersValid)\r\n| extend Workloads = iff(Cloud == \"Azure\", dynamic([\"functions\", \"webapps\", \"aca\", \"aci\"]), dynamic([\"lambda\", \"fargate\"]))\r\n| mv-expand Workloads\r\n| extend Workload = tostring(Workloads)\r\n| extend IsProtection = Workload in (\"functions\", \"webapps\", \"lambda\")\r\n| where (IsProtection and tolong(\"{serverlessProtection}\") == 1) or (not(IsProtection) and tolong(\"{serverlessContainers}\") == 1)\r\n| extend MonthlyAverage = todouble(Usage[Workload]), ResourcesPerUnit = iff(IsProtection, 8.0, 2.0)\r\n| extend InputValid = coalesce(gettype(Usage[Workload]) in (\"long\", \"real\") and MonthlyAverage >= 0.0 and MonthlyAverage < 1000000000000.0, false)\r\n| extend BillableUnits = iff(InputValid, MonthlyAverage / ResourcesPerUnit, real(null))\r\n| extend MonthlyCost = BillableUnits * 5.0 * {discountToMultiplyVal}\r\n| project Cloud, ScopeKey, Workload, MonthlyAverage, ResourcesPerUnit, BillableUnits, MonthlyCost, Status = iff(InputValid, strcat(\"Manual monthly-average forecast: \", UsageSource), \"Input required: nonnegative number below 1,000,000,000,000\")\r\n| order by Cloud asc, ScopeKey asc, Workload asc",
+                                "size": 0,
+                                "title": "Additional serverless CSPM cost (not included above)",
+                                "queryType": 1,
+                                "resourceType": "microsoft.resourcegraph/resources",
+                                "crossComponentResources": [
+                                  "{Subscriptions}"
+                                ],
+                                "showExportToExcel": true,
+                                "exportToExcelOptions": "all",
+                                "gridSettings": {
+                                  "rowLimit": 10000,
+                                  "filter": true,
+                                  "formatters": [
+                                    {
+                                      "columnMatch": "MonthlyCost",
+                                      "formatter": 18,
+                                      "formatOptions": {
+                                        "thresholdsOptions": "icons",
+                                        "thresholdsGrid": [
+                                          {
+                                            "operator": "Default",
+                                            "thresholdValue": null,
+                                            "representation": "Blank",
+                                            "text": "{0}"
+                                          }
+                                        ],
+                                        "customColumnWidthSetting": "20ch"
+                                      },
+                                      "numberFormat": {
+                                        "unit": 0,
+                                        "options": {
+                                          "currency": "USD",
+                                          "style": "currency",
+                                          "maximumFractionDigits": 2
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "labelSettings": [
+                                    {
+                                      "columnId": "Cloud",
+                                      "label": "Cloud"
+                                    },
+                                    {
+                                      "columnId": "ScopeKey",
+                                      "label": "Scope key (JSON)"
+                                    },
+                                    {
+                                      "columnId": "Workload",
+                                      "label": "Workload"
+                                    },
+                                    {
+                                      "columnId": "MonthlyAverage",
+                                      "label": "Monthly avg. resources"
+                                    },
+                                    {
+                                      "columnId": "ResourcesPerUnit",
+                                      "label": "Resources/unit"
+                                    },
+                                    {
+                                      "columnId": "BillableUnits",
+                                      "label": "Billable units"
+                                    },
+                                    {
+                                      "columnId": "MonthlyCost",
+                                      "label": "Monthly cost (USD)"
+                                    },
+                                    {
+                                      "columnId": "Status",
+                                      "label": "Input status"
+                                    }
+                                  ]
+                                },
+                                "noDataMessage": "No eligible scopes were returned. Select an accessible Azure subscription or AWS account and its Defender CSPM plan above, then include a serverless component."
+                              },
+                              "name": "Serverless CSPM resource estimates",
+                              "conditionalVisibility": {
+                                "parameterName": "showServerlessResourceDetails",
+                                "comparison": "isEqualTo",
+                                "value": "1"
                               }
-                            ],
-                            "labelSettings": [
-                              {
-                                "columnId": "Cloud",
-                                "label": "Cloud"
-                              },
-                              {
-                                "columnId": "ScopeKey",
-                                "label": "Scope key (JSON)"
-                              },
-                              {
-                                "columnId": "Workload",
-                                "label": "Workload"
-                              },
-                              {
-                                "columnId": "MonthlyAverage",
-                                "label": "Monthly avg. resources"
-                              },
-                              {
-                                "columnId": "ResourcesPerUnit",
-                                "label": "Resources/unit"
-                              },
-                              {
-                                "columnId": "BillableUnits",
-                                "label": "Billable units"
-                              },
-                              {
-                                "columnId": "MonthlyCost",
-                                "label": "Monthly cost (USD)"
-                              },
-                              {
-                                "columnId": "Status",
-                                "label": "Input status"
-                              }
-                            ]
-                          },
-                          "noDataMessage": "No eligible scopes were returned. Select an accessible Azure subscription or AWS account and its Defender CSPM plan above, then include a serverless component."
+                            }
+                          ]
                         },
-                        "name": "Serverless CSPM resource estimates",
+                        "name": "Serverless estimate results",
                         "conditionalVisibility": {
                           "parameterName": "serverlessComponentsIncluded",
                           "comparison": "isEqualTo",
@@ -5985,7 +6090,7 @@
                       {
                         "type": 1,
                         "content": {
-                          "json": "### Optional serverless CSPM estimates\r\nThe original charts, tables, and Grand total above remain unchanged. This separate breakdown forecasts additional serverless costs only; do not assume they are already included in the original totals.\r\n\r\nSelect the Azure or AWS **Defender CSPM** plan above, then include either serverless component below. Both default to **Exclude**. These options do not enable paid features or change your cloud resources."
+                          "json": "### Optional serverless CSPM estimates\r\nThe original charts, tables, and Grand total above remain unchanged. This separate summary forecasts additional serverless costs only; do not assume they are already included in the original totals.\r\n\r\nSelect the Azure or AWS **Defender CSPM** plan above, then include either serverless component below. Both default to **Exclude**. Costs are rolled up by cloud and component in at most four rows. Set **Resource details** to **Show** only when you need per-scope workload counts, billable units, or missing-input details. These options do not enable paid features or change your cloud resources."
                         },
                         "name": "Serverless forecast overview"
                       },
@@ -6126,7 +6231,7 @@
                       {
                         "type": 1,
                         "content": {
-                          "json": "**Optional serverless estimate incomplete.** Enter valid monthly averages for every scope listed below. Explicitly enter zero when no resources are eligible; do not use zero for missing telemetry. Missing or invalid costs remain blank in this optional table. The original charts, tables, and Grand total above are not changed or hidden. Alternatively, set the relevant serverless switch to Exclude.",
+                          "json": "**Optional serverless estimate incomplete.** Enter valid monthly averages for every selected scope. Set **Resource details** to **Show** to identify missing values. Explicitly enter zero when no resources are eligible; do not use zero for missing telemetry. A component's summary cost remains blank if any of its inputs are missing or invalid. The original charts, tables, and Grand total above are not changed or hidden. Alternatively, set the relevant serverless switch to Exclude.",
                           "style": "warning"
                         },
                         "name": "Serverless forecast input warning",
@@ -6137,86 +6242,191 @@
                         }
                       },
                       {
-                        "type": 3,
+                        "type": 12,
                         "content": {
-                          "version": "KqlItem/1.0",
-                          "query": "resourcecontainers\r\n| where type =~ \"microsoft.resources/subscriptions\"\r\n| where tolower(\"{azureIsDcspm}\") == \"true\"\r\n| project Cloud = \"Azure\", ScopeKey = tolower(subscriptionId), Subscription = tolower(subscriptionId)\r\n| project Cloud = \"Azure\", ScopeKey, Subscription, SecurityConnectorId = \"\"\r\n| union (\r\nresources\r\n| where type =~ \"microsoft.security/securityconnectors\"\r\n| where tostring(properties.environmentName) =~ \"aws\"\r\n| where tolower(\"{awsIsDcspm}\") == \"true\"\r\n| extend SecurityConnectorId = tolower(id)\r\n| extend ScopeKey = tolower(iff(isnotempty(tostring(properties.hierarchyIdentifier)), tostring(properties.hierarchyIdentifier), SecurityConnectorId))\r\n| summarize SecurityConnectorId = min(SecurityConnectorId) by ScopeKey\r\n| extend Cloud = \"AWS\"\r\n| project Cloud = \"AWS\", ScopeKey, Subscription = \"\", SecurityConnectorId\r\n)\r\n| extend ForecastMap = todynamic(tolower(\"{serverlessUsage:escapejson}\"))\r\n| extend Usage = coalesce(ForecastMap[ScopeKey], ForecastMap[tolower(Cloud)]), UsageSource = iff(isnotnull(ForecastMap[ScopeKey]), \"Per-scope forecast\", \"Explicit cloud default\")\r\n| extend Functions = todouble(Usage.functions), WebApps = todouble(Usage.webapps), ACA = todouble(Usage.aca), ACI = todouble(Usage.aci), Lambda = todouble(Usage.lambda), Fargate = todouble(Usage.fargate)\r\n| extend ProtectionValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.functions) in (\"long\", \"real\") and Functions >= 0.0 and Functions < 1000000000000.0 and gettype(Usage.webapps) in (\"long\", \"real\") and WebApps >= 0.0 and WebApps < 1000000000000.0, false), coalesce(gettype(Usage.lambda) in (\"long\", \"real\") and Lambda >= 0.0 and Lambda < 1000000000000.0, false))\r\n| extend ContainersValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.aca) in (\"long\", \"real\") and ACA >= 0.0 and ACA < 1000000000000.0 and gettype(Usage.aci) in (\"long\", \"real\") and ACI >= 0.0 and ACI < 1000000000000.0, false), coalesce(gettype(Usage.fargate) in (\"long\", \"real\") and Fargate >= 0.0 and Fargate < 1000000000000.0, false))\r\n| extend ProtectionMissing = tolong(\"{serverlessProtection}\") == 1 and not(ProtectionValid), ContainersMissing = tolong(\"{serverlessContainers}\") == 1 and not(ContainersValid)\r\n| extend Workloads = iff(Cloud == \"Azure\", dynamic([\"functions\", \"webapps\", \"aca\", \"aci\"]), dynamic([\"lambda\", \"fargate\"]))\r\n| mv-expand Workloads\r\n| extend Workload = tostring(Workloads)\r\n| extend IsProtection = Workload in (\"functions\", \"webapps\", \"lambda\")\r\n| where (IsProtection and tolong(\"{serverlessProtection}\") == 1) or (not(IsProtection) and tolong(\"{serverlessContainers}\") == 1)\r\n| extend MonthlyAverage = todouble(Usage[Workload]), ResourcesPerUnit = iff(IsProtection, 8.0, 2.0)\r\n| extend InputValid = coalesce(gettype(Usage[Workload]) in (\"long\", \"real\") and MonthlyAverage >= 0.0 and MonthlyAverage < 1000000000000.0, false)\r\n| extend BillableUnits = iff(InputValid, MonthlyAverage / ResourcesPerUnit, real(null))\r\n| extend MonthlyCost = BillableUnits * 5.0 * {discountToMultiplyVal}\r\n| project Cloud, ScopeKey, Workload, MonthlyAverage, ResourcesPerUnit, BillableUnits, MonthlyCost, Status = iff(InputValid, strcat(\"Manual monthly-average forecast: \", UsageSource), \"Input required: nonnegative number below 1,000,000,000,000\")\r\n| order by Cloud asc, ScopeKey asc, Workload asc",
-                          "size": 0,
-                          "title": "Additional serverless CSPM cost (not included above)",
-                          "queryType": 1,
-                          "resourceType": "microsoft.resources/tenants",
-                          "crossComponentResources": [
-                            "value::tenant"
-                          ],
-                          "showExportToExcel": true,
-                          "exportToExcelOptions": "all",
-                          "gridSettings": {
-                            "rowLimit": 10000,
-                            "filter": true,
-                            "formatters": [
-                              {
-                                "columnMatch": "MonthlyCost",
-                                "formatter": 18,
-                                "formatOptions": {
-                                  "thresholdsOptions": "icons",
-                                  "thresholdsGrid": [
+                          "version": "NotebookGroup/1.0",
+                          "groupType": "editable",
+                          "exportParameters": true,
+                          "items": [
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "resourcecontainers\r\n| where type =~ \"microsoft.resources/subscriptions\"\r\n| where tolower(\"{azureIsDcspm}\") == \"true\"\r\n| project Cloud = \"Azure\", ScopeKey = tolower(subscriptionId), Subscription = tolower(subscriptionId)\r\n| project Cloud = \"Azure\", ScopeKey, Subscription, SecurityConnectorId = \"\"\r\n| union (\r\nresources\r\n| where type =~ \"microsoft.security/securityconnectors\"\r\n| where tostring(properties.environmentName) =~ \"aws\"\r\n| where tolower(\"{awsIsDcspm}\") == \"true\"\r\n| extend SecurityConnectorId = tolower(id)\r\n| extend ScopeKey = tolower(iff(isnotempty(tostring(properties.hierarchyIdentifier)), tostring(properties.hierarchyIdentifier), SecurityConnectorId))\r\n| summarize SecurityConnectorId = min(SecurityConnectorId) by ScopeKey\r\n| extend Cloud = \"AWS\"\r\n| project Cloud = \"AWS\", ScopeKey, Subscription = \"\", SecurityConnectorId\r\n)\r\n| extend ForecastMap = todynamic(tolower(\"{serverlessUsage:escapejson}\"))\r\n| extend Usage = coalesce(ForecastMap[ScopeKey], ForecastMap[tolower(Cloud)]), UsageSource = iff(isnotnull(ForecastMap[ScopeKey]), \"Per-scope forecast\", \"Explicit cloud default\")\r\n| extend Functions = todouble(Usage.functions), WebApps = todouble(Usage.webapps), ACA = todouble(Usage.aca), ACI = todouble(Usage.aci), Lambda = todouble(Usage.lambda), Fargate = todouble(Usage.fargate)\r\n| extend ProtectionValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.functions) in (\"long\", \"real\") and Functions >= 0.0 and Functions < 1000000000000.0 and gettype(Usage.webapps) in (\"long\", \"real\") and WebApps >= 0.0 and WebApps < 1000000000000.0, false), coalesce(gettype(Usage.lambda) in (\"long\", \"real\") and Lambda >= 0.0 and Lambda < 1000000000000.0, false))\r\n| extend ContainersValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.aca) in (\"long\", \"real\") and ACA >= 0.0 and ACA < 1000000000000.0 and gettype(Usage.aci) in (\"long\", \"real\") and ACI >= 0.0 and ACI < 1000000000000.0, false), coalesce(gettype(Usage.fargate) in (\"long\", \"real\") and Fargate >= 0.0 and Fargate < 1000000000000.0, false))\r\n| extend ProtectionMissing = tolong(\"{serverlessProtection}\") == 1 and not(ProtectionValid), ContainersMissing = tolong(\"{serverlessContainers}\") == 1 and not(ContainersValid)\r\n| extend Workloads = iff(Cloud == \"Azure\", dynamic([\"functions\", \"webapps\", \"aca\", \"aci\"]), dynamic([\"lambda\", \"fargate\"]))\r\n| mv-expand Workloads\r\n| extend Workload = tostring(Workloads)\r\n| extend IsProtection = Workload in (\"functions\", \"webapps\", \"lambda\")\r\n| where (IsProtection and tolong(\"{serverlessProtection}\") == 1) or (not(IsProtection) and tolong(\"{serverlessContainers}\") == 1)\r\n| extend MonthlyAverage = todouble(Usage[Workload]), ResourcesPerUnit = iff(IsProtection, 8.0, 2.0)\r\n| extend InputValid = coalesce(gettype(Usage[Workload]) in (\"long\", \"real\") and MonthlyAverage >= 0.0 and MonthlyAverage < 1000000000000.0, false)\r\n| extend BillableUnits = iff(InputValid, MonthlyAverage / ResourcesPerUnit, real(null))\r\n| extend MonthlyCost = BillableUnits * 5.0 * {discountToMultiplyVal}\r\n| summarize MonthlyCost = sum(MonthlyCost), MissingInputs = countif(not(InputValid)) by Cloud, Component = iff(IsProtection, \"Serverless protection\", \"Serverless containers\")\r\n| project Cloud, Component, MonthlyCost = iff(MissingInputs == 0, MonthlyCost, real(null)), Status = iff(MissingInputs == 0, \"Complete forecast\", \"Input required: show resource details\")\r\n| order by Cloud asc, Component asc",
+                                "size": 0,
+                                "title": "Additional serverless CSPM cost (not included above)",
+                                "queryType": 1,
+                                "resourceType": "microsoft.resources/tenants",
+                                "crossComponentResources": [
+                                  "value::tenant"
+                                ],
+                                "showExportToExcel": true,
+                                "exportToExcelOptions": "all",
+                                "gridSettings": {
+                                  "rowLimit": 4,
+                                  "formatters": [
                                     {
-                                      "operator": "Default",
-                                      "thresholdValue": null,
-                                      "representation": "Blank",
-                                      "text": "{0}"
+                                      "columnMatch": "MonthlyCost",
+                                      "formatter": 18,
+                                      "formatOptions": {
+                                        "thresholdsOptions": "icons",
+                                        "thresholdsGrid": [
+                                          {
+                                            "operator": "Default",
+                                            "thresholdValue": null,
+                                            "representation": "Blank",
+                                            "text": "{0}"
+                                          }
+                                        ],
+                                        "customColumnWidthSetting": "20ch"
+                                      },
+                                      "numberFormat": {
+                                        "unit": 0,
+                                        "options": {
+                                          "currency": "USD",
+                                          "style": "currency",
+                                          "maximumFractionDigits": 2
+                                        }
+                                      }
                                     }
                                   ],
-                                  "customColumnWidthSetting": "20ch"
+                                  "labelSettings": [
+                                    {
+                                      "columnId": "Cloud",
+                                      "label": "Cloud"
+                                    },
+                                    {
+                                      "columnId": "Component",
+                                      "label": "Component"
+                                    },
+                                    {
+                                      "columnId": "MonthlyCost",
+                                      "label": "Monthly cost (USD)"
+                                    },
+                                    {
+                                      "columnId": "Status",
+                                      "label": "Input status"
+                                    }
+                                  ]
                                 },
-                                "numberFormat": {
-                                  "unit": 0,
-                                  "options": {
-                                    "currency": "USD",
-                                    "style": "currency",
-                                    "maximumFractionDigits": 2
+                                "noDataMessage": "No eligible scopes were returned in the tenant. Select the Azure or AWS Defender CSPM plan above and verify Reader access, then include a serverless component."
+                              },
+                              "name": "Serverless CSPM summary"
+                            },
+                            {
+                              "type": 9,
+                              "content": {
+                                "version": "KqlParameterItem/1.0",
+                                "style": "above",
+                                "parameters": [
+                                  {
+                                    "id": "b8e3f644-cd25-4054-a29f-7c75cc925086",
+                                    "version": "KqlParameterItem/1.0",
+                                    "name": "showServerlessResourceDetails",
+                                    "label": "Resource details",
+                                    "type": 10,
+                                    "isRequired": true,
+                                    "value": "0",
+                                    "typeSettings": {
+                                      "additionalResourceOptions": [],
+                                      "showDefault": false
+                                    },
+                                    "jsonData": "[{\"value\":\"0\",\"label\":\"Hide\",\"selected\":true},{\"value\":\"1\",\"label\":\"Show\"}]"
                                   }
-                                }
+                                ]
+                              },
+                              "name": "Serverless resource detail options"
+                            },
+                            {
+                              "type": 3,
+                              "content": {
+                                "version": "KqlItem/1.0",
+                                "query": "resourcecontainers\r\n| where type =~ \"microsoft.resources/subscriptions\"\r\n| where tolower(\"{azureIsDcspm}\") == \"true\"\r\n| project Cloud = \"Azure\", ScopeKey = tolower(subscriptionId), Subscription = tolower(subscriptionId)\r\n| project Cloud = \"Azure\", ScopeKey, Subscription, SecurityConnectorId = \"\"\r\n| union (\r\nresources\r\n| where type =~ \"microsoft.security/securityconnectors\"\r\n| where tostring(properties.environmentName) =~ \"aws\"\r\n| where tolower(\"{awsIsDcspm}\") == \"true\"\r\n| extend SecurityConnectorId = tolower(id)\r\n| extend ScopeKey = tolower(iff(isnotempty(tostring(properties.hierarchyIdentifier)), tostring(properties.hierarchyIdentifier), SecurityConnectorId))\r\n| summarize SecurityConnectorId = min(SecurityConnectorId) by ScopeKey\r\n| extend Cloud = \"AWS\"\r\n| project Cloud = \"AWS\", ScopeKey, Subscription = \"\", SecurityConnectorId\r\n)\r\n| extend ForecastMap = todynamic(tolower(\"{serverlessUsage:escapejson}\"))\r\n| extend Usage = coalesce(ForecastMap[ScopeKey], ForecastMap[tolower(Cloud)]), UsageSource = iff(isnotnull(ForecastMap[ScopeKey]), \"Per-scope forecast\", \"Explicit cloud default\")\r\n| extend Functions = todouble(Usage.functions), WebApps = todouble(Usage.webapps), ACA = todouble(Usage.aca), ACI = todouble(Usage.aci), Lambda = todouble(Usage.lambda), Fargate = todouble(Usage.fargate)\r\n| extend ProtectionValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.functions) in (\"long\", \"real\") and Functions >= 0.0 and Functions < 1000000000000.0 and gettype(Usage.webapps) in (\"long\", \"real\") and WebApps >= 0.0 and WebApps < 1000000000000.0, false), coalesce(gettype(Usage.lambda) in (\"long\", \"real\") and Lambda >= 0.0 and Lambda < 1000000000000.0, false))\r\n| extend ContainersValid = iff(Cloud == \"Azure\", coalesce(gettype(Usage.aca) in (\"long\", \"real\") and ACA >= 0.0 and ACA < 1000000000000.0 and gettype(Usage.aci) in (\"long\", \"real\") and ACI >= 0.0 and ACI < 1000000000000.0, false), coalesce(gettype(Usage.fargate) in (\"long\", \"real\") and Fargate >= 0.0 and Fargate < 1000000000000.0, false))\r\n| extend ProtectionMissing = tolong(\"{serverlessProtection}\") == 1 and not(ProtectionValid), ContainersMissing = tolong(\"{serverlessContainers}\") == 1 and not(ContainersValid)\r\n| extend Workloads = iff(Cloud == \"Azure\", dynamic([\"functions\", \"webapps\", \"aca\", \"aci\"]), dynamic([\"lambda\", \"fargate\"]))\r\n| mv-expand Workloads\r\n| extend Workload = tostring(Workloads)\r\n| extend IsProtection = Workload in (\"functions\", \"webapps\", \"lambda\")\r\n| where (IsProtection and tolong(\"{serverlessProtection}\") == 1) or (not(IsProtection) and tolong(\"{serverlessContainers}\") == 1)\r\n| extend MonthlyAverage = todouble(Usage[Workload]), ResourcesPerUnit = iff(IsProtection, 8.0, 2.0)\r\n| extend InputValid = coalesce(gettype(Usage[Workload]) in (\"long\", \"real\") and MonthlyAverage >= 0.0 and MonthlyAverage < 1000000000000.0, false)\r\n| extend BillableUnits = iff(InputValid, MonthlyAverage / ResourcesPerUnit, real(null))\r\n| extend MonthlyCost = BillableUnits * 5.0 * {discountToMultiplyVal}\r\n| project Cloud, ScopeKey, Workload, MonthlyAverage, ResourcesPerUnit, BillableUnits, MonthlyCost, Status = iff(InputValid, strcat(\"Manual monthly-average forecast: \", UsageSource), \"Input required: nonnegative number below 1,000,000,000,000\")\r\n| order by Cloud asc, ScopeKey asc, Workload asc",
+                                "size": 0,
+                                "title": "Additional serverless CSPM cost (not included above)",
+                                "queryType": 1,
+                                "resourceType": "microsoft.resources/tenants",
+                                "crossComponentResources": [
+                                  "value::tenant"
+                                ],
+                                "showExportToExcel": true,
+                                "exportToExcelOptions": "all",
+                                "gridSettings": {
+                                  "rowLimit": 10000,
+                                  "filter": true,
+                                  "formatters": [
+                                    {
+                                      "columnMatch": "MonthlyCost",
+                                      "formatter": 18,
+                                      "formatOptions": {
+                                        "thresholdsOptions": "icons",
+                                        "thresholdsGrid": [
+                                          {
+                                            "operator": "Default",
+                                            "thresholdValue": null,
+                                            "representation": "Blank",
+                                            "text": "{0}"
+                                          }
+                                        ],
+                                        "customColumnWidthSetting": "20ch"
+                                      },
+                                      "numberFormat": {
+                                        "unit": 0,
+                                        "options": {
+                                          "currency": "USD",
+                                          "style": "currency",
+                                          "maximumFractionDigits": 2
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "labelSettings": [
+                                    {
+                                      "columnId": "Cloud",
+                                      "label": "Cloud"
+                                    },
+                                    {
+                                      "columnId": "ScopeKey",
+                                      "label": "Scope key (JSON)"
+                                    },
+                                    {
+                                      "columnId": "Workload",
+                                      "label": "Workload"
+                                    },
+                                    {
+                                      "columnId": "MonthlyAverage",
+                                      "label": "Monthly avg. resources"
+                                    },
+                                    {
+                                      "columnId": "ResourcesPerUnit",
+                                      "label": "Resources/unit"
+                                    },
+                                    {
+                                      "columnId": "BillableUnits",
+                                      "label": "Billable units"
+                                    },
+                                    {
+                                      "columnId": "MonthlyCost",
+                                      "label": "Monthly cost (USD)"
+                                    },
+                                    {
+                                      "columnId": "Status",
+                                      "label": "Input status"
+                                    }
+                                  ]
+                                },
+                                "noDataMessage": "No eligible scopes were returned in the tenant. Select the Azure or AWS Defender CSPM plan above and verify Reader access, then include a serverless component."
+                              },
+                              "name": "Serverless CSPM resource estimates",
+                              "conditionalVisibility": {
+                                "parameterName": "showServerlessResourceDetails",
+                                "comparison": "isEqualTo",
+                                "value": "1"
                               }
-                            ],
-                            "labelSettings": [
-                              {
-                                "columnId": "Cloud",
-                                "label": "Cloud"
-                              },
-                              {
-                                "columnId": "ScopeKey",
-                                "label": "Scope key (JSON)"
-                              },
-                              {
-                                "columnId": "Workload",
-                                "label": "Workload"
-                              },
-                              {
-                                "columnId": "MonthlyAverage",
-                                "label": "Monthly avg. resources"
-                              },
-                              {
-                                "columnId": "ResourcesPerUnit",
-                                "label": "Resources/unit"
-                              },
-                              {
-                                "columnId": "BillableUnits",
-                                "label": "Billable units"
-                              },
-                              {
-                                "columnId": "MonthlyCost",
-                                "label": "Monthly cost (USD)"
-                              },
-                              {
-                                "columnId": "Status",
-                                "label": "Input status"
-                              }
-                            ]
-                          },
-                          "noDataMessage": "No eligible scopes were returned in the tenant. Select the Azure or AWS Defender CSPM plan above and verify Reader access, then include a serverless component."
+                            }
+                          ]
                         },
-                        "name": "Serverless CSPM resource estimates",
+                        "name": "Serverless estimate results",
                         "conditionalVisibility": {
                           "parameterName": "serverlessComponentsIncluded",
                           "comparison": "isEqualTo",

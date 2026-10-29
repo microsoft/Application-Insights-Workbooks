@@ -43,7 +43,9 @@ describe('Cost estimation workbook', () => {
             const selector = optional.content.items.find(item => item.name === 'Additional estimate options');
             const details = optional.content.items.find(item => item.name === 'Serverless estimate details');
             const options = details.content.items.find(item => item.name === 'CSPM serverless options');
-            const estimates = details.content.items.find(item => item.name === 'Serverless CSPM resource estimates');
+            const results = details.content.items.find(item => item.name === 'Serverless estimate results');
+            const summary = results.content.items.find(item => item.name === 'Serverless CSPM summary');
+            const estimates = results.content.items.find(item => item.name === 'Serverless CSPM resource estimates');
             const warning = details.content.items.find(item => item.name === 'Serverless forecast input warning');
 
             it('uses a numeric selection flag and skips empty server counts in Azure price expressions', () => {
@@ -123,7 +125,7 @@ describe('Cost estimation workbook', () => {
                 assert.deepEqual(options.conditionalVisibility, {
                     parameterName: 'serverlessCspmSelected', comparison: 'isEqualTo', value: '1'
                 });
-                assert.deepEqual(estimates.conditionalVisibility, {
+                assert.deepEqual(results.conditionalVisibility, {
                     parameterName: 'serverlessComponentsIncluded', comparison: 'isEqualTo', value: '1'
                 });
                 assert.deepEqual(warning.conditionalVisibility, {
@@ -133,7 +135,45 @@ describe('Cost estimation workbook', () => {
                 assert.isTrue(selected.criteriaData.filter(item => item.criteriaContext.operator !== 'Default')
                     .every(item => item.criteriaContext.operator === '=='));
                 assert.include(warning.content.json, 'original charts, tables, and Grand total above are not changed or hidden');
-                assert.include(estimates.content.title, 'not included above');
+                assert.include(summary.content.title, 'not included above');
+            });
+
+            it('rolls up to four cloud/component rows with four columns and hides resource details by default', () => {
+                const detailOptions = results.content.items.find(item => item.name === 'Serverless resource detail options');
+                const show = detailOptions.content.parameters.find(item => item.name === 'showServerlessResourceDetails');
+                assert.strictEqual(results.content.exportParameters, true);
+                assert.strictEqual(show.type, 10);
+                assert.strictEqual(show.value, '0');
+                assert.deepEqual(JSON.parse(show.jsonData), [
+                    { value: '0', label: 'Hide', selected: true },
+                    { value: '1', label: 'Show' }
+                ]);
+                assert.deepEqual(estimates.conditionalVisibility, {
+                    parameterName: 'showServerlessResourceDetails', comparison: 'isEqualTo', value: '1'
+                });
+                assert.strictEqual(summary.content.gridSettings.rowLimit, 4);
+                assert.deepEqual(summary.content.gridSettings.labelSettings.map(item => item.columnId),
+                    ['Cloud', 'Component', 'MonthlyCost', 'Status']);
+                assert.deepEqual(summary.content.gridSettings.formatters, estimates.content.gridSettings.formatters);
+                assert.strictEqual(summary.content.resourceType, estimates.content.resourceType);
+                assert.deepEqual(summary.content.crossComponentResources, estimates.content.crossComponentResources);
+                assert.isTrue(summary.content.showExportToExcel);
+                assert.isNotEmpty(summary.content.noDataMessage);
+                assert.include(summary.content.query,
+                    'by Cloud, Component = iff(IsProtection, "Serverless protection", "Serverless containers")');
+                const projection = summary.content.query.split('\r\n').find(line =>
+                    line.startsWith('| project Cloud, Component,'));
+                assert.strictEqual(projection,
+                    '| project Cloud, Component, MonthlyCost = iff(MissingInputs == 0, MonthlyCost, real(null)), Status = iff(MissingInputs == 0, "Complete forecast", "Input required: show resource details")');
+            });
+
+            it('uses the same validated inputs and discounted costs for the summary and resource details', () => {
+                const detailPipeline = estimates.content.query.split('\r\n| project Cloud, ScopeKey, Workload,')[0];
+                const summaryPipeline = summary.content.query.split('\r\n| summarize MonthlyCost')[0];
+                assert.strictEqual(summaryPipeline, detailPipeline);
+                assert.include(summary.content.query,
+                    'MonthlyCost = sum(MonthlyCost), MissingInputs = countif(not(InputValid))');
+                assert.include(summary.content.query, 'MonthlyCost = iff(MissingInputs == 0, MonthlyCost, real(null))');
             });
 
             it('preserves scope selection and exposes missing inputs instead of zero costs', () => {
