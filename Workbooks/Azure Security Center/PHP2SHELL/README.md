@@ -161,7 +161,26 @@ See [Front Door WAF monitoring](https://learn.microsoft.com/azure/web-applicatio
 and the [Application Gateway WAF log schema](https://learn.microsoft.com/azure/azure-monitor/reference/tables/agwfirewalllogs)
 for the supported collection/schema contracts.
 
-## Endpoint time schemas and evidence limits
+## Time parameters, endpoint schemas and evidence limits
+
+The Resource Graph PHP/web-shell alert card uses the time picker's native KQL
+predicate:
+
+```kusto
+| where AlertTime {TimeRange:query}
+```
+
+This supports relative presets and custom ranges without manually wrapping
+context-sensitive start/end values in `datetime(...)`. Additional wrappers can
+produce invalid nested datetime literals and a generic Resource Graph error.
+See [workbook time parameters](https://learn.microsoft.com/azure/azure-monitor/visualize/workbooks-time).
+
+Previously imported or saved workbooks do not automatically receive this source
+fix. Re-import the updated workbook through Advanced Editor, or edit the
+**Reported Defender for Cloud PHP / web-shell alert candidates** query and
+replace its time-filter line with the one above. Keep the remaining query and
+subscription scope unchanged. This does not suppress permissions/query errors
+or treat missing alerts as clearance.
 
 Collected
 [DeviceProcessEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/deviceprocessevents),
@@ -235,11 +254,11 @@ No standalone PHP2SHELL test file is included. These format checks do not replac
 KQL syntax/type/output-shape validation, portal rendering or authorized
 source/coverage verification.
 
-This update removes the standalone test and clarifies the existing Azure WAF
-views; the workbook queries are unchanged. Earlier author validation results are
-historical, not a claim that removed tests still run or that customer telemetry
-and detection effectiveness have been validated. No customer records are
-embedded in the template.
+The standalone test remains removed. The alert-card time filter now uses native
+time-query interpolation; WAF queries and other report behavior are unchanged.
+Earlier author validation results are historical, not a claim that removed
+tests still run or that customer telemetry and detection effectiveness have
+been validated. No customer records are embedded in the template.
 
 Before gallery release, also validate in Azure:
 
@@ -253,7 +272,9 @@ Before gallery release, also validate in Azure:
    and access errors, real CVE findings if available, mixed mapped/unmapped
    alerts, optional endpoint workspace scope, empty-offering connectors,
    native-cloud Arc provenance and disconnected inventory.
-4. Verify the HTTP threshold boundaries and legitimate negative controls with
+4. Verify all four relative time presets and custom date ranges using actual
+   workbook parameter expansions, not only manually substituted ISO strings.
+   Verify the HTTP threshold boundaries and legitimate negative controls with
    approved synthetic fixtures; do not run exploitation. Exercise every
    environment/workload selection and scanner/per-CVE version-only cases.
 5. Confirm the source and guidance links remain current. A schema/parser test
