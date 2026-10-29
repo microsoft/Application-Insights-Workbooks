@@ -274,17 +274,13 @@ packaging: these gallery `.workbook` files must **not** include `fromTemplateId`
 Repository validation:
 
 ```powershell
-npm test -- --grep 'Log4j|Validating Workbooks|Validating Gallery' --timeout 15000
+npm test -- --grep 'Validating Workbooks|Validating Gallery' --timeout 15000
 ```
 
-Regression checks cover schema, environment navigation/defaults, shared cloud
-classification and AWS/GCP Arc precedence, unknown provenance, query/data-source
-scopes, current recommendation/CVE fields, CVE-family consistency,
-metadata-preserving joins, image detail retention, Free/Standard/Unknown plan
-evidence, connector discovery independent of findings, disconnected Arc gaps,
-unknown risk, and opt-in runtime queries. These
-checks do not substitute for live ARG/Log Analytics execution or Azure portal
-rendering in the intended environment.
+The existing repository validators check workbook and gallery template
+conventions. No standalone Log4j test file is included. These format checks do
+not substitute for KQL validation, live ARG/Log Analytics execution, or Azure
+portal rendering in the intended environment.
 
 ## Sources
 
