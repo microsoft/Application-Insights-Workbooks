@@ -128,6 +128,22 @@ describe('Cost estimation workbook', () => {
                 assert.strictEqual(options.content.parameters.find(item => item.name === 'serverlessUsage').value, '{}');
             });
 
+            it('removes the JSON editor while retaining hidden usage configuration and missing-input safeguards', () => {
+                const usage = options.content.parameters.find(item => item.name === 'serverlessUsage');
+                assert.isTrue(usage.isHiddenWhenLocked);
+                assert.notProperty(usage, 'label');
+                assert.notProperty(usage, 'typeSettings');
+                assert.notProperty(usage, 'isRequired');
+                assert.strictEqual(usage.value, '{}');
+                assert.isTrue(options.content.parameters.every(parameter => parameter.isHiddenWhenLocked));
+                assert.notInclude(JSON.stringify(group), 'Monthly averages (JSON)');
+                assert.include(warning.content.json, 'workbook configuration');
+                assert.include(warning.content.json, 'not missing telemetry');
+                for (const parameter of controls.content.parameters) {
+                    assert.include(parameter.description, 'Usage comes from the workbook configuration');
+                }
+            });
+
             it('describes assets and subscription or account component enablement in both tooltips', () => {
                 const protection = controls.content.parameters.find(item => item.name === 'serverlessProtection');
                 const containers = controls.content.parameters.find(item => item.name === 'serverlessContainers');
