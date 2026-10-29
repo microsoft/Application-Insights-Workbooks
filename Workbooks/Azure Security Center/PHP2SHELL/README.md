@@ -207,7 +207,9 @@ unsupported builds and missing collection can all produce gaps.
 ### Version and provenance evidence
 
 Detected versions prefer the assessment field, then MDVM scanner evidence, then
-the first reported alternate scanner. Fixed versions prefer the **per-CVE**
+the first reported **non-MDVM** alternate scanner. The alternate-key lookup
+explicitly excludes `mdvm`, so an empty MDVM entry cannot be selected again and
+mask valid alternate-scanner versions. Fixed versions prefer the **per-CVE**
 field after expansion, then assessment, MDVM and alternate-scanner evidence.
 Empty arrays/objects/null text do not mask valid fallback versions. The exported
 source columns identify the selected evidence path. This preserves relevant
@@ -219,6 +221,12 @@ Code-specific metadata identifies DevOps; Docker Hub/JFrog and unclassified
 connectors remain Other. An unresolved connector is not labeled Azure solely
 because it is stored in Azure. Raw reported source, connector platform/ID and
 resource type remain visible for investigation.
+
+Native ACR (`microsoft.containerregistry/registries`) is explicitly classified
+as the Containers workload in the summary, unified findings and broader posture
+views. Unknown registry types are not inferred to be containers from their name.
+Repository connector identifiers use the provider-qualified security-connector
+prefix, retaining valid resource groups or connectors named `devops`.
 
 ## Mitigation and privacy boundaries
 
@@ -254,8 +262,10 @@ No standalone PHP2SHELL test file is included. These format checks do not replac
 KQL syntax/type/output-shape validation, portal rendering or authorized
 source/coverage verification.
 
-The standalone test remains removed. The alert-card time filter now uses native
-time-query interpolation; WAF queries and other report behavior are unchanged.
+The standalone test remains removed. The alert-card time filter retains native
+time-query interpolation. Review fixes cover alternate-scanner selection, ACR
+workload classification and complete connector identifiers; WAF queries are
+unchanged.
 Earlier author validation results are historical, not a claim that removed
 tests still run or that customer telemetry and detection effectiveness have
 been validated. No customer records are embedded in the template.
@@ -276,7 +286,10 @@ Before gallery release, also validate in Azure:
    workbook parameter expansions, not only manually substituted ISO strings.
    Verify the HTTP threshold boundaries and legitimate negative controls with
    approved synthetic fixtures; do not run exploitation. Exercise every
-   environment/workload selection and scanner/per-CVE version-only cases.
+   environment/workload selection and scanner/per-CVE version-only cases. Use
+   complete raw scanner bags, including empty MDVM plus a valid alternate entry,
+   rather than only pre-resolved fallback values. Verify ACR registry posture
+   under Containers and full connector IDs when names contain `devops`.
 5. Confirm the source and guidance links remain current. A schema/parser test
    alone is not live rendering, product coverage, or detection-effectiveness
    validation.
