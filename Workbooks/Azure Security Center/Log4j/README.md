@@ -134,6 +134,14 @@ The shared dashboard has:
   runtime investigation**. No log query runs until that is enabled and a
   workspace is selected.
 
+Detected versions prefer the assessment's top-level value, then the preferred
+scanner entry (`mdvm`, or the first available scanner). Arrays are displayed as
+comma-separated versions; scalar version strings retain their original
+precision. Each expanded CVE's fixed version takes precedence over the
+assessment-level and preferred-scanner fallback. The full `ScannersDetails`
+object remains available in the findings grid/export, preserving other scanner
+evidence without expanding scanner entries into duplicate finding rows.
+
 ### Classification and coverage rules
 
 Assessment source/provider metadata determines environment, not the Azure
@@ -145,7 +153,7 @@ platforms.
 Recognized native AWS/GCP provenance takes precedence over Arc representation.
 Code-specific source/provider names identify DevOps; missing/new provenance
 remains **Other**, visible in the overview and its own tab. External or unresolved
-connectors are not labeled native Azure merely because a generic Azure source
+connectors are2026-10-29T21:46:05Z not labeled native Azure merely because a generic Azure source
 or Azure-hosted connector ID is present. Raw connector platform/ID and source
 remain visible for investigation.
 
