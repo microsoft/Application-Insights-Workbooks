@@ -50,10 +50,10 @@ See the current [Defender CSPM component requirements](https://learn.microsoft.c
 
 Use an account with Reader access to the selected subscription scopes and permission to read the relevant security resources. The workbook only reads data; changing Defender settings or provisioning Azure resources is not required.
 
-Run the focused regression tests from the repository root:
+Run the existing repository workbook validators from the repository root:
 
 ```shell
-npx mocha test/defenderCspm.test.js
+npm test -- test\jsonValidationTest.js --grep "Validating Workbooks" --timeout 30000
 ```
 
 Use [the workbook testing guide](../../../Documentation/Testing.md) to import the template through Advanced Mode. Verify all four tabs, subscription selection, the two rows of four Settings panels, per-component missing/disabled states, the advanced diagnostics button, findings search, totals versus detail rows, and retained attack-path drill-downs. Use an appropriately authorized account and do not publish tenant findings or resource identifiers in screenshots.
