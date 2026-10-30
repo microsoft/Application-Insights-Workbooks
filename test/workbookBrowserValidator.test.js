@@ -42,10 +42,15 @@ function validateWorkbookInBrowser(page, workbookSource, options = {}) {
 function accountPage(ids = [testTenant.id]) {
     return {
         url: () => 'https://portal.azure.com/#home',
+        getByText: () => ({
+            filter() { return this; },
+            count: async () => 0
+        }),
         getByRole(role) {
             assert.equal(role, 'button');
             return {
                 count: async () => 1,
+                isVisible: async () => true,
                 locator(selector) {
                     assert.equal(selector, '[title]');
                     return {
@@ -122,6 +127,7 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
     };
     const page = {
         url: () => 'https://portal.azure.com/#home',
+        getByText: (...args) => accountPage().getByText(...args),
         getByRole: (role, options) => role === 'button' ? accountPage().getByRole(role, options) :
             ({ count: async () => unsaved ? 1 : 0 }),
         locator: () => ({ contentFrame: () => frame })
@@ -558,6 +564,7 @@ describe('Validating explicit tenant selection...', () => {
     it('pauses if tenant identity cannot be read instead of using the signed-in/default tenant', async () => {
         await rejects(verifySelectedTenant({
             url: () => 'https://portal.azure.com/#home',
+            getByText: (...args) => accountPage().getByText(...args),
             getByRole: () => ({ count: async () => 0 })
         }, testTenant), /Cannot verify/);
     });
@@ -577,6 +584,24 @@ describe('Validating explicit tenant selection...', () => {
         await rejects(validateWorkbookInBrowser(editor.page, source), /signed-in tenant is different/);
         assert.equal(editor.state.writes, 1);
         assert.deepEqual(editor.state.clicks, ['Apply', 'Done Editing']);
+    });
+
+    it('pins the first browser-session tenant and rejects directory changes instead of following them', async () => {
+        const editor = editorPage(emptySource);
+        let verifications = 0;
+        const original = editor.page.getByRole;
+        editor.page.getByRole = (role, options) => role === 'button' && ++verifications > 1 ?
+            accountPage([otherTenantId]).getByRole(role, options) : original(role, options);
+        const originalFrameRole = editor.frame.getByRole.bind(editor.frame);
+        editor.frame.getByRole = (role, options) => role === 'tablist' ? {
+            first() { return this; },
+            async waitFor() {},
+            getByRole: () => ({ allTextContents: async () => ['Overview', 'Details'] })
+        } : originalFrameRole(role, options);
+        await rejects(validateWithExplicitTenant(editor.page, source, { tenant: { useBrowserSession: true } }),
+            /signed-in tenant is different/);
+        assert.deepEqual(editor.state.clicks, ['Apply', 'Done Editing']);
+        assert.equal(editor.state.writes, 1);
     });
 
     it('emits a runner that pauses without touching a browser if approval is absent', async () => {
@@ -603,6 +628,7 @@ describe('Validating explicit tenant selection...', () => {
         };
         delete env.WORKBOOK_BROWSER_TENANT_ID;
         delete env.WORKBOOK_BROWSER_TENANT_CONFIRMED;
+        delete env.WORKBOOK_BROWSER_USE_BROWSER_TENANT;
         delete env.WORKBOOK_BROWSER_SCREENSHOTS;
         delete env.WORKBOOK_BROWSER_REDACTION;
         delete env.WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE;
@@ -1003,5 +1029,61 @@ describe('Validating browser script generation...', () => {
             assert.equal(result.status, 1);
             assert.include(result.stderr, 'PAUSED: Non-auto screenshots');
         }
+    });
+
+    it('generates a standalone external-browser portal step without requiring a workbook or tenant form', () => {
+        const output = path.join(directory, 'open-portal.js');
+        const result = generate(['--open-portal', '--output', output]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stdout, 'external Playwright browser');
+        assert.include(result.stdout, 'pauses at sign-in/account/tenant choices');
+        assert.include(result.stdout, 'not workbook-validation success');
+        const script = fs.readFileSync(output, 'utf8');
+        assert.isFunction(vm.runInNewContext(`(${script})`));
+        assert.notInclude(script, "require('");
+        assert.notInclude(script, 'setValue(');
+    });
+
+    it('offers explicit browser-session continuation without granting screenshot consent', () => {
+        const output = path.join(directory, 'browser-session.js');
+        const result = generate(['--workbook', fixturePath, '--use-browser-tenant', '--output', output]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stdout, 'Browser-session mode');
+        assert.notInclude(result.stdout, 'PAUSED for live execution');
+        assert.include(result.stdout, 'screenshots remain disabled');
+        const rejected = generate(['--workbook', fixturePath, '--use-browser-tenant',
+            '--screenshots', 'private', '--redaction', 'none', '--output', path.join(directory, 'unsafe-browser-session.js')]);
+        assert.equal(rejected.status, 1);
+        assert.include(rejected.stderr, 'PAUSED: Non-auto screenshots');
+    });
+
+    it('does not combine portal sign-in with workbook replacement or screenshot capture', () => {
+        for (const [index, extra] of [
+            ['--workbook', fixturePath], ['--checks', checksPath], ['--screenshots', 'private'],
+            ['--redaction', 'none'], ['--allow-sensitive-capture']
+        ].entries()) {
+            const result = generate(['--open-portal', ...extra, '--output', path.join(directory, `rejected-portal-${index}.js`)]);
+            assert.equal(result.status, 1);
+            assert.include(result.stderr, 'separate step');
+        }
+    });
+
+    it('revokes browser-session opt-in and does not override an explicit tenant constraint', () => {
+        const profile = path.join(directory, 'browser-session-profile.json');
+        fs.writeFileSync(profile, JSON.stringify({ tenant: { useBrowserSession: true } }));
+        const revoked = generate(['--workbook', fixturePath, '--checks', profile, '--no-use-browser-tenant',
+            '--output', path.join(directory, 'revoked-browser-session.js')]);
+        assert.equal(revoked.status, 0, revoked.stderr);
+        assert.include(revoked.stdout, 'PAUSED for live execution');
+        const conflict = generate(['--workbook', fixturePath, '--use-browser-tenant', '--tenant', testTenant.id,
+            '--confirm-tenant', '--output', path.join(directory, 'conflicting-tenant.js')]);
+        assert.equal(conflict.status, 1);
+        assert.include(conflict.stderr, 'not both');
+        const pinned = path.join(directory, 'pinned-tenant.json');
+        fs.writeFileSync(pinned, JSON.stringify({ tenant: testTenant }));
+        const override = generate(['--workbook', fixturePath, '--checks', pinned, '--use-browser-tenant',
+            '--output', path.join(directory, 'replaced-constraint.js')]);
+        assert.equal(override.status, 1);
+        assert.include(override.stderr, 'cannot silently replace');
     });
 });

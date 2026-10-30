@@ -5,8 +5,16 @@ function isAzurePortalUrl(value) {
     return /^https:\/\/portal\.azure\.(com|us|cn)(\/|$)/.test(value);
 }
 
+function isAzureSignInUrl(value) {
+    return /^https:\/\/(login\.microsoftonline\.(com|us)|login\.partner\.microsoftonline\.cn|login\.chinacloudapi\.cn)(\/|$)/.test(value);
+}
+
 function normalizeTenantSelection(value) {
     if (value === undefined) return undefined;
+    if (value && typeof value === 'object' && !Array.isArray(value) &&
+        value.useBrowserSession === true && Object.keys(value).length === 1) {
+        return { useBrowserSession: true };
+    }
     if (!value || typeof value !== 'object' || Array.isArray(value) ||
         Object.keys(value).some(key => !['id', 'confirmed'].includes(key)) ||
         typeof value.id !== 'string' ||
@@ -19,19 +27,34 @@ function normalizeTenantSelection(value) {
 
 function requireConfirmedTenant(value) {
     const tenant = normalizeTenantSelection(value);
-    if (!tenant?.confirmed) {
+    if (!tenant?.confirmed && !tenant?.useBrowserSession) {
         throw new Error('PAUSED: Ask the user which Azure tenant to sign in to and wait for explicit selection and confirmation, including in autopilot. Do not choose the current/default tenant.');
     }
     return tenant;
 }
 
+async function portalSelectionPrompt(page) {
+    const prompts = [
+        { reason: 'account-selection', text: /^(Pick|Choose|Select) (an? )?account$/i },
+        { reason: 'tenant-selection', text: /^(Pick|Choose|Select|Switch) (an? )?(tenant|directory|organization)$/i }
+    ];
+    for (const prompt of prompts) {
+        if (await page.getByText(prompt.text, { exact: true }).filter({ visible: true }).count()) {
+            return prompt.reason;
+        }
+    }
+}
+
 async function verifySelectedTenant(page, value) {
     const tenant = requireConfirmedTenant(value);
     if (!isAzurePortalUrl(page.url())) {
-        throw new Error('Sign in to Azure using the selected tenant before running portal validation.');
+        throw new Error('PAUSED: Sign in to Azure in the external browser before running portal validation. Leave account and tenant choices to the user.');
+    }
+    if (await portalSelectionPrompt(page)) {
+        throw new Error('PAUSED: An Azure account or tenant choice is pending. Let the user select it in the external browser; no choice is made automatically.');
     }
     const account = page.getByRole('button', { name: /^Account menu/ });
-    if (await account.count() !== 1) {
+    if (await account.count() !== 1 || !await account.isVisible()) {
         throw new Error('PAUSED: Cannot verify the selected tenant from the portal account menu.');
     }
     const titles = await account.locator('[title]').evaluateAll(elements => elements.map(element => element.getAttribute('title') || ''));
@@ -39,9 +62,49 @@ async function verifySelectedTenant(page, value) {
         const match = title.match(/\bDirectory:\s*[\s\S]*?\(([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\)/i);
         return match ? [match[1].toLowerCase()] : [];
     }));
-    if (ids.size !== 1 || !ids.has(tenant.id)) {
+    if (ids.size !== 1 || (!tenant.useBrowserSession && !ids.has(tenant.id))) {
         throw new Error('PAUSED: The signed-in tenant is different from, or cannot be matched to, the user-confirmed tenant. Ask the user to select it; do not switch automatically.');
     }
+    return { id: ids.values().next().value, confirmed: true };
+}
+
+async function openAzurePortal(page, tenant = { useBrowserSession: true }, timeout = 30000) {
+    requireConfirmedTenant(tenant);
+    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 120000) {
+        throw new Error('timeout must be an integer between 1 and 120000 milliseconds.');
+    }
+    const current = page.url();
+    if (current === 'about:blank') {
+        await page.goto('https://portal.azure.com/', { waitUntil: 'domcontentloaded', timeout });
+    } else if (!isAzurePortalUrl(current) && !isAzureSignInUrl(current)) {
+        throw new Error('Use a blank external browser page or an existing Azure portal/sign-in page. Other pages will not be replaced.');
+    }
+    if (isAzurePortalUrl(page.url())) {
+        const ready = await page.waitForFunction(() => {
+            if (!/^https:\/\/portal\.azure\.(com|us|cn)(\/|$)/.test(location.href)) return true;
+            const visible = element => element.getClientRects().length > 0;
+            if (Array.from(document.querySelectorAll('button[aria-label^="Account menu"]')).some(visible)) return true;
+            return Array.from(document.querySelectorAll('h1,h2,h3,[role="heading"],[role="dialog"]')).some(element =>
+                visible(element) && /\b(Pick|Choose|Select|Switch) (an? )?(account|tenant|directory|organization)\b/i.test(element.textContent));
+        }, null, { timeout });
+        await ready.dispose();
+    }
+    const prompt = await portalSelectionPrompt(page);
+    if (prompt || !isAzurePortalUrl(page.url())) {
+        return {
+            status: 'paused',
+            reason: prompt || 'sign-in',
+            guidance: 'Select the account/tenant and finish sign-in in this external browser, then rerun. No account or tenant was selected automatically.',
+            workbookValidated: false
+        };
+    }
+    await verifySelectedTenant(page, tenant);
+    return {
+        status: 'ready',
+        tenantVerified: true,
+        guidance: 'The external browser is already signed in without a pending choice. Continue in a new empty unsaved workbook Advanced Editor; validation pins and rechecks this tenant.',
+        workbookValidated: false
+    };
 }
 
 function normalizeScreenshotOptions(value) {
@@ -394,7 +457,7 @@ async function activateWorkbookControl(locator, timeout) {
 
 async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
-    await verifySelectedTenant(page, plan.tenant);
+    const selectedTenant = await verifySelectedTenant(page, plan.tenant);
     if (await page.getByRole('heading', { name: /\bUnsaved Workbook\b/ }).count() !== 1) {
         throw new Error('Open a new empty unsaved workbook. Existing workbook content will not be replaced.');
     }
@@ -443,7 +506,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const screenshots = [];
     async function capture(target, allowedLabels, stage) {
         if (plan.screenshots) {
-            await verifySelectedTenant(page, plan.tenant);
+            await verifySelectedTenant(page, selectedTenant);
             const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels, screenshots.length);
             screenshots.push({ ...result, stage });
         }
@@ -458,7 +521,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             throw new Error(`Primary tab labels differ: expected ${JSON.stringify(plan.tabs)}, found ${JSON.stringify(actual)}.`);
         }
         for (const name of plan.tabs) {
-            await verifySelectedTenant(page, plan.tenant);
+            await verifySelectedTenant(page, selectedTenant);
             await activateWorkbookControl(tablist.getByRole('tab', { name, exact: true }), plan.timeout);
             await tablist.getByRole('tab', { name, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
@@ -472,7 +535,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const deferredChecks = [];
     let parameterActionsClicked = 0;
     for (const group of plan.deferredGroups) {
-        await verifySelectedTenant(page, plan.tenant);
+        await verifySelectedTenant(page, selectedTenant);
         if (group.tab !== undefined) {
             await activateWorkbookControl(tablist.getByRole('tab', { name: group.tab, exact: true }), plan.timeout);
             await tablist.getByRole('tab', { name: group.tab, exact: true, selected: true })
@@ -562,11 +625,30 @@ function loadValidationInput(workbookPath, checksPath, screenshotDirectory, runt
     if (screenshotDirectory !== undefined) {
         options = { ...options, screenshots: { ...options.screenshots, directory: screenshotDirectory } };
     }
+    if (runtime.useBrowserTenant !== undefined) {
+        if (typeof runtime.useBrowserTenant !== 'boolean') {
+            throw new Error('useBrowserTenant must be a boolean.');
+        }
+        if (runtime.useBrowserTenant && (runtime.tenantId !== undefined || runtime.confirmTenant !== undefined)) {
+            throw new Error('Choose browser-session mode or an explicit tenant confirmation, not both.');
+        }
+        if (runtime.useBrowserTenant) {
+            if (options.tenant !== undefined && !normalizeTenantSelection(options.tenant).useBrowserSession) {
+                throw new Error('Browser-session mode cannot silently replace an explicit tenant constraint.');
+            }
+            options = { ...options, tenant: { useBrowserSession: true } };
+        } else if (options.tenant?.useBrowserSession) {
+            options = { ...options, tenant: undefined };
+        }
+    }
     if (runtime.tenantId !== undefined || runtime.confirmTenant !== undefined) {
+        if (options.tenant?.useBrowserSession && runtime.tenantId === undefined) {
+            throw new Error('An explicit tenant GUID is required when replacing browser-session mode.');
+        }
         options = {
             ...options,
             tenant: {
-                ...options.tenant,
+                ...(options.tenant?.useBrowserSession ? {} : options.tenant),
                 id: runtime.tenantId === undefined ? options.tenant?.id : runtime.tenantId,
                 confirmed: runtime.confirmTenant === true
             }
@@ -605,7 +687,7 @@ function validateCdpEndpoint(value) {
 function createPlaywrightScript(workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
-    const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, verifySelectedTenant,
+    const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, portalSelectionPrompt, verifySelectedTenant,
         normalizeScreenshotOptions, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
         applyScreenshotRedaction, captureMaskedScreenshot, captureWorkbookScreenshot, readGridSummary,
         activateWorkbookControl, validateWorkbookInBrowser]
@@ -613,11 +695,21 @@ function createPlaywrightScript(workbookSource, options = {}) {
     return `async (page) => {\n${functions}\nreturn validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)});\n}\n`;
 }
 
+function createPortalScript(tenant = { useBrowserSession: true }) {
+    normalizeTenantSelection(tenant);
+    const functions = [isAzurePortalUrl, isAzureSignInUrl, normalizeTenantSelection, requireConfirmedTenant,
+        portalSelectionPrompt, verifySelectedTenant, openAzurePortal].map(callback => callback.toString()).join('\n\n');
+    return `async (page) => {\n${functions}\nreturn openAzurePortal(page, ${JSON.stringify(tenant)});\n}\n`;
+}
+
 module.exports = {
     isAzurePortalUrl,
+    isAzureSignInUrl,
     normalizeTenantSelection,
     requireConfirmedTenant,
     verifySelectedTenant,
+    portalSelectionPrompt,
+    openAzurePortal,
     normalizeScreenshotOptions,
     createValidationPlan,
     markScreenshotMasks,
@@ -630,5 +722,6 @@ module.exports = {
     validateWorkbookInBrowser,
     loadValidationInput,
     validateCdpEndpoint,
-    createPlaywrightScript
+    createPlaywrightScript,
+    createPortalScript
 };

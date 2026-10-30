@@ -1,18 +1,20 @@
 ---
 name: validate-workbook-browser
-description: 'Validate Azure Workbooks with Playwright or MCP. Use for workbook browser testing, Azure sign-in or tenant selection, screenshots, and manual/AI-assisted redaction. Requires a user-selected tenant and pauses live execution even in autopilot until confirmed.'
+description: 'Validate Azure Workbooks with Playwright or MCP in an external browser. Use for workbook testing, Azure sign-in, account/tenant selection, screenshots, and manual/AI-assisted redaction. Supports in-browser tenant choice, pauses at sign-in/selection screens even in autopilot, and never selects an account automatically.'
 ---
 
 # Validate a workbook in the browser
 
 Follow the [testing guide](../../../Documentation/Testing.md) and use the shared [validator](../../../test/browser/workbookBrowserValidator.js).
 
-## Confirm the tenant before live work
+## Open the external browser and handle tenant selection
 
-1. Ask the user **which Azure tenant to sign in to**, and which non-production subscription scopes to use. Use the host's structured question tool when available. Do not ask for passwords, tokens, or other credentials.
-2. **Pause the live workflow and wait for the user to select and confirm the tenant.** This applies in autopilot too. A missing, declined, cancelled, or unavailable response is not permission to pick the current, default, previously used, or first available tenant. Do not navigate to sign-in, switch accounts, import a workbook, query Azure, or capture portal screenshots while waiting. Offline code and synthetic tests can continue.
-3. Have the user sign in or switch directories themselves. Set the selected tenant GUID and confirmation only after their response, using private per-run arguments or environment variables. Do not commit tenant information, reuse an old confirmation for a new run, or echo account details.
-4. The runner must match the portal account-menu tenant to that selection before import, navigation, parameter actions, and screenshots. If the check pauses or cannot verify the tenant, stop and ask the user; never bypass it or select another tenant automatically.
+1. Use an **external Playwright/CDP browser**, not the integrated VS Code browser. If the user asks to select the tenant there, open `https://portal.azure.com/` using the `--open-portal` generated helper on a blank external page. Do not require a separate tenant form before opening that sign-in page.
+2. **Pause at any sign-in screen, account list, or tenant/directory chooser and let the user act in that browser.** This applies in autopilot too. Do not click an account, tenant, first/default option, sign-in submission, or confirmation for them. A paused sign-in result is not successful workbook validation. Wait for the user to finish, then rerun the portal check.
+3. If the user authorized browser-session continuation and the portal is **already signed in with no pending chooser**, continue without another tenant question. Use `--use-browser-tenant` or `WORKBOOK_BROWSER_USE_BROWSER_TENANT=true`; this is an explicit opt-in, not the default for an unspecified tenant. The runner reads the signed-in directory once, privately pins it, and refuses subsequent directory changes instead of following them.
+4. If the user instead specifies a particular tenant, use its GUID and explicit confirmation. That strict constraint is preserved; browser-session mode must not replace it silently. Without either authorized workflow, ask the tenant question and pause on a missing/declined/unavailable answer.
+5. In both workflows, verify the portal directory before import, navigation, parameter actions, and screenshots; stop at later account/tenant prompts or ambiguous identity. Never switch accounts automatically or echo account metadata. Do not request credentials, commit tenant information, or reuse a pin from an earlier run.
+6. Confirm the intended non-production subscription scopes before data queries, and retain the screenshot-consent rules below. Permission to open Portal or reuse its signed-in tenant does not itself approve every subscription or unredacted capture. Offline code and synthetic tests can continue while a live choice is pending.
 
 ## Offer screenshot and redaction choices
 

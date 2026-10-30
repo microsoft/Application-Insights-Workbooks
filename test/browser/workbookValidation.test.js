@@ -1,8 +1,10 @@
 const {
     isAzurePortalUrl,
+    isAzureSignInUrl,
     loadValidationInput,
     validateCdpEndpoint,
     requireConfirmedTenant,
+    openAzurePortal,
     validateWorkbookInBrowser
 } = require('./workbookBrowserValidator');
 
@@ -22,6 +24,7 @@ describe('Validating workbook browser behavior (opt-in)...', function () {
             process.env.WORKBOOK_BROWSER_SCREENSHOTS, {
                 tenantId: process.env.WORKBOOK_BROWSER_TENANT_ID,
                 confirmTenant: flag('WORKBOOK_BROWSER_TENANT_CONFIRMED'),
+                useBrowserTenant: flag('WORKBOOK_BROWSER_USE_BROWSER_TENANT'),
                 redaction: process.env.WORKBOOK_BROWSER_REDACTION,
                 allowSensitiveCapture: flag('WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE')
             });
@@ -30,8 +33,12 @@ describe('Validating workbook browser behavior (opt-in)...', function () {
         const { chromium } = require('playwright-core');
         browser = await chromium.connectOverCDP(endpoint, { timeout: 15000 });
         const candidates = [];
+        const signInPages = [];
         for (const context of browser.contexts()) {
             for (const candidate of context.pages()) {
+                if (candidate.url() === 'about:blank' || isAzurePortalUrl(candidate.url()) || isAzureSignInUrl(candidate.url())) {
+                    signInPages.push(candidate);
+                }
                 if (isAzurePortalUrl(candidate.url()) &&
                     await candidate.getByRole('heading', { name: /\bUnsaved Workbook\b/ }).count() === 1 &&
                     await candidate.locator('iframe[name="Workbooks.ReactView"]').contentFrame()
@@ -39,6 +46,12 @@ describe('Validating workbook browser behavior (opt-in)...', function () {
                     candidates.push(candidate);
                 }
             }
+        }
+        if (!candidates.length && input.options.tenant?.useBrowserSession && signInPages.length === 1) {
+            const result = await openAzurePortal(signInPages[0], input.options.tenant);
+            throw new Error(result.status === 'paused' ?
+                `PAUSED: ${result.guidance}` :
+                'PAUSED: Azure Portal is signed in. Create a new empty unsaved workbook, open Advanced Editor, then rerun. No workbook was validated.');
         }
         if (candidates.length !== 1) {
             throw new Error(`Open exactly one new empty unsaved workbook in Advanced Editor; found ${candidates.length} eligible pages.`);

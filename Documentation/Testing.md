@@ -24,7 +24,7 @@ The browser validator complements the existing JSON/gallery validators and the [
 
 The shared runner:
 
-- Requires an explicitly selected and confirmed tenant, verifies its GUID against the portal account menu before import, and rechecks before tab changes, parameter actions, and screenshots. Missing approval or a mismatch pauses execution; the runner never chooses or switches a tenant.
+- Supports either an explicitly selected/confirmed tenant or explicitly authorized browser-session continuation. The latter uses and privately pins the already-signed-in directory only if no chooser is pending. Both workflows recheck identity before tab changes, parameter actions, and screenshots and never choose or switch an account/tenant.
 - Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models.
 - Applies the exact requested source and reports its normalized-source SHA-256, not its contents.
 - Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
@@ -36,19 +36,30 @@ Commands and parameter actions use native Enter-key activation after visibility 
 
 **This is smoke and contract validation, not automatic validation of every query or workflow.** Nested tabsets, filters, graphs, row selections, query correctness, and effective resource coverage still need scenario-specific tests. A requested grid contract fails when no result grid is available; no-data is not reported as healthy or as a passing data check.
 
-### Select and confirm the tenant first
+### Open Portal and select the tenant in the external browser
 
-Before sign-in or live testing, ask **which Azure tenant the user wants to sign in to**, which non-production subscription scopes to use, and whether screenshots are wanted. Use a structured question tool when available. **Pause and wait for tenant selection and confirmation, including in autopilot.** An unavailable, declined, or cancelled response is not permission to continue using a default, cached, previously used, or currently signed-in tenant.
+When the user asks to select the tenant in the browser, open `https://portal.azure.com/` in an **external Playwright/CDP browser**, not the integrated VS Code browser. Do not block opening the sign-in page with repeated tenant forms. Generate a portal-only helper:
 
-The repository [browser-validation skill](../.github/skills/validate-workbook-browser/SKILL.md) codifies this workflow. The user performs sign-in/directory switching themselves. Do not request credentials. Only after the user responds, provide their selected tenant GUID plus an explicit confirmation for this run. Do not reuse a prior confirmation or commit tenant/account details.
+```powershell
+New-Item -ItemType Directory -Force .playwright-mcp | Out-Null
+npm run test:browser:script -- --open-portal --output ".playwright-mcp\open-portal.js"
+```
 
-The runner checks the directory GUID in the current English portal account-menu metadata. If that evidence is absent, ambiguous, or different, stop and ask the user to select the intended tenant; do not infer a match from a display name or switch accounts automatically. Tenant IDs and account metadata are not included in the validation report.
+Run this `async (page) => { ... }` function on a blank external browser page. It opens Portal and returns **`status: "paused"`** at sign-in or an account/tenant/directory chooser, without selecting or submitting anything. **Pause and let the user choose there, including in autopilot.** Rerun after they finish. A sign-in helper result always has `workbookValidated: false`; it is never evidence that a workbook passed.
+
+If Portal is already authenticated without a pending chooser, the helper reports **`status: "ready"`**. When the user has authorized continuing with that session, use `--use-browser-tenant` for the validation script or `WORKBOOK_BROWSER_USE_BROWSER_TENANT=true` for Mocha. No additional tenant form is required. The runner privately pins the observed directory for that validation run and stops if it changes.
+
+The helper does not navigate away from an existing portal workbook or restart an active sign-in challenge, and refuses to replace unrelated pages. Portal navigation does not approve data scopes: confirm the intended non-production subscriptions before queries, and obtain screenshot consent separately.
+
+For **strict expected-tenant validation**, keep using `--tenant <guid> --confirm-tenant` or the explicit-tenant environment variables below. Browser-session mode cannot silently replace an explicit tenant constraint or combine with strict-tenant flags. If neither workflow is authorized, ask **which tenant to use** and pause on an unavailable/declined/cancelled response.
+
+The repository [browser-validation skill](../.github/skills/validate-workbook-browser/SKILL.md) codifies both workflows. The user performs sign-in/directory switching themselves. Do not request credentials, commit tenant/account information, or reuse a prior run's confirmation. The runner matches directory GUIDs using English portal account-menu metadata, not display names. Missing/ambiguous identity or a later chooser pauses validation. Tenant IDs and account metadata are not included in reports.
 
 ### Prepare a browser
 
 Use Node 24, as in CI, and run `npm install`. Use only trusted templates and a non-production account with Reader permissions at the intended scopes. Rendering a real template can execute its queries and incur query costs. The runner does not click Save or ARM action links, capture authentication state, or collect traces. Screenshots require a separate explicit opt-in.
 
-After tenant selection, sign into that tenant yourself in the **current English-language React workbook view**. In the browser that will run the test, create a **new empty unsaved workbook**, open **Advanced Editor**, and leave its default empty JSON in place. The validator supplies the template; do not paste it first. It deliberately does not automate sign-in or discard an existing draft.
+Finish any account/tenant selection in the **current English-language React workbook view**. In the browser that will run the test, create a **new empty unsaved workbook**, open **Advanced Editor**, and leave its default empty JSON in place. The validator supplies the template; do not paste it first. It deliberately does not automate sign-in or discard an existing draft.
 
 ### Run the Mocha validator against a local browser
 
@@ -71,6 +82,14 @@ npm run test:browser
 
 Replace the placeholder only after the user has selected and confirmed it. The confirmation environment value must be exactly `true`; missing or false approval pauses before CDP connection. Clear private per-run variables afterward.
 
+For the in-browser flow, **instead of** the two strict-tenant variables, set:
+
+```powershell
+$env:WORKBOOK_BROWSER_USE_BROWSER_TENANT = "true"
+```
+
+Clear strict-tenant variables before choosing this mode. If there is exactly one blank/portal/sign-in tab and no eligible workbook editor, the Mocha adapter opens/checks Portal there and pauses with setup instructions; it does not pretend a workbook was validated. Multiple candidate tabs are never selected arbitrarily. Once signed in, create the new empty workbook and rerun. The adapter does not launch a new browser process or use the integrated VS Code browser; it attaches to your dedicated external CDP browser.
+
 The checks file is optional. The runner requires exactly one eligible portal page, reports configuration/authentication failures as failures, and disconnects its client afterward without creating or closing browser contexts. Close the dedicated browser yourself when finished. Only credential-free loopback HTTP CDP endpoints are accepted.
 
 ### Run with an existing Playwright or MCP browser
@@ -84,6 +103,8 @@ npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook"
 
 Prepare a new empty unsaved workbook's Advanced Editor in the tool's selected tab, then run the generated `async (page) => { ... }` function. Use the tool's `filename` input where available, pointing to the generated file's absolute path. The function uses no Node imports inside the browser tool. Hosts can impose shorter call timeouts; use the local Mocha runner for longer validations.
 
+For the already-authenticated browser-session workflow, replace `--tenant ... --confirm-tenant` with **`--use-browser-tenant`**. This explicitly authorizes using the observed session; a later account/tenant chooser still pauses and no choice is made for you. `--no-use-browser-tenant` revokes a checks-file browser-session opt-in.
+
 Generate into a directory your browser tool permits. Existing output files are never overwritten: choose a fresh name or remove only your previous generated file before regenerating. Generated scripts contain the template and its checks, **not authentication state**; keep them private and remove them after use. `.playwright-mcp/` is ignored by Git.
 
 A script can be generated offline without tenant confirmation, but its live execution will pause before accessing a browser. Specifying `--tenant` alone does not confirm it. Changing a tenant through CLI/environment overrides clears prior confirmation unless confirmation is explicitly provided again.
@@ -96,7 +117,7 @@ Use the same validator for another workbook by changing the template path and, o
 
 - `tabs`: exact primary tab labels, in order. Static labels are inferred if omitted; parameterized labels require explicit expectations. All declared tab links must be parameter links; otherwise automatic navigation is refused.
 - `timeout`: per-operation timeout in milliseconds, from 1 to 120000; default 30000.
-- `tenant`: a private per-run object with the user-selected GUID in `id` and their explicit boolean `confirmed` choice. It can be supplied through the CLI/environment instead of storing it in a checks file.
+- `tenant`: either a private per-run object with the user-selected GUID in `id` and explicit boolean `confirmed`, **or** `{ "useBrowserSession": true }` for the authorized in-browser workflow. These shapes are mutually exclusive. It can be supplied through CLI/environment instead of a checks file.
 - `deferred`: checks with `trigger` (a unique parameter-link label), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab).
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.
 - `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
