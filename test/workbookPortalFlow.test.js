@@ -93,6 +93,20 @@ describe('Validating browser-driven Azure sign-in...', () => {
         assert.equal(fixture.state.interactions, 0);
     });
 
+    it('offers typed readiness at sign-in and account choosers without requiring a host button', async () => {
+        for (const prompt of [undefined, 'Pick an account']) {
+            const fixture = portalPage({ url: 'https://login.microsoftonline.com/', prompt });
+            const report = await openAzurePortal(fixture.page);
+            assert.equal(report.status, 'paused');
+            assert.include(report.guidance, '"I am ready to continue"');
+            assert.include(report.guidance, 'no Continue button required');
+            assert.include(report.guidance, 'subscription scope separately');
+            assert.isFalse(report.workbookValidated);
+            assert.deepEqual(fixture.state.navigations, []);
+            assert.equal(fixture.state.interactions, 0);
+        }
+    });
+
     it('pauses at a visible directory chooser even if account-menu metadata is available', async () => {
         const fixture = portalPage({ url: 'https://portal.azure.com/#home', prompt: 'Select a directory' });
         const report = await openAzurePortal(fixture.page);
@@ -118,6 +132,19 @@ describe('Validating browser-driven Azure sign-in...', () => {
         assert.isTrue(report.tenantVerified);
         assert.isFalse(report.workbookValidated);
         assert.notInclude(JSON.stringify(report), tenantId);
+        assert.equal(fixture.state.interactions, 0);
+    });
+
+    it('keeps a requested typed handoff separate from signed-in readiness and data-scope approval', async () => {
+        const fixture = portalPage({ url: 'https://portal.azure.com/#home' });
+        const report = await openAzurePortal(fixture.page);
+        assert.equal(report.status, 'ready');
+        assert.include(report.guidance, 'If a readiness handoff is requested');
+        assert.include(report.guidance, '"I am ready to continue"');
+        assert.include(report.guidance, 'no Continue button required');
+        assert.include(report.guidance, 'Confirm non-production subscription scope');
+        assert.isFalse(report.workbookValidated);
+        assert.deepEqual(fixture.state.navigations, []);
         assert.equal(fixture.state.interactions, 0);
     });
 
@@ -185,6 +212,7 @@ describe('Validating browser-driven Azure sign-in...', () => {
         const fixture = portalPage({ destination: 'https://login.microsoftonline.com/', prompt: 'Pick an account' });
         const report = await run(fixture.page);
         assert.equal(report.status, 'paused');
+        assert.include(report.guidance, '"I am ready to continue"');
         assert.isFalse(report.workbookValidated);
     });
 

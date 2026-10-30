@@ -49,6 +49,12 @@ npm run test:browser:script -- --open-portal --output ".playwright-mcp\open-port
 
 Run this `async (page) => { ... }` function on a blank external browser page. It opens Portal and returns **`status: "paused"`** at sign-in or an account/tenant/directory chooser, without selecting or submitting anything. **Pause and let the user choose there, including in autopilot.** Rerun after they finish. A sign-in helper result always has `workbookValidated: false`; it is never evidence that a workbook passed.
 
+When a readiness handoff is requested, do not assume the chat host will display a Continue button or form. Offer a plain chat reply instead:
+
+> Finish account selection/sign-in in the external browser, then type **I am ready to continue** in chat.
+
+Wait for an actual user reply before resuming that handoff. An unavailable, declined, or cancelled form response, an automatic keep-working reminder, or a request to update the handoff instructions does not count as readiness confirmation. The phrase confirms readiness only: it does not choose/switch a tenant, approve subscription scopes, or authorize screenshot publication. The runner still rechecks the signed-in directory, and non-production scope and screenshot approvals remain separate.
+
 If Portal is already authenticated without a pending chooser, the helper reports **`status: "ready"`**. When the user has authorized continuing with that session, use `--use-browser-tenant` for the validation script or `WORKBOOK_BROWSER_USE_BROWSER_TENANT=true` for Mocha. No additional tenant form is required. The runner privately pins the observed directory for that validation run and stops if it changes.
 
 The helper does not navigate away from an existing portal workbook or restart an active sign-in challenge, and refuses to replace unrelated pages. Portal navigation does not approve data scopes: confirm the intended non-production subscriptions before queries, and obtain screenshot consent separately.

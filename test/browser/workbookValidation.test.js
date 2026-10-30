@@ -49,9 +49,7 @@ describe('Validating workbook browser behavior (opt-in)...', function () {
         }
         if (!candidates.length && input.options.tenant?.useBrowserSession && signInPages.length === 1) {
             const result = await openAzurePortal(signInPages[0], input.options.tenant);
-            throw new Error(result.status === 'paused' ?
-                `PAUSED: ${result.guidance}` :
-                'PAUSED: Azure Portal is signed in. Create a new empty unsaved workbook, open Advanced Editor, then rerun. No workbook was validated.');
+            throw new Error(`PAUSED: ${result.guidance} No workbook was validated.`);
         }
         if (candidates.length !== 1) {
             throw new Error(`Open exactly one new empty unsaved workbook in Advanced Editor; found ${candidates.length} eligible pages.`);

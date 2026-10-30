@@ -95,7 +95,7 @@ async function openAzurePortal(page, tenant = { useBrowserSession: true }, timeo
         return {
             status: 'paused',
             reason: prompt || 'sign-in',
-            guidance: 'Select the account/tenant and finish sign-in in this external browser, then rerun. No account or tenant was selected automatically.',
+            guidance: 'Select the account/tenant and finish sign-in in this external browser. When ready, type "I am ready to continue" in chat (no Continue button required), then rerun the portal check. No account or tenant was selected automatically. Confirm non-production subscription scope separately before workbook queries.',
             workbookValidated: false
         };
     }
@@ -103,7 +103,7 @@ async function openAzurePortal(page, tenant = { useBrowserSession: true }, timeo
     return {
         status: 'ready',
         tenantVerified: true,
-        guidance: 'The external browser is already signed in without a pending choice. Continue in a new empty unsaved workbook Advanced Editor; validation pins and rechecks this tenant.',
+        guidance: 'The external browser is already signed in without a pending choice. If a readiness handoff is requested, type "I am ready to continue" in chat (no Continue button required). Confirm non-production subscription scope before opening a new empty unsaved workbook in Advanced Editor; validation pins and rechecks this tenant.',
         workbookValidated: false
     };
 }
