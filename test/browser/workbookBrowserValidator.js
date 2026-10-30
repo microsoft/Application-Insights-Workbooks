@@ -258,7 +258,8 @@ function createValidationPlan(workbookSource, options = {}) {
     }
     const deferred = requested.map(check => {
         checkObject(check, 'Deferred-content check', [
-            'tab', 'trigger', 'heading', 'hideTriggerAfterLoad', 'minRows', 'maxRows', 'columns'
+            'tab', 'trigger', 'heading', 'hideTriggerAfterLoad', 'minRows', 'maxRows', 'columns',
+            'auditRows', 'nonEmptyColumns'
         ]);
         const trigger = label(check.trigger, 'trigger');
         const heading = label(check.heading, 'heading');
@@ -282,6 +283,20 @@ function createValidationPlan(workbookSource, options = {}) {
         if (columns && !columns.length) {
             throw new Error('columns must contain at least one label.');
         }
+        const auditRows = check.auditRows === undefined ? false : check.auditRows;
+        if (typeof auditRows !== 'boolean') {
+            throw new Error('auditRows must be a boolean.');
+        }
+        if (auditRows && check.maxRows === undefined) {
+            throw new Error('Row audits require maxRows to bound the work.');
+        }
+        const nonEmptyColumns = check.nonEmptyColumns === undefined ? [] : labels(check.nonEmptyColumns, 'nonEmptyColumns');
+        if (check.nonEmptyColumns !== undefined && (!auditRows || !nonEmptyColumns.length)) {
+            throw new Error('nonEmptyColumns requires auditRows: true and at least one column label.');
+        }
+        if (columns && nonEmptyColumns.some(column => !columns.includes(column))) {
+            throw new Error('nonEmptyColumns must belong to the requested columns contract.');
+        }
         const matches = links.filter(entry => typeof entry.link.linkLabel === 'string' &&
             label(entry.link.linkLabel, 'Link label') === trigger);
         if (matches.length !== 1 || matches[0].link.linkTarget !== 'parameter') {
@@ -300,7 +315,8 @@ function createValidationPlan(workbookSource, options = {}) {
             !producer.globals.has(producer.link.cellValue)) {
             throw new Error(`Trigger "${trigger}" must declare its visibility parameter as global before the producer.`);
         }
-        return { tab, trigger, heading, hideTriggerAfterLoad, minRows: check.minRows, maxRows: check.maxRows, columns, toolbarLabels };
+        return { tab, trigger, heading, hideTriggerAfterLoad, minRows: check.minRows, maxRows: check.maxRows,
+            columns, toolbarLabels, auditRows, nonEmptyColumns };
     });
 
     const groups = new Map();
@@ -388,13 +404,18 @@ function applyScreenshotRedaction(body, settings) {
 
 function isolateWorkbookFrame(frame, marker) {
     const document = frame.ownerDocument;
-    if (document.documentElement.hasAttribute('data-workbook-parent-isolation')) {
+    if (document.documentElement.hasAttribute('data-workbook-parent-isolation') ||
+        document.querySelector('[data-workbook-parent-allow]')) {
         throw new Error('A parent-page screenshot isolation is already active; refusing to capture.');
     }
     const originals = new Map();
+    const allowed = new Set();
+    for (let ancestor = frame; ancestor; ancestor = ancestor.parentElement) {
+        allowed.add(ancestor);
+    }
     const setVisibility = element => {
-        if (!element.style) return;
-        const value = element === frame ? 'visible' : 'hidden';
+        if (!element.style || allowed.has(element)) return;
+        const value = 'hidden';
         if (element.style.getPropertyValue('visibility') === value &&
             element.style.getPropertyPriority('visibility') === 'important') return;
         if (!originals.has(element)) {
@@ -422,6 +443,7 @@ function isolateWorkbookFrame(frame, marker) {
         observer.disconnect();
         style.remove();
         document.documentElement.removeAttribute('data-workbook-parent-isolation');
+        for (const element of allowed) element.removeAttribute('data-workbook-parent-allow');
         for (const [element, previous] of originals) {
             if (previous.value) element.style.setProperty('visibility', previous.value, previous.priority);
             else element.style.removeProperty('visibility');
@@ -430,11 +452,12 @@ function isolateWorkbookFrame(frame, marker) {
     };
     try {
         document.documentElement.setAttribute('data-workbook-parent-isolation', marker);
-        style.textContent = `html[data-workbook-parent-isolation="${marker}"] body,
-            html[data-workbook-parent-isolation="${marker}"] body *,
+        for (const element of allowed) element.setAttribute('data-workbook-parent-allow', marker);
+        style.textContent = `html[data-workbook-parent-isolation="${marker}"] body *:not([data-workbook-parent-allow="${marker}"]),
             html[data-workbook-parent-isolation="${marker}"] body *::before,
             html[data-workbook-parent-isolation="${marker}"] body *::after,
-            html[data-workbook-parent-isolation="${marker}"] ::backdrop { visibility: hidden !important; }`;
+            html[data-workbook-parent-isolation="${marker}"] ::backdrop { visibility: hidden !important; }
+            html[data-workbook-parent-isolation="${marker}"] [data-workbook-parent-allow="${marker}"] { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; background-image: none !important; }`;
         document.head.append(style);
         conceal(document.body);
         observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
@@ -452,10 +475,83 @@ function isolateWorkbookFrame(frame, marker) {
     }
 }
 
-async function screenshotIsolatedWorkbook(page, target, options, marker) {
+async function waitForRenderReady(root, timeout) {
+    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 120000) {
+        throw new Error('Render timeout must be an integer between 1 and 120000 milliseconds.');
+    }
+    const visible = element => element.getClientRects().length > 0 &&
+        element.ownerDocument.defaultView.getComputedStyle(element).visibility !== 'hidden';
+    await new Promise((resolve, reject) => {
+        let frame;
+        const finish = error => {
+            cancelAnimationFrame(frame);
+            clearTimeout(timer);
+            if (error) reject(error);
+            else resolve();
+        };
+        const timer = setTimeout(() => finish(
+            new Error('Timed out waiting for visible workbook busy indicators to clear.')), timeout);
+        const poll = () => {
+            try {
+                if (!root.isConnected) return finish(new Error('Workbook document changed while waiting for rendering.'));
+                const busy = Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"],.ms-Shimmer-container'))
+                    .some(visible);
+                if (!busy) return finish();
+                frame = requestAnimationFrame(poll);
+            } catch (error) {
+                finish(error);
+            }
+        };
+        poll();
+    });
+}
+
+function readScreenshotState(body, settings) {
+    const document = body.ownerDocument;
+    const reject = () => {
+        throw new Error(`Capture rejected (${settings.file}): document or redaction changed. Discard any local image; do not share it.`);
+    };
+    if (!body.isConnected || document.body !== body ||
+        body.getAttribute('data-workbook-validation-capture') !== settings.marker) reject();
+    if (settings.redaction !== 'none' &&
+        !document.querySelector(`[data-workbook-validation-style="${settings.marker}"]`)) reject();
+    if (settings.redaction !== 'none') {
+        const masked = body.querySelector(`[data-workbook-validation-mask="${settings.marker}"]`);
+        if (!masked || document.defaultView.getComputedStyle(masked)
+            .getPropertyValue('-webkit-text-fill-color') !== 'rgba(0, 0, 0, 0)') reject();
+    }
+    return {
+        width: document.defaultView.innerWidth,
+        height: document.defaultView.innerHeight,
+        scroll: Array.from(document.querySelectorAll('*')).filter(element => element.scrollTop || element.scrollLeft)
+            .map(element => [Math.round(element.scrollTop), Math.round(element.scrollLeft)])
+    };
+}
+
+function clearScreenshotState(body, marker) {
+    for (const attribute of ['data-workbook-validation-mask', 'data-workbook-validation-label']) {
+        for (const element of body.querySelectorAll(`[${attribute}="${marker}"]`)) element.removeAttribute(attribute);
+    }
+    for (const attribute of ['data-workbook-validation-mask', 'data-workbook-validation-label', 'data-workbook-validation-capture']) {
+        if (body.getAttribute(attribute) === marker) body.removeAttribute(attribute);
+    }
+    for (const style of body.ownerDocument.querySelectorAll(`[data-workbook-validation-style="${marker}"]`)) style.remove();
+}
+
+async function screenshotIsolatedWorkbook(page, target, options, marker, guard) {
+    const settings = { marker: guard.marker, file: guard.file, redaction: guard.redaction };
+    const before = await guard.body.evaluate(readScreenshotState, settings);
     const restore = await page.locator('iframe[name="Workbooks.ReactView"]').evaluateHandle(isolateWorkbookFrame, marker);
     try {
+        const isolated = await guard.body.evaluate(readScreenshotState, settings);
+        if (JSON.stringify(before) !== JSON.stringify(isolated)) {
+            throw new Error(`Capture rejected (${guard.file}): isolation changed the viewport or scroll position. Discard any local image; do not share it.`);
+        }
         await target.screenshot(options);
+        const after = await guard.body.evaluate(readScreenshotState, settings);
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+            throw new Error(`Capture rejected (${guard.file}): viewport or scroll position changed. Discard the local image; do not share it.`);
+        }
     } finally {
         try {
             await restore.evaluate(cleanup => cleanup());
@@ -465,7 +561,7 @@ async function screenshotIsolatedWorkbook(page, target, options, marker) {
     }
 }
 
-async function captureMaskedScreenshot(page, target, settings, allowedLabels, index) {
+async function captureMaskedScreenshot(page, target, settings, allowedLabels, index, timeout = 30000) {
     settings = normalizeScreenshotOptions(settings);
     if (!settings || settings.redaction === 'none') {
         throw new Error('Masked capture requires an enabled auto or selective redaction mode.');
@@ -476,6 +572,7 @@ async function captureMaskedScreenshot(page, target, settings, allowedLabels, in
     const file = `${marker}.png`;
     const separator = settings.directory.includes('\\') ? '\\' : '/';
     const path = settings.directory.replace(/[\\/]+$/, '') + separator + file;
+    await body.evaluate(waitForRenderReady, timeout);
     const maskedElements = await body.evaluate(markScreenshotMasks, {
         marker, allowedLabels, maskSelectors: settings.maskSelectors, redaction: settings.redaction
     });
@@ -488,39 +585,35 @@ async function captureMaskedScreenshot(page, target, settings, allowedLabels, in
             type: 'png',
             scale: 'css',
             animations: 'disabled',
-            caret: 'hide'
-        }, marker);
+            caret: 'hide',
+            timeout
+        }, marker, { body, marker, file, redaction: settings.redaction });
     } finally {
-        await body.evaluate((element, marker) => {
-            for (const masked of element.querySelectorAll(`[data-workbook-validation-mask="${marker}"]`)) {
-                masked.removeAttribute('data-workbook-validation-mask');
-            }
-            for (const label of element.querySelectorAll(`[data-workbook-validation-label="${marker}"]`)) {
-                label.removeAttribute('data-workbook-validation-label');
-            }
-            element.removeAttribute('data-workbook-validation-mask');
-            element.removeAttribute('data-workbook-validation-label');
-            element.removeAttribute('data-workbook-validation-capture');
-            for (const style of element.ownerDocument.querySelectorAll(`[data-workbook-validation-style="${marker}"]`)) {
-                style.remove();
-            }
-        }, marker);
+        await body.evaluate(clearScreenshotState, marker);
     }
     return { file, maskedElements, redaction: settings.redaction, reviewRequired: true, publicationApproved: false };
 }
 
-async function captureWorkbookScreenshot(page, target, settings, allowedLabels, index) {
+async function captureWorkbookScreenshot(page, target, settings, allowedLabels, index, timeout = 30000) {
     settings = normalizeScreenshotOptions(settings);
     if (!settings) throw new Error('Screenshot capture is not enabled.');
     if (settings.redaction !== 'none') {
-        return captureMaskedScreenshot(page, target, settings, allowedLabels, index);
+        return captureMaskedScreenshot(page, target, settings, allowedLabels, index, timeout);
     }
     const file = `capture-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2)}.png`;
     const separator = settings.directory.includes('\\') ? '\\' : '/';
-    await screenshotIsolatedWorkbook(page, target, {
-        path: settings.directory.replace(/[\\/]+$/, '') + separator + file,
-        type: 'png', scale: 'css', animations: 'disabled', caret: 'hide'
-    }, file.replace(/\.png$/, ''));
+    const marker = file.replace(/\.png$/, '');
+    const body = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame().locator('body');
+    await body.evaluate(waitForRenderReady, timeout);
+    await body.evaluate(markScreenshotMasks, { marker, redaction: 'none', allowedLabels: [], maskSelectors: [] });
+    try {
+        await screenshotIsolatedWorkbook(page, target, {
+            path: settings.directory.replace(/[\\/]+$/, '') + separator + file,
+            type: 'png', scale: 'css', animations: 'disabled', caret: 'hide', timeout
+        }, marker, { body, marker, file, redaction: 'none' });
+    } finally {
+        await body.evaluate(clearScreenshotState, marker);
+    }
     return { file, maskedElements: 0, redaction: 'none', reviewRequired: true, publicationApproved: false };
 }
 
@@ -534,12 +627,119 @@ function readGridSummary(element) {
     return { rows: Number(count) - 1, columns };
 }
 
+async function auditGridRows(grid, options) {
+    if (!options || !Number.isSafeInteger(options.maxRows) || options.maxRows < 0 ||
+        !Number.isSafeInteger(options.timeout) || options.timeout < 1 || options.timeout > 120000 ||
+        !Array.isArray(options.nonEmptyColumns) ||
+        options.nonEmptyColumns.some(column => typeof column !== 'string' || !column.trim()) ||
+        new Set(options.nonEmptyColumns).size !== options.nonEmptyColumns.length) {
+        throw new Error('Grid audits require bounded maxRows, timeout, and nonEmptyColumns labels.');
+    }
+    const deadline = performance.now() + options.timeout;
+    const headerLabels = () => Array.from(grid.querySelectorAll('[role="columnheader"]'), header =>
+        (header.textContent || '').replace(/^[\uE000-\uF8FF\s]+/, '').replace(/\s+/g, ' ').trim());
+    const initialHeaders = headerLabels();
+    const count = grid.getAttribute('aria-rowcount');
+    if (count === null || !/^\d+$/.test(count) || !Number.isSafeInteger(Number(count)) || Number(count) < 1) {
+        throw new Error('Cannot audit rows without a reliable aria-rowcount.');
+    }
+    const total = Number(count) - 1;
+    if (total > options.maxRows) throw new Error('Grid exceeds the configured audit maxRows.');
+    const indexes = options.nonEmptyColumns.map(column => {
+        const matches = initialHeaders.map((label, index) => label === column ? index : -1).filter(index => index >= 0);
+        if (matches.length !== 1) throw new Error(`Cannot identify one audit column "${column}".`);
+        return matches[0];
+    });
+    const checkSnapshot = () => {
+        if (!grid.isConnected || grid.getAttribute('aria-rowcount') !== count ||
+            JSON.stringify(headerLabels()) !== JSON.stringify(initialHeaders)) {
+            throw new Error('Grid count, schema, or document changed during the audit. Stabilize the scope and retry.');
+        }
+        if (performance.now() >= deadline) throw new Error('Timed out auditing all virtualized grid rows.');
+    };
+    const rows = () => Array.from(grid.querySelectorAll('[role="row"][aria-rowindex]'))
+        .filter(row => Number(row.getAttribute('aria-rowindex')) >= 2);
+    const highest = () => Math.max(1, ...rows().map(row => Number(row.getAttribute('aria-rowindex'))));
+    const waitFor = predicate => new Promise((resolve, reject) => {
+        let observer;
+        let timer;
+        const cleanup = () => { observer.disconnect(); clearTimeout(timer); };
+        const poll = () => {
+            try {
+                checkSnapshot();
+                if (predicate()) { cleanup(); resolve(); }
+            } catch (error) {
+                cleanup();
+                reject(error);
+            }
+        };
+        observer = new MutationObserver(poll);
+        observer.observe(grid, { childList: true, subtree: true, attributes: true,
+            attributeFilter: ['aria-rowindex', 'aria-rowcount'] });
+        timer = setTimeout(() => {
+            cleanup();
+            reject(new Error('Timed out waiting for the next virtualized row range.'));
+        }, Math.max(1, deadline - performance.now()));
+        poll();
+    });
+    let scroller = grid;
+    while (scroller && !(scroller.scrollHeight > scroller.clientHeight + 1 &&
+        ['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+    const original = scroller ? { top: scroller.scrollTop, left: scroller.scrollLeft } : undefined;
+    const seen = new Set();
+    try {
+        checkSnapshot();
+        if (total) {
+            if (scroller) scroller.scrollTop = 0;
+            await waitFor(() => rows().some(row => row.getAttribute('aria-rowindex') === '2'));
+        }
+        while (seen.size < total) {
+            checkSnapshot();
+            const rendered = rows();
+            if (new Set(rendered.map(row => row.getAttribute('aria-rowindex'))).size !== rendered.length) {
+                throw new Error('Duplicate rendered row indexes prevent a reliable audit.');
+            }
+            for (const row of rendered) {
+                if (performance.now() >= deadline) throw new Error('Timed out auditing all virtualized grid rows.');
+                const index = Number(row.getAttribute('aria-rowindex'));
+                if (!Number.isSafeInteger(index) || index < 2 || index > total + 1) {
+                    throw new Error('Grid row indexes are invalid for a complete audit.');
+                }
+                if (seen.has(index)) continue;
+                const cells = row.querySelectorAll('[role="gridcell"]');
+                if (cells.length !== initialHeaders.length) throw new Error('Grid row/header shape changed during audit.');
+                for (const column of indexes) {
+                    if (!(cells[column].textContent || '').trim()) {
+                        throw new Error(`Audited column "${initialHeaders[column]}" contains an empty display cell at ARIA row ${index}.`);
+                    }
+                }
+                seen.add(index);
+            }
+            if (seen.size === total) break;
+            const max = highest();
+            if (!scroller || !rendered.length || max >= total + 1) {
+                throw new Error(`Incomplete grid audit: ${seen.size} of ${total} rows visited.`);
+            }
+            const rowBottom = rendered[rendered.length - 1].getBoundingClientRect().bottom;
+            scroller.scrollTop += rowBottom - scroller.getBoundingClientRect().bottom + scroller.clientHeight / 4;
+            await waitFor(() => highest() > max);
+        }
+        checkSnapshot();
+        return { rowsAudited: seen.size, totalRows: total, nonEmptyColumnsVerified: options.nonEmptyColumns };
+    } finally {
+        if (scroller) {
+            scroller.scrollTop = original.top;
+            scroller.scrollLeft = original.left;
+        }
+    }
+}
+
 async function activateWorkbookControl(locator, timeout) {
     await locator.waitFor({ state: 'visible', timeout });
-    if (!await locator.isEnabled()) {
+    if (!await locator.isEnabled({ timeout })) {
         throw new Error('A requested workbook control is disabled; refusing to activate it.');
     }
-    await locator.press('Enter');
+    await locator.press('Enter', { timeout });
 }
 
 async function bindParameterTrigger(frame, group, timeout) {
@@ -610,7 +810,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     async function capture(target, allowedLabels, stage) {
         if (plan.screenshots) {
             await verifySelectedTenant(page, selectedTenant);
-            const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels, screenshots.length);
+            const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels, screenshots.length, plan.timeout);
             screenshots.push({ ...result, stage });
         }
     }
@@ -645,7 +845,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                 .waitFor({ state: 'visible', timeout: plan.timeout });
         }
         const trigger = await bindParameterTrigger(frame, group, plan.timeout);
-        await trigger.scrollIntoViewIfNeeded();
+        await trigger.scrollIntoViewIfNeeded({ timeout: plan.timeout });
         for (const check of group.checks) {
             if (await frame.getByRole('heading', { name: check.heading, exact: true, includeHidden: true }).count()) {
                 throw new Error(`Deferred content "${check.heading}" was mounted before its trigger.`);
@@ -661,7 +861,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                 await trigger.waitFor({ state: 'hidden', timeout: plan.timeout });
                 result.producerHidden = true;
             }
-            if (check.minRows !== undefined || check.maxRows !== undefined || check.columns !== undefined) {
+            if (check.minRows !== undefined || check.maxRows !== undefined || check.columns !== undefined || check.auditRows) {
                 const panel = heading.locator('xpath=ancestor::div[contains(@class,"styleWrapper-maximized")][1]');
                 if (await panel.count() !== 1) {
                     throw new Error(`Cannot locate the query panel for "${check.heading}".`);
@@ -679,6 +879,12 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                     throw new Error(`"${check.heading}" column labels differ from the requested contract.`);
                 }
                 result.grid = summary;
+                if (check.auditRows) {
+                    await grid.scrollIntoViewIfNeeded({ timeout: plan.timeout });
+                    result.rowAudit = await grid.evaluate(auditGridRows, {
+                        timeout: plan.timeout, maxRows: check.maxRows, nonEmptyColumns: check.nonEmptyColumns
+                    });
+                }
             }
             deferredChecks.push(result);
             if (plan.screenshots) {
@@ -698,6 +904,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
         parameterActionsClicked,
         deferredChecks,
         dataContractsChecked: deferredChecks.filter(check => check.grid).length,
+        rowsAudited: deferredChecks.reduce((sum, check) => sum + (check.rowAudit?.rowsAudited || 0), 0),
         screenshots: {
             enabled: Boolean(plan.screenshots),
             captures: screenshots,
@@ -789,8 +996,9 @@ function createPlaywrightScript(workbookSource, options = {}) {
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
     const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, portalSelectionPrompt, verifySelectedTenant,
         normalizeScreenshotOptions, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
-        applyScreenshotRedaction, isolateWorkbookFrame, screenshotIsolatedWorkbook, captureMaskedScreenshot,
-        captureWorkbookScreenshot, readGridSummary, activateWorkbookControl, bindParameterTrigger, validateWorkbookInBrowser]
+        applyScreenshotRedaction, isolateWorkbookFrame, waitForRenderReady, readScreenshotState, clearScreenshotState,
+        screenshotIsolatedWorkbook, captureMaskedScreenshot, captureWorkbookScreenshot, readGridSummary, auditGridRows,
+        activateWorkbookControl, bindParameterTrigger, validateWorkbookInBrowser]
         .map(callback => callback.toString()).join('\n\n');
     return `async (page) => {\n${functions}\nreturn validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)});\n}\n`;
 }
@@ -816,10 +1024,14 @@ module.exports = {
     screenshotRedactionStyle,
     applyScreenshotRedaction,
     isolateWorkbookFrame,
+    waitForRenderReady,
+    readScreenshotState,
+    clearScreenshotState,
     screenshotIsolatedWorkbook,
     captureMaskedScreenshot,
     captureWorkbookScreenshot,
     readGridSummary,
+    auditGridRows,
     activateWorkbookControl,
     bindParameterTrigger,
     validateWorkbookInBrowser,

@@ -1,6 +1,6 @@
 ---
 name: validate-workbook-browser
-description: 'Validate Azure Workbooks with Playwright or MCP in an external browser. Use for workbook testing, Azure sign-in, account/tenant selection, typed readiness when Continue controls are unavailable, screenshots, and manual/AI-assisted redaction. Supports in-browser tenant choice, pauses at sign-in/selection screens even in autopilot, and never selects an account automatically.'
+description: 'Validate Azure Workbooks with Playwright or MCP in an external browser. Use for workbook testing, virtualized grid audits, render readiness, Azure sign-in, typed readiness handoffs, screenshots, and manual/AI-assisted redaction. Supports in-browser tenant choice, pauses at sign-in/selection screens even in autopilot, and never selects an account automatically.'
 ---
 
 # Validate a workbook in the browser
@@ -35,5 +35,9 @@ Manual, AI-assisted, and unredacted modes require explicit approval for potentia
 1. Use a new empty unsaved workbook's Advanced Editor. Do not replace an existing draft or save/provision an Azure workbook.
 2. Use `npm run test:browser` for a dedicated local CDP browser or generate the portable MCP runner with `npm run test:browser:script`.
 3. Run only the agreed checks and scopes. Observe all approval, no-data, and redaction failures; do not convert them into passes.
+   For full table checks, opt in to bounded `auditRows`/`nonEmptyColumns` contracts. Count returned ARIA rows, not just mounted DOM rows, and wait for actual range/render changes rather than fixed sleeps. A UI row audit is not a complete backend export or a point-in-time data snapshot.
+   JSON cells/tooltips may clip or reformat content. Validate complete values at an approved response/export boundary; never repair or infer missing source data from formatted display text.
 4. Report the source hash, requested contract results, aggregate counts, selected redaction mode, and coverage limits. Do not include tenant IDs, account identities, record values, or raw screenshots in PR comments.
+   If a PR revision changes during validation, retain the executed revision in the report. Offline compatibility checks are not a new authenticated run.
 5. Images remain `reviewRequired` and not approved for publication, even in auto mode. No automatic upload is permitted. Remove task-owned intermediate images and private per-run configuration when finished.
+   Wait for capture completion and review the actual file. A frame/document refresh, lost masks, viewport/scroll drift, or mismatched host output invalidates the image. Discard any rejected local file, report the limitation, and never reduce redaction automatically. Use offline synthetic fixtures to reproduce host/rendering races instead of repeatedly capturing tenant data.

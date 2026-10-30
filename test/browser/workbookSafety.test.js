@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { captureWorkbookScreenshot, bindParameterTrigger, activateWorkbookControl,
-    verifySelectedTenant } = require('./workbookBrowserValidator');
+    verifySelectedTenant, auditGridRows, waitForRenderReady } = require('./workbookBrowserValidator');
 
 describe('Validating browser safety with offline fixtures (opt-in)...', function () {
     let browser;
@@ -46,6 +46,45 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
     after(async function () {
         if (browser) await browser.close();
     });
+
+    async function virtualGrid({ total = 47, emptyRow = -1, drift = false, stall = false, originalScroll = 140 } = {}) {
+        const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
+        await frame.locator('body').evaluate((body, options) => {
+            body.style.margin = '0';
+            body.innerHTML = '<div id="viewport" style="height:120px;width:500px;overflow:auto">' +
+                `<div role="grid" aria-rowcount="${options.total + 1}" style="height:${(options.total + 1) * 20}px;position:relative">` +
+                '<div role="row"><div role="columnheader">Label</div><div role="columnheader">Value</div></div>' +
+                '<div id="rows"></div></div></div>';
+            const viewport = document.getElementById('viewport');
+            const grid = document.querySelector('[role="grid"]');
+            const rows = document.getElementById('rows');
+            const render = () => {
+                const start = Math.max(0, Math.floor(viewport.scrollTop / 20) - 2);
+                rows.innerHTML = '';
+                for (let index = start; index < Math.min(start + 12, options.total); index++) {
+                    const row = document.createElement('div');
+                    row.setAttribute('role', 'row');
+                    row.setAttribute('aria-rowindex', String(index + 2));
+                    row.style.cssText = `position:absolute;top:${(index + 1) * 20}px;height:20px`;
+                    row.innerHTML = `<span role="gridcell">Synthetic ${index}</span>` +
+                        `<span role="gridcell">${index === options.emptyRow ? '' : index}</span>`;
+                    rows.append(row);
+                }
+            };
+            let timer;
+            viewport.addEventListener('scroll', () => {
+                clearTimeout(timer);
+                if (options.stall) return;
+                timer = setTimeout(() => {
+                    if (options.drift && viewport.scrollTop > 150) grid.setAttribute('aria-rowcount', String(options.total + 2));
+                    render();
+                }, 75);
+            });
+            viewport.scrollTop = options.originalScroll;
+            render();
+        }, { total, emptyRow, drift, stall, originalScroll });
+        return { frame, grid: frame.getByRole('grid') };
+    }
 
     it('excludes existing and late parent overlays from auto and approved unredacted capture pixels', async function () {
         const iframe = page.locator('iframe[name="Workbooks.ReactView"]');
@@ -99,6 +138,110 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
         assert.equal(await page.locator('html').getAttribute('data-workbook-parent-isolation'), null);
         const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
         assert.equal(await frame.locator('[data-workbook-validation-capture]').count(), 0);
+    });
+
+    it('does not hide the iframe or its ancestors while excluding parent overlays', async function () {
+        const iframe = page.locator('iframe[name="Workbooks.ReactView"]');
+        const target = {
+            async screenshot(options) {
+                const visible = await iframe.evaluate(frame => {
+                    for (let element = frame; element; element = element.parentElement) {
+                        if (getComputedStyle(element).visibility === 'hidden') return false;
+                    }
+                    return true;
+                });
+                assert.equal(visible, true);
+                return iframe.screenshot(options);
+            }
+        };
+        await captureWorkbookScreenshot(page, target, { directory }, ['Approved heading'], 0);
+        assert.equal(await page.locator('[data-workbook-parent-allow]').count(), 0);
+    });
+
+    it('rejects a replaced workbook document during capture rather than qualifying its image', async function () {
+        const iframe = page.locator('iframe[name="Workbooks.ReactView"]');
+        const handle = await iframe.elementHandle();
+        const frame = await handle.contentFrame();
+        await assert.rejects(captureWorkbookScreenshot(page, {
+            async screenshot(options) {
+                await frame.goto('about:blank');
+                await frame.setContent('<p>Replacement synthetic document</p>');
+                return iframe.screenshot(options);
+            }
+        }, { directory }, ['Approved heading'], 0), /Capture rejected.*Discard/);
+        assert.equal(await page.locator('html').getAttribute('data-workbook-parent-isolation'), null);
+        assert.equal(await page.locator('#overlay').evaluate(element => getComputedStyle(element).visibility), 'visible');
+        assert.equal(fs.readdirSync(directory).length, 1);
+    });
+
+    it('rejects scroll/viewpoint drift and removes its temporary state after writing a private image', async function () {
+        const iframe = page.locator('iframe[name="Workbooks.ReactView"]');
+        const frame = iframe.contentFrame();
+        await frame.locator('body').evaluate(body => {
+            body.innerHTML = '<div id="scroll" style="height:100px;overflow:auto"><div style="height:500px">Synthetic content</div></div>';
+            document.getElementById('scroll').scrollTop = 40;
+        });
+        await assert.rejects(captureWorkbookScreenshot(page, {
+            async screenshot(options) {
+                const buffer = await iframe.screenshot(options);
+                await frame.locator('#scroll').evaluate(element => element.scrollTop = 80);
+                return buffer;
+            }
+        }, { directory }, [], 0), /viewport or scroll position changed.*Discard/);
+        assert.equal(await frame.locator('[data-workbook-validation-capture]').count(), 0);
+        assert.equal(await page.locator('[data-workbook-parent-allow]').count(), 0);
+    });
+
+    it('waits for visible busy/shimmer signals and ignores hidden progress controls', async function () {
+        const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
+        await frame.locator('body').evaluate(body => {
+            body.innerHTML = '<div id="busy" aria-busy="true"><div role="progressbar">Loading</div>' +
+                '<div class="ms-Shimmer-container">Placeholder</div></div><div role="progressbar" style="display:none">Hidden</div>';
+            setTimeout(() => {
+                document.getElementById('busy').remove();
+            }, 75);
+        });
+        await frame.locator('body').evaluate(waitForRenderReady, 1000);
+        assert.equal(await frame.locator('#busy').count(), 0);
+    });
+
+    it('fails bounded readiness checks before creating a screenshot when loading never finishes', async function () {
+        const iframe = page.locator('iframe[name="Workbooks.ReactView"]');
+        await iframe.contentFrame().locator('body').evaluate(body => {
+            body.innerHTML = '<div aria-busy="true">Still loading</div>';
+        });
+        await assert.rejects(captureWorkbookScreenshot(page, iframe, { directory }, [], 0, 100), /busy indicators/);
+        assert.equal(fs.readdirSync(directory).length, 0);
+    });
+
+    it('audits every delayed virtualized row, accepts zero values, and restores grid scrolling', async function () {
+        const { frame, grid } = await virtualGrid();
+        const audit = await grid.evaluate(auditGridRows, { maxRows: 100, timeout: 5000, nonEmptyColumns: ['Label', 'Value'] });
+        assert.deepEqual(audit, { rowsAudited: 47, totalRows: 47, nonEmptyColumnsVerified: ['Label', 'Value'] });
+        assert.equal(await frame.locator('#viewport').evaluate(element => element.scrollTop), 140);
+        assert.equal(JSON.stringify(audit).includes('Synthetic'), false);
+    });
+
+    it('finds an empty cell outside the initial rendered rows without exposing its record', async function () {
+        const { frame, grid } = await virtualGrid({ emptyRow: 37 });
+        await assert.rejects(grid.evaluate(auditGridRows, {
+            maxRows: 100, timeout: 5000, nonEmptyColumns: ['Value']
+        }), /column "Value" contains an empty display cell/);
+        assert.equal(await frame.locator('#viewport').evaluate(element => element.scrollTop), 140);
+    });
+
+    it('fails a row audit when the result count changes during virtualization', async function () {
+        const { grid } = await virtualGrid({ drift: true });
+        await assert.rejects(grid.evaluate(auditGridRows, {
+            maxRows: 100, timeout: 5000, nonEmptyColumns: []
+        }), /Grid count, schema, or document changed/);
+    });
+
+    it('never reports partial row coverage as a pass when virtualization stops progressing', async function () {
+        const { grid } = await virtualGrid({ stall: true, originalScroll: 0 });
+        await assert.rejects(grid.evaluate(auditGridRows, {
+            maxRows: 100, timeout: 150, nonEmptyColumns: []
+        }), /Timed out/);
     });
 
     it('refuses a same-label hyperlink and activates only the verified source toolbar', async function () {

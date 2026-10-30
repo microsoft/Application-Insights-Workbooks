@@ -32,6 +32,7 @@ The shared runner:
 - Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
 - Optionally checks that deferred content is not mounted before a source-defined toolbar parameter action, appears after it, and hides its producer when requested. The runtime toolbar's full static labels must match the source; a same-label Markdown/query hyperlink is never a fallback. A self-hiding producer must have its visibility parameter declared as global before it.
 - Optionally verifies exact grid column labels and row bounds using `aria-rowcount`, not the number of virtualized rows currently rendered.
+- Optionally audits every returned grid row with a bounded `auditRows` contract, waiting for actual virtualized row-range changes and checking selected non-empty display columns without reporting record values.
 - Offers optional local screenshots, disabled by default, with conservative masking applied before capture and a mandatory manual-review reminder.
 
 Commands and parameter actions use native Enter-key activation after visibility and enabled-state checks. This validates the accessible interaction path without depending on pointer coordinates during query-driven reflow; it does not certify mouse hit testing.
@@ -119,7 +120,7 @@ A script can be generated offline without tenant confirmation, but its live exec
 
 ### Define reusable checks
 
-[Smoke.workbook](../test/browser/fixtures/Smoke.workbook) uses only static text and inline JSON, so the example does not need tenant telemetry or query Azure resources. Its [checks file](../test/browser/fixtures/smoke-checks.json) exercises two tabs, one action revealing both a table and text, producer visibility, a two-row result, and exact column labels.
+[Smoke.workbook](../test/browser/fixtures/Smoke.workbook) uses only static text and inline JSON, so the example does not need tenant telemetry or query Azure resources. Its [checks file](../test/browser/fixtures/smoke-checks.json) exercises two tabs, one action revealing both a table and text, producer visibility, a full two-row audit, and exact column labels.
 
 Use the same validator for another workbook by changing the template path and, optionally, supplying a JSON checks file:
 
@@ -129,10 +130,22 @@ Use the same validator for another workbook by changing the template path and, o
 - `deferred`: checks with `trigger` (a unique parameter-link label from a `toolbar` links item), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab). All links in the producer toolbar must have static labels so the runtime container can be verified; unsupported/ambiguous renderers fail rather than falling back to another same-label control.
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.
 - `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
+- `auditRows`: opt-in complete audit of the rows currently returned to that grid; default false. Requires an explicit `maxRows` bound and uses `timeout` as a total traversal budget.
+- `nonEmptyColumns`: optional unique display labels whose cells must be non-empty in every audited row. Requires `auditRows: true`; `"0"` and `"false"` display values are not mistaken for missing data.
 
 Checks sharing the same tab and trigger are grouped: all associated headings must be absent before the action is clicked once, then every panel's requested contracts are validated. The trigger must be ready and scrolled into view before initial absence is checked.
 
+Row audits use ARIA row indexes and wait for DOM row-range changes, not a fixed sleep or two animation frames. They reject incomplete traversal, invalid/duplicate indexes, schema/count drift, missing required cells, and stalled rendering, and restore the grid's original scroll position. This requires a rectangular ARIA grid with consistent header/cell shape. The report contains only audited-row counts and verified column labels. **It is not a paginated export, server-side snapshot, or proof that the grid contains every matching backend record.** Compare lists to server-side totals and narrow scope when necessary.
+
 The JSON report contains the source hash, visited tab labels, requested contract results, and aggregate row counts, not record values. Only requested contracts are covered; review even these summaries before publishing because labels can contain context. Do not publish generated scripts, browser profiles, or unreviewed tenant screenshots as test evidence.
+
+### Apply live-run lessons without workbook-specific assumptions
+
+- **Wait for the evidence being asserted.** Visible tabs or a first SVG/group do not prove a query or graph has finished rendering. Use explicit data/shape contracts or the scenario's final render state. Screenshots wait for visible ARIA busy/progress and Fluent shimmer indicators to clear; absence of those indicators is not proof every query succeeded.
+- **Do not parse formatted JSON displays as source data.** Cells and tooltips can clip, truncate, or unescape JSON. Validate complete JSON against the approved query/API response or a supported export, not by guessing repairs to display text. This runner does not export records or intercept arbitrary responses automatically.
+- **Keep no-data distinct from success.** An empty grid or a no-data message is not evidence that a workload is healthy, supported, scanned, or enabled. State which scenario could not be exercised.
+- **Record exact revisions and limits.** Include the workbook source hash, validator revision, requested contracts, and aggregate results. If a PR changes concurrently, qualify the revision actually executed; do not claim a fresh live run merely because a new revision's offline tests pass.
+- **Minimize live work.** Run only approved read-only scopes and required scenarios. Keep full-row audits and screenshots opt-in; use synthetic offline browser fixtures for readiness, virtualization, and privacy regressions.
 
 ### Optional masked screenshots
 
@@ -155,11 +168,13 @@ For the Mocha runner set `WORKBOOK_BROWSER_SCREENSHOTS` to a local directory. Th
 
 In default `auto` mode, `maskSelectors` is optional and **adds** masks; it cannot disable the defaults. Each selector must match in every captured stage. An invalid selector or one matching nothing fails capture rather than silently omitting a requested mask. URLs, network paths, and parent-directory traversal are refused for the output directory.
 
-The runner captures each visited primary tab and brings each successfully checked deferred panel into view for another capture. Images are of the workbook iframe viewport. During every capture, the surrounding parent document is temporarily hidden while the target iframe remains visible: this excludes overlapping account flyouts/dialogs, not just chrome outside the image rectangle. Newly mounted parent elements and visibility changes are concealed until capture ends, then original visibility styles are restored even on failure. Isolation failures stop capture.
+The runner captures each visited primary tab and brings each successfully checked deferred panel into view for another capture. Images are of the workbook iframe viewport. During every capture, parent overlays/siblings are hidden while the iframe **and its ancestor visibility remain unchanged**, reducing lifecycle/layout disruption rather than marking the active branch hidden. This excludes overlapping account flyouts/dialogs, not just chrome outside the image rectangle. Newly mounted parent elements and visibility changes are concealed until capture ends, then temporary styles are restored even on failure. Isolation failures stop capture.
 
 Within the workbook, auto mode masks grid data cells, inputs, non-contract text, charts, images, and embedded content. Only exact contract tab, heading, and column labels are retained. Redaction CSS is installed in the workbook DOM and checked with a computed-style probe **before** calling screenshot APIs, so it does not depend solely on a browser adapter honoring Playwright's mask/style options. The CSS also hides newly mounted text and media, including virtualized rows. Temporary styles and markers are removed afterward, even if capture fails; blocked redaction fails capture and there is no unmasked fallback. Parent-document isolation also applies to explicitly approved unredacted workbook captures; it is not permission to capture unrelated account chrome.
 
 Images have generated names rather than tenant-derived filenames. The report lists filenames and mask counts, not absolute output paths. Nothing is uploaded or committed automatically. Use a private local directory within your browser tool's permitted output roots, and review **every image** before sharing. Conservative masking is **not guaranteed anonymization**: contract labels themselves can be sensitive, and masking intentionally obscures data needed for some visual checks. Use synthetic fixtures to verify raw data formatting and inspect real data only in the authorized portal. Remove only your own evidence files when finished.
+
+Capture checks verify the source document marker, current redaction state, viewport dimensions, and scroll offsets before and after the screenshot call. Document replacement, lost masking, or viewpoint drift fails capture instead of returning a successful report. **A rejected private PNG may already have been written:** discard the filename named in the error, do not upload it, and do not retry without masks. Browser adapters may still ignore or delay capture behavior in ways DOM checks cannot certify; successful API calls and CI are never automatic publication approval. Use the supported shared runner and manually review its completed image rather than treating an extra ad-hoc capture as equivalent evidence. Configured timeouts are propagated to control activation, scrolling and screenshot calls.
 
 ### If automatic redaction hides too much
 

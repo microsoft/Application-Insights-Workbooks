@@ -18,9 +18,13 @@ const {
     screenshotRedactionStyle,
     applyScreenshotRedaction,
     isolateWorkbookFrame,
+    waitForRenderReady,
+    readScreenshotState,
+    clearScreenshotState,
     captureMaskedScreenshot,
     captureWorkbookScreenshot,
     readGridSummary,
+    auditGridRows,
     activateWorkbookControl,
     bindParameterTrigger,
     validateWorkbookInBrowser: validateWithExplicitTenant,
@@ -458,6 +462,7 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(report.sourceSha256, crypto.createHash('sha256').update(emptySource).digest('hex'));
         assert.deepEqual(report.tabsVisited, []);
         assert.equal(report.dataContractsChecked, 0);
+        assert.equal(report.rowsAudited, 0);
         assert.equal(report.parameterActionsClicked, 0);
         assert.include(report.coverage, 'no-data is not proof of health');
         assert.isFalse(report.workbookSaved);
@@ -555,6 +560,39 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(report.parameterActionsClicked, 1);
         assert.lengthOf(report.deferredChecks, 2);
         assert.isTrue(report.deferredChecks.every(check => check.producerHidden));
+    });
+
+    it('runs configured full-row audits through the shared validator and reports only aggregate coverage', async () => {
+        const editor = sharedDeferredEditor();
+        const original = editor.frame.getByRole.bind(editor.frame);
+        let audits = 0;
+        const grid = {
+            async waitFor() {},
+            async scrollIntoViewIfNeeded(options) { assert.equal(options.timeout, 30000); },
+            async evaluate(callback, options) {
+                if (callback === readGridSummary) return { rows: 47, columns: ['Label', 'Value'] };
+                assert.equal(callback, auditGridRows);
+                assert.deepEqual(options, { timeout: 30000, maxRows: 100, nonEmptyColumns: ['Value'] });
+                audits++;
+                return { rowsAudited: 47, totalRows: 47, nonEmptyColumnsVerified: ['Value'] };
+            }
+        };
+        editor.frame.getByRole = (role, options = {}) => {
+            const result = original(role, options);
+            if (role === 'heading' && options.name === 'Deferred table') {
+                result.locator = () => ({ count: async () => 1, getByRole: () => grid });
+            }
+            return result;
+        };
+        const report = await validateWorkbookInBrowser(editor.page, editor.source, {
+            deferred: [{ trigger: 'Show details', heading: 'Deferred table', auditRows: true,
+                maxRows: 100, columns: ['Label', 'Value'], nonEmptyColumns: ['Value'] }]
+        });
+        assert.equal(audits, 1);
+        assert.equal(report.rowsAudited, 47);
+        assert.equal(report.dataContractsChecked, 1);
+        assert.equal(report.deferredChecks[0].rowAudit.totalRows, 47);
+        assert.notInclude(JSON.stringify(report), 'Synthetic');
     });
 
     it('checks every shared panel for eager content before any trigger click', async () => {
@@ -836,14 +874,24 @@ describe('Validating optional screenshot safeguards...', () => {
         assert.deepEqual(missing.cell.attributes, {});
     });
 
-    function screenshotPage({ fail = false, masks = 3, blockedRedaction = false, blockedIsolation = false } = {}) {
+    function screenshotPage({ fail = false, masks = 3, blockedRedaction = false, blockedIsolation = false,
+        changedViewport = false, changedDocument = false, changedOnIsolation = false, expectedTimeout = 30000 } = {}) {
         const calls = [];
         const cleanedRootAttributes = [];
+        let marker;
+        let captured = false;
+        let isolated = false;
         const body = {
             async evaluate(callback, argument) {
+                if (callback === waitForRenderReady) {
+                    calls.push('ready');
+                    assert.equal(argument, expectedTimeout);
+                    return;
+                }
                 if (callback === markScreenshotMasks) {
-                    calls.push('mask');
-                    assert.deepEqual(argument.allowedLabels, ['Approved heading']);
+                    marker = argument.marker;
+                    calls.push(argument.redaction === 'none' ? 'raw-marker' : 'mask');
+                    assert.deepEqual(argument.allowedLabels, argument.redaction === 'none' ? [] : ['Approved heading']);
                     return masks;
                 }
                 if (callback === applyScreenshotRedaction) {
@@ -855,10 +903,18 @@ describe('Validating optional screenshot safeguards...', () => {
                     if (blockedRedaction) throw new Error('redaction blocked');
                     return;
                 }
+                if (callback === readScreenshotState) {
+                    calls.push('state');
+                    if (captured && changedDocument) throw new Error('Capture rejected: document or redaction changed.');
+                    return { width: (captured && changedViewport) || (isolated && changedOnIsolation) ? 801 : 800,
+                        height: 600, scroll: [] };
+                }
+                assert.equal(callback, clearScreenshotState);
                 calls.push('cleanup');
                 callback({
                     querySelectorAll: () => [],
                     ownerDocument: { querySelectorAll: () => [] },
+                    getAttribute: () => marker,
                     removeAttribute: name => cleanedRootAttributes.push(name)
                 }, argument);
             }
@@ -876,6 +932,7 @@ describe('Validating optional screenshot safeguards...', () => {
                     assert.equal(callback, isolateWorkbookFrame);
                     calls.push('isolate');
                     if (blockedIsolation) throw new Error('parent isolation blocked');
+                    isolated = true;
                     return {
                         async evaluate() { calls.push('restore-parent'); },
                         async dispose() { calls.push('dispose-parent'); }
@@ -886,10 +943,12 @@ describe('Validating optional screenshot safeguards...', () => {
         const target = {
             async screenshot(options) {
                 calls.push('capture');
+                captured = true;
                 assert.isUndefined(options.mask);
                 assert.isUndefined(options.style);
                 assert.equal(options.animations, 'disabled');
                 assert.equal(options.caret, 'hide');
+                assert.equal(options.timeout, expectedTimeout);
                 assert.match(options.path, /^C:\\private-evidence\\capture-[a-z0-9-]+\.png$/);
                 if (fail) throw new Error('simulated capture failure');
             }
@@ -901,7 +960,8 @@ describe('Validating optional screenshot safeguards...', () => {
         const fixture = screenshotPage();
         const result = await captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 0);
-        assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'capture', 'restore-parent', 'dispose-parent', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['ready', 'mask', 'redact', 'state', 'isolate', 'state', 'capture',
+            'state', 'restore-parent', 'dispose-parent', 'cleanup']);
         assert.isTrue(result.reviewRequired);
         assert.equal(result.redaction, 'auto');
         assert.isFalse(result.publicationApproved);
@@ -912,18 +972,26 @@ describe('Validating optional screenshot safeguards...', () => {
         ]);
     });
 
+    it('propagates a custom screenshot budget to readiness and the native capture call', async () => {
+        const fixture = screenshotPage({ expectedTimeout: 1234 });
+        await captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence' }, ['Approved heading'], 8, 1234);
+        assert.include(fixture.calls, 'capture');
+    });
+
     it('always cleans markers and never retries an unmasked screenshot after a capture error', async () => {
         const fixture = screenshotPage({ fail: true });
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 1), /simulated capture failure/);
-        assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'capture', 'restore-parent', 'dispose-parent', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['ready', 'mask', 'redact', 'state', 'isolate', 'state', 'capture',
+            'restore-parent', 'dispose-parent', 'cleanup']);
     });
 
     it('refuses mask-free captures while cleaning the temporary capture scope', async () => {
         const fixture = screenshotPage({ masks: 0 });
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 2), /No screenshot masks/);
-        assert.deepEqual(fixture.calls, ['mask', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['ready', 'mask', 'cleanup']);
     });
 
     it('captures unredacted content only through a distinct explicitly approved path', async () => {
@@ -933,7 +1001,8 @@ describe('Validating optional screenshot safeguards...', () => {
         assert.lengthOf(fixture.calls, 0);
         const result = await captureWorkbookScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', redaction: 'none', allowSensitiveCapture: true }, [], 0);
-        assert.deepEqual(fixture.calls, ['isolate', 'capture', 'restore-parent', 'dispose-parent']);
+        assert.deepEqual(fixture.calls, ['ready', 'raw-marker', 'state', 'isolate', 'state', 'capture',
+            'state', 'restore-parent', 'dispose-parent', 'cleanup']);
         assert.equal(result.redaction, 'none');
         assert.equal(result.maskedElements, 0);
         assert.isTrue(result.reviewRequired);
@@ -950,7 +1019,8 @@ describe('Validating optional screenshot safeguards...', () => {
             }, ['Approved heading'], 0);
             assert.equal(result.redaction, redaction);
             assert.isFalse(result.publicationApproved);
-            assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'capture', 'restore-parent', 'dispose-parent', 'cleanup']);
+            assert.deepEqual(fixture.calls, ['ready', 'mask', 'redact', 'state', 'isolate', 'state', 'capture',
+                'state', 'restore-parent', 'dispose-parent', 'cleanup']);
         }
     });
 
@@ -958,14 +1028,39 @@ describe('Validating optional screenshot safeguards...', () => {
         const fixture = screenshotPage({ blockedRedaction: true });
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 3), /redaction blocked/);
-        assert.deepEqual(fixture.calls, ['mask', 'redact', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['ready', 'mask', 'redact', 'cleanup']);
     });
 
     it('refuses capture if parent-page isolation fails and still removes workbook masks', async () => {
         const fixture = screenshotPage({ blockedIsolation: true });
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 4), /parent isolation blocked/);
-        assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['ready', 'mask', 'redact', 'state', 'isolate', 'cleanup']);
+    });
+
+    it('rejects document/redaction loss and viewport changes instead of reporting a successful capture', async () => {
+        for (const options of [{ changedDocument: true }, { changedViewport: true }]) {
+            const fixture = screenshotPage(options);
+            await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
+                { directory: 'C:\\private-evidence' }, ['Approved heading'], 5), /Capture rejected/);
+            assert.deepEqual(fixture.calls.slice(-3), ['restore-parent', 'dispose-parent', 'cleanup']);
+        }
+    });
+
+    it('applies the same viewpoint guard to explicitly approved unredacted capture', async () => {
+        const fixture = screenshotPage({ changedViewport: true });
+        await rejects(captureWorkbookScreenshot(fixture.page, fixture.target, {
+            directory: 'C:\\private-evidence', redaction: 'none', allowSensitiveCapture: true
+        }, [], 6), /Capture rejected/);
+        assert.deepEqual(fixture.calls.slice(-3), ['restore-parent', 'dispose-parent', 'cleanup']);
+    });
+
+    it('refuses to write an image if parent isolation itself changes the requested viewport', async () => {
+        const fixture = screenshotPage({ changedOnIsolation: true });
+        await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence' }, ['Approved heading'], 7), /isolation changed/);
+        assert.notInclude(fixture.calls, 'capture');
+        assert.deepEqual(fixture.calls.slice(-3), ['restore-parent', 'dispose-parent', 'cleanup']);
     });
 
     it('refuses capture if the browser blocks or ignores DOM redaction styles', () => {
