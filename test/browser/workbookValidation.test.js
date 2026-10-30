@@ -11,7 +11,8 @@ describe('Validating workbook browser behavior (opt-in)...', function () {
     let input;
 
     before(async function () {
-        input = loadValidationInput(process.env.WORKBOOK_BROWSER_TEMPLATE, process.env.WORKBOOK_BROWSER_CHECKS);
+        input = loadValidationInput(process.env.WORKBOOK_BROWSER_TEMPLATE, process.env.WORKBOOK_BROWSER_CHECKS,
+            process.env.WORKBOOK_BROWSER_SCREENSHOTS);
         const endpoint = validateCdpEndpoint(process.env.WORKBOOK_BROWSER_CDP_ENDPOINT);
         const { chromium } = require('playwright-core');
         browser = await chromium.connectOverCDP(endpoint, { timeout: 15000 });

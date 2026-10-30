@@ -5,22 +5,25 @@ const { loadValidationInput, createPlaywrightScript } = require('./workbookBrows
 
 function main(argv) {
     const args = minimist(argv, {
-        string: ['workbook', 'checks', 'output'],
+        string: ['workbook', 'checks', 'output', 'screenshots'],
         boolean: ['help'],
         unknown() {
-            throw new Error('Unsupported argument. Use --workbook, --checks, --output, or --help.');
+            throw new Error('Unsupported argument. Use --workbook, --checks, --output, --screenshots, or --help.');
         }
     });
     if (args.help) {
-        console.log('Usage: npm run test:browser:script -- --workbook <file> [--checks <json>] --output <new-script.js>');
+        console.log('Usage: npm run test:browser:script -- --workbook <file> [--checks <json>] [--screenshots <local-directory>] --output <new-script.js>');
         return;
     }
     if (args._.length || typeof args.output !== 'string' || !args.output.trim()) {
         throw new Error('Provide --workbook and --output; the output file must not already exist.');
     }
-    const input = loadValidationInput(args.workbook, args.checks);
+    const input = loadValidationInput(args.workbook, args.checks, args.screenshots);
     fs.writeFileSync(args.output, createPlaywrightScript(input.source, input.options), { encoding: 'utf8', flag: 'wx' });
     console.log(`Created ${path.basename(args.output)}. Run it in a new empty unsaved workbook's Advanced Editor.`);
+    console.log(input.options.screenshots ?
+        'Screenshots are enabled with conservative masking. Review every image before sharing; no automatic upload.' :
+        'Would screenshots help? Opt in with --screenshots <local-directory>; screenshots remain disabled by default.');
 }
 
 if (require.main === module) {

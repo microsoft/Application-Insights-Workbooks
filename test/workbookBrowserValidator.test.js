@@ -10,7 +10,12 @@ const { Validator } = require('jsonschema');
 const {
     isAzurePortalUrl,
     createValidationPlan,
+    markScreenshotMasks,
+    screenshotRedactionStyle,
+    applyScreenshotRedaction,
+    captureMaskedScreenshot,
     readGridSummary,
+    activateWorkbookControl,
     validateWorkbookInBrowser,
     loadValidationInput,
     validateCdpEndpoint,
@@ -30,7 +35,7 @@ function changedSource(change) {
 }
 
 function editorPage(existingSource, editorCount = 1, unsaved = true) {
-    const state = { value: existingSource, writes: 0, clicks: [], backgroundModelAccess: 0 };
+    const state = { value: existingSource, writes: 0, clicks: [], backgroundModelAccess: 0, readingToolbarConfirmed: false };
     const inputElement = {};
     const model = {
         getValue: () => state.value,
@@ -52,9 +57,23 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
     }))];
     const frame = {
         getByRole(role, options = {}) {
+            if (role === 'menubar') {
+                assert.match('Workbooks toolbar. Use left and right arrow keys to navigate between commands', options.name);
+                return {
+                    getByRole(role, options) {
+                        assert.equal(role, 'menuitem');
+                        assert.equal(options.name, 'Edit');
+                        return { async waitFor() { state.readingToolbarConfirmed = true; } };
+                    }
+                };
+            }
+            if (role === 'menuitem' && options.name === 'Edit') {
+                throw new Error('Unscoped Edit also matches transient step-level commands.');
+            }
             return {
                 async waitFor() {},
-                async click() { state.clicks.push(options.name); },
+                async isEnabled() { return true; },
+                async press(key) { assert.equal(key, 'Enter'); state.clicks.push(options.name); },
                 first() { return this; },
                 async evaluate(callback, argument) {
                     const evaluate = vm.runInNewContext(`(${callback.toString()})`, {
@@ -92,8 +111,11 @@ function sharedDeferredEditor(initialHeadings = []) {
         async waitFor(options) {
             if (options.state === 'hidden') assert.isTrue(loaded);
         },
+        async isEnabled() { return true; },
         async scrollIntoViewIfNeeded() {},
-        async click() {
+        async isEnabled() { return true; },
+        async press(key) {
+            assert.equal(key, 'Enter');
             clicks++;
             loaded = true;
         }
@@ -151,6 +173,7 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(plan.deferred[0].minRows, 2);
         assert.equal(plan.deferred[0].maxRows, 2);
         assert.deepEqual(plan.deferred[0].columns, ['Label', 'Count']);
+        assert.isFalse(plan.screenshots);
     });
 
     it('groups contracts by both tab and parameter-action trigger', () => {
@@ -347,6 +370,45 @@ describe('Validating browser validator contracts...', () => {
         assert.include(report.coverage, 'no-data is not proof of health');
         assert.isFalse(report.workbookSaved);
         assert.notInclude(JSON.stringify(report), emptySource);
+        assert.isFalse(report.screenshots.enabled);
+        assert.deepEqual(report.screenshots.captures, []);
+        assert.include(report.screenshots.guidance, 'Optional masked screenshots');
+    });
+
+    it('waits for the workbook toolbar rather than transient step Edit commands', async () => {
+        const editor = editorPage(emptySource);
+        await validateWorkbookInBrowser(editor.page, emptySource);
+        assert.isTrue(editor.state.readingToolbarConfirmed);
+    });
+
+    it('activates tabs with the native keyboard path and confirms the selected state', async () => {
+        const editor = editorPage(emptySource);
+        const original = editor.frame.getByRole.bind(editor.frame);
+        const activated = [];
+        let selected;
+        const tablist = {
+            first() { return this; },
+            async waitFor() {},
+            getByRole(role, options = {}) {
+                assert.equal(role, 'tab');
+                if (!options.name) return { allTextContents: async () => ['Overview', 'Details'] };
+                return {
+                    async isEnabled() { return true; },
+                    async press(key) {
+                        assert.equal(key, 'Enter');
+                        selected = options.name;
+                        activated.push(selected);
+                    },
+                    async waitFor() {
+                        if (options.selected) assert.equal(selected, options.name);
+                    }
+                };
+            }
+        };
+        editor.frame.getByRole = (role, options) => role === 'tablist' ? tablist : original(role, options);
+        const report = await validateWorkbookInBrowser(editor.page, source);
+        assert.deepEqual(activated, ['Overview', 'Details']);
+        assert.deepEqual(report.tabsVisited, activated);
     });
 
     it('checks initial absence after the trigger becomes ready, before clicking it', async () => {
@@ -363,7 +425,8 @@ describe('Validating browser validator contracts...', () => {
             or() { return this; },
             async waitFor() { mounted = true; },
             async scrollIntoViewIfNeeded() {},
-            async click() { clicked = true; }
+            async isEnabled() { return true; },
+            async press() { clicked = true; }
         };
         editor.frame.getByRole = (role, options = {}) => {
             if (options.name === 'Show details') return trigger;
@@ -376,6 +439,16 @@ describe('Validating browser validator contracts...', () => {
             deferred: [{ trigger: 'Show details', heading: 'Deferred table' }]
         }), /mounted before its trigger/);
         assert.isFalse(clicked);
+    });
+
+    it('never keyboard-activates a disabled workbook control', async () => {
+        let activated = false;
+        await rejects(activateWorkbookControl({
+            async waitFor() {},
+            isEnabled: async () => false,
+            async press() { activated = true; }
+        }, 30000), /control is disabled/);
+        assert.isFalse(activated);
     });
 
     it('clicks a shared trigger once and validates all of its panels', async () => {
@@ -414,6 +487,203 @@ describe('Validating browser validator contracts...', () => {
         const run = vm.runInContext(`(${createPlaywrightScript(injected, checks)})`, context);
         await rejects(run({ url: () => 'https://login.microsoftonline.com/' }), /Sign in to Azure/);
         assert.isUndefined(context.injected);
+    });
+});
+
+describe('Validating optional screenshot safeguards...', () => {
+    it('requires explicit local output and preserves disabled defaults', () => {
+        assert.isFalse(createValidationPlan(source, { screenshots: false }).screenshots);
+        assert.deepEqual(createValidationPlan(source, { screenshots: { directory: '.playwright-mcp/images' } }).screenshots,
+            { directory: '.playwright-mcp/images', maskSelectors: [] });
+        for (const directory of ['', 'https://example.invalid/', '\\\\server\\share', '//server/share',
+            '../outside', 'local\\..\\outside', 'local\ninvalid']) {
+            assert.throws(() => createValidationPlan(source, { screenshots: { directory } }), /local directory/);
+        }
+        assert.throws(() => createValidationPlan(source, { screenshots: true }), /must be an object/);
+        assert.throws(() => createValidationPlan(source, { screenshots: { directory: 'local', unmasked: true } }), /unsupported option/);
+        assert.throws(() => createValidationPlan(source, {
+            screenshots: { directory: 'local', maskSelectors: [''] }
+        }), /CSS selectors/);
+    });
+
+    it('supports CLI/environment opt-in without discarding additional checks-file masks', () => {
+        const input = loadValidationInput(fixturePath, checksPath, 'C:\\private-evidence');
+        assert.equal(input.options.screenshots.directory, 'C:\\private-evidence');
+        assert.deepEqual(input.options.deferred, checks.deferred);
+    });
+
+    function redactionBody({ stale = false, missing = false } = {}) {
+        function element(role) {
+            return {
+                attributes: {},
+                setAttribute(name, value) { this.attributes[name] = value; },
+                closest(selector) {
+                    if (selector === 'script,style,noscript') return null;
+                    if (selector.includes('gridcell')) return role === 'cell' ? this : null;
+                    return role === 'heading' ? this : null;
+                }
+            };
+        }
+        const heading = element('heading');
+        const cell = element('cell');
+        const text = element('text');
+        const input = element('input');
+        const image = element('image');
+        const extra = element('extra');
+        const nodes = [
+            { nodeValue: 'Approved heading', parentElement: heading },
+            { nodeValue: 'Approved heading', parentElement: cell },
+            { nodeValue: 'private-resource@example.invalid', parentElement: text }
+        ];
+        let index = 0;
+        const body = element('body');
+        body.querySelectorAll = selector => {
+            if (selector === '.extra-mask') return missing ? [] : [extra];
+            return [cell, input, image];
+        };
+        body.ownerDocument = {
+            querySelector: () => stale ? heading : null,
+            createTreeWalker: () => ({ nextNode: () => nodes[index++] || null })
+        };
+        return { body, heading, cell, text, input, image, extra };
+    }
+
+    it('masks data, inputs, media and non-contract text even when a cell matches an allowed label', () => {
+        const fixture = redactionBody();
+        const count = markScreenshotMasks(fixture.body, {
+            marker: 'unit', allowedLabels: ['Approved heading'], maskSelectors: ['.extra-mask']
+        });
+        assert.equal(count, 5);
+        for (const element of [fixture.cell, fixture.text, fixture.input, fixture.image, fixture.extra]) {
+            assert.equal(element.attributes['data-workbook-validation-mask'], 'unit');
+        }
+        assert.isUndefined(fixture.heading.attributes['data-workbook-validation-mask']);
+        assert.equal(fixture.heading.attributes['data-workbook-validation-label'], 'unit');
+        assert.equal(fixture.body.attributes['data-workbook-validation-capture'], 'unit');
+    });
+
+    it('refuses stale or unmatched explicit masks before altering the page', () => {
+        const stale = redactionBody({ stale: true });
+        assert.throws(() => markScreenshotMasks(stale.body, {
+            marker: 'unit', allowedLabels: [], maskSelectors: []
+        }), /previous screenshot mask/);
+        const missing = redactionBody({ missing: true });
+        assert.throws(() => markScreenshotMasks(missing.body, {
+            marker: 'unit', allowedLabels: [], maskSelectors: ['.extra-mask']
+        }), /matched no elements/);
+        assert.deepEqual(missing.body.attributes, {});
+        assert.deepEqual(missing.cell.attributes, {});
+    });
+
+    function screenshotPage({ fail = false, masks = 3, blockedRedaction = false } = {}) {
+        const calls = [];
+        const cleanedRootAttributes = [];
+        const body = {
+            async evaluate(callback, argument) {
+                if (callback === markScreenshotMasks) {
+                    calls.push('mask');
+                    assert.deepEqual(argument.allowedLabels, ['Approved heading']);
+                    return masks;
+                }
+                if (callback === applyScreenshotRedaction) {
+                    calls.push('redact');
+                    assert.equal(argument.css, screenshotRedactionStyle(argument.marker));
+                    assert.include(argument.css, 'color: transparent !important');
+                    assert.include(argument.css, 'background-color: #111111 !important');
+                    assert.include(argument.css, 'visibility: hidden !important');
+                    if (blockedRedaction) throw new Error('redaction blocked');
+                    return;
+                }
+                calls.push('cleanup');
+                callback({
+                    querySelectorAll: () => [],
+                    ownerDocument: { querySelectorAll: () => [] },
+                    removeAttribute: name => cleanedRootAttributes.push(name)
+                }, argument);
+            }
+        };
+        const frame = {
+            locator(selector) {
+                assert.equal(selector, 'body');
+                return body;
+            }
+        };
+        const page = { locator: () => ({ contentFrame: () => frame }) };
+        const target = {
+            async screenshot(options) {
+                calls.push('capture');
+                assert.isUndefined(options.mask);
+                assert.isUndefined(options.style);
+                assert.equal(options.animations, 'disabled');
+                assert.equal(options.caret, 'hide');
+                assert.match(options.path, /^C:\\private-evidence\\capture-[a-z0-9-]+\.png$/);
+                if (fail) throw new Error('simulated capture failure');
+            }
+        };
+        return { page, target, calls, cleanedRootAttributes };
+    }
+
+    it('captures only with opaque masks and reports a review reminder without absolute paths', async () => {
+        const fixture = screenshotPage();
+        const result = await captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 0);
+        assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
+        assert.isTrue(result.reviewRequired);
+        assert.equal(result.maskedElements, 3);
+        assert.notInclude(JSON.stringify(result), 'private-evidence');
+        assert.deepEqual(fixture.cleanedRootAttributes, [
+            'data-workbook-validation-mask', 'data-workbook-validation-label', 'data-workbook-validation-capture'
+        ]);
+    });
+
+    it('always cleans markers and never retries an unmasked screenshot after a capture error', async () => {
+        const fixture = screenshotPage({ fail: true });
+        await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 1), /simulated capture failure/);
+        assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
+    });
+
+    it('refuses mask-free captures while cleaning the temporary capture scope', async () => {
+        const fixture = screenshotPage({ masks: 0 });
+        await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 2), /No screenshot masks/);
+        assert.deepEqual(fixture.calls, ['mask', 'cleanup']);
+    });
+
+    it('never calls the screenshot API after a failed DOM-redaction probe', async () => {
+        const fixture = screenshotPage({ blockedRedaction: true });
+        await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 3), /redaction blocked/);
+        assert.deepEqual(fixture.calls, ['mask', 'redact', 'cleanup']);
+    });
+
+    it('refuses capture if the browser blocks or ignores DOM redaction styles', () => {
+        const removed = [];
+        const body = {
+            append() {},
+            ownerDocument: {
+                head: { append() {} },
+                createElement: tag => ({
+                    setAttribute() {},
+                    remove() { removed.push(tag); }
+                }),
+                defaultView: { getComputedStyle: () => ({ color: 'rgb(0, 0, 0)' }) }
+            }
+        };
+        assert.throws(() => applyScreenshotRedaction(body, { marker: 'unit', css: 'blocked' }), /did not take effect/);
+        assert.deepEqual(removed, ['span']);
+    });
+
+    it('includes screenshot helpers in standalone scripts without capturing unless enabled', () => {
+        const disabled = createPlaywrightScript(source, checks);
+        assert.isFunction(vm.runInNewContext(`(${disabled})`));
+        const enabled = createPlaywrightScript(source, {
+            ...checks, screenshots: { directory: '.playwright-mcp/images' }
+        });
+        assert.isFunction(vm.runInNewContext(`(${enabled})`));
+        assert.include(enabled, 'async function captureMaskedScreenshot');
+        assert.include(enabled, 'function markScreenshotMasks');
+        assert.notInclude(enabled, "require('");
     });
 });
 
@@ -460,5 +730,16 @@ describe('Validating browser script generation...', () => {
         const unknown = generate(['--credential', 'not-used']);
         assert.equal(unknown.status, 1);
         assert.include(unknown.stderr, 'Unsupported argument');
+    });
+
+    it('offers opt-in screenshot guidance and supports an explicit masked output directory', () => {
+        const output = path.join(directory, 'screenshots.js');
+        const result = generate(['--workbook', fixturePath, '--screenshots', 'C:\\private-evidence', '--output', output]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stdout, 'conservative masking');
+        const without = path.join(directory, 'no-screenshots.js');
+        const disabled = generate(['--workbook', fixturePath, '--output', without]);
+        assert.equal(disabled.status, 0, disabled.stderr);
+        assert.include(disabled.stdout, 'Would screenshots help?');
     });
 });

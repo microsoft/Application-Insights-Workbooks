@@ -26,15 +26,18 @@ The shared runner:
 
 - Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models.
 - Applies the exact requested source and reports its normalized-source SHA-256, not its contents.
-- Checks the primary parameter-driven tabset's labels and selected states.
+- Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
 - Optionally checks that deferred content is not mounted before a parameter action, appears after it, and hides its producer when requested. A self-hiding producer must have its visibility parameter declared as global before it.
 - Optionally verifies exact grid column labels and row bounds using `aria-rowcount`, not the number of virtualized rows currently rendered.
+- Offers optional local screenshots, disabled by default, with conservative masking applied before capture and a mandatory manual-review reminder.
+
+Commands and parameter actions use native Enter-key activation after visibility and enabled-state checks. This validates the accessible interaction path without depending on pointer coordinates during query-driven reflow; it does not certify mouse hit testing.
 
 **This is smoke and contract validation, not automatic validation of every query or workflow.** Nested tabsets, filters, graphs, row selections, query correctness, and effective resource coverage still need scenario-specific tests. A requested grid contract fails when no result grid is available; no-data is not reported as healthy or as a passing data check.
 
 ### Prepare a browser
 
-Use Node 24, as in CI, and run `npm install`. Use only trusted templates and a non-production account with Reader permissions at the intended scopes. Rendering a real template can execute its queries and incur query costs. The runner does not click Save or ARM action links, capture authentication state, or collect screenshots/traces.
+Use Node 24, as in CI, and run `npm install`. Use only trusted templates and a non-production account with Reader permissions at the intended scopes. Rendering a real template can execute its queries and incur query costs. The runner does not click Save or ARM action links, capture authentication state, or collect traces. Screenshots require a separate explicit opt-in.
 
 Sign into Azure yourself in the **current English-language React workbook view**. In the browser that will run the test, create a **new empty unsaved workbook**, open **Advanced Editor**, and leave its default empty JSON in place. The validator supplies the template; do not paste it first. It deliberately does not automate sign-in or discard an existing draft.
 
@@ -84,7 +87,32 @@ Use the same validator for another workbook by changing the template path and, o
 
 Checks sharing the same tab and trigger are grouped: all associated headings must be absent before the action is clicked once, then every panel's requested contracts are validated. The trigger must be ready and scrolled into view before initial absence is checked.
 
-The JSON report contains the source hash, visited tab labels, requested contract results, and aggregate row counts, not record values. Only requested contracts are covered; review even these summaries before publishing because labels can contain context. Do not publish generated scripts, browser profiles, or tenant screenshots as test evidence.
+The JSON report contains the source hash, visited tab labels, requested contract results, and aggregate row counts, not record values. Only requested contracts are covered; review even these summaries before publishing because labels can contain context. Do not publish generated scripts, browser profiles, or unreviewed tenant screenshots as test evidence.
+
+### Optional masked screenshots
+
+The script generator and validation report offer screenshot guidance when capture is disabled; they never prompt or capture implicitly. To opt in for a generated MCP/Playwright runner:
+
+```powershell
+npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook" --checks "test\browser\fixtures\smoke-checks.json" --screenshots "C:\local-evidence\workbook-check" --output ".playwright-mcp\workbook-check-with-images.js"
+```
+
+For the Mocha runner set `WORKBOOK_BROWSER_SCREENSHOTS` to a local directory. These explicit overrides preserve any additional masks in the checks file. Alternatively, add a `screenshots` object to the checks file:
+
+```json
+{
+  "screenshots": {
+    "directory": ".playwright-mcp/screenshots",
+    "maskSelectors": ["[data-sensitive-context]"]
+  }
+}
+```
+
+`maskSelectors` is optional and **adds** masks; it cannot disable the defaults. Each selector must match in every captured stage. An invalid selector or one matching nothing fails capture rather than silently omitting a requested mask. URLs, network paths, and parent-directory traversal are refused for the output directory.
+
+The runner captures each visited primary tab and brings each successfully checked deferred panel into view for another capture. Images are of the workbook iframe viewport, not the surrounding portal/account chrome; this avoids unreliable element clipping across scrolled frames. Before capture it masks grid data cells, inputs, non-contract text, charts, images, and embedded content. Only exact contract tab, heading, and column labels are retained. Redaction CSS is installed in the workbook DOM and checked with a computed-style probe **before** calling screenshot APIs, so it does not depend solely on a browser adapter honoring Playwright's mask/style options. The CSS also hides newly mounted text and media, including virtualized rows. Temporary styles and markers are removed afterward, even if capture fails; blocked redaction fails capture and there is no unmasked fallback.
+
+Images have generated names rather than tenant-derived filenames. The report lists filenames and mask counts, not absolute output paths. Nothing is uploaded or committed automatically. Use a private local directory within your browser tool's permitted output roots, and review **every image** before sharing. Conservative masking is **not guaranteed anonymization**: contract labels themselves can be sensitive, and masking intentionally obscures data needed for some visual checks. Use synthetic fixtures to verify raw data formatting and inspect real data only in the authorized portal. Remove only your own evidence files when finished.
 
 ## Redirecting the Gallery to a GitHub Branch
   
