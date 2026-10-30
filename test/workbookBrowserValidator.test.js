@@ -413,10 +413,13 @@ describe('Validating browser validator contracts...', () => {
     });
 
     it('accepts only credential-free loopback HTTP CDP endpoints', () => {
+        const credentialedLoopback = new URL('http://localhost:9222/');
+        credentialedLoopback.username = 'fixture-user';
+        credentialedLoopback.password = 'fixture-password';
         for (const endpoint of ['http://localhost:9222', 'http://127.0.0.1:9222/', 'http://[::1]:9222/']) {
             assert.match(validateCdpEndpoint(endpoint), /^http:/);
         }
-        for (const endpoint of [undefined, 'not a URL', 'https://remote.example/', '******localhost:9222/',
+        for (const endpoint of [undefined, 'not a URL', 'https://remote.example/', credentialedLoopback.href,
             'http://localhost:9222/?token=secret', 'http://localhost:9222/#secret', 'http://localhost:9222/private',
             'http://localhost:0/', 'http://127.0.0.1.example:9222/']) {
             assert.throws(() => validateCdpEndpoint(endpoint), /loopback HTTP/);
