@@ -81,6 +81,38 @@ describe('Validating generic render/audit contracts...', () => {
         assert.notProperty(result, 'healthy');
     });
 
+    it('rejects every malformed rendered data-row index rather than silently filtering it out', async () => {
+        const audit = vm.runInNewContext(`(${auditGridRows.toString()})`, {
+            performance, setTimeout, clearTimeout,
+            MutationObserver: class { observe() {} disconnect() {} }
+        });
+        const row = (index, values = ['0', 'false']) => ({
+            getAttribute: () => index,
+            querySelector: () => null,
+            querySelectorAll: () => values.map(textContent => ({ textContent }))
+        });
+        for (const invalid of ['not-a-number', '0', '-1', '1.5', '', null]) {
+            const grid = gridFixture('2');
+            grid.querySelectorAll = selector => selector === '[role="columnheader"]' ?
+                ['Label', 'Count'].map(textContent => ({ textContent })) :
+                [row('1'), row('2'), row(invalid, ['', ''])];
+            await rejects(audit(grid, {
+                maxRows: 20, timeout: 1000, nonEmptyColumns: ['Label', 'Count']
+            }), /row indexes are invalid/);
+        }
+        const valid = gridFixture('2');
+        const unindexedHeader = {
+            getAttribute: () => null,
+            querySelector: selector => selector === '[role="columnheader"]' ? {} : null
+        };
+        valid.querySelectorAll = selector => selector === '[role="columnheader"]' ?
+            ['Label', 'Count'].map(textContent => ({ textContent })) : [unindexedHeader, row('2')];
+        const result = await audit(valid, {
+            maxRows: 20, timeout: 1000, nonEmptyColumns: ['Label', 'Count']
+        });
+        assert.equal(result.rowsAudited, 1);
+    });
+
     it('validates runtime audit and readiness budgets instead of allowing an unbounded zero timeout', async () => {
         for (const timeout of [0, -1, 120001, '30000']) {
             await rejects(auditGridRows(gridFixture(), { maxRows: 20, timeout, nonEmptyColumns: [] }), /bounded/);
@@ -104,7 +136,7 @@ describe('Validating generic render/audit contracts...', () => {
         });
         const busy = { getClientRects: () => [1],
             ownerDocument: { defaultView: { getComputedStyle: () => ({ visibility: 'visible' }) } } };
-        await rejects(wait({ isConnected: true, querySelectorAll: () => [busy] }, 25), /Timed out/);
+        await rejects(wait({ isConnected: true, matches: () => false, querySelectorAll: () => [busy] }, 25), /Timed out/);
     });
 
     function captureBody({ marker = 'unit', style = true, effective = true } = {}) {

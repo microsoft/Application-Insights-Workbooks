@@ -494,8 +494,9 @@ async function waitForRenderReady(root, timeout) {
         const poll = () => {
             try {
                 if (!root.isConnected) return finish(new Error('Workbook document changed while waiting for rendering.'));
-                const busy = Array.from(root.querySelectorAll('[aria-busy="true"],[role="progressbar"],.ms-Shimmer-container'))
-                    .some(visible);
+                const selector = '[aria-busy="true"],[role="progressbar"],.ms-Shimmer-container';
+                const busy = (root.matches(selector) && visible(root)) ||
+                    Array.from(root.querySelectorAll(selector)).some(visible);
                 if (!busy) return finish();
                 frame = requestAnimationFrame(poll);
             } catch (error) {
@@ -658,8 +659,11 @@ async function auditGridRows(grid, options) {
         }
         if (performance.now() >= deadline) throw new Error('Timed out auditing all virtualized grid rows.');
     };
-    const rows = () => Array.from(grid.querySelectorAll('[role="row"][aria-rowindex]'))
-        .filter(row => Number(row.getAttribute('aria-rowindex')) >= 2);
+    const rows = () => Array.from(grid.querySelectorAll('[role="row"]')).filter(row => {
+        const index = row.getAttribute('aria-rowindex');
+        return index !== '1' && !(index === null &&
+            row.querySelector('[role="columnheader"]') && !row.querySelector('[role="gridcell"]'));
+    });
     const highest = () => Math.max(1, ...rows().map(row => Number(row.getAttribute('aria-rowindex'))));
     const waitFor = predicate => new Promise((resolve, reject) => {
         let observer;
@@ -873,6 +877,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                 }
                 const grid = panel.getByRole('grid');
                 await grid.waitFor({ state: 'visible', timeout: plan.timeout });
+                await panel.evaluate(waitForRenderReady, plan.timeout);
                 const summary = await grid.evaluate(readGridSummary);
                 if (check.minRows !== undefined && summary.rows < check.minRows) {
                     throw new Error(`"${check.heading}" returned ${summary.rows} rows, below minRows ${check.minRows}.`);
