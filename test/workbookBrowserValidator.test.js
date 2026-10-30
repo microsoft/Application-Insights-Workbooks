@@ -96,7 +96,8 @@ function changedSource(change) {
 }
 
 function editorPage(existingSource, editorCount = 1, unsaved = true) {
-    const state = { value: existingSource, writes: 0, clicks: [], backgroundModelAccess: 0, readingToolbarConfirmed: false };
+    const state = { value: existingSource, writes: 0, clicks: [], backgroundModelAccess: 0,
+        readingToolbarConfirmed: false, tenantId: testTenant.id };
     const inputElement = {};
     const model = {
         getValue: () => state.value,
@@ -153,7 +154,7 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
     const page = {
         url: () => 'https://portal.azure.com/#home',
         getByText: (...args) => accountPage().getByText(...args),
-        getByRole: (role, options) => role === 'button' ? accountPage().getByRole(role, options) :
+        getByRole: (role, options) => role === 'button' ? accountPage([state.tenantId]).getByRole(role, options) :
             ({ count: async () => unsaved ? 1 : 0 }),
         locator: () => ({ contentFrame: () => frame })
     };
@@ -415,7 +416,7 @@ describe('Validating browser validator contracts...', () => {
         for (const endpoint of ['http://localhost:9222', 'http://127.0.0.1:9222/', 'http://[::1]:9222/']) {
             assert.match(validateCdpEndpoint(endpoint), /^http:/);
         }
-        for (const endpoint of [undefined, 'not a URL', 'https://remote.example/', 'http://user:token@localhost:9222/',
+        for (const endpoint of [undefined, 'not a URL', 'https://remote.example/', '******localhost:9222/',
             'http://localhost:9222/?token=secret', 'http://localhost:9222/#secret', 'http://localhost:9222/private',
             'http://localhost:0/', 'http://127.0.0.1.example:9222/']) {
             assert.throws(() => validateCdpEndpoint(endpoint), /loopback HTTP/);
@@ -674,15 +675,15 @@ describe('Validating explicit tenant selection...', () => {
 
     it('stops tab execution when the selected directory changes after source import', async () => {
         const editor = editorPage(emptySource);
-        let checks = 0;
-        const account = accountPage([otherTenantId]);
-        const original = editor.page.getByRole;
-        editor.page.getByRole = (role, options) => role === 'button' && ++checks > 1 ?
-            account.getByRole(role, options) : original(role, options);
         editor.frame.getByRole = ((original) => (role, options) => role === 'tablist' ? {
             first() { return this; },
-            async waitFor() {},
-            getByRole: () => ({ allTextContents: async () => ['Overview', 'Details'] })
+            async waitFor() { editor.state.tenantId = otherTenantId; },
+            getByRole: () => ({
+                allTextContents: async () => ['Overview', 'Details'],
+                async waitFor() {},
+                async isEnabled() { return true; },
+                async press() { throw new Error('A changed tenant must not activate a tab.'); }
+            })
         } : original(role, options))(editor.frame.getByRole.bind(editor.frame));
         await rejects(validateWorkbookInBrowser(editor.page, source), /signed-in tenant is different/);
         assert.equal(editor.state.writes, 1);
@@ -691,20 +692,84 @@ describe('Validating explicit tenant selection...', () => {
 
     it('pins the first browser-session tenant and rejects directory changes instead of following them', async () => {
         const editor = editorPage(emptySource);
-        let verifications = 0;
-        const original = editor.page.getByRole;
-        editor.page.getByRole = (role, options) => role === 'button' && ++verifications > 1 ?
-            accountPage([otherTenantId]).getByRole(role, options) : original(role, options);
         const originalFrameRole = editor.frame.getByRole.bind(editor.frame);
         editor.frame.getByRole = (role, options) => role === 'tablist' ? {
             first() { return this; },
-            async waitFor() {},
-            getByRole: () => ({ allTextContents: async () => ['Overview', 'Details'] })
+            async waitFor() { editor.state.tenantId = otherTenantId; },
+            getByRole: () => ({
+                allTextContents: async () => ['Overview', 'Details'],
+                async waitFor() {},
+                async isEnabled() { return true; },
+                async press() { throw new Error('A changed tenant must not activate a tab.'); }
+            })
         } : originalFrameRole(role, options);
         await rejects(validateWithExplicitTenant(editor.page, source, { tenant: { useBrowserSession: true } }),
             /signed-in tenant is different/);
         assert.deepEqual(editor.state.clicks, ['Apply', 'Done Editing']);
         assert.equal(editor.state.writes, 1);
+    });
+
+    for (const stage of ['editor-ready', 'apply-ready', 'done-ready', 'read-mode-ready']) {
+        it(`rechecks the selected tenant after ${stage} waits before proceeding or reporting success`, async () => {
+            const editor = editorPage(emptySource);
+            const original = editor.frame.getByRole.bind(editor.frame);
+            editor.frame.getByRole = (role, options = {}) => {
+                const control = original(role, options);
+                if (stage === 'read-mode-ready' && role === 'menubar') {
+                    const getByRole = control.getByRole.bind(control);
+                    control.getByRole = (...args) => {
+                        const edit = getByRole(...args);
+                        const waitFor = edit.waitFor.bind(edit);
+                        edit.waitFor = async (...args) => {
+                            await waitFor(...args);
+                            editor.state.tenantId = otherTenantId;
+                        };
+                        return edit;
+                    };
+                }
+                if ((stage === 'editor-ready' && role === 'textbox') ||
+                    (stage === 'apply-ready' && options.name === 'Apply') ||
+                    (stage === 'done-ready' && options.name === 'Done Editing')) {
+                    const waitFor = control.waitFor.bind(control);
+                    control.waitFor = async (...args) => {
+                        await waitFor(...args);
+                        editor.state.tenantId = otherTenantId;
+                    };
+                }
+                return control;
+            };
+            await rejects(validateWorkbookInBrowser(editor.page, emptySource), /signed-in tenant is different/);
+            assert.equal(editor.state.writes, stage === 'editor-ready' ? 0 : 1);
+            assert.deepEqual(editor.state.clicks, stage === 'done-ready' ? ['Apply'] :
+                stage === 'read-mode-ready' ? ['Apply', 'Done Editing'] : []);
+        });
+    }
+
+    it('rechecks the tenant after a deferred toolbar becomes ready and before its action is activated', async () => {
+        const editor = sharedDeferredEditor();
+        const original = editor.frame.getByRole.bind(editor.frame);
+        editor.frame.getByRole = (role, options = {}) => {
+            const control = original(role, options);
+            if (role === 'menubar' && !options.name) {
+                const getByRole = control.getByRole.bind(control);
+                control.getByRole = (role, options = {}) => {
+                    const trigger = getByRole(role, options);
+                    if (options.name === 'Show details') {
+                        const waitFor = trigger.waitFor.bind(trigger);
+                        trigger.waitFor = async (...args) => {
+                            await waitFor(...args);
+                            editor.state.tenantId = otherTenantId;
+                        };
+                    }
+                    return trigger;
+                };
+            }
+            return control;
+        };
+        await rejects(validateWorkbookInBrowser(editor.page, editor.source, {
+            deferred: checks.deferred.map(({ tab, minRows, maxRows, columns, auditRows, nonEmptyColumns, ...check }) => check)
+        }), /signed-in tenant is different/);
+        assert.equal(editor.triggerClicks(), 0);
     });
 
     it('emits a runner that pauses without touching a browser if approval is absent', async () => {
@@ -979,6 +1044,24 @@ describe('Validating optional screenshot safeguards...', () => {
         assert.include(fixture.calls, 'capture');
     });
 
+    it('rechecks authorization after render and redaction waits before masked or approved raw capture', async () => {
+        for (const redaction of ['auto', 'none']) {
+            const fixture = screenshotPage();
+            let checks = 0;
+            await rejects(captureWorkbookScreenshot(fixture.page, fixture.target, {
+                directory: 'C:\\private-evidence', redaction, allowSensitiveCapture: redaction === 'none'
+            }, ['Approved heading'], 9, 30000, async () => {
+                checks++;
+                assert.include(fixture.calls, redaction === 'none' ? 'raw-marker' : 'redact');
+                throw new Error('tenant changed while capture was becoming ready');
+            }), /tenant changed/);
+            assert.equal(checks, 1);
+            assert.notInclude(fixture.calls, 'capture');
+            assert.notInclude(fixture.calls, 'isolate');
+            assert.equal(fixture.calls[fixture.calls.length - 1], 'cleanup');
+        }
+    });
+
     it('always cleans markers and never retries an unmasked screenshot after a capture error', async () => {
         const fixture = screenshotPage({ fail: true });
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
@@ -1202,6 +1285,30 @@ describe('Validating browser script generation...', () => {
                 '--output', path.join(directory, `revoked-capture-${index}.js`)]);
             assert.equal(result.status, 1);
             assert.include(result.stderr, 'PAUSED: Non-auto screenshots');
+        }
+    });
+
+    it('keeps screenshot-free runs disabled when sensitive-capture permission is explicitly revoked', () => {
+        for (const [profileIndex, screenshots] of [undefined, false].entries()) {
+            const profile = path.join(directory, `no-capture-${profileIndex}.json`);
+            fs.writeFileSync(profile, JSON.stringify({ screenshots }));
+            const input = loadValidationInput(fixturePath, profile, undefined, { allowSensitiveCapture: false });
+            assert.strictEqual(input.options.screenshots, screenshots);
+            assert.isFalse(createValidationPlan(input.source, input.options).screenshots);
+            for (const [flagIndex, flag] of ['--no-allow-sensitive-capture', '--allow-sensitive-capture=false'].entries()) {
+                const output = path.join(directory, `no-capture-${profileIndex}-${flagIndex}.js`);
+                const result = generate(['--workbook', fixturePath, '--checks', profile, flag, '--output', output]);
+                assert.equal(result.status, 0, result.stderr);
+                assert.isFunction(vm.runInNewContext(`(${fs.readFileSync(output, 'utf8')})`));
+                assert.notInclude(result.stdout, 'WARNING: approved selective/unredacted');
+            }
+        }
+    });
+
+    it('rejects invalid screenshot permission overrides even when captures are disabled', () => {
+        for (const allowSensitiveCapture of ['false', 'true', 0, 1, null]) {
+            assert.throws(() => loadValidationInput(fixturePath, undefined, undefined, { allowSensitiveCapture }),
+                /allowSensitiveCapture must be a boolean/);
         }
     });
 

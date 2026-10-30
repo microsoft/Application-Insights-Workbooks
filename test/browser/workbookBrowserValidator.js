@@ -541,6 +541,7 @@ function clearScreenshotState(body, marker) {
 async function screenshotIsolatedWorkbook(page, target, options, marker, guard) {
     const settings = { marker: guard.marker, file: guard.file, redaction: guard.redaction };
     const before = await guard.body.evaluate(readScreenshotState, settings);
+    if (guard.beforeCapture) await guard.beforeCapture();
     const restore = await page.locator('iframe[name="Workbooks.ReactView"]').evaluateHandle(isolateWorkbookFrame, marker);
     try {
         const isolated = await guard.body.evaluate(readScreenshotState, settings);
@@ -561,7 +562,7 @@ async function screenshotIsolatedWorkbook(page, target, options, marker, guard) 
     }
 }
 
-async function captureMaskedScreenshot(page, target, settings, allowedLabels, index, timeout = 30000) {
+async function captureMaskedScreenshot(page, target, settings, allowedLabels, index, timeout = 30000, beforeCapture) {
     settings = normalizeScreenshotOptions(settings);
     if (!settings || settings.redaction === 'none') {
         throw new Error('Masked capture requires an enabled auto or selective redaction mode.');
@@ -587,18 +588,18 @@ async function captureMaskedScreenshot(page, target, settings, allowedLabels, in
             animations: 'disabled',
             caret: 'hide',
             timeout
-        }, marker, { body, marker, file, redaction: settings.redaction });
+        }, marker, { body, marker, file, redaction: settings.redaction, beforeCapture });
     } finally {
         await body.evaluate(clearScreenshotState, marker);
     }
     return { file, maskedElements, redaction: settings.redaction, reviewRequired: true, publicationApproved: false };
 }
 
-async function captureWorkbookScreenshot(page, target, settings, allowedLabels, index, timeout = 30000) {
+async function captureWorkbookScreenshot(page, target, settings, allowedLabels, index, timeout = 30000, beforeCapture) {
     settings = normalizeScreenshotOptions(settings);
     if (!settings) throw new Error('Screenshot capture is not enabled.');
     if (settings.redaction !== 'none') {
-        return captureMaskedScreenshot(page, target, settings, allowedLabels, index, timeout);
+        return captureMaskedScreenshot(page, target, settings, allowedLabels, index, timeout, beforeCapture);
     }
     const file = `capture-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2)}.png`;
     const separator = settings.directory.includes('\\') ? '\\' : '/';
@@ -610,7 +611,7 @@ async function captureWorkbookScreenshot(page, target, settings, allowedLabels, 
         await screenshotIsolatedWorkbook(page, target, {
             path: settings.directory.replace(/[\\/]+$/, '') + separator + file,
             type: 'png', scale: 'css', animations: 'disabled', caret: 'hide', timeout
-        }, marker, { body, marker, file, redaction: 'none' });
+        }, marker, { body, marker, file, redaction: 'none', beforeCapture });
     } finally {
         await body.evaluate(clearScreenshotState, marker);
     }
@@ -734,11 +735,12 @@ async function auditGridRows(grid, options) {
     }
 }
 
-async function activateWorkbookControl(locator, timeout) {
+async function activateWorkbookControl(locator, timeout, beforeActivate) {
     await locator.waitFor({ state: 'visible', timeout });
     if (!await locator.isEnabled({ timeout })) {
         throw new Error('A requested workbook control is disabled; refusing to activate it.');
     }
+    if (beforeActivate) await beforeActivate();
     await locator.press('Enter', { timeout });
 }
 
@@ -761,12 +763,14 @@ async function bindParameterTrigger(frame, group, timeout) {
 async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
     const selectedTenant = await verifySelectedTenant(page, plan.tenant);
+    const checkTenant = () => verifySelectedTenant(page, selectedTenant);
     if (await page.getByRole('heading', { name: /\bUnsaved Workbook\b/ }).count() !== 1) {
         throw new Error('Open a new empty unsaved workbook. Existing workbook content will not be replaced.');
     }
     const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
     const editorInput = frame.getByRole('textbox', { name: 'Editor content', exact: true });
     await editorInput.waitFor({ state: 'visible', timeout: plan.timeout });
+    await checkTenant();
     const sourceSha256 = await editorInput.evaluate(async (element, source) => {
         const editors = globalThis.monaco?.editor?.getEditors?.() || [];
         const active = editors.filter(editor => editor.getDomNode()?.contains(element));
@@ -798,10 +802,10 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
         return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     }, plan.source);
 
-    await activateWorkbookControl(frame.getByRole('menuitem', { name: 'Apply', exact: true }), plan.timeout);
+    await activateWorkbookControl(frame.getByRole('menuitem', { name: 'Apply', exact: true }), plan.timeout, checkTenant);
     const done = frame.getByRole('menuitem', { name: 'Done Editing', exact: true });
     await done.waitFor({ state: 'visible', timeout: plan.timeout });
-    await activateWorkbookControl(done, plan.timeout);
+    await activateWorkbookControl(done, plan.timeout, checkTenant);
     await frame.getByRole('menubar', { name: /^Workbooks toolbar/ })
         .getByRole('menuitem', { name: 'Edit', exact: true })
         .waitFor({ state: 'visible', timeout: plan.timeout });
@@ -809,8 +813,10 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const screenshots = [];
     async function capture(target, allowedLabels, stage) {
         if (plan.screenshots) {
-            await verifySelectedTenant(page, selectedTenant);
-            const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels, screenshots.length, plan.timeout);
+            await checkTenant();
+            const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels,
+                screenshots.length, plan.timeout, checkTenant);
+            await checkTenant();
             screenshots.push({ ...result, stage });
         }
     }
@@ -824,8 +830,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             throw new Error(`Primary tab labels differ: expected ${JSON.stringify(plan.tabs)}, found ${JSON.stringify(actual)}.`);
         }
         for (const name of plan.tabs) {
-            await verifySelectedTenant(page, selectedTenant);
-            await activateWorkbookControl(tablist.getByRole('tab', { name, exact: true }), plan.timeout);
+            await activateWorkbookControl(tablist.getByRole('tab', { name, exact: true }), plan.timeout, checkTenant);
             await tablist.getByRole('tab', { name, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
             tabsVisited.push(name);
@@ -838,9 +843,9 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const deferredChecks = [];
     let parameterActionsClicked = 0;
     for (const group of plan.deferredGroups) {
-        await verifySelectedTenant(page, selectedTenant);
+        await checkTenant();
         if (group.tab !== undefined) {
-            await activateWorkbookControl(tablist.getByRole('tab', { name: group.tab, exact: true }), plan.timeout);
+            await activateWorkbookControl(tablist.getByRole('tab', { name: group.tab, exact: true }), plan.timeout, checkTenant);
             await tablist.getByRole('tab', { name: group.tab, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
         }
@@ -851,7 +856,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                 throw new Error(`Deferred content "${check.heading}" was mounted before its trigger.`);
             }
         }
-        await activateWorkbookControl(trigger, plan.timeout);
+        await activateWorkbookControl(trigger, plan.timeout, checkTenant);
         parameterActionsClicked++;
         for (const check of group.checks) {
             const heading = frame.getByRole('heading', { name: check.heading, exact: true });
@@ -896,6 +901,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             }
         }
     }
+    await checkTenant();
     return {
         sourceSha256,
         tenantVerified: true,
@@ -961,7 +967,12 @@ function loadValidationInput(workbookPath, checksPath, screenshotDirectory, runt
             }
         };
     }
-    if (runtime.redaction !== undefined || runtime.allowSensitiveCapture !== undefined) {
+    if (runtime.allowSensitiveCapture !== undefined && typeof runtime.allowSensitiveCapture !== 'boolean') {
+        throw new Error('allowSensitiveCapture must be a boolean.');
+    }
+    const hasScreenshotConfiguration = options.screenshots !== undefined && options.screenshots !== false;
+    if (runtime.redaction !== undefined || runtime.allowSensitiveCapture === true ||
+        (runtime.allowSensitiveCapture === false && hasScreenshotConfiguration)) {
         options = {
             ...options,
             screenshots: {
