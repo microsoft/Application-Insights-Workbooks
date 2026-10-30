@@ -584,7 +584,14 @@ describe('Validating browser validator contracts...', () => {
         editor.frame.getByRole = (role, options = {}) => {
             const result = original(role, options);
             if (role === 'heading' && options.name === 'Deferred table') {
-                result.locator = () => ({ count: async () => 1, getByRole: () => grid });
+                result.locator = () => ({
+                    count: async () => 1,
+                    getByRole: () => grid,
+                    async evaluate(callback, timeout) {
+                        assert.equal(callback, waitForRenderReady);
+                        assert.equal(timeout, 30000);
+                    }
+                });
             }
             return result;
         };
@@ -598,6 +605,73 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(report.deferredChecks[0].rowAudit.totalRows, 47);
         assert.notInclude(JSON.stringify(report), 'Synthetic');
     });
+
+    for (const maxRows of [1, 2]) {
+        it(`waits for delayed query results before checking maxRows ${maxRows} with screenshots disabled`, async () => {
+            const editor = sharedDeferredEditor();
+            const original = editor.frame.getByRole.bind(editor.frame);
+            let ready = false;
+            let timer;
+            const busy = {
+                getClientRects: () => [1],
+                ownerDocument: { defaultView: { getComputedStyle: () => ({ visibility: 'visible' }) } }
+            };
+            const root = {
+                ...busy, isConnected: true,
+                matches: () => maxRows === 1 && !ready,
+                querySelectorAll: () => maxRows === 2 && !ready ? [busy] : []
+            };
+            const grid = {
+                async waitFor() {},
+                async evaluate(callback) {
+                    assert.equal(callback, readGridSummary);
+                    return { rows: ready ? 2 : 1, columns: ['Label', 'Count'] };
+                }
+            };
+            const panel = {
+                count: async () => 1,
+                getByRole: () => grid,
+                async evaluate(callback, timeout) {
+                    assert.equal(callback, waitForRenderReady);
+                    const wait = vm.runInNewContext(`(${callback.toString()})`, {
+                        setTimeout, clearTimeout,
+                        requestAnimationFrame: callback => setTimeout(callback, 0),
+                        cancelAnimationFrame: clearTimeout
+                    });
+                    return wait(root, timeout);
+                }
+            };
+            editor.frame.getByRole = (role, options = {}) => {
+                const control = original(role, options);
+                if (role === 'heading' && options.name === 'Deferred table') {
+                    const waitFor = control.waitFor.bind(control);
+                    control.waitFor = async (...args) => {
+                        await waitFor(...args);
+                        timer = setTimeout(() => { ready = true; }, 100);
+                    };
+                    control.locator = () => panel;
+                }
+                return control;
+            };
+            try {
+                const run = validateWorkbookInBrowser(editor.page, editor.source, {
+                    screenshots: false,
+                    deferred: [{ trigger: 'Show details', heading: 'Deferred table',
+                        minRows: maxRows, maxRows, columns: ['Label', 'Count'] }]
+                });
+                if (maxRows === 1) {
+                    await rejects(run, /returned 2 rows, above maxRows 1/);
+                } else {
+                    const report = await run;
+                    assert.equal(report.deferredChecks[0].grid.rows, 2);
+                    assert.isFalse(report.screenshots.enabled);
+                }
+                assert.isTrue(ready);
+            } finally {
+                clearTimeout(timer);
+            }
+        });
+    }
 
     it('checks every shared panel for eager content before any trigger click', async () => {
         const editor = sharedDeferredEditor(['Loaded details']);
