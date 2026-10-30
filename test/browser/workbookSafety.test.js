@@ -3,7 +3,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { captureWorkbookScreenshot, bindParameterTrigger, activateWorkbookControl,
-    verifySelectedTenant, auditGridRows, waitForRenderReady } = require('./workbookBrowserValidator');
+    verifySelectedTenant, auditGridRows, waitForRenderReady, createPlaywrightScript } = require('./workbookBrowserValidator');
+const { readValidationProvenance, publicValidationReport } = require('./workbookValidationReport');
 
 describe('Validating browser safety with offline fixtures (opt-in)...', function () {
     let browser;
@@ -85,6 +86,92 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
         }, { total, emptyRow, drift, stall, originalScroll });
         return { frame, grid: frame.getByRole('grid') };
     }
+
+    async function offlineEditor() {
+        await page.route('https://workbook-fixture.invalid/', route => route.fulfill({
+            contentType: 'text/html',
+            body: '<!doctype html><body><h2>Unsaved Workbook</h2>' +
+                '<button aria-label="Account menu"><span title="Directory: Synthetic (11111111-2222-3333-4444-555555555555)">Synthetic</span></button>' +
+                '<iframe name="Workbooks.ReactView" style="width:700px;height:450px" srcdoc="<!doctype html><body></body>"></iframe></body>'
+        }));
+        await page.goto('https://workbook-fixture.invalid/');
+        await page.locator('iframe[name="Workbooks.ReactView"]').contentFrame().locator('body').evaluate(body => {
+            body.innerHTML = '<div id="editor"><textarea aria-label="Editor content"></textarea>' +
+                '<button role="menuitem" id="apply">Apply</button><button role="menuitem" id="done" hidden>Done Editing</button></div>' +
+                '<div id="reading" hidden><div role="menubar" aria-label="Workbooks toolbar"><button role="menuitem">Edit</button></div>' +
+                '<div role="tablist"><button role="tab" aria-selected="true">Overview</button>' +
+                '<button role="tab" aria-selected="false">Details</button></div>' +
+                '<div role="menubar" id="producer"><button role="menuitem" id="load">Show details</button></div>' +
+                '<div id="panels"></div></div>';
+            let value = '{"version":"Notebook/1.0","items":[]}';
+            const model = { getValue: () => value, setValue: source => { value = source; } };
+            window.monaco = { editor: { getEditors: () => [{ getDomNode: () => body, getModel: () => model }] } };
+            document.getElementById('apply').onclick = () => { document.getElementById('done').hidden = false; };
+            document.getElementById('done').onclick = () => {
+                document.getElementById('editor').hidden = true;
+                document.getElementById('reading').hidden = false;
+            };
+            for (const tab of document.querySelectorAll('[role="tab"]')) {
+                tab.onclick = () => {
+                    for (const other of document.querySelectorAll('[role="tab"]')) {
+                        other.setAttribute('aria-selected', String(other === tab));
+                    }
+                };
+            }
+            document.getElementById('load').onclick = () => {
+                document.getElementById('producer').hidden = true;
+                document.getElementById('panels').innerHTML = '<div class="styleWrapper-maximized"><h3>Deferred table</h3>' +
+                    '<div role="grid" aria-rowcount="3"><div role="row" aria-rowindex="1">' +
+                    '<span role="columnheader">Label</span><span role="columnheader">Count</span></div>' +
+                    '<div role="row" aria-rowindex="2"><span role="gridcell">First</span><span role="gridcell">1</span></div>' +
+                    '<div role="row" aria-rowindex="3"><span role="gridcell">Second</span><span role="gridcell">2</span></div></div></div>' +
+                    '<h3>Loaded details</h3>';
+            };
+        });
+        return {
+            url: () => 'https://portal.azure.com/#offline-fixture',
+            getByRole: (...args) => page.getByRole(...args),
+            getByText: (...args) => page.getByText(...args),
+            locator: (...args) => page.locator(...args)
+        };
+    }
+
+    it('executes a portable report through real editor controls, tabs, deferred panels, and a full row audit offline', async function () {
+        const fixturePage = await offlineEditor();
+        const file = path.join(__dirname, 'fixtures', 'Smoke.workbook');
+        const source = fs.readFileSync(file, 'utf8');
+        const options = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'smoke-checks.json'), 'utf8'));
+        const script = createPlaywrightScript(source, { ...options, tenant: { useBrowserSession: true } },
+            readValidationProvenance(file, source));
+        const run = new Function(`return (${script})`)();
+        const report = publicValidationReport(await run(fixturePage));
+        assert.equal(report.automationStatus, 'passed');
+        assert.equal(report.status, 'partial');
+        const check = id => report.checks.find(check => check.id === id);
+        assert.equal(check('primary-tabs').evidence.completed, 2);
+        assert.equal(check('declared-tables').evidence.rowsAudited, 2);
+        assert.equal(check('deferred-actions').evidence.actions, 1);
+        assert.equal(check('scenario-drilldowns').status, 'not-run');
+        assert.equal(check('manual-visual-review').status, 'not-run');
+        assert.equal(report.screenshotRedaction, 'not-requested');
+        assert(!JSON.stringify(report).includes('11111111-2222-3333-4444-555555555555'));
+    });
+
+    it('returns a source-mismatch report before modifying a real editor or activating Apply', async function () {
+        const fixturePage = await offlineEditor();
+        const file = path.join(__dirname, 'fixtures', 'Smoke.workbook');
+        const source = fs.readFileSync(file, 'utf8');
+        const script = createPlaywrightScript(source, { tenant: { useBrowserSession: true } },
+            { ...readValidationProvenance(file, source), sourceSha256: '0'.repeat(64) });
+        const run = new Function(`return (${script})`)();
+        const report = publicValidationReport(await run(fixturePage));
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').reason, 'source-mismatch');
+        const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
+        assert.equal(await frame.locator('body').evaluate(() => window.monaco.editor.getEditors()[0].getModel().getValue()),
+            '{"version":"Notebook/1.0","items":[]}');
+        assert.equal(await frame.getByRole('menuitem', { name: 'Done Editing', exact: true }).count(), 0);
+    });
 
     it('excludes existing and late parent overlays from auto and approved unredacted capture pixels', async function () {
         const iframe = page.locator('iframe[name="Workbooks.ReactView"]');

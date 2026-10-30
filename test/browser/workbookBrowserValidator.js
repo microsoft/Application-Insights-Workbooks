@@ -1,5 +1,7 @@
 const fs = require('fs');
 const { URL } = require('url');
+const { validationContractSource, createValidationReport, recordValidationCheck,
+    finishValidationReport } = require('./workbookValidationReport');
 
 function isAzurePortalUrl(value) {
     return /^https:\/\/portal\.azure\.(com|us|cn)(\/|$)/.test(value);
@@ -764,10 +766,20 @@ async function bindParameterTrigger(frame, group, timeout) {
     return trigger;
 }
 
-async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
+async function validateWorkbookInBrowser(page, workbookSource, options = {}, progress = {}) {
+    progress.phase = 'source';
     const plan = createValidationPlan(workbookSource, options);
+    progress.expectedTabs = plan.tabs.length;
+    progress.expectedDeferred = plan.deferred.length;
+    progress.expectedTables = plan.deferred.filter(check => check.minRows !== undefined ||
+        check.maxRows !== undefined || check.columns !== undefined || check.auditRows).length;
+    progress.screenshotsRequested = Boolean(plan.screenshots);
+    progress.screenshotRedaction = plan.screenshots ? plan.screenshots.redaction : 'not-requested';
+    progress.phase = 'authentication';
     const selectedTenant = await verifySelectedTenant(page, plan.tenant);
+    progress.authenticated = true;
     const checkTenant = () => verifySelectedTenant(page, selectedTenant);
+    progress.phase = 'source';
     if (await page.getByRole('heading', { name: /\bUnsaved Workbook\b/ }).count() !== 1) {
         throw new Error('Open a new empty unsaved workbook. Existing workbook content will not be replaced.');
     }
@@ -775,7 +787,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const editorInput = frame.getByRole('textbox', { name: 'Editor content', exact: true });
     await editorInput.waitFor({ state: 'visible', timeout: plan.timeout });
     await checkTenant();
-    const sourceSha256 = await editorInput.evaluate(async (element, source) => {
+    const imported = await editorInput.evaluate(async (element, { source, contracts, expectedSha256, expectedChecksSha256 }) => {
         const editors = globalThis.monaco?.editor?.getEditors?.() || [];
         const active = editors.filter(editor => editor.getDomNode()?.contains(element));
         if (active.length !== 1) {
@@ -798,13 +810,25 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             !Array.isArray(existing.items) || existing.items.length) {
             throw new Error('Advanced Editor is not an empty workbook; no content was replaced.');
         }
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
+        const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+        const checksDigest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(contracts));
+        const checksHash = Array.from(new Uint8Array(checksDigest), byte => byte.toString(16).padStart(2, '0')).join('');
+        if (expectedSha256 && hash !== expectedSha256) return { imported: false, mismatch: 'source' };
+        if (expectedChecksSha256 && checksHash !== expectedChecksSha256) return { imported: false, mismatch: 'checks' };
         model.setValue(source);
         if (model.getValue().replace(/\r\n/g, '\n') !== source) {
             throw new Error('Advanced Editor content differs from the requested source.');
         }
-        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
-        return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-    }, plan.source);
+        return { hash, checksHash, imported: true };
+    }, { source: plan.source,
+        contracts: validationContractSource(plan),
+        expectedSha256: progress.expectedSourceSha256, expectedChecksSha256: progress.expectedChecksSha256 });
+    if (!imported.imported) {
+        throw new Error(imported.mismatch === 'checks' ? 'REPORT_CHECKS_MISMATCH' : 'REPORT_SOURCE_MISMATCH');
+    }
+    const sourceSha256 = imported.hash;
+    progress.checksSha256 = imported.checksHash;
 
     await activateWorkbookControl(frame.getByRole('menuitem', { name: 'Apply', exact: true }), plan.timeout, checkTenant);
     const done = frame.getByRole('menuitem', { name: 'Done Editing', exact: true });
@@ -813,18 +837,26 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     await frame.getByRole('menubar', { name: /^Workbooks toolbar/ })
         .getByRole('menuitem', { name: 'Edit', exact: true })
         .waitFor({ state: 'visible', timeout: plan.timeout });
+    progress.sourceSha256 = sourceSha256;
+    progress.imported = true;
 
     const screenshots = [];
+    progress.screenshots = screenshots;
     async function capture(target, allowedLabels, stage) {
         if (plan.screenshots) {
+            const previousPhase = progress.phase;
+            progress.phase = 'screenshots';
             await checkTenant();
             const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels,
                 screenshots.length, plan.timeout, checkTenant);
             await checkTenant();
             screenshots.push({ ...result, stage });
+            progress.phase = previousPhase;
         }
     }
     const tabsVisited = [];
+    progress.tabsVisited = tabsVisited;
+    progress.phase = 'navigation';
     const tablist = frame.getByRole('tablist').first();
     if (plan.tabs.length) {
         await tablist.waitFor({ state: 'visible', timeout: plan.timeout });
@@ -833,6 +865,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
         if (JSON.stringify(actual) !== JSON.stringify(plan.tabs)) {
             throw new Error(`Primary tab labels differ: expected ${JSON.stringify(plan.tabs)}, found ${JSON.stringify(actual)}.`);
         }
+        progress.tabsVerified = true;
         for (const name of plan.tabs) {
             await activateWorkbookControl(tablist.getByRole('tab', { name, exact: true }), plan.timeout, checkTenant);
             await tablist.getByRole('tab', { name, exact: true, selected: true })
@@ -845,7 +878,10 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     }
 
     const deferredChecks = [];
+    progress.deferredChecks = deferredChecks;
     let parameterActionsClicked = 0;
+    progress.actions = 0;
+    progress.phase = 'deferred';
     for (const group of plan.deferredGroups) {
         await checkTenant();
         if (group.tab !== undefined) {
@@ -862,6 +898,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
         }
         await activateWorkbookControl(trigger, plan.timeout, checkTenant);
         parameterActionsClicked++;
+        progress.actions = parameterActionsClicked;
         for (const check of group.checks) {
             const heading = frame.getByRole('heading', { name: check.heading, exact: true });
             await heading.waitFor({ state: 'visible', timeout: plan.timeout });
@@ -871,6 +908,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                 result.producerHidden = true;
             }
             if (check.minRows !== undefined || check.maxRows !== undefined || check.columns !== undefined || check.auditRows) {
+                progress.phase = 'tables';
                 const panel = heading.locator('xpath=ancestor::div[contains(@class,"styleWrapper-maximized")][1]');
                 if (await panel.count() !== 1) {
                     throw new Error(`Cannot locate the query panel for "${check.heading}".`);
@@ -897,6 +935,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
                 }
             }
             deferredChecks.push(result);
+            progress.phase = 'deferred';
             if (plan.screenshots) {
                 const panel = heading.locator('xpath=ancestor::div[contains(@class,"styleWrapper-maximized")][1]');
                 const target = await panel.count() === 1 ? panel : heading;
@@ -906,6 +945,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             }
         }
     }
+    progress.phase = 'authentication';
     await checkTenant();
     return {
         sourceSha256,
@@ -926,6 +966,77 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
         coverage: 'Only source import, primary tabs, and requested contracts were checked; no-data is not proof of health.',
         workbookSaved: false
     };
+}
+
+async function validateWorkbookWithReport(page, workbookSource, options = {}, provenance = {}, onFailure) {
+    const report = createValidationReport(provenance);
+    const progress = { expectedSourceSha256: report.provenance.sourceSha256,
+        expectedChecksSha256: report.provenance.checksSha256 };
+    let failure;
+    let failed = false;
+    try {
+        await validateWorkbookInBrowser(page, workbookSource, options, progress);
+        if (report.provenance.sourceSha256 &&
+            progress.sourceSha256 !== report.provenance.sourceSha256) {
+            progress.phase = 'source';
+            throw new Error('REPORT_SOURCE_MISMATCH');
+        }
+        report.provenance.sourceSha256 = progress.sourceSha256;
+        report.provenance.checksSha256 = progress.checksSha256;
+    } catch (error) {
+        failed = true;
+        failure = error;
+        if (onFailure) onFailure(error);
+    }
+    const record = (id, area, status, evidence = {}, reason = null) =>
+        recordValidationCheck(report, id, area, status, status === 'not-run' ? 'none' : 'automated', evidence, reason);
+    report.screenshotRedaction = progress.screenshotRedaction || 'not-run';
+    if (progress.authenticated) {
+        record('browser-session', 'browser', 'passed', { assertions: 1 });
+        record('authenticated-session', 'authentication', 'passed', { assertions: 1 });
+    }
+    if (progress.imported) record('exact-source', 'source', 'passed', { assertions: 1 });
+    if (progress.tabsVisited) {
+        const complete = progress.expectedTabs > 0 && progress.tabsVerified &&
+            progress.tabsVisited.length === progress.expectedTabs;
+        record('primary-tabs', 'navigation', complete ? 'passed' : 'not-run',
+            { expected: progress.expectedTabs, completed: progress.tabsVisited.length },
+            complete ? null : progress.expectedTabs ? 'unreached' : 'not-configured');
+    }
+    const tables = (progress.deferredChecks || []).filter(check => check.grid);
+    if (progress.expectedTables !== undefined) {
+        const complete = progress.expectedTables > 0 && tables.length === progress.expectedTables;
+        record('declared-tables', 'tables', complete ? 'passed' : 'not-run',
+            { expected: progress.expectedTables, completed: tables.length,
+                rows: tables.reduce((sum, check) => sum + check.grid.rows, 0),
+                rowsAudited: tables.reduce((sum, check) => sum + (check.rowAudit?.rowsAudited || 0), 0) },
+            complete ? null : progress.expectedTables ? 'unreached' : 'not-configured');
+    }
+    if (progress.deferredChecks) {
+        const complete = progress.expectedDeferred > 0 && progress.deferredChecks.length === progress.expectedDeferred;
+        record('deferred-actions', 'deferred', complete ? 'passed' : 'not-run',
+            { expected: progress.expectedDeferred, completed: progress.deferredChecks.length, actions: progress.actions },
+            complete ? null : progress.expectedDeferred ? 'unreached' : 'not-configured');
+    }
+    if (progress.screenshotsRequested && !failed) {
+        record('screenshot-capture', 'screenshots', 'passed', { captures: progress.screenshots.length });
+    } else if (progress.screenshotsRequested) {
+        record('screenshot-capture', 'screenshots', 'not-run',
+            { captures: progress.screenshots?.length || 0 }, 'unreached');
+    }
+    if (failed) {
+        const paused = /^PAUSED:/.test(failure?.message || '');
+        const area = paused ? 'authentication' : progress.phase || 'source';
+        const ids = { authentication: 'authenticated-session', source: 'exact-source',
+            navigation: 'primary-tabs', deferred: 'deferred-actions',
+            tables: 'declared-tables', screenshots: 'screenshot-capture' };
+        const current = report.checks.find(check => check.id === ids[area]);
+        record(ids[area], area, paused ? 'blocked' : 'failed', current?.evidence || {},
+            paused ? 'authorization-required' : failure?.message === 'REPORT_SOURCE_MISMATCH' ?
+                'source-mismatch' : failure?.message === 'REPORT_CHECKS_MISMATCH' ? 'checks-mismatch' : 'automation-error');
+        return finishValidationReport(report, paused ? 'blocked' : 'failed');
+    }
+    return finishValidationReport(report, 'passed');
 }
 
 function loadValidationInput(workbookPath, checksPath, screenshotDirectory, runtime = {}) {
@@ -1007,16 +1118,21 @@ function validateCdpEndpoint(value) {
     return endpoint.href;
 }
 
-function createPlaywrightScript(workbookSource, options = {}) {
+function createPlaywrightScript(workbookSource, options = {}, provenance) {
     const plan = createValidationPlan(workbookSource, options);
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
     const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, portalSelectionPrompt, verifySelectedTenant,
         normalizeScreenshotOptions, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
         applyScreenshotRedaction, isolateWorkbookFrame, waitForRenderReady, readScreenshotState, clearScreenshotState,
         screenshotIsolatedWorkbook, captureMaskedScreenshot, captureWorkbookScreenshot, readGridSummary, auditGridRows,
-        activateWorkbookControl, bindParameterTrigger, validateWorkbookInBrowser]
+        activateWorkbookControl, bindParameterTrigger, validationContractSource, validateWorkbookInBrowser,
+        ...(provenance ? [createValidationReport, recordValidationCheck, finishValidationReport, validateWorkbookWithReport] : [])]
         .map(callback => callback.toString()).join('\n\n');
-    return `async (page) => {\n${functions}\nreturn validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)});\n}\n`;
+    if (provenance) createValidationReport(provenance);
+    const call = provenance ?
+        `validateWorkbookWithReport(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)}, ${JSON.stringify(provenance)})` :
+        `validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)})`;
+    return `async (page) => {\n${functions}\nreturn ${call};\n}\n`;
 }
 
 function createPortalScript(tenant = { useBrowserSession: true }) {
@@ -1051,6 +1167,7 @@ module.exports = {
     activateWorkbookControl,
     bindParameterTrigger,
     validateWorkbookInBrowser,
+    validateWorkbookWithReport,
     loadValidationInput,
     validateCdpEndpoint,
     createPlaywrightScript,

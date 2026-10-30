@@ -34,6 +34,7 @@ The shared runner:
 - Optionally verifies exact grid column labels and row bounds using `aria-rowcount`, not the number of virtualized rows currently rendered.
 - Optionally audits every returned grid row with a bounded `auditRows` contract, waiting for actual virtualized row-range changes and checking selected non-empty display columns without reporting record values.
 - Offers optional local screenshots, disabled by default, with conservative masking applied before capture and a mandatory manual-review reminder.
+- Produces an explicit check matrix with revision/content hashes, timestamps, remaining findings, and separate automated versus reviewer outcomes when reporting is enabled. Blocked sign-in is never converted into a pass.
 
 Commands and parameter actions use native Enter-key activation after visibility and enabled-state checks. This validates the accessible interaction path without depending on pointer coordinates during query-driven reflow; it does not certify mouse hit testing.
 
@@ -150,6 +151,67 @@ The JSON report contains the source hash, visited tab labels, requested contract
 - **Keep no-data distinct from success.** An empty grid or a no-data message is not evidence that a workload is healthy, supported, scanned, or enabled. State which scenario could not be exercised.
 - **Record exact revisions and limits.** Include the workbook source hash, validator revision, requested contracts, and aggregate results. If a PR changes concurrently, qualify the revision actually executed; do not claim a fresh live run merely because a new revision's offline tests pass.
 - **Minimize live work.** Run only approved read-only scopes and required scenarios. Keep full-row audits and screenshots opt-in; use synthetic offline browser fixtures for readiness, virtualization, and privacy regressions.
+
+### Validation reports, findings, and reviewer handoff
+
+For PR evidence, request a **structured report**, not only successful tool execution or a JSON-schema test. The report keeps `passed`, `blocked`, `failed`, and `not-run` checks separate, preserves completed progress when a later operation fails, and lists remaining findings. It records timestamps, the normalized workbook source SHA-256, a checks SHA-256, workbook/validator Git revisions and modified flags when available, and a validator implementation SHA-256. Built-in evidence excludes tenant/account metadata, resource IDs, record values, local paths, and raw exception messages; custom check IDs must also remain generic.
+
+The checks digest binds the normalized plan's exact primary tabs, deferred/table/audit contracts, and timeout, not private tenant/capture paths. Changed thresholds or columns therefore cannot silently reuse the same checks identity. Expected source/contract digest mismatches are rejected **before editor replacement or Apply/query activation**.
+
+The Mocha adapter always prints this report, including setup/authentication failures. To also persist both JSON and Markdown, choose a fresh private local filename prefix:
+
+```powershell
+$env:WORKBOOK_BROWSER_REPORT = ".playwright-mcp\validation-run"
+npm run test:browser
+```
+
+For a portable Playwright/MCP run, add **`--report`**:
+
+```powershell
+npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook" --checks "test\browser\fixtures\smoke-checks.json" --use-browser-tenant --report --output ".playwright-mcp\workbook-evidence.js"
+```
+
+Run the generated function only after the external-browser tenant/scope handoff and empty-editor preparation described above. It returns a sanitized report even when authentication or an assertion fails, so a successful browser-tool call is **not** a successful validation: inspect **`automationStatus`** and the individual checks. Without `--report`, portable runners retain their original aggregate result and exception behavior. `--open-portal` remains a separate readiness-only operation and cannot be combined with `--report`.
+
+Save only the returned report JSON, not the browser tool's surrounding page metadata, console events, code echo, or private logs. Format that saved report for a reviewer:
+
+```powershell
+npm run test:browser:report -- --input ".playwright-mcp\returned-report.json" --output ".playwright-mcp\review-evidence"
+```
+
+Existing report files are never overwritten. The formatter verifies the schema, timestamps, coverage areas, and derived findings; it refuses deleted gaps, contradictory success, and arbitrary/private fields. It **does not rerun or independently attest the tests**. Reports are evidence supplied by the runner/operator, not signed proof. A failed/blocked report is still written, but Mocha and the formatting command retain nonzero outcomes. An automated pass with partial coverage can exit zero; that is not complete qualification or reviewer approval.
+
+| Report state | Meaning and required action |
+|---|---|
+| `passed` | The named assertions ran successfully. Primary-tab selection does not prove that every widget rendered or every query returned correct data. |
+| `blocked` | The check could not proceed, for example because sign-in/tenant selection is pending. Let the user act in the external browser, then start a fresh run. |
+| `failed` | An assertion, source comparison, or browser operation failed. Diagnose privately, fix the cause, and rerun. |
+| `not-run` | No execution evidence exists for that check. The reason distinguishes unconfigured contracts, unrequested captures, missing scenario data, and required manual review. |
+
+`automationStatus` describes the configured automation. The overall `status` also includes explicit gaps and supplementary checks, so it will normally be **`partial`** when optional captures, scenario-specific workflows, or visual review were not performed. `reviewStatus` always remains **`requires-authorized-reviewer`**, even if every recorded assertion passes.
+
+The built-in matrix covers browser/session verification, exact source import, primary tabs, requested table contracts, deferred actions, and optional guarded screenshots. It deliberately leaves rendering scenarios, filters/controls, drill-downs/graphs, and manual visual review unverified until there is actual execution evidence. A screenshot capture is separate from visual review and publication approval; the report records the selected redaction mode but does not publish images.
+
+For custom scenario tests, use `recordValidationCheck` and `finishValidationReport` from [workbookValidationReport.js](../test/browser/workbookValidationReport.js) **immediately after actual assertions**, within the same source-verified, tenant-pinned run. Use generic check IDs and approved aggregate counts only. Passed `scenario`/`manual` checks require a positive executed-assertion count. Record each distinct filter, drill-down, or render contract separately; one passing graph must not stand in for all drill-downs. If required records are absent, record `not-run`/`none` with reason `no-data`, not a pass. Re-finalize the report after supplementary checks; blocked/failed scenario automation cannot be finalized as passed. Never seed passed checks from a plan, copy a prior run's results, or append results from another revision/session. The API records caller-supplied evidence; it does not execute or verify arbitrary scenario code for you.
+
+Before sharing the Markdown:
+
+1. Compare its source hash and recorded revisions to the PR being reviewed. Modified/unknown provenance must be called out; the content hashes identify that snapshot, not an unqualified clean-commit pass. If either PR changes, retain the executed revision and rerun affected checks; offline compatibility tests are not a fresh authenticated run.
+2. Link the report from the PR and summarize passed checks, blockers/failures, no-data limits, and untested scenarios. Keep historical passes separate from the current run.
+3. Keep private diagnostics, generated scripts, browser profiles, and per-run options local. Review even the sanitized report before sharing. Screenshots still need separate consent, redaction, manual review, and publication approval.
+4. Ask an authorized reviewer to assess the completed evidence and remaining gaps. Do not equate operator automation, a screenshot, or an account-menu check with independent reviewer approval.
+
+#### Repeated "authenticated portal validation is blocked by sign-in" comments
+
+This warning describes a reviewer's session and/or missing coverage evidence; it is not fixed by bypassing sign-in or running only static tests. Check the warning's revision and date first. An older blocked review does not invalidate a later authenticated run, and an older authenticated pass does not validate new code.
+
+Use the external-browser handoff, actually run the current checks, and attach the resulting exact-revision report. A fresh authenticated report can establish which tabs, tables, controls, and drill-downs **were exercised by the authorized operator**. If the run still stops at an account/tenant chooser, publish the **blocked** finding with the other areas **not-run** and pause; do not reuse historical results as a fresh pass.
+
+Suggested handoff:
+
+> The attached report records workbook/validator revisions, source hash, execution time, and individual outcomes. It distinguishes completed operator checks from untested scenarios and manual review. Your own portal session may still require sign-in; this evidence does not sign you in or replace your approval. Please assess the completed checks and the explicitly listed remaining work.
+
+The validator cannot remove another reviewer's sign-in requirement, guarantee a review bot changes its wording, dismiss a review, or manufacture authorized human approval. Resolve an inline thread only when its actual concern is addressed; a review-summary warning is not automatically a resolvable thread.
 
 ### Optional masked screenshots
 

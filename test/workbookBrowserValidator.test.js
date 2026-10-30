@@ -28,6 +28,7 @@ const {
     activateWorkbookControl,
     bindParameterTrigger,
     validateWorkbookInBrowser: validateWithExplicitTenant,
+    validateWorkbookWithReport,
     loadValidationInput,
     validateCdpEndpoint,
     createPlaywrightScript
@@ -877,6 +878,7 @@ describe('Validating explicit tenant selection...', () => {
         delete env.WORKBOOK_BROWSER_SCREENSHOTS;
         delete env.WORKBOOK_BROWSER_REDACTION;
         delete env.WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE;
+        delete env.WORKBOOK_BROWSER_REPORT;
         const result = spawnSync(process.execPath, [
             require.resolve('mocha/bin/mocha.js'), '--timeout', '10000',
             path.join(__dirname, 'browser', 'workbookValidation.test.js')
@@ -884,6 +886,84 @@ describe('Validating explicit tenant selection...', () => {
         assert.equal(result.status, 1, result.stderr);
         assert.include(result.stdout + result.stderr, 'PAUSED: Ask the user');
         assert.notInclude(result.stdout + result.stderr, 'ECONNREFUSED');
+    });
+});
+
+describe('Preserving executed workbook check progress...', () => {
+    it('reports imported source but not unexecuted controls, graphs, or manual visual review', async () => {
+        const editor = editorPage(emptySource);
+        const report = await validateWorkbookWithReport(editor.page, emptySource, { tenant: testTenant });
+        assert.equal(report.automationStatus, 'passed');
+        assert.equal(report.status, 'partial');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'passed');
+        for (const area of ['rendering', 'controls', 'drilldowns', 'visual-review']) {
+            assert.isTrue(report.checks.some(check => check.area === area && check.status === 'not-run'));
+        }
+    });
+
+    it('preserves source progress when a requested table row assertion fails', async () => {
+        const editor = sharedDeferredEditor();
+        const original = editor.frame.getByRole.bind(editor.frame);
+        editor.frame.getByRole = (role, options = {}) => {
+            const control = original(role, options);
+            if (role === 'heading' && options.name === 'Deferred table') {
+                control.locator = () => ({
+                    count: async () => 1,
+                    async evaluate() {},
+                    getByRole: () => ({
+                        async waitFor() {},
+                        evaluate: async () => ({ rows: 2, columns: ['Label', 'Count'] })
+                    })
+                });
+            }
+            return control;
+        };
+        let failure;
+        const report = await validateWorkbookWithReport(editor.page, editor.source, {
+            tenant: testTenant,
+            deferred: checks.deferred.map(({ tab, ...check }, index) => index ? check : { ...check, minRows: 1000, maxRows: 1000 })
+        }, {}, error => { failure = error; });
+        assert.match(failure.message, /returned 2 rows, below minRows 1000/);
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'passed');
+        assert.equal(report.checks.find(check => check.id === 'declared-tables').status, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'scenario-drilldowns').status, 'not-run');
+    });
+
+    it('rejects provenance for a different source instead of publishing a pass for that revision', async () => {
+        const editor = editorPage(emptySource);
+        const report = await validateWorkbookWithReport(editor.page, emptySource, { tenant: testTenant },
+            { sourceSha256: '0'.repeat(64) });
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').reason, 'source-mismatch');
+        assert.equal(editor.state.writes, 0);
+        assert.isEmpty(editor.state.clicks);
+    });
+
+    it('marks a late tenant change blocked, despite earlier successful import', async () => {
+        const editor = editorPage(emptySource);
+        const original = editor.frame.getByRole.bind(editor.frame);
+        editor.frame.getByRole = (role, options) => {
+            const control = original(role, options);
+            if (role === 'menubar') {
+                control.getByRole = () => ({ async waitFor() { editor.state.tenantId = otherTenantId; } });
+            }
+            return control;
+        };
+        const report = await validateWorkbookWithReport(editor.page, emptySource, { tenant: testTenant });
+        assert.equal(report.automationStatus, 'blocked');
+        assert.equal(report.checks.find(check => check.id === 'authenticated-session').status, 'blocked');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'passed');
+    });
+
+    it('refuses a different checks profile before editing or querying the workbook', async () => {
+        const editor = editorPage(emptySource);
+        const report = await validateWorkbookWithReport(editor.page, emptySource, { tenant: testTenant },
+            { checksSha256: '0'.repeat(64) });
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').reason, 'checks-mismatch');
+        assert.equal(editor.state.writes, 0);
+        assert.isEmpty(editor.state.clicks);
     });
 });
 
