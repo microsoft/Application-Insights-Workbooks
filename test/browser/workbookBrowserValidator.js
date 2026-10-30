@@ -5,6 +5,78 @@ function isAzurePortalUrl(value) {
     return /^https:\/\/portal\.azure\.(com|us|cn)(\/|$)/.test(value);
 }
 
+function normalizeTenantSelection(value) {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Object.keys(value).some(key => !['id', 'confirmed'].includes(key)) ||
+        typeof value.id !== 'string' ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value.id.trim()) ||
+        (value.confirmed !== undefined && typeof value.confirmed !== 'boolean')) {
+        throw new Error('tenant must contain a tenant GUID and an explicit boolean confirmed choice.');
+    }
+    return { id: value.id.trim().toLowerCase(), confirmed: value.confirmed === true };
+}
+
+function requireConfirmedTenant(value) {
+    const tenant = normalizeTenantSelection(value);
+    if (!tenant?.confirmed) {
+        throw new Error('PAUSED: Ask the user which Azure tenant to sign in to and wait for explicit selection and confirmation, including in autopilot. Do not choose the current/default tenant.');
+    }
+    return tenant;
+}
+
+async function verifySelectedTenant(page, value) {
+    const tenant = requireConfirmedTenant(value);
+    if (!isAzurePortalUrl(page.url())) {
+        throw new Error('Sign in to Azure using the selected tenant before running portal validation.');
+    }
+    const account = page.getByRole('button', { name: /^Account menu/ });
+    if (await account.count() !== 1) {
+        throw new Error('PAUSED: Cannot verify the selected tenant from the portal account menu.');
+    }
+    const titles = await account.locator('[title]').evaluateAll(elements => elements.map(element => element.getAttribute('title') || ''));
+    const ids = new Set(titles.flatMap(title => {
+        const match = title.match(/\bDirectory:\s*[\s\S]*?\(([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\)/i);
+        return match ? [match[1].toLowerCase()] : [];
+    }));
+    if (ids.size !== 1 || !ids.has(tenant.id)) {
+        throw new Error('PAUSED: The signed-in tenant is different from, or cannot be matched to, the user-confirmed tenant. Ask the user to select it; do not switch automatically.');
+    }
+}
+
+function normalizeScreenshotOptions(value) {
+    if (value === undefined || value === false) return false;
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Object.keys(value).some(key => !['directory', 'maskSelectors', 'redaction', 'allowSensitiveCapture'].includes(key))) {
+        throw new Error('screenshots must be an object with supported options only.');
+    }
+    const directory = value.directory;
+    if (typeof directory !== 'string' || !directory.trim() || /[\u0000-\u001F]/.test(directory) ||
+        /^(?:[\\/]{2}|[a-z][a-z0-9+.-]*:)/i.test(directory.replace(/^[a-z]:[\\/]/i, '')) ||
+        directory.split(/[\\/]/).includes('..')) {
+        throw new Error('screenshots.directory must be a local directory without URLs, network paths, or parent traversal.');
+    }
+    const maskSelectors = value.maskSelectors === undefined ? [] : value.maskSelectors;
+    if (!Array.isArray(maskSelectors) || maskSelectors.some(selector => typeof selector !== 'string' || !selector.trim())) {
+        throw new Error('screenshots.maskSelectors must be an array of non-empty CSS selectors.');
+    }
+    const redaction = value.redaction === undefined ? 'auto' : value.redaction;
+    const allowSensitiveCapture = value.allowSensitiveCapture === undefined ? false : value.allowSensitiveCapture;
+    if (!['auto', 'manual', 'ai-assisted', 'none'].includes(redaction) || typeof allowSensitiveCapture !== 'boolean') {
+        throw new Error('Choose auto, manual, ai-assisted, or none redaction and a boolean allowSensitiveCapture choice.');
+    }
+    if (redaction !== 'auto' && !allowSensitiveCapture) {
+        throw new Error('PAUSED: Non-auto screenshots can expose sensitive content. Obtain explicit approval and set allowSensitiveCapture to true; never disable redaction automatically.');
+    }
+    if (['manual', 'ai-assisted'].includes(redaction) && !maskSelectors.length) {
+        throw new Error('Manual and AI-assisted redaction require explicitly reviewed maskSelectors. No AI service is called automatically.');
+    }
+    if (redaction === 'none' && maskSelectors.length) {
+        throw new Error('Unredacted mode cannot silently ignore maskSelectors; use a selective redaction mode instead.');
+    }
+    return { directory, maskSelectors, redaction, allowSensitiveCapture };
+}
+
 function createValidationPlan(workbookSource, options = {}) {
     function checkObject(value, label, keys) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -49,26 +121,13 @@ function createValidationPlan(workbookSource, options = {}) {
     if (!workbook || workbook.version !== 'Notebook/1.0' || !Array.isArray(workbook.items)) {
         throw new Error('Expected a Notebook/1.0 workbook with an items array.');
     }
-    checkObject(options, 'Browser validation options', ['tabs', 'deferred', 'timeout', 'screenshots']);
+    checkObject(options, 'Browser validation options', ['tabs', 'deferred', 'timeout', 'screenshots', 'tenant']);
     const timeout = options.timeout === undefined ? 30000 : options.timeout;
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 120000) {
         throw new Error('timeout must be an integer between 1 and 120000 milliseconds.');
     }
-    let screenshots = false;
-    if (options.screenshots !== undefined && options.screenshots !== false) {
-        checkObject(options.screenshots, 'screenshots', ['directory', 'maskSelectors']);
-        const directory = options.screenshots.directory;
-        if (typeof directory !== 'string' || !directory.trim() || /[\u0000-\u001F]/.test(directory) ||
-            /^(?:[\\/]{2}|[a-z][a-z0-9+.-]*:)/i.test(directory.replace(/^[a-z]:[\\/]/i, '')) ||
-            directory.split(/[\\/]/).includes('..')) {
-            throw new Error('screenshots.directory must be a local directory without URLs, network paths, or parent traversal.');
-        }
-        const maskSelectors = options.screenshots.maskSelectors === undefined ? [] : options.screenshots.maskSelectors;
-        if (!Array.isArray(maskSelectors) || maskSelectors.some(selector => typeof selector !== 'string' || !selector.trim())) {
-            throw new Error('screenshots.maskSelectors must be an array of non-empty CSS selectors.');
-        }
-        screenshots = { directory, maskSelectors };
-    }
+    const screenshots = normalizeScreenshotOptions(options.screenshots);
+    const tenant = normalizeTenantSelection(options.tenant);
 
     const links = [];
     const tabsets = [];
@@ -181,7 +240,7 @@ function createValidationPlan(workbookSource, options = {}) {
         }
         groups.get(key).checks.push(check);
     }
-    return { source, itemCount, tabs, deferred, deferredGroups: Array.from(groups.values()), timeout, screenshots };
+    return { source, itemCount, tabs, deferred, deferredGroups: Array.from(groups.values()), timeout, screenshots, tenant };
 }
 
 function markScreenshotMasks(body, settings) {
@@ -189,10 +248,11 @@ function markScreenshotMasks(body, settings) {
     if (document.querySelector('[data-workbook-validation-mask],[data-workbook-validation-label],[data-workbook-validation-capture],[data-workbook-validation-style]')) {
         throw new Error('A previous screenshot mask is still present; refusing to capture.');
     }
-    const elements = new Set(body.querySelectorAll(
+    const automatic = settings.redaction === undefined || settings.redaction === 'auto';
+    const elements = new Set(automatic ? body.querySelectorAll(
         'input,textarea,select,[contenteditable="true"],[role="textbox"],[role="combobox"],[role="searchbox"],' +
         '[role="gridcell"],[role="rowheader"],svg,canvas,img,picture,video,iframe,object,embed'
-    ));
+    ) : []);
     for (const selector of settings.maskSelectors) {
         const matches = body.querySelectorAll(selector);
         if (!matches.length) {
@@ -203,7 +263,7 @@ function markScreenshotMasks(body, settings) {
     const allowedLabels = new Set(settings.allowedLabels.map(label => label.replace(/\s+/g, ' ').trim()));
     const labels = new Set();
     const walker = document.createTreeWalker(body, 4);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    for (let node = automatic ? walker.nextNode() : null; node; node = walker.nextNode()) {
         const text = node.nodeValue.replace(/\s+/g, ' ').trim();
         const parent = node.parentElement;
         if (!text || !parent || parent.closest('script,style,noscript')) continue;
@@ -221,12 +281,15 @@ function markScreenshotMasks(body, settings) {
     return elements.size;
 }
 
-function screenshotRedactionStyle(marker) {
+function screenshotRedactionStyle(marker, redaction = 'auto') {
     const scope = `body[data-workbook-validation-capture="${marker}"]`;
-    return `${scope}, ${scope} * { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; background-image: none !important; }
+    const automatic = redaction === 'auto' ?
+        `${scope}, ${scope} * { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; background-image: none !important; }
         ${scope} [data-workbook-validation-label="${marker}"] { color: #111111 !important; -webkit-text-fill-color: #111111 !important; }
-        ${scope} [data-workbook-validation-mask="${marker}"], ${scope} [data-workbook-validation-mask="${marker}"] * { background-color: #111111 !important; color: transparent !important; -webkit-text-fill-color: transparent !important; }
-        ${scope} :is(svg,canvas,img,picture,video,iframe,object,embed) { visibility: hidden !important; }`;
+        ${scope} :is(svg,canvas,img,picture,video,iframe,object,embed) { visibility: hidden !important; }` : '';
+    return `${automatic}
+        ${scope}[data-workbook-validation-mask="${marker}"], ${scope} [data-workbook-validation-mask="${marker}"], ${scope} [data-workbook-validation-mask="${marker}"] * { background-color: #111111 !important; color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; background-image: none !important; }
+        ${scope} [data-workbook-validation-mask="${marker}"]:is(svg,canvas,img,picture,video,iframe,object,embed), ${scope} [data-workbook-validation-mask="${marker}"] :is(svg,canvas,img,picture,video,iframe,object,embed) { visibility: hidden !important; }`;
 }
 
 function applyScreenshotRedaction(body, settings) {
@@ -237,6 +300,9 @@ function applyScreenshotRedaction(body, settings) {
     document.head.append(style);
     const probe = document.createElement('span');
     probe.textContent = 'Screenshot redaction probe';
+    if (settings.redaction !== undefined && settings.redaction !== 'auto') {
+        probe.setAttribute('data-workbook-validation-mask', settings.marker);
+    }
     body.append(probe);
     try {
         const computed = document.defaultView.getComputedStyle(probe);
@@ -250,6 +316,10 @@ function applyScreenshotRedaction(body, settings) {
 }
 
 async function captureMaskedScreenshot(page, target, settings, allowedLabels, index) {
+    settings = normalizeScreenshotOptions(settings);
+    if (!settings || settings.redaction === 'none') {
+        throw new Error('Masked capture requires an enabled auto or selective redaction mode.');
+    }
     const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
     const body = frame.locator('body');
     const marker = `capture-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2)}`;
@@ -257,12 +327,12 @@ async function captureMaskedScreenshot(page, target, settings, allowedLabels, in
     const separator = settings.directory.includes('\\') ? '\\' : '/';
     const path = settings.directory.replace(/[\\/]+$/, '') + separator + file;
     const maskedElements = await body.evaluate(markScreenshotMasks, {
-        marker, allowedLabels, maskSelectors: settings.maskSelectors
+        marker, allowedLabels, maskSelectors: settings.maskSelectors, redaction: settings.redaction
     });
     try {
         if (!maskedElements) throw new Error('No screenshot masks were applied; refusing to capture.');
-        const css = screenshotRedactionStyle(marker);
-        await body.evaluate(applyScreenshotRedaction, { marker, css });
+        const css = screenshotRedactionStyle(marker, settings.redaction);
+        await body.evaluate(applyScreenshotRedaction, { marker, css, redaction: settings.redaction });
         await target.screenshot({
             path,
             type: 'png',
@@ -286,7 +356,22 @@ async function captureMaskedScreenshot(page, target, settings, allowedLabels, in
             }
         }, marker);
     }
-    return { file, maskedElements, reviewRequired: true };
+    return { file, maskedElements, redaction: settings.redaction, reviewRequired: true, publicationApproved: false };
+}
+
+async function captureWorkbookScreenshot(page, target, settings, allowedLabels, index) {
+    settings = normalizeScreenshotOptions(settings);
+    if (!settings) throw new Error('Screenshot capture is not enabled.');
+    if (settings.redaction !== 'none') {
+        return captureMaskedScreenshot(page, target, settings, allowedLabels, index);
+    }
+    const file = `capture-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2)}.png`;
+    const separator = settings.directory.includes('\\') ? '\\' : '/';
+    await target.screenshot({
+        path: settings.directory.replace(/[\\/]+$/, '') + separator + file,
+        type: 'png', scale: 'css', animations: 'disabled', caret: 'hide'
+    });
+    return { file, maskedElements: 0, redaction: 'none', reviewRequired: true, publicationApproved: false };
 }
 
 function readGridSummary(element) {
@@ -309,9 +394,7 @@ async function activateWorkbookControl(locator, timeout) {
 
 async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
-    if (!isAzurePortalUrl(page.url())) {
-        throw new Error('Sign in to Azure in the existing browser before running portal validation.');
-    }
+    await verifySelectedTenant(page, plan.tenant);
     if (await page.getByRole('heading', { name: /\bUnsaved Workbook\b/ }).count() !== 1) {
         throw new Error('Open a new empty unsaved workbook. Existing workbook content will not be replaced.');
     }
@@ -360,7 +443,8 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const screenshots = [];
     async function capture(target, allowedLabels, stage) {
         if (plan.screenshots) {
-            const result = await captureMaskedScreenshot(page, target, plan.screenshots, allowedLabels, screenshots.length);
+            await verifySelectedTenant(page, plan.tenant);
+            const result = await captureWorkbookScreenshot(page, target, plan.screenshots, allowedLabels, screenshots.length);
             screenshots.push({ ...result, stage });
         }
     }
@@ -374,6 +458,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             throw new Error(`Primary tab labels differ: expected ${JSON.stringify(plan.tabs)}, found ${JSON.stringify(actual)}.`);
         }
         for (const name of plan.tabs) {
+            await verifySelectedTenant(page, plan.tenant);
             await activateWorkbookControl(tablist.getByRole('tab', { name, exact: true }), plan.timeout);
             await tablist.getByRole('tab', { name, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
@@ -387,6 +472,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const deferredChecks = [];
     let parameterActionsClicked = 0;
     for (const group of plan.deferredGroups) {
+        await verifySelectedTenant(page, plan.tenant);
         if (group.tab !== undefined) {
             await activateWorkbookControl(tablist.getByRole('tab', { name: group.tab, exact: true }), plan.timeout);
             await tablist.getByRole('tab', { name: group.tab, exact: true, selected: true })
@@ -443,6 +529,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     }
     return {
         sourceSha256,
+        tenantVerified: true,
         itemCount: plan.itemCount,
         tabsVisited,
         parameterActionsClicked,
@@ -452,15 +539,15 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             enabled: Boolean(plan.screenshots),
             captures: screenshots,
             guidance: plan.screenshots ?
-                'Masked screenshots are local evidence, not guaranteed anonymization. Review every image before sharing; nothing was uploaded.' :
-                'Optional masked screenshots are available. Enable screenshots.directory in the checks file, --screenshots for script generation, or WORKBOOK_BROWSER_SCREENSHOTS for Mocha.'
+                'Review every local image before sharing; nothing was uploaded. If auto redaction hides too much, ask the user to choose manual masks, AI-assisted mask selection, or explicitly approved unredacted capture. Never turn masking off automatically; no AI service is called.' :
+                'Optional screenshots are available with auto redaction by default. Ask the user whether to capture; manual/AI-assisted masks and unredacted local capture require explicit approval.'
         },
         coverage: 'Only source import, primary tabs, and requested contracts were checked; no-data is not proof of health.',
         workbookSaved: false
     };
 }
 
-function loadValidationInput(workbookPath, checksPath, screenshotDirectory) {
+function loadValidationInput(workbookPath, checksPath, screenshotDirectory, runtime = {}) {
     if (typeof workbookPath !== 'string' || !workbookPath.trim()) {
         throw new Error('Set WORKBOOK_BROWSER_TEMPLATE or provide --workbook.');
     }
@@ -469,9 +556,31 @@ function loadValidationInput(workbookPath, checksPath, screenshotDirectory) {
     }
     const source = fs.readFileSync(workbookPath, 'utf8');
     let options = checksPath === undefined ? {} : JSON.parse(fs.readFileSync(checksPath, 'utf8'));
-    createValidationPlan(source, options);
+    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+        throw new Error('Browser validation options must be an object.');
+    }
     if (screenshotDirectory !== undefined) {
         options = { ...options, screenshots: { ...options.screenshots, directory: screenshotDirectory } };
+    }
+    if (runtime.tenantId !== undefined || runtime.confirmTenant !== undefined) {
+        options = {
+            ...options,
+            tenant: {
+                ...options.tenant,
+                id: runtime.tenantId === undefined ? options.tenant?.id : runtime.tenantId,
+                confirmed: runtime.confirmTenant === true
+            }
+        };
+    }
+    if (runtime.redaction !== undefined || runtime.allowSensitiveCapture !== undefined) {
+        options = {
+            ...options,
+            screenshots: {
+                ...options.screenshots,
+                ...(runtime.redaction === undefined ? {} : { redaction: runtime.redaction }),
+                ...(runtime.allowSensitiveCapture === undefined ? {} : { allowSensitiveCapture: runtime.allowSensitiveCapture })
+            }
+        };
     }
     createValidationPlan(source, options);
     return { source, options };
@@ -496,19 +605,26 @@ function validateCdpEndpoint(value) {
 function createPlaywrightScript(workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
-    const functions = [isAzurePortalUrl, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
-        applyScreenshotRedaction, captureMaskedScreenshot, readGridSummary, activateWorkbookControl, validateWorkbookInBrowser]
+    const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, verifySelectedTenant,
+        normalizeScreenshotOptions, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
+        applyScreenshotRedaction, captureMaskedScreenshot, captureWorkbookScreenshot, readGridSummary,
+        activateWorkbookControl, validateWorkbookInBrowser]
         .map(callback => callback.toString()).join('\n\n');
     return `async (page) => {\n${functions}\nreturn validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)});\n}\n`;
 }
 
 module.exports = {
     isAzurePortalUrl,
+    normalizeTenantSelection,
+    requireConfirmedTenant,
+    verifySelectedTenant,
+    normalizeScreenshotOptions,
     createValidationPlan,
     markScreenshotMasks,
     screenshotRedactionStyle,
     applyScreenshotRedaction,
     captureMaskedScreenshot,
+    captureWorkbookScreenshot,
     readGridSummary,
     activateWorkbookControl,
     validateWorkbookInBrowser,

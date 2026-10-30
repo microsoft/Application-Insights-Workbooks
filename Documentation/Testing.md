@@ -24,6 +24,7 @@ The browser validator complements the existing JSON/gallery validators and the [
 
 The shared runner:
 
+- Requires an explicitly selected and confirmed tenant, verifies its GUID against the portal account menu before import, and rechecks before tab changes, parameter actions, and screenshots. Missing approval or a mismatch pauses execution; the runner never chooses or switches a tenant.
 - Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models.
 - Applies the exact requested source and reports its normalized-source SHA-256, not its contents.
 - Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
@@ -35,11 +36,19 @@ Commands and parameter actions use native Enter-key activation after visibility 
 
 **This is smoke and contract validation, not automatic validation of every query or workflow.** Nested tabsets, filters, graphs, row selections, query correctness, and effective resource coverage still need scenario-specific tests. A requested grid contract fails when no result grid is available; no-data is not reported as healthy or as a passing data check.
 
+### Select and confirm the tenant first
+
+Before sign-in or live testing, ask **which Azure tenant the user wants to sign in to**, which non-production subscription scopes to use, and whether screenshots are wanted. Use a structured question tool when available. **Pause and wait for tenant selection and confirmation, including in autopilot.** An unavailable, declined, or cancelled response is not permission to continue using a default, cached, previously used, or currently signed-in tenant.
+
+The repository [browser-validation skill](../.github/skills/validate-workbook-browser/SKILL.md) codifies this workflow. The user performs sign-in/directory switching themselves. Do not request credentials. Only after the user responds, provide their selected tenant GUID plus an explicit confirmation for this run. Do not reuse a prior confirmation or commit tenant/account details.
+
+The runner checks the directory GUID in the current English portal account-menu metadata. If that evidence is absent, ambiguous, or different, stop and ask the user to select the intended tenant; do not infer a match from a display name or switch accounts automatically. Tenant IDs and account metadata are not included in the validation report.
+
 ### Prepare a browser
 
 Use Node 24, as in CI, and run `npm install`. Use only trusted templates and a non-production account with Reader permissions at the intended scopes. Rendering a real template can execute its queries and incur query costs. The runner does not click Save or ARM action links, capture authentication state, or collect traces. Screenshots require a separate explicit opt-in.
 
-Sign into Azure yourself in the **current English-language React workbook view**. In the browser that will run the test, create a **new empty unsaved workbook**, open **Advanced Editor**, and leave its default empty JSON in place. The validator supplies the template; do not paste it first. It deliberately does not automate sign-in or discard an existing draft.
+After tenant selection, sign into that tenant yourself in the **current English-language React workbook view**. In the browser that will run the test, create a **new empty unsaved workbook**, open **Advanced Editor**, and leave its default empty JSON in place. The validator supplies the template; do not paste it first. It deliberately does not automate sign-in or discard an existing draft.
 
 ### Run the Mocha validator against a local browser
 
@@ -55,8 +64,12 @@ After preparing Azure and Advanced Editor in that browser:
 $env:WORKBOOK_BROWSER_TEMPLATE = "test\browser\fixtures\Smoke.workbook"
 $env:WORKBOOK_BROWSER_CHECKS = "test\browser\fixtures\smoke-checks.json"
 $env:WORKBOOK_BROWSER_CDP_ENDPOINT = "http://127.0.0.1:9222"
+$env:WORKBOOK_BROWSER_TENANT_ID = "<user-selected-tenant-guid>"
+$env:WORKBOOK_BROWSER_TENANT_CONFIRMED = "true"
 npm run test:browser
 ```
+
+Replace the placeholder only after the user has selected and confirmed it. The confirmation environment value must be exactly `true`; missing or false approval pauses before CDP connection. Clear private per-run variables afterward.
 
 The checks file is optional. The runner requires exactly one eligible portal page, reports configuration/authentication failures as failures, and disconnects its client afterward without creating or closing browser contexts. Close the dedicated browser yourself when finished. Only credential-free loopback HTTP CDP endpoints are accepted.
 
@@ -66,12 +79,14 @@ If a browser tool already supplies an authenticated Playwright `page`, generate 
 
 ```powershell
 New-Item -ItemType Directory -Force .playwright-mcp | Out-Null
-npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook" --checks "test\browser\fixtures\smoke-checks.json" --output ".playwright-mcp\workbook-check.js"
+npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook" --checks "test\browser\fixtures\smoke-checks.json" --tenant "<user-selected-tenant-guid>" --confirm-tenant --output ".playwright-mcp\workbook-check.js"
 ```
 
 Prepare a new empty unsaved workbook's Advanced Editor in the tool's selected tab, then run the generated `async (page) => { ... }` function. Use the tool's `filename` input where available, pointing to the generated file's absolute path. The function uses no Node imports inside the browser tool. Hosts can impose shorter call timeouts; use the local Mocha runner for longer validations.
 
 Generate into a directory your browser tool permits. Existing output files are never overwritten: choose a fresh name or remove only your previous generated file before regenerating. Generated scripts contain the template and its checks, **not authentication state**; keep them private and remove them after use. `.playwright-mcp/` is ignored by Git.
+
+A script can be generated offline without tenant confirmation, but its live execution will pause before accessing a browser. Specifying `--tenant` alone does not confirm it. Changing a tenant through CLI/environment overrides clears prior confirmation unless confirmation is explicitly provided again.
 
 ### Define reusable checks
 
@@ -81,6 +96,7 @@ Use the same validator for another workbook by changing the template path and, o
 
 - `tabs`: exact primary tab labels, in order. Static labels are inferred if omitted; parameterized labels require explicit expectations. All declared tab links must be parameter links; otherwise automatic navigation is refused.
 - `timeout`: per-operation timeout in milliseconds, from 1 to 120000; default 30000.
+- `tenant`: a private per-run object with the user-selected GUID in `id` and their explicit boolean `confirmed` choice. It can be supplied through the CLI/environment instead of storing it in a checks file.
 - `deferred`: checks with `trigger` (a unique parameter-link label), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab).
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.
 - `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
@@ -91,10 +107,10 @@ The JSON report contains the source hash, visited tab labels, requested contract
 
 ### Optional masked screenshots
 
-The script generator and validation report offer screenshot guidance when capture is disabled; they never prompt or capture implicitly. To opt in for a generated MCP/Playwright runner:
+The script generator and validation report offer screenshot guidance when capture is disabled; they never capture implicitly. Agents must ask the user using the workflow above and pause if the choice is unavailable. To opt in for a generated MCP/Playwright runner with default automatic redaction:
 
 ```powershell
-npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook" --checks "test\browser\fixtures\smoke-checks.json" --screenshots "C:\local-evidence\workbook-check" --output ".playwright-mcp\workbook-check-with-images.js"
+npm run test:browser:script -- --workbook "test\browser\fixtures\Smoke.workbook" --checks "test\browser\fixtures\smoke-checks.json" --tenant "<user-selected-tenant-guid>" --confirm-tenant --screenshots "C:\local-evidence\workbook-check" --output ".playwright-mcp\workbook-check-with-images.js"
 ```
 
 For the Mocha runner set `WORKBOOK_BROWSER_SCREENSHOTS` to a local directory. These explicit overrides preserve any additional masks in the checks file. Alternatively, add a `screenshots` object to the checks file:
@@ -108,11 +124,41 @@ For the Mocha runner set `WORKBOOK_BROWSER_SCREENSHOTS` to a local directory. Th
 }
 ```
 
-`maskSelectors` is optional and **adds** masks; it cannot disable the defaults. Each selector must match in every captured stage. An invalid selector or one matching nothing fails capture rather than silently omitting a requested mask. URLs, network paths, and parent-directory traversal are refused for the output directory.
+In default `auto` mode, `maskSelectors` is optional and **adds** masks; it cannot disable the defaults. Each selector must match in every captured stage. An invalid selector or one matching nothing fails capture rather than silently omitting a requested mask. URLs, network paths, and parent-directory traversal are refused for the output directory.
 
 The runner captures each visited primary tab and brings each successfully checked deferred panel into view for another capture. Images are of the workbook iframe viewport, not the surrounding portal/account chrome; this avoids unreliable element clipping across scrolled frames. Before capture it masks grid data cells, inputs, non-contract text, charts, images, and embedded content. Only exact contract tab, heading, and column labels are retained. Redaction CSS is installed in the workbook DOM and checked with a computed-style probe **before** calling screenshot APIs, so it does not depend solely on a browser adapter honoring Playwright's mask/style options. The CSS also hides newly mounted text and media, including virtualized rows. Temporary styles and markers are removed afterward, even if capture fails; blocked redaction fails capture and there is no unmasked fallback.
 
 Images have generated names rather than tenant-derived filenames. The report lists filenames and mask counts, not absolute output paths. Nothing is uploaded or committed automatically. Use a private local directory within your browser tool's permitted output roots, and review **every image** before sharing. Conservative masking is **not guaranteed anonymization**: contract labels themselves can be sensitive, and masking intentionally obscures data needed for some visual checks. Use synthetic fixtures to verify raw data formatting and inspect real data only in the authorized portal. Remove only your own evidence files when finished.
+
+### If automatic redaction hides too much
+
+Offer the user these choices; **never reduce masking automatically** after a failure or because an image is hard to read:
+
+| `screenshots.redaction` | Behavior |
+| --- | --- |
+| `auto` (default) | Conservative automatic masks plus any extra selected masks. |
+| `manual` | Apply only user-reviewed `maskSelectors` before capture. The user chooses the regions. |
+| `ai-assisted` | Apply only approved `maskSelectors` proposed through authorized/local AI-assisted inspection. No detector, model call, or image upload is performed by the validator. |
+| `none` | Capture the workbook viewport without redaction, privately, for the user or an authorized helper to edit/redact locally afterward. |
+
+Manual, AI-assisted, and unredacted modes can expose sensitive content and require **specific user approval** plus `allowSensitiveCapture: true`. Manual/AI-assisted modes require at least one reviewed selector. Unredacted mode refuses selectors rather than silently ignoring them. Every image remains `reviewRequired: true` and `publicationApproved: false`; there is no automatic transition to a shareable image.
+
+For example, after that approval, a private selective-redaction configuration can contain:
+
+```json
+{
+  "screenshots": {
+    "directory": ".playwright-mcp/private-images",
+    "redaction": "manual",
+    "allowSensitiveCapture": true,
+    "maskSelectors": ["[data-sensitive-context]"]
+  }
+}
+```
+
+For an explicitly approved local unredacted capture, use `--redaction none --allow-sensitive-capture` with the generator's other screenshot/tenant arguments. For Mocha the equivalent variables are `WORKBOOK_BROWSER_REDACTION=none` and `WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE=true`. Screenshot consent flags must be actual booleans in JSON or exact `true`/`false` environment strings.
+
+Keep all intermediate/raw images private. The user can manually edit them, or approve local/authorized assistance to choose masks or edit the image. Do not send sensitive screenshots to third-party AI services. Review the final image after editing; the validator does not certify external edits or publish anything automatically.
 
 ## Redirecting the Gallery to a GitHub Branch
   

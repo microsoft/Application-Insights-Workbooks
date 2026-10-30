@@ -9,14 +9,19 @@ const { spawnSync } = require('child_process');
 const { Validator } = require('jsonschema');
 const {
     isAzurePortalUrl,
+    normalizeTenantSelection,
+    requireConfirmedTenant,
+    verifySelectedTenant,
+    normalizeScreenshotOptions,
     createValidationPlan,
     markScreenshotMasks,
     screenshotRedactionStyle,
     applyScreenshotRedaction,
     captureMaskedScreenshot,
+    captureWorkbookScreenshot,
     readGridSummary,
     activateWorkbookControl,
-    validateWorkbookInBrowser,
+    validateWorkbookInBrowser: validateWithExplicitTenant,
     loadValidationInput,
     validateCdpEndpoint,
     createPlaywrightScript
@@ -27,6 +32,32 @@ const checksPath = path.join(__dirname, 'browser', 'fixtures', 'smoke-checks.jso
 const source = fs.readFileSync(fixturePath, 'utf8');
 const checks = JSON.parse(fs.readFileSync(checksPath, 'utf8'));
 const emptySource = JSON.stringify({ version: 'Notebook/1.0', items: [] });
+const testTenant = { id: '11111111-2222-3333-4444-555555555555', confirmed: true };
+const otherTenantId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+function validateWorkbookInBrowser(page, workbookSource, options = {}) {
+    return validateWithExplicitTenant(page, workbookSource, { tenant: testTenant, ...options });
+}
+
+function accountPage(ids = [testTenant.id]) {
+    return {
+        url: () => 'https://portal.azure.com/#home',
+        getByRole(role) {
+            assert.equal(role, 'button');
+            return {
+                count: async () => 1,
+                locator(selector) {
+                    assert.equal(selector, '[title]');
+                    return {
+                        evaluateAll: async callback => callback(ids.map(id => ({
+                            getAttribute: () => `Name: Synthetic account Directory: Synthetic directory (${id}) Domain: example.invalid`
+                        })))
+                    };
+                }
+            };
+        }
+    };
+}
 
 function changedSource(change) {
     const workbook = JSON.parse(source);
@@ -91,7 +122,8 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
     };
     const page = {
         url: () => 'https://portal.azure.com/#home',
-        getByRole: () => ({ count: async () => unsaved ? 1 : 0 }),
+        getByRole: (role, options) => role === 'button' ? accountPage().getByRole(role, options) :
+            ({ count: async () => unsaved ? 1 : 0 }),
         locator: () => ({ contentFrame: () => frame })
     };
     return { page, state, frame };
@@ -369,10 +401,12 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(report.parameterActionsClicked, 0);
         assert.include(report.coverage, 'no-data is not proof of health');
         assert.isFalse(report.workbookSaved);
+        assert.isTrue(report.tenantVerified);
+        assert.notInclude(JSON.stringify(report), testTenant.id);
         assert.notInclude(JSON.stringify(report), emptySource);
         assert.isFalse(report.screenshots.enabled);
         assert.deepEqual(report.screenshots.captures, []);
-        assert.include(report.screenshots.guidance, 'Optional masked screenshots');
+        assert.include(report.screenshots.guidance, 'auto redaction by default');
     });
 
     it('waits for the workbook toolbar rather than transient step Edit commands', async () => {
@@ -471,7 +505,7 @@ describe('Validating browser validator contracts...', () => {
     });
 
     it('emits a self-contained Playwright function without Node imports or credentials', async () => {
-        const script = createPlaywrightScript(source, checks);
+        const script = createPlaywrightScript(source, { ...checks, tenant: testTenant });
         const run = vm.runInNewContext(`(${script})`);
         assert.isFunction(run);
         assert.notInclude(script, "require('");
@@ -484,9 +518,101 @@ describe('Validating browser validator contracts...', () => {
             workbook.items[2].content.json = '"); globalThis.injected = true; //';
         });
         const context = vm.createContext({});
-        const run = vm.runInContext(`(${createPlaywrightScript(injected, checks)})`, context);
+        const run = vm.runInContext(`(${createPlaywrightScript(injected, { ...checks, tenant: testTenant })})`, context);
         await rejects(run({ url: () => 'https://login.microsoftonline.com/' }), /Sign in to Azure/);
         assert.isUndefined(context.injected);
+    });
+});
+
+describe('Validating explicit tenant selection...', () => {
+    it('never accesses a browser before a tenant is explicitly selected and confirmed', async () => {
+        const page = { url() { throw new Error('Browser must not be accessed while waiting.'); } };
+        for (const tenant of [undefined, { id: testTenant.id }, { id: testTenant.id, confirmed: false }]) {
+            await rejects(validateWithExplicitTenant(page, emptySource, { tenant }), /PAUSED: Ask the user/);
+        }
+        assert.throws(() => createValidationPlan(source, { autopilot: true }), /unsupported option/);
+    });
+
+    it('normalizes a selected GUID without inferring confirmation or accepting invalid fields', () => {
+        assert.deepEqual(normalizeTenantSelection({ id: ` ${otherTenantId.toUpperCase()} ` }),
+            { id: otherTenantId, confirmed: false });
+        assert.throws(() => requireConfirmedTenant({ id: testTenant.id }), /PAUSED/);
+        for (const value of [false, {}, { id: 'not-a-guid', confirmed: true },
+            { ...testTenant, confirmed: 'true' }, { ...testTenant, defaultTenant: true }]) {
+            assert.throws(() => normalizeTenantSelection(value), /tenant must contain/);
+        }
+    });
+
+    it('matches only the confirmed portal-directory GUID and never chooses another account', async () => {
+        await verifySelectedTenant(accountPage(), testTenant);
+        for (const ids of [[], [otherTenantId], [testTenant.id, otherTenantId]]) {
+            await rejects(verifySelectedTenant(accountPage(ids), testTenant), error => {
+                assert.include(error.message, 'PAUSED');
+                assert.notInclude(error.message, testTenant.id);
+                assert.notInclude(error.message, otherTenantId);
+                return true;
+            });
+        }
+    });
+
+    it('pauses if tenant identity cannot be read instead of using the signed-in/default tenant', async () => {
+        await rejects(verifySelectedTenant({
+            url: () => 'https://portal.azure.com/#home',
+            getByRole: () => ({ count: async () => 0 })
+        }, testTenant), /Cannot verify/);
+    });
+
+    it('stops tab execution when the selected directory changes after source import', async () => {
+        const editor = editorPage(emptySource);
+        let checks = 0;
+        const account = accountPage([otherTenantId]);
+        const original = editor.page.getByRole;
+        editor.page.getByRole = (role, options) => role === 'button' && ++checks > 1 ?
+            account.getByRole(role, options) : original(role, options);
+        editor.frame.getByRole = ((original) => (role, options) => role === 'tablist' ? {
+            first() { return this; },
+            async waitFor() {},
+            getByRole: () => ({ allTextContents: async () => ['Overview', 'Details'] })
+        } : original(role, options))(editor.frame.getByRole.bind(editor.frame));
+        await rejects(validateWorkbookInBrowser(editor.page, source), /signed-in tenant is different/);
+        assert.equal(editor.state.writes, 1);
+        assert.deepEqual(editor.state.clicks, ['Apply', 'Done Editing']);
+    });
+
+    it('emits a runner that pauses without touching a browser if approval is absent', async () => {
+        const run = vm.runInNewContext(`(${createPlaywrightScript(source, checks)})`);
+        await rejects(run({ url() { throw new Error('Unexpected browser access'); } }), /PAUSED: Ask the user/);
+    });
+
+    it('requires fresh confirmation when a CLI/environment override changes the tenant', () => {
+        const input = loadValidationInput(fixturePath, checksPath, undefined,
+            { tenantId: testTenant.id, confirmTenant: false });
+        assert.isFalse(input.options.tenant.confirmed);
+        assert.throws(() => requireConfirmedTenant(input.options.tenant), /PAUSED/);
+        const confirmed = loadValidationInput(fixturePath, checksPath, undefined,
+            { tenantId: testTenant.id, confirmTenant: true });
+        assert.deepEqual(confirmed.options.tenant, testTenant);
+    });
+
+    it('fails before CDP connection when the opt-in Mocha runner has no tenant approval', () => {
+        const env = {
+            ...process.env,
+            WORKBOOK_BROWSER_TEMPLATE: fixturePath,
+            WORKBOOK_BROWSER_CHECKS: checksPath,
+            WORKBOOK_BROWSER_CDP_ENDPOINT: 'http://127.0.0.1:1'
+        };
+        delete env.WORKBOOK_BROWSER_TENANT_ID;
+        delete env.WORKBOOK_BROWSER_TENANT_CONFIRMED;
+        delete env.WORKBOOK_BROWSER_SCREENSHOTS;
+        delete env.WORKBOOK_BROWSER_REDACTION;
+        delete env.WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE;
+        const result = spawnSync(process.execPath, [
+            require.resolve('mocha/bin/mocha.js'), '--timeout', '10000',
+            path.join(__dirname, 'browser', 'workbookValidation.test.js')
+        ], { encoding: 'utf8', env, timeout: 15000 });
+        assert.equal(result.status, 1, result.stderr);
+        assert.include(result.stdout + result.stderr, 'PAUSED: Ask the user');
+        assert.notInclude(result.stdout + result.stderr, 'ECONNREFUSED');
     });
 });
 
@@ -494,13 +620,13 @@ describe('Validating optional screenshot safeguards...', () => {
     it('requires explicit local output and preserves disabled defaults', () => {
         assert.isFalse(createValidationPlan(source, { screenshots: false }).screenshots);
         assert.deepEqual(createValidationPlan(source, { screenshots: { directory: '.playwright-mcp/images' } }).screenshots,
-            { directory: '.playwright-mcp/images', maskSelectors: [] });
+            { directory: '.playwright-mcp/images', maskSelectors: [], redaction: 'auto', allowSensitiveCapture: false });
         for (const directory of ['', 'https://example.invalid/', '\\\\server\\share', '//server/share',
             '../outside', 'local\\..\\outside', 'local\ninvalid']) {
             assert.throws(() => createValidationPlan(source, { screenshots: { directory } }), /local directory/);
         }
         assert.throws(() => createValidationPlan(source, { screenshots: true }), /must be an object/);
-        assert.throws(() => createValidationPlan(source, { screenshots: { directory: 'local', unmasked: true } }), /unsupported option/);
+        assert.throws(() => createValidationPlan(source, { screenshots: { directory: 'local', unmasked: true } }), /supported options/);
         assert.throws(() => createValidationPlan(source, {
             screenshots: { directory: 'local', maskSelectors: [''] }
         }), /CSS selectors/);
@@ -510,6 +636,34 @@ describe('Validating optional screenshot safeguards...', () => {
         const input = loadValidationInput(fixturePath, checksPath, 'C:\\private-evidence');
         assert.equal(input.options.screenshots.directory, 'C:\\private-evidence');
         assert.deepEqual(input.options.deferred, checks.deferred);
+    });
+
+    it('never disables automatic redaction without explicit sensitive-capture approval', () => {
+        for (const redaction of ['manual', 'ai-assisted', 'none']) {
+            assert.throws(() => normalizeScreenshotOptions({
+                directory: 'private', redaction, maskSelectors: redaction === 'none' ? [] : ['.private']
+            }), /PAUSED: Non-auto screenshots/);
+        }
+        assert.throws(() => normalizeScreenshotOptions({
+            directory: 'private', redaction: 'none', allowSensitiveCapture: 'true'
+        }), /boolean allowSensitiveCapture/);
+        assert.throws(() => normalizeScreenshotOptions({
+            directory: 'private', redaction: 'unknown', allowSensitiveCapture: true
+        }), /Choose auto/);
+    });
+
+    it('requires reviewed selectors for manual/AI-assisted masks and rejects ignored masks in raw mode', () => {
+        for (const redaction of ['manual', 'ai-assisted']) {
+            assert.throws(() => normalizeScreenshotOptions({
+                directory: 'private', redaction, allowSensitiveCapture: true
+            }), /reviewed maskSelectors/);
+            assert.equal(normalizeScreenshotOptions({
+                directory: 'private', redaction, allowSensitiveCapture: true, maskSelectors: ['.private']
+            }).redaction, redaction);
+        }
+        assert.throws(() => normalizeScreenshotOptions({
+            directory: 'private', redaction: 'none', allowSensitiveCapture: true, maskSelectors: ['.private']
+        }), /cannot silently ignore/);
     });
 
     function redactionBody({ stale = false, missing = false } = {}) {
@@ -562,6 +716,22 @@ describe('Validating optional screenshot safeguards...', () => {
         assert.equal(fixture.body.attributes['data-workbook-validation-capture'], 'unit');
     });
 
+    it('limits approved manual/AI-assisted masking to the selected regions', () => {
+        for (const redaction of ['manual', 'ai-assisted']) {
+            const fixture = redactionBody();
+            const count = markScreenshotMasks(fixture.body, {
+                marker: 'unit', redaction, allowedLabels: [], maskSelectors: ['.extra-mask']
+            });
+            assert.equal(count, 1);
+            assert.equal(fixture.extra.attributes['data-workbook-validation-mask'], 'unit');
+            for (const element of [fixture.cell, fixture.text, fixture.input, fixture.image]) {
+                assert.deepEqual(element.attributes, {});
+            }
+            assert.notInclude(screenshotRedactionStyle('unit', redaction),
+                'body[data-workbook-validation-capture="unit"], body[data-workbook-validation-capture="unit"] *');
+        }
+    });
+
     it('refuses stale or unmatched explicit masks before altering the page', () => {
         const stale = redactionBody({ stale: true });
         assert.throws(() => markScreenshotMasks(stale.body, {
@@ -587,7 +757,7 @@ describe('Validating optional screenshot safeguards...', () => {
                 }
                 if (callback === applyScreenshotRedaction) {
                     calls.push('redact');
-                    assert.equal(argument.css, screenshotRedactionStyle(argument.marker));
+                    assert.equal(argument.css, screenshotRedactionStyle(argument.marker, argument.redaction));
                     assert.include(argument.css, 'color: transparent !important');
                     assert.include(argument.css, 'background-color: #111111 !important');
                     assert.include(argument.css, 'visibility: hidden !important');
@@ -629,6 +799,8 @@ describe('Validating optional screenshot safeguards...', () => {
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 0);
         assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
         assert.isTrue(result.reviewRequired);
+        assert.equal(result.redaction, 'auto');
+        assert.isFalse(result.publicationApproved);
         assert.equal(result.maskedElements, 3);
         assert.notInclude(JSON.stringify(result), 'private-evidence');
         assert.deepEqual(fixture.cleanedRootAttributes, [
@@ -648,6 +820,40 @@ describe('Validating optional screenshot safeguards...', () => {
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 2), /No screenshot masks/);
         assert.deepEqual(fixture.calls, ['mask', 'cleanup']);
+    });
+
+    it('captures unredacted content only through a distinct explicitly approved path', async () => {
+        const calls = [];
+        const page = { locator() { throw new Error('Unredacted capture must not install or pretend to apply masks.'); } };
+        const target = { async screenshot(options) {
+            assert.isUndefined(options.mask);
+            assert.isUndefined(options.style);
+            calls.push(options.path);
+        } };
+        await rejects(captureWorkbookScreenshot(page, target,
+            { directory: 'private', redaction: 'none' }, [], 0), /PAUSED/);
+        assert.lengthOf(calls, 0);
+        const result = await captureWorkbookScreenshot(page, target,
+            { directory: 'private', redaction: 'none', allowSensitiveCapture: true }, [], 0);
+        assert.lengthOf(calls, 1);
+        assert.equal(result.redaction, 'none');
+        assert.equal(result.maskedElements, 0);
+        assert.isTrue(result.reviewRequired);
+        assert.isFalse(result.publicationApproved);
+        await rejects(captureMaskedScreenshot(page, target,
+            { directory: 'private', redaction: 'none', allowSensitiveCapture: true }, [], 0), /Masked capture requires/);
+    });
+
+    it('applies selective masks for both manual and AI-assisted selection without calling an AI service', async () => {
+        for (const redaction of ['manual', 'ai-assisted']) {
+            const fixture = screenshotPage();
+            const result = await captureWorkbookScreenshot(fixture.page, fixture.target, {
+                directory: 'C:\\private-evidence', redaction, allowSensitiveCapture: true, maskSelectors: ['.private']
+            }, ['Approved heading'], 0);
+            assert.equal(result.redaction, redaction);
+            assert.isFalse(result.publicationApproved);
+            assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
+        }
     });
 
     it('never calls the screenshot API after a failed DOM-redaction probe', async () => {
@@ -741,5 +947,61 @@ describe('Validating browser script generation...', () => {
         const disabled = generate(['--workbook', fixturePath, '--output', without]);
         assert.equal(disabled.status, 0, disabled.stderr);
         assert.include(disabled.stdout, 'Would screenshots help?');
+        assert.include(disabled.stdout, 'PAUSED for live execution');
+    });
+
+    it('accepts explicit per-run tenant choice and raw-capture approval without echoing the tenant', () => {
+        const output = path.join(directory, 'approved-private.js');
+        const result = generate(['--workbook', fixturePath, '--tenant', testTenant.id, '--confirm-tenant',
+            '--screenshots', 'C:\\private-evidence', '--redaction', 'none', '--allow-sensitive-capture', '--output', output]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stdout, 'WARNING: approved selective/unredacted');
+        assert.notInclude(result.stdout, 'PAUSED for live execution');
+        assert.notInclude(result.stdout + result.stderr, testTenant.id);
+        assert.isFunction(vm.runInNewContext(`(${fs.readFileSync(output, 'utf8')})`));
+    });
+
+    it('does not imply tenant confirmation or raw-capture approval from other CLI flags', () => {
+        const pending = path.join(directory, 'pending-tenant.js');
+        const result = generate(['--workbook', fixturePath, '--tenant', testTenant.id, '--output', pending]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stdout, 'PAUSED for live execution');
+        const rejected = generate(['--workbook', fixturePath, '--screenshots', 'C:\\private-evidence',
+            '--redaction', 'none', '--output', path.join(directory, 'rejected-raw.js')]);
+        assert.equal(rejected.status, 1);
+        assert.include(rejected.stderr, 'PAUSED: Non-auto screenshots');
+    });
+
+    it('can keep screenshot approval out of a private checks file and supply it only for this run', () => {
+        const profile = path.join(directory, 'pending-approval.json');
+        fs.writeFileSync(profile, JSON.stringify({
+            screenshots: { directory: 'C:\\private-evidence', redaction: 'none' }
+        }));
+        const output = path.join(directory, 'per-run-approval.js');
+        const result = generate(['--workbook', fixturePath, '--checks', profile,
+            '--allow-sensitive-capture', '--output', output]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stdout, 'WARNING: approved selective/unredacted');
+        assert.isUndefined(JSON.parse(fs.readFileSync(profile, 'utf8')).screenshots.allowSensitiveCapture);
+    });
+
+    it('honors negative and explicit-false CLI flags when revoking prior approvals', () => {
+        const profile = path.join(directory, 'prior-approvals.json');
+        fs.writeFileSync(profile, JSON.stringify({
+            tenant: testTenant,
+            screenshots: { directory: 'C:\\private-evidence', redaction: 'none', allowSensitiveCapture: true }
+        }));
+        for (const [index, flag] of ['--no-confirm-tenant', '--confirm-tenant=false'].entries()) {
+            const result = generate(['--workbook', fixturePath, '--checks', profile, flag,
+                '--output', path.join(directory, `revoked-tenant-${index}.js`)]);
+            assert.equal(result.status, 0, result.stderr);
+            assert.include(result.stdout, 'PAUSED for live execution');
+        }
+        for (const [index, flag] of ['--no-allow-sensitive-capture', '--allow-sensitive-capture=false'].entries()) {
+            const result = generate(['--workbook', fixturePath, '--checks', profile, flag,
+                '--output', path.join(directory, `revoked-capture-${index}.js`)]);
+            assert.equal(result.status, 1);
+            assert.include(result.stderr, 'PAUSED: Non-auto screenshots');
+        }
     });
 });
