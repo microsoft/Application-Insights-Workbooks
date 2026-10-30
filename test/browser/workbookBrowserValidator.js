@@ -158,7 +158,15 @@ function createValidationPlan(workbookSource, options = {}) {
         return { tab, trigger, heading, hideTriggerAfterLoad, minRows: check.minRows, maxRows: check.maxRows, columns };
     });
 
-    return { source, itemCount, tabs, deferred, timeout };
+    const groups = new Map();
+    for (const check of deferred) {
+        const key = JSON.stringify([check.tab, check.trigger]);
+        if (!groups.has(key)) {
+            groups.set(key, { tab: check.tab, trigger: check.trigger, checks: [] });
+        }
+        groups.get(key).checks.push(check);
+    }
+    return { source, itemCount, tabs, deferred, deferredGroups: Array.from(groups.values()), timeout };
 }
 
 function readGridSummary(element) {
@@ -238,53 +246,60 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     }
 
     const deferredChecks = [];
-    for (const check of plan.deferred) {
-        if (check.tab !== undefined) {
-            await tablist.getByRole('tab', { name: check.tab, exact: true }).click();
-            await tablist.getByRole('tab', { name: check.tab, exact: true, selected: true })
+    let parameterActionsClicked = 0;
+    for (const group of plan.deferredGroups) {
+        if (group.tab !== undefined) {
+            await tablist.getByRole('tab', { name: group.tab, exact: true }).click();
+            await tablist.getByRole('tab', { name: group.tab, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
         }
-        const trigger = frame.getByRole('menuitem', { name: check.trigger, exact: true })
-            .or(frame.getByRole('button', { name: check.trigger, exact: true }))
-            .or(frame.getByRole('link', { name: check.trigger, exact: true }));
+        const trigger = frame.getByRole('menuitem', { name: group.trigger, exact: true })
+            .or(frame.getByRole('button', { name: group.trigger, exact: true }))
+            .or(frame.getByRole('link', { name: group.trigger, exact: true }));
         await trigger.waitFor({ state: 'visible', timeout: plan.timeout });
         await trigger.scrollIntoViewIfNeeded();
-        if (await frame.getByRole('heading', { name: check.heading, exact: true, includeHidden: true }).count()) {
-            throw new Error(`Deferred content "${check.heading}" was mounted before its trigger.`);
+        for (const check of group.checks) {
+            if (await frame.getByRole('heading', { name: check.heading, exact: true, includeHidden: true }).count()) {
+                throw new Error(`Deferred content "${check.heading}" was mounted before its trigger.`);
+            }
         }
         await trigger.click();
-        const heading = frame.getByRole('heading', { name: check.heading, exact: true });
-        await heading.waitFor({ state: 'visible', timeout: plan.timeout });
-        const result = { trigger: check.trigger, heading: check.heading };
-        if (check.hideTriggerAfterLoad) {
-            await trigger.waitFor({ state: 'hidden', timeout: plan.timeout });
-            result.producerHidden = true;
+        parameterActionsClicked++;
+        for (const check of group.checks) {
+            const heading = frame.getByRole('heading', { name: check.heading, exact: true });
+            await heading.waitFor({ state: 'visible', timeout: plan.timeout });
+            const result = { trigger: check.trigger, heading: check.heading };
+            if (check.hideTriggerAfterLoad) {
+                await trigger.waitFor({ state: 'hidden', timeout: plan.timeout });
+                result.producerHidden = true;
+            }
+            if (check.minRows !== undefined || check.maxRows !== undefined || check.columns !== undefined) {
+                const panel = heading.locator('xpath=ancestor::div[contains(@class,"styleWrapper-maximized")][1]');
+                if (await panel.count() !== 1) {
+                    throw new Error(`Cannot locate the query panel for "${check.heading}".`);
+                }
+                const grid = panel.getByRole('grid');
+                await grid.waitFor({ state: 'visible', timeout: plan.timeout });
+                const summary = await grid.evaluate(readGridSummary);
+                if (check.minRows !== undefined && summary.rows < check.minRows) {
+                    throw new Error(`"${check.heading}" returned ${summary.rows} rows, below minRows ${check.minRows}.`);
+                }
+                if (check.maxRows !== undefined && summary.rows > check.maxRows) {
+                    throw new Error(`"${check.heading}" returned ${summary.rows} rows, above maxRows ${check.maxRows}.`);
+                }
+                if (check.columns !== undefined && JSON.stringify(summary.columns) !== JSON.stringify(check.columns)) {
+                    throw new Error(`"${check.heading}" column labels differ from the requested contract.`);
+                }
+                result.grid = summary;
+            }
+            deferredChecks.push(result);
         }
-        if (check.minRows !== undefined || check.maxRows !== undefined || check.columns !== undefined) {
-            const panel = heading.locator('xpath=ancestor::div[contains(@class,"styleWrapper-maximized")][1]');
-            if (await panel.count() !== 1) {
-                throw new Error(`Cannot locate the query panel for "${check.heading}".`);
-            }
-            const grid = panel.getByRole('grid');
-            await grid.waitFor({ state: 'visible', timeout: plan.timeout });
-            const summary = await grid.evaluate(readGridSummary);
-            if (check.minRows !== undefined && summary.rows < check.minRows) {
-                throw new Error(`"${check.heading}" returned ${summary.rows} rows, below minRows ${check.minRows}.`);
-            }
-            if (check.maxRows !== undefined && summary.rows > check.maxRows) {
-                throw new Error(`"${check.heading}" returned ${summary.rows} rows, above maxRows ${check.maxRows}.`);
-            }
-            if (check.columns !== undefined && JSON.stringify(summary.columns) !== JSON.stringify(check.columns)) {
-                throw new Error(`"${check.heading}" column labels differ from the requested contract.`);
-            }
-            result.grid = summary;
-        }
-        deferredChecks.push(result);
     }
     return {
         sourceSha256,
         itemCount: plan.itemCount,
         tabsVisited,
+        parameterActionsClicked,
         deferredChecks,
         dataContractsChecked: deferredChecks.filter(check => check.grid).length,
         coverage: 'Only source import, primary tabs, and requested contracts were checked; no-data is not proof of health.',

@@ -78,6 +78,39 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
     return { page, state, frame };
 }
 
+function sharedDeferredEditor(initialHeadings = []) {
+    const workbook = JSON.parse(source);
+    const group = workbook.items.find(item => item.name === 'browser_fixture_group');
+    delete group.conditionalVisibility;
+    workbook.items = [workbook.items[0], group];
+    const editor = editorPage(emptySource);
+    const original = editor.frame.getByRole.bind(editor.frame);
+    let loaded = false;
+    let clicks = 0;
+    const trigger = {
+        or() { return this; },
+        async waitFor(options) {
+            if (options.state === 'hidden') assert.isTrue(loaded);
+        },
+        async scrollIntoViewIfNeeded() {},
+        async click() {
+            clicks++;
+            loaded = true;
+        }
+    };
+    editor.frame.getByRole = (role, options = {}) => {
+        if (options.name === 'Show details') return trigger;
+        if (role === 'heading' && ['Deferred table', 'Loaded details'].includes(options.name)) {
+            return {
+                count: async () => loaded || initialHeadings.includes(options.name) ? 1 : 0,
+                async waitFor() { assert.isTrue(loaded); }
+            };
+        }
+        return original(role, options);
+    };
+    return { ...editor, source: JSON.stringify(workbook), triggerClicks: () => clicks };
+}
+
 describe('Validating browser validator contracts...', () => {
     it('uses a schema-valid fixture containing only inline JSON, text, and parameter actions', () => {
         const workbook = JSON.parse(source);
@@ -113,11 +146,23 @@ describe('Validating browser validator contracts...', () => {
     it('infers primary tab labels and scopes requested grid assertions', () => {
         const plan = createValidationPlan(source, { deferred: checks.deferred });
         assert.deepEqual(plan.tabs, ['Overview', 'Details']);
-        assert.equal(plan.itemCount, 7);
+        assert.equal(plan.itemCount, 8);
         assert.equal(plan.deferred[0].tab, 'Overview');
         assert.equal(plan.deferred[0].minRows, 2);
         assert.equal(plan.deferred[0].maxRows, 2);
         assert.deepEqual(plan.deferred[0].columns, ['Label', 'Count']);
+    });
+
+    it('groups contracts by both tab and parameter-action trigger', () => {
+        const plan = createValidationPlan(source, checks);
+        assert.lengthOf(plan.deferredGroups, 1);
+        assert.lengthOf(plan.deferredGroups[0].checks, 2);
+        assert.deepEqual(plan.deferredGroups[0].checks.map(check => check.heading), ['Deferred table', 'Loaded details']);
+        const differentTabs = createValidationPlan(source, {
+            deferred: [...checks.deferred, { ...checks.deferred[0], tab: 'Details' }]
+        });
+        assert.deepEqual(differentTabs.deferredGroups.map(group => [group.tab, group.trigger, group.checks.length]),
+            [['Overview', 'Show details', 2], ['Details', 'Show details', 1]]);
     });
 
     it('uses total ARIA rows and normalizes display headers without inspecting record values', () => {
@@ -218,7 +263,7 @@ describe('Validating browser validator contracts...', () => {
             const parameters = workbook.items.shift();
             workbook.items.find(item => item.name === 'browser_fixture_group').content.items.unshift(parameters);
         });
-        assert.equal(createValidationPlan(localGroup, checks).deferred.length, 1);
+        assert.equal(createValidationPlan(localGroup, checks).deferred.length, checks.deferred.length);
         const privateGroup = changedSource(workbook => {
             const parameters = workbook.items.shift();
             workbook.items.unshift({
@@ -229,7 +274,7 @@ describe('Validating browser validator contracts...', () => {
         assert.throws(() => createValidationPlan(privateGroup, checks), /global before the producer/);
         const exported = JSON.parse(privateGroup);
         exported.items[0].content.exportParameters = true;
-        assert.equal(createValidationPlan(JSON.stringify(exported), checks).deferred.length, 1);
+        assert.equal(createValidationPlan(JSON.stringify(exported), checks).deferred.length, checks.deferred.length);
     });
 
     it('does not require a self-hiding global when producer hiding was not requested', () => {
@@ -298,6 +343,7 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(report.sourceSha256, crypto.createHash('sha256').update(emptySource).digest('hex'));
         assert.deepEqual(report.tabsVisited, []);
         assert.equal(report.dataContractsChecked, 0);
+        assert.equal(report.parameterActionsClicked, 0);
         assert.include(report.coverage, 'no-data is not proof of health');
         assert.isFalse(report.workbookSaved);
         assert.notInclude(JSON.stringify(report), emptySource);
@@ -330,6 +376,25 @@ describe('Validating browser validator contracts...', () => {
             deferred: [{ trigger: 'Show details', heading: 'Deferred table' }]
         }), /mounted before its trigger/);
         assert.isFalse(clicked);
+    });
+
+    it('clicks a shared trigger once and validates all of its panels', async () => {
+        const editor = sharedDeferredEditor();
+        const report = await validateWorkbookInBrowser(editor.page, editor.source, {
+            deferred: checks.deferred.map(({ trigger, heading }) => ({ trigger, heading, hideTriggerAfterLoad: true }))
+        });
+        assert.equal(editor.triggerClicks(), 1);
+        assert.equal(report.parameterActionsClicked, 1);
+        assert.lengthOf(report.deferredChecks, 2);
+        assert.isTrue(report.deferredChecks.every(check => check.producerHidden));
+    });
+
+    it('checks every shared panel for eager content before any trigger click', async () => {
+        const editor = sharedDeferredEditor(['Loaded details']);
+        await rejects(validateWorkbookInBrowser(editor.page, editor.source, {
+            deferred: checks.deferred.map(({ trigger, heading }) => ({ trigger, heading, hideTriggerAfterLoad: true }))
+        }), /"Loaded details" was mounted before its trigger/);
+        assert.equal(editor.triggerClicks(), 0);
     });
 
     it('emits a self-contained Playwright function without Node imports or credentials', async () => {

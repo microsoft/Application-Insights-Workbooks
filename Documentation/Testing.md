@@ -72,7 +72,7 @@ Generate into a directory your browser tool permits. Existing output files are n
 
 ### Define reusable checks
 
-[Smoke.workbook](../test/browser/fixtures/Smoke.workbook) uses only static text and inline JSON, so the example does not need tenant telemetry or query Azure resources. Its [checks file](../test/browser/fixtures/smoke-checks.json) exercises two tabs, deferred loading, producer visibility, a two-row result, and exact column labels.
+[Smoke.workbook](../test/browser/fixtures/Smoke.workbook) uses only static text and inline JSON, so the example does not need tenant telemetry or query Azure resources. Its [checks file](../test/browser/fixtures/smoke-checks.json) exercises two tabs, one action revealing both a table and text, producer visibility, a two-row result, and exact column labels.
 
 Use the same validator for another workbook by changing the template path and, optionally, supplying a JSON checks file:
 
@@ -81,6 +81,8 @@ Use the same validator for another workbook by changing the template path and, o
 - `deferred`: checks with `trigger` (a unique parameter-link label), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab).
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.
 - `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
+
+Checks sharing the same tab and trigger are grouped: all associated headings must be absent before the action is clicked once, then every panel's requested contracts are validated. The trigger must be ready and scrolled into view before initial absence is checked.
 
 The JSON report contains the source hash, visited tab labels, requested contract results, and aggregate row counts, not record values. Only requested contracts are covered; review even these summaries before publishing because labels can contain context. Do not publish generated scripts, browser profiles, or tenant screenshots as test evidence.
 
