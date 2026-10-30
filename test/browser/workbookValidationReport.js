@@ -213,7 +213,7 @@ function formatValidationReport(report) {
 function readValidationProvenance(workbookPath, source, plan) {
     const digest = value => crypto.createHash('sha256').update(value.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')).digest('hex');
     function git(directory, args) {
-        const result = spawnSync('git', ['--no-pager', '-C', directory, ...args], {
+        const result = spawnSync('git', ['--no-pager', '-c', 'core.longpaths=true', '-C', directory, ...args], {
             encoding: 'utf8', windowsHide: true, timeout: 15000,
             maxBuffer: Math.max(1024 * 1024, Buffer.byteLength(source, 'utf8') * 2 + 1024)
         });
@@ -233,11 +233,18 @@ function readValidationProvenance(workbookPath, source, plan) {
     const workbookState = revision(path.dirname(workbook), [workbook]);
     const validatorState = revision(__dirname, implementation);
     if (workbookState.revision && !workbookState.dirty) {
-        const prefix = git(path.dirname(workbook), ['rev-parse', '--show-prefix']);
-        if (prefix.status !== 0) throw new Error('Cannot determine workbook source revision path.');
-        const committed = git(path.dirname(workbook),
-            ['show', `${workbookState.revision}:${prefix.stdout.replace(/\r?\n$/, '')}${path.basename(workbook)}`]);
-        workbookState.dirty = committed.status !== 0 || digest(committed.stdout) !== digest(source);
+        const tracked = git(path.dirname(workbook), ['ls-files', '--error-unmatch', '--', workbook]);
+        if (tracked.status === 1) {
+            workbookState.dirty = true;
+        } else {
+            if (tracked.status !== 0) throw new Error('Cannot determine whether the workbook source is tracked.');
+            const prefix = git(path.dirname(workbook), ['rev-parse', '--show-prefix']);
+            if (prefix.status !== 0) throw new Error('Cannot determine workbook source revision path.');
+            const committed = git(path.dirname(workbook),
+                ['show', `${workbookState.revision}:${prefix.stdout.replace(/\r?\n$/, '')}${path.basename(workbook)}`, '--']);
+            if (committed.status !== 0) throw new Error('Cannot read the committed workbook source for provenance.');
+            workbookState.dirty = digest(committed.stdout) !== digest(source);
+        }
     }
     return {
         sourceSha256: digest(source),

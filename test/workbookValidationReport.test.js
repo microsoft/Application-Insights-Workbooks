@@ -131,7 +131,7 @@ describe('Reporting workbook validation evidence...', () => {
         assert.isBoolean(context.validatorDirty);
         assert.notInclude(JSON.stringify(context), fixture);
         assert.isTrue(readValidationProvenance(fixture, source + ' ').workbookDirty);
-    });
+    }).timeout(15000);
 
     it('binds changed contract thresholds without hashing tenant or screenshot paths', () => {
         const options = JSON.parse(fs.readFileSync(path.join(__dirname, 'browser', 'fixtures', 'smoke-checks.json'), 'utf8'));
@@ -141,6 +141,38 @@ describe('Reporting workbook validation evidence...', () => {
         assert.equal(context({ ...options, tenant: { useBrowserSession: true },
             screenshots: { directory: directory } }), expected);
     });
+
+    it('handles clean long/space-containing Git paths and distinguishes ignored snapshots from committed source', () => {
+        const repository = path.resolve(directory, 'source-repository');
+        fs.mkdirSync(repository);
+        const git = args => {
+            const result = spawnSync('git', ['--no-pager', '-c', 'core.longpaths=true',
+                '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${path.join(repository, 'no-hooks')}`,
+                '-C', repository, ...args], { encoding: 'utf8', timeout: 15000 });
+            assert.equal(result.status, 0, result.stderr);
+        };
+        try {
+            git(['init', '--template=']);
+            const folder = path.join(repository, 'workbook path with spaces ' + 'x'.repeat(35));
+            fs.mkdirSync(folder);
+            const file = path.join(folder, 'Long' + 'f'.repeat(120) + '.workbook');
+            assert.isAbove(file.length, 260);
+            fs.writeFileSync(file, source);
+            git(['add', '--', file]);
+            git(['-c', 'user.name=Workbook Validator Test', '-c', 'user.email=workbook-validator@example.invalid',
+                'commit', '-m', 'Create synthetic workbook fixture',
+                '-m', 'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>']);
+            const context = readValidationProvenance(file, source, createValidationPlan(source));
+            assert.isFalse(context.workbookDirty);
+            assert.equal(context.sourceSha256, sourceSha256);
+            fs.writeFileSync(path.join(repository, '.gitignore'), 'ignored.workbook\n');
+            const ignored = path.join(repository, 'ignored.workbook');
+            fs.writeFileSync(ignored, source);
+            assert.isTrue(readValidationProvenance(ignored, source).workbookDirty);
+        } finally {
+            fs.rmSync(repository, { recursive: true });
+        }
+    }).timeout(15000);
 
     it('emits portable reports that pause before browser access when tenant consent is absent', async () => {
         const script = createPlaywrightScript(source, {}, provenance);

@@ -158,6 +158,8 @@ For PR evidence, request a **structured report**, not only successful tool execu
 
 The checks digest binds the normalized plan's exact primary tabs, deferred/table/audit contracts, and timeout, not private tenant/capture paths. Changed thresholds or columns therefore cannot silently reuse the same checks identity. Expected source/contract digest mismatches are rejected **before editor replacement or Apply/query activation**.
 
+Provenance checks support long Windows paths and spaces. Ignored/untracked workbook snapshots are marked modified rather than attributed to a clean commit. Git/read errors fail explicitly instead of being mislabeled as ordinary source edits.
+
 The Mocha adapter always prints this report, including setup/authentication failures. To also persist both JSON and Markdown, choose a fresh private local filename prefix:
 
 ```powershell
