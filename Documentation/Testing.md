@@ -26,7 +26,7 @@ For real-DOM safety/pixel regression tests without Azure sign-in, set `WORKBOOK_
 
 The shared runner:
 
-- Supports either an explicitly selected/confirmed tenant or explicitly authorized browser-session continuation. The latter uses and privately pins the already-signed-in directory only if no chooser is pending. Both workflows recheck identity before tab changes, parameter actions, and screenshots and never choose or switch an account/tenant.
+- Supports either an explicitly selected/confirmed tenant or explicitly authorized browser-session continuation. The latter uses and privately pins the already-signed-in directory only if no chooser is pending. Both workflows recheck identity after readiness waits, before source import, Apply/Done Editing, tab changes, parameter actions, screenshot capture, and final success reporting. Neither chooses or switches an account/tenant.
 - Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models.
 - Applies the exact requested source and reports its normalized-source SHA-256, not its contents.
 - Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
@@ -63,6 +63,8 @@ The helper does not navigate away from an existing portal workbook or restart an
 For **strict expected-tenant validation**, keep using `--tenant <guid> --confirm-tenant` or the explicit-tenant environment variables below. Browser-session mode cannot silently replace an explicit tenant constraint or combine with strict-tenant flags. If neither workflow is authorized, ask **which tenant to use** and pause on an unavailable/declined/cancelled response.
 
 The repository [browser-validation skill](../.github/skills/validate-workbook-browser/SKILL.md) codifies both workflows. The user performs sign-in/directory switching themselves. Do not request credentials, commit tenant/account information, or reuse a prior run's confirmation. The runner collects every parenthesized GUID after `Directory:` in English portal account-menu metadata and rejects conflicting candidates, including a GUID embedded in a display name. Missing/ambiguous identity or a later chooser pauses validation. Tenant IDs and account metadata are not included in reports.
+
+Tenant verification is repeated after editor/control readiness waits, not just at the beginning of a validation phase. Capture is checked again after render/redaction readiness and after the image call; final success also requires a fresh tenant check when screenshots and tabs are absent. A directory change pauses the run rather than allowing a stale verification to authorize the next operation.
 
 ### Prepare a browser
 
@@ -203,6 +205,8 @@ For example, after that approval, a private selective-redaction configuration ca
 ```
 
 For an explicitly approved local unredacted capture, use `--redaction none --allow-sensitive-capture` with the generator's other screenshot/tenant arguments. For Mocha the equivalent variables are `WORKBOOK_BROWSER_REDACTION=none` and `WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE=true`. Screenshot consent flags must be actual booleans in JSON or exact `true`/`false` environment strings.
+
+Revoking sensitive-capture permission with `--no-allow-sensitive-capture`, `--allow-sensitive-capture=false`, or the equivalent false runtime/environment value does not enable screenshots or require an output directory when capture is disabled. A configured non-auto capture still pauses when its permission is revoked. Invalid permission types fail explicitly, and granting sensitive-capture permission without an output directory does not implicitly enable capture.
 
 Keep all intermediate/raw images private. The user can manually edit them, or approve local/authorized assistance to choose masks or edit the image. Do not send sensitive screenshots to third-party AI services. Review the final image after editing; the validator does not certify external edits or publish anything automatically.
 
