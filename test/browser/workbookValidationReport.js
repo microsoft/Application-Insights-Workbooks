@@ -4,10 +4,62 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 
 function validationContractSource(plan) {
-    return JSON.stringify({ tabs: plan.tabs, deferred: plan.deferred, timeout: plan.timeout });
+    return JSON.stringify({ tabs: plan.tabs, deferred: plan.deferred, timeout: plan.timeout,
+        ...(plan.reviewConcerns?.length ? { reviewConcerns: plan.reviewConcerns } : {}) });
 }
 
-function createValidationReport(provenance = {}) {
+function normalizeReviewConcerns(value = []) {
+    const areas = ['browser', 'authentication', 'source', 'navigation', 'tables', 'deferred',
+        'rendering', 'controls', 'drilldowns', 'screenshots', 'visual-review'];
+    const identifier = id => typeof id === 'string' && id === id.trim() && /^[a-z][a-z0-9-]{0,63}$/.test(id);
+    if (!Array.isArray(value) || value.length > 100) {
+        throw new Error('reviewConcerns must be an array of at most 100 explicit reviewer concerns.');
+    }
+    const ids = new Set();
+    return value.map(concern => {
+        if (!concern || typeof concern !== 'object' || Array.isArray(concern) ||
+            Object.keys(concern).some(key => !['id', 'source', 'reviewedRevision', 'checks'].includes(key)) ||
+            !identifier(concern.id) || ids.has(concern.id) ||
+            typeof concern.source !== 'string' || concern.source !== concern.source.trim() ||
+            !/^https:\/\/github\.com\/[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9_.-]{1,100}\/pull\/[1-9]\d*#(?:pullrequestreview-[1-9]\d*|discussion_r[1-9]\d*|issuecomment-[1-9]\d*)$/i.test(concern.source) ||
+            (concern.reviewedRevision != null &&
+                (typeof concern.reviewedRevision !== 'string' || !/^[a-f0-9]{40}$/.test(concern.reviewedRevision))) ||
+            !Array.isArray(concern.checks) || concern.checks.length > 100) {
+            throw new Error('Each review concern needs a unique generic id, GitHub review/comment permalink, optional revision, and explicit checks; do not copy private review text.');
+        }
+        ids.add(concern.id);
+        const checks = new Set();
+        return {
+            id: concern.id,
+            source: concern.source,
+            reviewedRevision: concern.reviewedRevision ?? null,
+            checks: concern.checks.map(check => {
+                if (!check || typeof check !== 'object' || Array.isArray(check) ||
+                    Object.keys(check).some(key => !['id', 'area'].includes(key)) ||
+                    !identifier(check.id) || !areas.includes(check.area) || checks.has(check.id)) {
+                    throw new Error('Concern checks must contain unique check ids and their actual coverage areas.');
+                }
+                checks.add(check.id);
+                return { id: check.id, area: check.area };
+            })
+        };
+    });
+}
+
+function assessReviewConcerns(concerns, checks) {
+    return normalizeReviewConcerns(concerns).map(concern => {
+        const matched = concern.checks.map(binding =>
+            checks.find(check => check.id === binding.id && check.area === binding.area));
+        const failed = matched.some(check => check?.status === 'failed');
+        const blocked = matched.some(check => check?.status === 'blocked');
+        const reason = failed ? 'review-check-failed' : blocked ? 'review-check-blocked' :
+            !matched.length ? 'review-unmapped' : matched.some(check => !check) ? 'review-check-missing' :
+                matched.some(check => check.status !== 'passed') ? 'review-check-not-run' : null;
+        return { id: concern.id, status: failed ? 'failed' : blocked ? 'blocked' : reason ? 'not-run' : 'passed', reason };
+    });
+}
+
+function createValidationReport(provenance = {}, reviewConcerns = []) {
     const fields = ['sourceSha256', 'checksSha256', 'validatorSha256', 'workbookRevision', 'validatorRevision',
         'workbookDirty', 'validatorDirty'];
     if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance) ||
@@ -48,6 +100,8 @@ function createValidationReport(provenance = {}) {
         reviewStatus: 'requires-authorized-reviewer',
         screenshotRedaction: 'not-run',
         checks,
+        reviewConcerns: normalizeReviewConcerns(reviewConcerns),
+        reviewAssessments: [],
         findings: []
     };
 }
@@ -104,8 +158,11 @@ function finishValidationReport(report, automationStatus) {
     }
     report.automationStatus = automationStatus;
     report.completedAt = new Date().toISOString();
+    report.reviewAssessments = assessReviewConcerns(report.reviewConcerns, report.checks);
     report.findings = report.checks.filter(check => check.status !== 'passed')
-        .map(({ id, area, status, reason }) => ({ id, area, status, reason }));
+        .map(({ id, area, status, reason }) => ({ id, area, status, reason }))
+        .concat(report.reviewAssessments.filter(concern => concern.status !== 'passed')
+            .map(({ id, status, reason }) => ({ id, area: 'review-concern', status, reason })));
     report.status = automationStatus === 'failed' || report.checks.some(check => check.status === 'failed') ? 'failed' :
         automationStatus === 'blocked' || report.checks.some(check => check.status === 'blocked') ? 'blocked' :
             report.findings.length ? 'partial' : 'passed';
@@ -114,7 +171,8 @@ function finishValidationReport(report, automationStatus) {
 
 function publicValidationReport(report) {
     const fields = ['schemaVersion', 'runId', 'startedAt', 'completedAt', 'provenance',
-        'automationStatus', 'status', 'reviewStatus', 'screenshotRedaction', 'checks', 'findings'];
+        'automationStatus', 'status', 'reviewStatus', 'screenshotRedaction', 'checks',
+        'reviewConcerns', 'reviewAssessments', 'findings'];
     const timestamp = value => typeof value === 'string' &&
         /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value));
     if (!report || Object.keys(report).some(key => !fields.includes(key)) || report.schemaVersion !== 1 ||
@@ -124,7 +182,7 @@ function publicValidationReport(report) {
         report.completedAt < report.startedAt || !Array.isArray(report.checks) || !report.checks.length) {
         throw new Error('Invalid public validation report; do not attach raw browser output or private diagnostics.');
     }
-    const safe = createValidationReport(report.provenance);
+    const safe = createValidationReport(report.provenance, report.reviewConcerns);
     const requiredAreas = safe.checks.map(check => check.area);
     safe.checks = [];
     for (const check of report.checks) {
@@ -142,6 +200,15 @@ function publicValidationReport(report) {
         throw new Error('A public report must retain every coverage area, including unexecuted checks.');
     }
     finishValidationReport(safe, report.automationStatus);
+    const assessments = report.reviewAssessments === undefined && !safe.reviewConcerns.length ? [] : report.reviewAssessments;
+    if (!Array.isArray(assessments) || safe.reviewAssessments.length !== assessments.length ||
+        safe.reviewAssessments.some((assessment, index) => {
+            const supplied = assessments[index];
+            return !supplied || Object.keys(supplied).some(key => !['id', 'status', 'reason'].includes(key)) ||
+                Object.keys(assessment).some(key => supplied[key] !== assessment[key]);
+        })) {
+        throw new Error('Review-concern assessments do not match the mapped checks in this run.');
+    }
     if (safe.status !== report.status || !Array.isArray(report.findings) ||
         safe.findings.length !== report.findings.length || safe.findings.some((finding, index) => {
             const supplied = report.findings[index];
@@ -172,7 +239,12 @@ function formatValidationReport(report) {
         'not-applicable': 'Explicitly excluded; not evidence of execution.',
         'automation-error': 'An assertion/operation failed; inspect private local diagnostics.',
         'source-mismatch': 'Requested source does not match the recorded source hash; import was refused.',
-        'checks-mismatch': 'Requested contracts do not match the recorded checks hash; import was refused.'
+        'checks-mismatch': 'Requested contracts do not match the recorded checks hash; import was refused.',
+        'review-unmapped': 'No suitable check mapped; investigate the source and add assertions or document the manual follow-up.',
+        'review-check-missing': 'A required check is missing or has a different coverage area; add the specific scenario rather than substituting a broad smoke pass.',
+        'review-check-not-run': 'A required check was not executed; inspect its reason and arrange the remaining validation.',
+        'review-check-blocked': 'A required check is blocked; preserve the blocker and wait for authorized continuation.',
+        'review-check-failed': 'A required check failed; investigate, fix, and rerun before claiming the concern is validated.'
     };
     const provenance = safe.provenance;
     const lines = [
@@ -183,7 +255,7 @@ function formatValidationReport(report) {
         `- Automated checks: **${safe.automationStatus}**; coverage: **${safe.status}**`,
         `- Workbook revision: \`${provenance.workbookRevision || 'unrecorded'}\`; modified: ${provenance.workbookDirty ?? 'unknown'}`,
         `- Source SHA-256: \`${provenance.sourceSha256 || 'unrecorded'}\``,
-        `- Checks SHA-256: \`${provenance.checksSha256 || 'unrecorded'}\` (tabs, deferred contracts, and timeout; no tenant or capture paths)`,
+        `- Checks SHA-256: \`${provenance.checksSha256 || 'unrecorded'}\` (tabs, deferred contracts, timeout, and any reviewer-concern mapping; no tenant or capture paths)`,
         `- Validator revision: \`${provenance.validatorRevision || 'unrecorded'}\`; modified: ${provenance.validatorDirty ?? 'unknown'}`,
         `- Validator implementation SHA-256: \`${provenance.validatorSha256 || 'unrecorded'}\``,
         `- Screenshot redaction: **${safe.screenshotRedaction}**; any images still require manual review and separate publication approval.`,
@@ -194,6 +266,17 @@ function formatValidationReport(report) {
     for (const check of safe.checks) {
         const counts = Object.entries(check.evidence).map(([key, value]) => `${key}: ${value}`).join('; ');
         lines.push(`| ${check.id} | ${check.area} | ${check.status} | ${check.method} | ${counts}${counts && check.reason ? '; ' : ''}${check.reason ? reasons[check.reason] : ''} |`);
+    }
+    if (safe.reviewConcerns.length) {
+        lines.push('', '## Reviewer concerns: Needs a closer look', '',
+            '| Concern / source | Reviewed revision | Outcome | Required checks / next step |',
+            '|---|---|---|---|');
+        for (const [index, concern] of safe.reviewConcerns.entries()) {
+            const assessment = safe.reviewAssessments[index];
+            const required = concern.checks.map(check => `${check.id} (${check.area})`).join('; ');
+            lines.push(`| [${concern.id}](${concern.source}) | \`${concern.reviewedRevision || 'unrecorded'}\` | ${assessment.status} | ${required}${required && assessment.reason ? '; ' : ''}${assessment.reason ? reasons[assessment.reason] : ''} |`);
+        }
+        lines.push('', 'Concern outcomes are derived only from the mapped checks in this run, not the wording or age of a review. A passing tab check is not evidence that every widget rendered. Investigation and mapping are operator-reviewed; no review is fetched, dismissed, or resolved automatically.');
     }
     lines.push('', '## Findings and handoff', '');
     lines.push(...(safe.findings.length ? safe.findings.map(finding =>
@@ -281,6 +364,8 @@ function writeValidationReport(report, prefix) {
 
 module.exports = {
     validationContractSource,
+    normalizeReviewConcerns,
+    assessReviewConcerns,
     createValidationReport,
     recordValidationCheck,
     finishValidationReport,

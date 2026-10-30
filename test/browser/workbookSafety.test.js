@@ -4,7 +4,8 @@ const os = require('os');
 const path = require('path');
 const { captureWorkbookScreenshot, bindParameterTrigger, activateWorkbookControl,
     verifySelectedTenant, auditGridRows, waitForRenderReady, createPlaywrightScript } = require('./workbookBrowserValidator');
-const { readValidationProvenance, publicValidationReport } = require('./workbookValidationReport');
+const { readValidationProvenance, publicValidationReport, recordValidationCheck,
+    finishValidationReport } = require('./workbookValidationReport');
 
 describe('Validating browser safety with offline fixtures (opt-in)...', function () {
     let browser;
@@ -104,8 +105,11 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
                 '<div role="menubar" id="producer"><button role="menuitem" id="load">Show details</button></div>' +
                 '<div id="panels"></div></div>';
             let value = '{"version":"Notebook/1.0","items":[]}';
-            const model = { getValue: () => value, setValue: source => { value = source; } };
-            window.monaco = { editor: { getEditors: () => [{ getDomNode: () => body, getModel: () => model }] } };
+            let version = 1;
+            const model = { getValue: () => value, getVersionId: () => version,
+                setValue: source => { value = source; version++; } };
+            const editor = { getDomNode: () => body, getModel: () => model };
+            window.monaco = { editor: { getEditors: () => [editor] } };
             document.getElementById('apply').onclick = () => { document.getElementById('done').hidden = false; };
             document.getElementById('done').onclick = () => {
                 document.getElementById('editor').hidden = true;
@@ -141,6 +145,14 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
         const file = path.join(__dirname, 'fixtures', 'Smoke.workbook');
         const source = fs.readFileSync(file, 'utf8');
         const options = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'smoke-checks.json'), 'utf8'));
+        options.reviewConcerns = [
+            { id: 'review-table', source: 'https://github.com/example/workbooks/pull/42#pullrequestreview-123',
+                checks: [{ id: 'declared-tables', area: 'tables' }] },
+            { id: 'review-rendering', source: 'https://github.com/example/workbooks/pull/42#issuecomment-456',
+                checks: [{ id: 'fixture-panel-rendering', area: 'rendering' }] },
+            { id: 'review-drilldowns', source: 'https://github.com/example/workbooks/pull/42#discussion_r789',
+                checks: [{ id: 'fixture-drilldown', area: 'drilldowns' }] }
+        ];
         const script = createPlaywrightScript(source, { ...options, tenant: { useBrowserSession: true } },
             readValidationProvenance(file, source));
         const run = new Function(`return (${script})`)();
@@ -155,6 +167,15 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
         assert.equal(check('manual-visual-review').status, 'not-run');
         assert.equal(report.screenshotRedaction, 'not-requested');
         assert(!JSON.stringify(report).includes('11111111-2222-3333-4444-555555555555'));
+        assert.deepEqual(report.reviewAssessments.map(concern => concern.status), ['passed', 'not-run', 'not-run']);
+        const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
+        assert.equal(await frame.getByRole('heading', { name: 'Deferred table', exact: true }).isVisible(), true);
+        assert.equal(await frame.getByRole('grid').getByRole('row').count(), 3);
+        recordValidationCheck(report, 'fixture-panel-rendering', 'rendering', 'passed', 'scenario', { assertions: 2 });
+        finishValidationReport(report, 'passed');
+        assert.deepEqual(publicValidationReport(report).reviewAssessments.map(concern => concern.status),
+            ['passed', 'passed', 'not-run']);
+        assert.equal(report.findings.find(finding => finding.id === 'review-drilldowns').status, 'not-run');
     });
 
     it('returns a source-mismatch report before modifying a real editor or activating Apply', async function () {
@@ -171,6 +192,51 @@ describe('Validating browser safety with offline fixtures (opt-in)...', function
         assert.equal(await frame.locator('body').evaluate(() => window.monaco.editor.getEditors()[0].getModel().getValue()),
             '{"version":"Notebook/1.0","items":[]}');
         assert.equal(await frame.getByRole('menuitem', { name: 'Done Editing', exact: true }).count(), 0);
+    });
+
+    it('retains a real editor draft entered during source hashing and reports the concern as failed', async function () {
+        const fixturePage = await offlineEditor();
+        const frame = page.locator('iframe[name="Workbooks.ReactView"]').contentFrame();
+        const draft = '{"version":"Notebook/1.0","items":[{"type":1,"content":{"json":"New draft"}}]}';
+        await frame.locator('body').evaluate((body, draft) => {
+            const digest = crypto.subtle.digest.bind(crypto.subtle);
+            let first = true;
+            crypto.subtle.digest = async (...args) => {
+                const result = await digest(...args);
+                if (first) {
+                    first = false;
+                    window.monaco.editor.getEditors()[0].getModel().setValue(draft);
+                }
+                return result;
+            };
+        }, draft);
+        const file = path.join(__dirname, 'fixtures', 'Smoke.workbook');
+        const source = fs.readFileSync(file, 'utf8');
+        const script = createPlaywrightScript(source, { tenant: { useBrowserSession: true }, reviewConcerns: [
+            { id: 'preserve-user-draft', source: 'https://github.com/example/workbooks/pull/42#pullrequestreview-123',
+                checks: [{ id: 'exact-source', area: 'source' }] }
+        ] }, readValidationProvenance(file, source));
+        const report = publicValidationReport(await new Function(`return (${script})`)()(fixturePage));
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.reviewAssessments[0].status, 'failed');
+        assert.equal(await frame.locator('body').evaluate(() => window.monaco.editor.getEditors()[0].getModel().getValue()), draft);
+        assert.equal(await frame.getByRole('menuitem', { name: 'Done Editing', exact: true }).count(), 0);
+    });
+
+    it('rejects rendered data under a zero-row ARIA total while preserving a genuine empty-grid audit', async function () {
+        const { grid } = await virtualGrid({ total: 0, originalScroll: 0 });
+        const options = { maxRows: 20, timeout: 1000, nonEmptyColumns: ['Label', 'Value'] };
+        const empty = await grid.evaluate(auditGridRows, options);
+        assert.equal(empty.totalRows, 0);
+        assert.equal(empty.rowsAudited, 0);
+        await grid.evaluate(element => {
+            const row = document.createElement('div');
+            row.setAttribute('role', 'row');
+            row.setAttribute('aria-rowindex', '2');
+            row.innerHTML = '<span role="gridcell">Unexpected data</span><span role="gridcell">0</span>';
+            element.append(row);
+        });
+        await assert.rejects(grid.evaluate(auditGridRows, options), /row indexes are invalid/);
     });
 
     it('excludes existing and late parent overlays from auto and approved unredacted capture pixels', async function () {

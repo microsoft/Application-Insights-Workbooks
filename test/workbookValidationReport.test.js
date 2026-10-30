@@ -7,7 +7,7 @@ const vm = require('vm');
 const { spawnSync } = require('child_process');
 const { createValidationReport, recordValidationCheck, finishValidationReport, publicValidationReport,
     formatValidationReport, readValidationProvenance, writeValidationReport,
-    validationContractSource } = require('./browser/workbookValidationReport');
+    validationContractSource, normalizeReviewConcerns, assessReviewConcerns } = require('./browser/workbookValidationReport');
 const { createPlaywrightScript, createValidationPlan, validateWorkbookWithReport } = require('./browser/workbookBrowserValidator');
 
 const fixture = path.join(__dirname, 'browser', 'fixtures', 'Smoke.workbook');
@@ -16,9 +16,12 @@ const sourceSha256 = crypto.createHash('sha256').update(source.replace(/\r\n/g, 
 const provenance = { sourceSha256, checksSha256: 'd'.repeat(64), validatorSha256: 'a'.repeat(64),
     workbookRevision: 'b'.repeat(40), validatorRevision: 'c'.repeat(40),
     workbookDirty: false, validatorDirty: false };
+const reviewSource = 'https://github.com/example/workbooks/pull/42#pullrequestreview-123';
+const reviewConcern = (overrides = {}) => ({ id: 'table-review', source: reviewSource,
+    checks: [{ id: 'declared-tables', area: 'tables' }], ...overrides });
 
-function automatedEvidence() {
-    const report = createValidationReport(provenance);
+function automatedEvidence(reviewConcerns = []) {
+    const report = createValidationReport(provenance, reviewConcerns);
     for (const [id, area] of [['browser-session', 'browser'],
         ['authenticated-session', 'authentication'], ['exact-source', 'source']]) {
         recordValidationCheck(report, id, area, 'passed', 'automated', { assertions: 1 });
@@ -61,6 +64,144 @@ describe('Reporting workbook validation evidence...', () => {
         assert.equal(report.checks.find(check => check.id === 'row-context').status, 'not-run');
         assert.include(formatValidationReport(report), 'Required records were unavailable');
         assert.equal(report.reviewStatus, 'requires-authorized-reviewer');
+    });
+
+    it('normalizes summary, timeline, and inline-review sources without copying review bodies', () => {
+        for (const anchor of ['pullrequestreview-123', 'issuecomment-456', 'discussion_r789']) {
+            const concern = reviewConcern({ source: `https://github.com/example/workbooks/pull/42#${anchor}` });
+            assert.deepEqual(normalizeReviewConcerns([concern]), [{ ...concern, reviewedRevision: null }]);
+        }
+        assert.deepEqual(normalizeReviewConcerns(), []);
+    });
+
+    it('rejects private/free-form review fields, injected outcomes, unsafe links, and ambiguous mappings', () => {
+        for (const invalid of [
+            { body: 'Private review text' }, { status: 'passed' }, { source: 'http://github.com/example/workbooks/pull/42#issuecomment-1' },
+            { source: reviewSource + '?token=private' }, { source: reviewSource + '\n' },
+            { source: 'https://github.com@example.invalid/example/workbooks/pull/42#issuecomment-1' },
+            { id: 'table-review\n' }, { reviewedRevision: 'branch-name' }, { checks: null },
+            { checks: [{ id: 'declared-tables', area: 'unknown' }] },
+            { checks: [{ id: 'declared-tables', area: 'tables', status: 'passed' }] },
+            { checks: [{ id: 'declared-tables', area: 'tables' }, { id: 'declared-tables', area: 'tables' }] }
+        ]) {
+            assert.throws(() => normalizeReviewConcerns([reviewConcern(invalid)]));
+        }
+        assert.throws(() => normalizeReviewConcerns([reviewConcern(), reviewConcern()]), /unique generic id/);
+        assert.throws(() => normalizeReviewConcerns({}), /at most 100/);
+        assert.throws(() => normalizeReviewConcerns(Array.from({ length: 101 }, (_, index) =>
+            reviewConcern({ id: `review-${index}` }))), /at most 100/);
+    });
+
+    it('does not drop unmapped concerns or treat absent and wrong-area checks as passes', () => {
+        const checks = [{ id: 'primary-tabs', area: 'navigation', status: 'passed' }];
+        const assessed = assessReviewConcerns([
+            reviewConcern({ id: 'unmapped', checks: [] }),
+            reviewConcern({ id: 'missing', checks: [{ id: 'filter-refresh', area: 'controls' }] }),
+            reviewConcern({ id: 'rendering', checks: [{ id: 'primary-tabs', area: 'rendering' }] })
+        ], checks);
+        assert.deepEqual(assessed.map(concern => [concern.id, concern.status, concern.reason]), [
+            ['unmapped', 'not-run', 'review-unmapped'],
+            ['missing', 'not-run', 'review-check-missing'],
+            ['rendering', 'not-run', 'review-check-missing']
+        ]);
+    });
+
+    it('requires every mapped check to pass and retains no-data and unexecuted scenarios as findings', () => {
+        const concern = reviewConcern({ checks: [
+            { id: 'declared-tables', area: 'tables' }, { id: 'filter-refresh', area: 'controls' }
+        ] });
+        const report = automatedEvidence([concern]);
+        recordValidationCheck(report, 'declared-tables', 'tables', 'passed', 'automated', { completed: 1 });
+        recordValidationCheck(report, 'filter-refresh', 'controls', 'not-run', 'none', {}, 'no-data');
+        finishValidationReport(report, 'passed');
+        assert.deepEqual(report.reviewAssessments, [{ id: concern.id, status: 'not-run', reason: 'review-check-not-run' }]);
+        assert.includeDeepMembers(report.findings,
+            [{ id: concern.id, area: 'review-concern', status: 'not-run', reason: 'review-check-not-run' }]);
+        assert.include(formatValidationReport(report), 'Required records were unavailable');
+        recordValidationCheck(report, 'filter-refresh', 'controls', 'passed', 'scenario', { assertions: 2 });
+        finishValidationReport(report, 'passed');
+        assert.equal(report.reviewAssessments[0].status, 'passed');
+        assert.isFalse(report.findings.some(finding => finding.area === 'review-concern'));
+        assert.equal(report.reviewStatus, 'requires-authorized-reviewer');
+    });
+
+    it('propagates blockers and failures even when other required scenario checks are still missing', () => {
+        for (const status of ['blocked', 'failed']) {
+            const report = createValidationReport(provenance, [reviewConcern({ checks: [
+                { id: 'authenticated-session', area: 'authentication' }, { id: 'filter-refresh', area: 'controls' }
+            ] })]);
+            recordValidationCheck(report, 'authenticated-session', 'authentication', status, 'automated', {},
+                status === 'blocked' ? 'account-selection' : 'automation-error');
+            finishValidationReport(report, status);
+            assert.equal(report.reviewAssessments[0].status, status);
+            assert.equal(report.reviewAssessments[0].reason, `review-check-${status}`);
+            assert.equal(report.findings.find(finding => finding.area === 'review-concern').status, status);
+        }
+    });
+
+    it('recomputes concern assessments when checks change rather than trusting a previous passed label', () => {
+        const report = automatedEvidence([reviewConcern()]);
+        recordValidationCheck(report, 'declared-tables', 'tables', 'passed', 'automated', { completed: 1 });
+        finishValidationReport(report, 'passed');
+        assert.equal(report.reviewAssessments[0].status, 'passed');
+        recordValidationCheck(report, 'declared-tables', 'tables', 'failed', 'automated', {}, 'automation-error');
+        finishValidationReport(report, 'failed');
+        assert.equal(report.reviewAssessments[0].status, 'failed');
+    });
+
+    it('binds the reviewed revision and each concern-to-check mapping into the checks digest', () => {
+        const contracts = reviewConcerns => validationContractSource(createValidationPlan(source, { reviewConcerns }));
+        const expected = contracts([reviewConcern()]);
+        assert.notEqual(expected, contracts([reviewConcern({ reviewedRevision: 'a'.repeat(40) })]));
+        assert.notEqual(expected, contracts([reviewConcern({ checks: [{ id: 'filter-refresh', area: 'controls' }] })]));
+        assert.equal(validationContractSource(createValidationPlan(source)),
+            validationContractSource(createValidationPlan(source, { reviewConcerns: [] })));
+    });
+
+    it('formats concern sources, older reviewed revisions, required checks, and remaining investigation', () => {
+        const report = finishValidationReport(automatedEvidence([
+            reviewConcern({ reviewedRevision: 'a'.repeat(40) }), reviewConcern({ id: 'needs-investigation', checks: [] })
+        ]), 'passed');
+        const markdown = formatValidationReport(report);
+        assert.include(markdown, 'Reviewer concerns: Needs a closer look');
+        assert.include(markdown, `[table-review](${reviewSource})`);
+        assert.include(markdown, '`' + 'a'.repeat(40) + '`');
+        assert.include(markdown, 'declared-tables (tables)');
+        assert.include(markdown, 'investigate the source and add assertions');
+        assert.equal(report.status, 'partial');
+    });
+
+    it('round-trips assessed reports and rejects false assessments or deleted concern findings', () => {
+        const report = finishValidationReport(automatedEvidence([reviewConcern()]), 'passed');
+        assert.deepEqual(publicValidationReport(JSON.parse(JSON.stringify(report))), report);
+        const falseAssessment = { ...report, reviewAssessments: [{ id: 'table-review', status: 'passed', reason: null }] };
+        assert.throws(() => publicValidationReport(falseAssessment), /assessments do not match/);
+        assert.throws(() => publicValidationReport({ ...report,
+            findings: report.findings.filter(finding => finding.area !== 'review-concern') }), /findings\/status do not match/);
+    });
+
+    it('keeps older reports without concern fields readable without inventing a review assessment', () => {
+        const report = finishValidationReport(automatedEvidence(), 'passed');
+        delete report.reviewConcerns;
+        delete report.reviewAssessments;
+        const safe = publicValidationReport(report);
+        assert.deepEqual(safe.reviewConcerns, []);
+        assert.deepEqual(safe.reviewAssessments, []);
+    });
+
+    it('requires report-enabled runners instead of silently dropping requested review concerns', () => {
+        assert.throws(() => createPlaywrightScript(source, { reviewConcerns: [reviewConcern()] }), /require --report/);
+    });
+
+    it('returns concern findings from a portable paused run without browser access or false scenario passes', async () => {
+        const script = createPlaywrightScript(source, { reviewConcerns: [reviewConcern({ checks: [
+            { id: 'authenticated-session', area: 'authentication' }, { id: 'scenario-controls', area: 'controls' }
+        ] })] }, provenance);
+        const run = vm.runInNewContext(`(${script})`);
+        const report = await run({ url() { throw new Error('Unexpected browser access'); } });
+        assert.equal(report.automationStatus, 'blocked');
+        assert.equal(report.reviewAssessments[0].status, 'blocked');
+        assert.doesNotThrow(() => publicValidationReport(report));
     });
 
     it('requires actual assertion counts for passed supplementary checks', () => {
@@ -240,6 +381,13 @@ describe('Reporting workbook validation evidence...', () => {
         assert.equal(report.automationStatus, 'failed');
     });
 
+    it('retains explicit invalid-options failures without touching the browser', async () => {
+        const report = await validateWorkbookWithReport({ url() { throw new Error('Unexpected browser access'); } },
+            source, null);
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'failed');
+    });
+
     it('formats a blocked report but retains a nonzero process outcome', () => {
         const report = createValidationReport(provenance);
         recordValidationCheck(report, 'authenticated-session', 'authentication', 'blocked',
@@ -277,9 +425,14 @@ describe('Reporting workbook validation evidence...', () => {
 
     it('persists a blocked Mocha setup report while keeping the test red and avoiding CDP', () => {
         const prefix = path.join(directory, 'setup');
+        const checks = path.join(directory, 'review-checks.json');
+        fs.writeFileSync(checks, JSON.stringify({ reviewConcerns: [reviewConcern({ checks: [
+            { id: 'authenticated-session', area: 'authentication' }, { id: 'scenario-controls', area: 'controls' }
+        ] })] }));
         const env = { ...process.env, WORKBOOK_BROWSER_TEMPLATE: fixture,
-            WORKBOOK_BROWSER_CDP_ENDPOINT: 'http://127.0.0.1:1', WORKBOOK_BROWSER_REPORT: prefix };
-        for (const name of ['TENANT_ID', 'TENANT_CONFIRMED', 'USE_BROWSER_TENANT', 'CHECKS',
+            WORKBOOK_BROWSER_CDP_ENDPOINT: 'http://127.0.0.1:1', WORKBOOK_BROWSER_REPORT: prefix,
+            WORKBOOK_BROWSER_CHECKS: checks };
+        for (const name of ['TENANT_ID', 'TENANT_CONFIRMED', 'USE_BROWSER_TENANT',
             'SCREENSHOTS', 'REDACTION', 'ALLOW_SENSITIVE_CAPTURE']) delete env[`WORKBOOK_BROWSER_${name}`];
         const result = spawnSync(process.execPath, [require.resolve('mocha/bin/mocha.js'),
             '--timeout', '10000', path.join(__dirname, 'browser', 'workbookValidation.test.js')],
@@ -289,5 +442,7 @@ describe('Reporting workbook validation evidence...', () => {
         const report = JSON.parse(fs.readFileSync(`${prefix}.json`, 'utf8'));
         assert.equal(report.automationStatus, 'blocked');
         assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'not-run');
+        assert.equal(report.reviewAssessments[0].status, 'blocked');
+        assert.isTrue(report.findings.some(finding => finding.area === 'review-concern'));
     });
 });

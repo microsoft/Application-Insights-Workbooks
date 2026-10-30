@@ -81,6 +81,21 @@ describe('Validating generic render/audit contracts...', () => {
         assert.notProperty(result, 'healthy');
     });
 
+    it('rejects inconsistent zero-row grids containing indexed, unindexed, or header-slot data', async () => {
+        for (const index of ['2', '1', '0', 'not-a-number', null]) {
+            const grid = gridFixture('1');
+            grid.querySelectorAll = selector => selector === '[role="columnheader"]' ?
+                ['Label', 'Count'].map(textContent => ({ textContent })) : [{
+                    getAttribute: () => index,
+                    querySelector: selector => selector === '[role="gridcell"]' ? {} : null,
+                    querySelectorAll: () => [{ textContent: 'Unexpected data' }, { textContent: '0' }]
+                }];
+            await rejects(auditGridRows(grid, {
+                maxRows: 20, timeout: 1000, nonEmptyColumns: ['Label', 'Count']
+            }), /row indexes are invalid/);
+        }
+    });
+
     it('rejects every malformed rendered data-row index rather than silently filtering it out', async () => {
         const audit = vm.runInNewContext(`(${auditGridRows.toString()})`, {
             performance, setTimeout, clearTimeout,
@@ -91,11 +106,15 @@ describe('Validating generic render/audit contracts...', () => {
             querySelector: () => null,
             querySelectorAll: () => values.map(textContent => ({ textContent }))
         });
-        for (const invalid of ['not-a-number', '0', '-1', '1.5', '', null]) {
+        const indexedHeader = {
+            getAttribute: () => '1',
+            querySelector: selector => selector === '[role="columnheader"]' ? {} : null
+        };
+        for (const invalid of ['not-a-number', '0', '1', '-1', '1.5', '', null]) {
             const grid = gridFixture('2');
             grid.querySelectorAll = selector => selector === '[role="columnheader"]' ?
                 ['Label', 'Count'].map(textContent => ({ textContent })) :
-                [row('1'), row('2'), row(invalid, ['', ''])];
+                [indexedHeader, row('2'), row(invalid, ['', ''])];
             await rejects(audit(grid, {
                 maxRows: 20, timeout: 1000, nonEmptyColumns: ['Label', 'Count']
             }), /row indexes are invalid/);

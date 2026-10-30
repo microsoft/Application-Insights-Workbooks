@@ -27,7 +27,7 @@ For real-DOM safety/pixel regression tests without Azure sign-in, set `WORKBOOK_
 The shared runner:
 
 - Supports either an explicitly selected/confirmed tenant or explicitly authorized browser-session continuation. The latter uses and privately pins the already-signed-in directory only if no chooser is pending. Both workflows recheck identity after readiness waits, before source import, Apply/Done Editing, tab changes, parameter actions, screenshot capture, and final success reporting. Neither chooses or switches an account/tenant.
-- Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models.
+- Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models. After asynchronous hashing, it rechecks the connected editor, model identity/version, and original value immediately before replacement; a newly entered, reverted, or switched draft is not overwritten.
 - Applies the exact requested source and reports its normalized-source SHA-256, not its contents.
 - Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
 - Optionally checks that deferred content is not mounted before a source-defined toolbar parameter action, appears after it, and hides its producer when requested. The runtime toolbar's full static labels must match the source; a same-label Markdown/query hyperlink is never a fallback. A self-hiding producer must have its visibility parameter declared as global before it.
@@ -35,6 +35,7 @@ The shared runner:
 - Optionally audits every returned grid row with a bounded `auditRows` contract, waiting for actual virtualized row-range changes and checking selected non-empty display columns without reporting record values.
 - Offers optional local screenshots, disabled by default, with conservative masking applied before capture and a mandatory manual-review reminder.
 - Produces an explicit check matrix with revision/content hashes, timestamps, remaining findings, and separate automated versus reviewer outcomes when reporting is enabled. Blocked sign-in is never converted into a pass.
+- Assesses explicitly mapped PR review concerns, including "Needs a closer look" summary items, against executed checks and retains unverified/unsupported items in the findings instead of relying only on unresolved inline threads.
 
 Commands and parameter actions use native Enter-key activation after visibility and enabled-state checks. This validates the accessible interaction path without depending on pointer coordinates during query-driven reflow; it does not certify mouse hit testing.
 
@@ -135,12 +136,13 @@ Use the same validator for another workbook by changing the template path and, o
 - `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
 - `auditRows`: opt-in complete audit of the rows currently returned to that grid; default false. Requires an explicit `maxRows` bound and uses `timeout` as a total traversal budget.
 - `nonEmptyColumns`: optional unique display labels whose cells must be non-empty in every audited row. Requires `auditRows: true`; `"0"` and `"false"` display values are not mistaken for missing data.
+- `reviewConcerns`: optional reviewer-concern intake for report-enabled runs. Each generic id, GitHub review/comment permalink, optional reviewed revision, and required check-id/area mapping is described [below](#assess-needs-a-closer-look-items-from-pr-reviews). No concern outcomes or raw review bodies are accepted as configuration.
 
 Checks sharing the same tab and trigger are grouped: all associated headings must be absent before the action is clicked once, then every panel's requested contracts are validated. The trigger must be ready and scrolled into view before initial absence is checked.
 
 Before checking grid row bounds, column labels, or full-row audits, the runner waits for visible busy/progress/shimmer indicators on the query panel and its descendants to clear, even when screenshots are disabled. Absence of these indicators is not proof that the query succeeded; request scenario-specific data contracts as well.
 
-Row audits use ARIA row indexes and wait for DOM row-range changes, not a fixed sleep or two animation frames. They reject incomplete traversal, invalid/duplicate indexes (including missing or non-numeric data-row indexes), schema/count drift, missing required cells, and stalled rendering, and restore the grid's original scroll position. Header rows at index 1 and unindexed column-header-only rows are excluded from data-row validation. This requires a rectangular ARIA grid with consistent header/cell shape. The report contains only audited-row counts and verified column labels. **It is not a paginated export, server-side snapshot, or proof that the grid contains every matching backend record.** Compare lists to server-side totals and narrow scope when necessary.
+Row audits use ARIA row indexes and wait for DOM row-range changes, not a fixed sleep or two animation frames. They reject incomplete traversal, invalid/duplicate indexes (including missing or non-numeric data-row indexes), schema/count drift, missing required cells, and stalled rendering, and restore the grid's original scroll position. Only column-header-only rows at index 1 or without an index are excluded; data cells incorrectly placed in the header slot still fail. Even a declared zero-row grid is inspected for contradictory rendered data rather than skipping validation. This requires a rectangular ARIA grid with consistent header/cell shape. The report contains only audited-row counts and verified column labels. **It is not a paginated export, server-side snapshot, or proof that the grid contains every matching backend record.** Compare lists to server-side totals and narrow scope when necessary.
 
 The JSON report contains the source hash, visited tab labels, requested contract results, and aggregate row counts, not record values. Only requested contracts are covered; review even these summaries before publishing because labels can contain context. Do not publish generated scripts, browser profiles, or unreviewed tenant screenshots as test evidence.
 
@@ -156,7 +158,7 @@ The JSON report contains the source hash, visited tab labels, requested contract
 
 For PR evidence, request a **structured report**, not only successful tool execution or a JSON-schema test. The report keeps `passed`, `blocked`, `failed`, and `not-run` checks separate, preserves completed progress when a later operation fails, and lists remaining findings. It records timestamps, the normalized workbook source SHA-256, a checks SHA-256, workbook/validator Git revisions and modified flags when available, and a validator implementation SHA-256. Built-in evidence excludes tenant/account metadata, resource IDs, record values, local paths, and raw exception messages; custom check IDs must also remain generic.
 
-The checks digest binds the normalized plan's exact primary tabs, deferred/table/audit contracts, and timeout, not private tenant/capture paths. Changed thresholds or columns therefore cannot silently reuse the same checks identity. Expected source/contract digest mismatches are rejected **before editor replacement or Apply/query activation**.
+The checks digest binds the normalized plan's exact primary tabs, deferred/table/audit contracts, timeout, and any reviewer-concern mapping (including review source/revision), not private tenant/capture paths. Changed thresholds, columns, or required concern checks therefore cannot silently reuse the same checks identity. Expected source/contract digest mismatches are rejected **before editor replacement or Apply/query activation**. Empty/omitted concern lists preserve the previous contract digest.
 
 Completed-import hashes are retained even if a later table assertion fails or tenant authorization is lost, including direct API calls without precomputed provenance. Full-row audits must match the validated summary's total/completed row count and final count/header snapshot; a refresh during scrolling cannot turn a required two-row contract into a passing zero-row audit.
 
@@ -204,6 +206,56 @@ Before sharing the Markdown:
 2. Link the report from the PR and summarize passed checks, blockers/failures, no-data limits, and untested scenarios. Keep historical passes separate from the current run.
 3. Keep private diagnostics, generated scripts, browser profiles, and per-run options local. Review even the sanitized report before sharing. Screenshots still need separate consent, redaction, manual review, and publication approval.
 4. Ask an authorized reviewer to assess the completed evidence and remaining gaps. Do not equate operator automation, a screenshot, or an account-menu check with independent reviewer approval.
+
+#### Assess "Needs a closer look" items from PR reviews
+
+When asked to review a PR, read **review bodies/summaries, general/timeline comments, and inline threads**, not only the unresolved-thread list. A "Needs a closer look" item can describe unverified behavior without being a resolvable code comment. Split compound warnings into distinct acceptance criteria, preserve their source/reviewed revision, and investigate the relevant current source, query, controls, and existing tests. An older warning may already have later evidence, but age or a subsequent approval summary alone must not silently erase the concern.
+
+The workflow performs the investigation; the validator assesses the resulting **explicit mapping**, not natural-language review text. It does not fetch GitHub reviews, infer acceptance criteria, run arbitrary code from comments, or auto-resolve reviews. Use trusted review inputs and approved scopes. First reproduce or inspect the concern, reuse existing tests, and add the smallest measurable contract/scenario that actually addresses it.
+
+Add a `reviewConcerns` array to the existing checks JSON. This illustrative source URL is a placeholder for the real review/comment permalink:
+
+```json
+{
+  "reviewConcerns": [
+    {
+      "id": "inventory-cell-gaps",
+      "source": "https://github.com/owner/repository/pull/42#pullrequestreview-123",
+      "checks": [
+        { "id": "declared-tables", "area": "tables" }
+      ]
+    },
+    {
+      "id": "findings-filter-behavior",
+      "source": "https://github.com/owner/repository/pull/42#pullrequestreview-123",
+      "checks": [
+        { "id": "findings-filter-refresh", "area": "controls" },
+        { "id": "selected-finding-context", "area": "drilldowns" }
+      ]
+    },
+    {
+      "id": "needs-manual-investigation",
+      "source": "https://github.com/owner/repository/pull/42#issuecomment-456",
+      "checks": []
+    }
+  ]
+}
+```
+
+- Use at most 100 unique generic concern ids, each with at most 100 unique required check ids/areas. Supported source anchors are `pullrequestreview-...`, `discussion_r...`, and `issuecomment-...` on a GitHub PR. Only share approved PR links; do not copy private review bodies, tenant information, tokens, arbitrary URLs, or prefilled pass/fail states into the profile.
+- `reviewedRevision` optionally records the review's 40-character lowercase Git commit. It is context, not proof that the current tested source matches that earlier revision; the report records the executed source separately.
+- `checks` are **required together**, not alternatives. Map only assertions that cover the actual concern. For example, `declared-tables` is useful for cell gaps only when the configured contracts really audit the required columns/returned rows. A passing row-count-only contract does not prove complete cell values or backend coverage.
+- A mapping identifies both the check's exact id and its coverage area. A passed `primary-tabs`/`navigation` check cannot satisfy a `rendering` requirement. For controls/graphs/drill-downs, execute the corresponding supplementary scenario assertions and record their exact ids using `recordValidationCheck`, then re-finalize the report.
+- Missing, wrong-area, unexecuted, and unmapped checks remain **not-run**; failed and blocked required checks propagate to the concern. Empty `checks` retains unsupported/manual-only work with an investigation finding instead of treating it as passed. No-data remains an explicit scenario gap; explicit data contracts still fail if unmet.
+- Concern assessment is enabled in Mocha and with the portable generator's **`--report`**. A portable non-report run or direct `validateWorkbookInBrowser` call refuses a non-empty concern list rather than discarding it; use `validateWorkbookWithReport` for programmatic assessment.
+
+The JSON report includes the reviewed inputs in `reviewConcerns` and derived outcomes in `reviewAssessments`. Markdown adds a **Reviewer concerns: Needs a closer look** table with source links, reviewed revisions, required checks, outcomes, and next steps. Every non-passing concern also appears in **Findings and handoff**, including setup/authentication failures. The formatter recomputes outcomes from this run's checks; supplied labels cannot turn missing scenario evidence into a pass. Older reports without concern fields remain readable.
+
+Execute what is feasible: source/static checks and isolated regression fixtures first, then authorized read-only portal checks and scenario interactions when possible. Keep offline investigation separate from live-rendering evidence. If authentication, permissions, data availability, unsupported automation, or manual review prevents a criterion from being verified, document the blocker/gap and the next step. Do not work around the tenant pause, expand scopes, or silently remove the criterion.
+
+For example, a summary mentioning **four-tab rendering, findings controls, tables, and retained attack-path drill-downs** needs separate rendering, controls, table/audit, and drill-down assertions. Tab selection alone covers navigation, not those other areas. An operator-authentication check does not sign in an independent reviewer. A screenshot is optional evidence, not proof of correct query results or reviewer approval.
+
+After investigation, reply with the exact source/revisions, the concern-to-check outcomes, any fix/regression test, remaining findings, and the next authorized action. A concern passing its mapped assertions does not resolve a GitHub thread or confer approval automatically; independently assess whether the specific concern is actually addressed.
 
 #### Repeated "authenticated portal validation is blocked by sign-in" comments
 

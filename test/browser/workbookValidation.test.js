@@ -43,9 +43,10 @@ describe('Validating workbook browser behavior (opt-in)...', function () {
                     redaction: process.env.WORKBOOK_BROWSER_REDACTION,
                     allowSensitiveCapture: flag('WORKBOOK_BROWSER_ALLOW_SENSITIVE_CAPTURE')
                 });
-            provenance = readValidationProvenance(process.env.WORKBOOK_BROWSER_TEMPLATE, input.source,
-                createValidationPlan(input.source, input.options));
-            report = createValidationReport(provenance);
+            const plan = createValidationPlan(input.source, input.options);
+            report = createValidationReport({}, plan.reviewConcerns);
+            provenance = readValidationProvenance(process.env.WORKBOOK_BROWSER_TEMPLATE, input.source, plan);
+            report = createValidationReport(provenance, plan.reviewConcerns);
             area = 'authentication';
             requireConfirmedTenant(input.options.tenant);
             area = 'browser';

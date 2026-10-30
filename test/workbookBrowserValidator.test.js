@@ -98,13 +98,15 @@ function changedSource(change) {
 }
 
 function editorPage(existingSource, editorCount = 1, unsaved = true) {
-    const state = { value: existingSource, writes: 0, clicks: [], backgroundModelAccess: 0,
+    const state = { value: existingSource, version: 1, writes: 0, clicks: [], backgroundModelAccess: 0,
         readingToolbarConfirmed: false, tenantId: testTenant.id };
-    const inputElement = {};
+    const inputElement = { isConnected: true };
     const model = {
         getValue: () => state.value,
+        getVersionId: () => state.version,
         setValue(value) {
             state.writes++;
+            state.version++;
             state.value = value;
         }
     };
@@ -117,7 +119,7 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
     };
     const editors = [backgroundEditor, ...Array.from({ length: editorCount }, () => ({
         getDomNode: () => ({ contains: element => element === inputElement }),
-        getModel: () => model
+        getModel: () => state.replacementModel || model
     }))];
     const frame = {
         getByRole(role, options = {}) {
@@ -145,7 +147,11 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
                             getModels() { throw new Error('Do not select a model from the global cache.'); },
                             getEditors: () => editors
                         } } },
-                        crypto: crypto.webcrypto,
+                        crypto: { subtle: { async digest(...args) {
+                            const digest = await crypto.webcrypto.subtle.digest(...args);
+                            if (state.onDigest) state.onDigest();
+                            return digest;
+                        } } },
                         TextEncoder
                     });
                     return evaluate(inputElement, argument);
@@ -891,6 +897,37 @@ describe('Validating explicit tenant selection...', () => {
 });
 
 describe('Preserving executed workbook check progress...', () => {
+    it('never overwrites a draft entered during either source or checks hashing', async () => {
+        const draft = JSON.stringify({ version: 'Notebook/1.0', items: [{ type: 1, content: { json: 'New user draft' } }] });
+        for (const changedDuring of [1, 2]) {
+            const editor = editorPage(emptySource);
+            let digests = 0;
+            editor.state.onDigest = () => {
+                if (++digests === changedDuring) {
+                    editor.state.value = draft;
+                    editor.state.version++;
+                }
+            };
+            await rejects(validateWorkbookInBrowser(editor.page, emptySource), /Advanced Editor changed.*no content was replaced/);
+            assert.equal(editor.state.value, draft);
+            assert.equal(editor.state.writes, 0);
+            assert.isEmpty(editor.state.clicks);
+        }
+    });
+
+    it('refuses reverted or switched editor models during hashing', async () => {
+        for (const change of ['reverted', 'switched']) {
+            const editor = editorPage(emptySource);
+            editor.state.onDigest = () => {
+                if (change === 'reverted') editor.state.version += 2;
+                else editor.state.replacementModel = { getValue: () => 'New user draft', getVersionId: () => 1 };
+            };
+            await rejects(validateWorkbookInBrowser(editor.page, emptySource), /Advanced Editor changed.*no content was replaced/);
+            assert.equal(editor.state.writes, 0);
+            assert.isEmpty(editor.state.clicks);
+        }
+    });
+
     it('reports imported source but not unexecuted controls, graphs, or manual visual review', async () => {
         const editor = editorPage(emptySource);
         const report = await validateWorkbookWithReport(editor.page, emptySource, { tenant: testTenant });
@@ -1008,6 +1045,30 @@ describe('Preserving executed workbook check progress...', () => {
             { checksSha256: '0'.repeat(64) });
         assert.equal(report.automationStatus, 'failed');
         assert.equal(report.checks.find(check => check.id === 'exact-source').reason, 'checks-mismatch');
+        assert.equal(editor.state.writes, 0);
+        assert.isEmpty(editor.state.clicks);
+    });
+
+    it('refuses to drop reviewer concerns from the non-report API before accessing a browser', async () => {
+        await rejects(validateWorkbookInBrowser({ url() { throw new Error('Unexpected browser access'); } }, emptySource, {
+            reviewConcerns: [{ id: 'tab-review', source: 'https://github.com/example/workbooks/pull/42#pullrequestreview-123',
+                checks: [{ id: 'primary-tabs', area: 'navigation' }] }]
+        }), /Use validateWorkbookWithReport/);
+    });
+
+    it('rejects a changed review-concern mapping before importing source', async () => {
+        const editor = editorPage(emptySource);
+        const concern = { id: 'needs-investigation', source: 'https://github.com/example/workbooks/pull/42#pullrequestreview-123',
+            checks: [{ id: 'primary-tabs', area: 'navigation' }] };
+        const options = { tenant: testTenant, reviewConcerns: [concern] };
+        const expected = crypto.createHash('sha256')
+            .update(validationContractSource(createValidationPlan(emptySource, options))).digest('hex');
+        const report = await validateWorkbookWithReport(editor.page, emptySource, {
+            ...options, reviewConcerns: [{ ...concern, checks: [{ id: 'tab-widgets', area: 'rendering' }] }]
+        }, { checksSha256: expected });
+        assert.equal(report.automationStatus, 'failed');
+        assert.equal(report.checks.find(check => check.id === 'exact-source').reason, 'checks-mismatch');
+        assert.equal(report.reviewAssessments[0].status, 'not-run');
         assert.equal(editor.state.writes, 0);
         assert.isEmpty(editor.state.clicks);
     });

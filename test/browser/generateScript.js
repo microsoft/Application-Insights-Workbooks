@@ -53,6 +53,9 @@ function main(argv) {
     console.log(`Created ${path.basename(args.output)}. Run it in a new empty unsaved workbook's Advanced Editor.`);
     if (args.report) {
         console.log('Structured report enabled: blocked/failed outcomes remain explicit; unexecuted scenarios and authorized reviewer approval are not implied. Inspect automationStatus, not just tool-call success.');
+        if (input.options.reviewConcerns?.length) {
+            console.log('Reviewer concerns are assessed against their exact mapped checks. Investigate every summary/inline item; missing scenarios remain findings, not passes or automatically resolved reviews.');
+        }
     }
     if (input.options.tenant?.useBrowserSession) {
         console.log('Browser-session mode: pause at any sign-in/account/tenant chooser; otherwise use and pin the already-signed-in tenant. Never choose an account or directory automatically.');

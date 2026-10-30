@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { URL } = require('url');
-const { validationContractSource, createValidationReport, recordValidationCheck,
-    finishValidationReport } = require('./workbookValidationReport');
+const { validationContractSource, normalizeReviewConcerns, assessReviewConcerns, createValidationReport,
+    recordValidationCheck, finishValidationReport } = require('./workbookValidationReport');
 
 function isAzurePortalUrl(value) {
     return /^https:\/\/portal\.azure\.(com|us|cn)(\/|$)/.test(value);
@@ -187,13 +187,14 @@ function createValidationPlan(workbookSource, options = {}) {
     if (!workbook || workbook.version !== 'Notebook/1.0' || !Array.isArray(workbook.items)) {
         throw new Error('Expected a Notebook/1.0 workbook with an items array.');
     }
-    checkObject(options, 'Browser validation options', ['tabs', 'deferred', 'timeout', 'screenshots', 'tenant']);
+    checkObject(options, 'Browser validation options', ['tabs', 'deferred', 'timeout', 'screenshots', 'tenant', 'reviewConcerns']);
     const timeout = options.timeout === undefined ? 30000 : options.timeout;
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 120000) {
         throw new Error('timeout must be an integer between 1 and 120000 milliseconds.');
     }
     const screenshots = normalizeScreenshotOptions(options.screenshots);
     const tenant = normalizeTenantSelection(options.tenant);
+    const reviewConcerns = normalizeReviewConcerns(options.reviewConcerns);
 
     const links = [];
     const tabsets = [];
@@ -329,7 +330,7 @@ function createValidationPlan(workbookSource, options = {}) {
         }
         groups.get(key).checks.push(check);
     }
-    return { source, itemCount, tabs, deferred, deferredGroups: Array.from(groups.values()), timeout, screenshots, tenant };
+    return { source, itemCount, tabs, deferred, deferredGroups: Array.from(groups.values()), timeout, screenshots, tenant, reviewConcerns };
 }
 
 function markScreenshotMasks(body, settings) {
@@ -663,7 +664,7 @@ async function auditGridRows(grid, options) {
     };
     const rows = () => Array.from(grid.querySelectorAll('[role="row"]')).filter(row => {
         const index = row.getAttribute('aria-rowindex');
-        return index !== '1' && !(index === null &&
+        return !((index === '1' || index === null) &&
             row.querySelector('[role="columnheader"]') && !row.querySelector('[role="gridcell"]'));
     });
     const highest = () => Math.max(1, ...rows().map(row => Number(row.getAttribute('aria-rowindex'))));
@@ -700,7 +701,7 @@ async function auditGridRows(grid, options) {
             if (scroller) scroller.scrollTop = 0;
             await waitFor(() => rows().some(row => row.getAttribute('aria-rowindex') === '2'));
         }
-        while (seen.size < total) {
+        do {
             checkSnapshot();
             const rendered = rows();
             if (new Set(rendered.map(row => row.getAttribute('aria-rowindex'))).size !== rendered.length) {
@@ -730,7 +731,7 @@ async function auditGridRows(grid, options) {
             const rowBottom = rendered[rendered.length - 1].getBoundingClientRect().bottom;
             scroller.scrollTop += rowBottom - scroller.getBoundingClientRect().bottom + scroller.clientHeight / 4;
             await waitFor(() => highest() > max);
-        }
+        } while (seen.size < total);
         checkSnapshot();
         return { rowsAudited: seen.size, totalRows: total, nonEmptyColumnsVerified: options.nonEmptyColumns };
     } finally {
@@ -769,6 +770,9 @@ async function bindParameterTrigger(frame, group, timeout) {
 async function validateWorkbookInBrowser(page, workbookSource, options = {}, progress = {}) {
     progress.phase = 'source';
     const plan = createValidationPlan(workbookSource, options);
+    if (plan.reviewConcerns.length && !progress.reportEnabled) {
+        throw new Error('Use validateWorkbookWithReport or a --report runner to assess reviewer concerns; they cannot be silently omitted.');
+    }
     progress.expectedTabs = plan.tabs.length;
     progress.expectedDeferred = plan.deferred.length;
     progress.expectedTables = plan.deferred.filter(check => check.minRows !== undefined ||
@@ -797,9 +801,14 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}, pro
         if (!model) {
             throw new Error('The active Advanced Editor has no model; no content was replaced.');
         }
+        const initialValue = model.getValue();
+        const initialVersion = model.getVersionId?.();
+        if (!Number.isSafeInteger(initialVersion)) {
+            throw new Error('Cannot guard the Advanced Editor model version; no content was replaced.');
+        }
         let existing;
         try {
-            existing = JSON.parse(model.getValue().replace(/^\uFEFF/, ''));
+            existing = JSON.parse(initialValue.replace(/^\uFEFF/, ''));
         } catch (error) {
             if (error instanceof SyntaxError) {
                 throw new Error('Advanced Editor is not an empty workbook; no content was replaced.');
@@ -816,6 +825,12 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}, pro
         const checksHash = Array.from(new Uint8Array(checksDigest), byte => byte.toString(16).padStart(2, '0')).join('');
         if (expectedSha256 && hash !== expectedSha256) return { imported: false, mismatch: 'source' };
         if (expectedChecksSha256 && checksHash !== expectedChecksSha256) return { imported: false, mismatch: 'checks' };
+        const current = (globalThis.monaco?.editor?.getEditors?.() || [])
+            .filter(editor => editor.getDomNode()?.contains(element));
+        if (!element.isConnected || current.length !== 1 || current[0] !== active[0] ||
+            current[0].getModel() !== model || model.getVersionId() !== initialVersion || model.getValue() !== initialValue) {
+            throw new Error('Advanced Editor changed during source verification; no content was replaced.');
+        }
         model.setValue(source);
         if (model.getValue().replace(/\r\n/g, '\n') !== source) {
             throw new Error('Advanced Editor content differs from the requested source.');
@@ -977,9 +992,9 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}, pro
 }
 
 async function validateWorkbookWithReport(page, workbookSource, options = {}, provenance = {}, onFailure) {
-    const report = createValidationReport(provenance);
+    const report = createValidationReport(provenance, options?.reviewConcerns);
     const progress = { expectedSourceSha256: report.provenance.sourceSha256,
-        expectedChecksSha256: report.provenance.checksSha256 };
+        expectedChecksSha256: report.provenance.checksSha256, reportEnabled: true };
     let failure;
     let failed = false;
     try {
@@ -1130,15 +1145,18 @@ function validateCdpEndpoint(value) {
 
 function createPlaywrightScript(workbookSource, options = {}, provenance) {
     const plan = createValidationPlan(workbookSource, options);
+    if (plan.reviewConcerns.length && !provenance) {
+        throw new Error('reviewConcerns require --report so their assessment and findings are retained.');
+    }
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
     const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, portalSelectionPrompt, verifySelectedTenant,
         normalizeScreenshotOptions, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
         applyScreenshotRedaction, isolateWorkbookFrame, waitForRenderReady, readScreenshotState, clearScreenshotState,
         screenshotIsolatedWorkbook, captureMaskedScreenshot, captureWorkbookScreenshot, readGridSummary, auditGridRows,
-        activateWorkbookControl, bindParameterTrigger, validationContractSource, validateWorkbookInBrowser,
-        ...(provenance ? [createValidationReport, recordValidationCheck, finishValidationReport, validateWorkbookWithReport] : [])]
+        activateWorkbookControl, bindParameterTrigger, validationContractSource, normalizeReviewConcerns, validateWorkbookInBrowser,
+        ...(provenance ? [assessReviewConcerns, createValidationReport, recordValidationCheck, finishValidationReport, validateWorkbookWithReport] : [])]
         .map(callback => callback.toString()).join('\n\n');
-    if (provenance) createValidationReport(provenance);
+    if (provenance) createValidationReport(provenance, plan.reviewConcerns);
     const call = provenance ?
         `validateWorkbookWithReport(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)}, ${JSON.stringify(provenance)})` :
         `validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)})`;
