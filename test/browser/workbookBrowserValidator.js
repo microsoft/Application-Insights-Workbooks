@@ -244,13 +244,14 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             await tablist.getByRole('tab', { name: check.tab, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
         }
-        if (await frame.getByRole('heading', { name: check.heading, exact: true, includeHidden: true }).count()) {
-            throw new Error(`Deferred content "${check.heading}" was mounted before its trigger.`);
-        }
         const trigger = frame.getByRole('menuitem', { name: check.trigger, exact: true })
             .or(frame.getByRole('button', { name: check.trigger, exact: true }))
             .or(frame.getByRole('link', { name: check.trigger, exact: true }));
         await trigger.waitFor({ state: 'visible', timeout: plan.timeout });
+        await trigger.scrollIntoViewIfNeeded();
+        if (await frame.getByRole('heading', { name: check.heading, exact: true, includeHidden: true }).count()) {
+            throw new Error(`Deferred content "${check.heading}" was mounted before its trigger.`);
+        }
         await trigger.click();
         const heading = frame.getByRole('heading', { name: check.heading, exact: true });
         await heading.waitFor({ state: 'visible', timeout: plan.timeout });

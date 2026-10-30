@@ -75,7 +75,7 @@ function editorPage(existingSource, editorCount = 1, unsaved = true) {
         getByRole: () => ({ count: async () => unsaved ? 1 : 0 }),
         locator: () => ({ contentFrame: () => frame })
     };
-    return { page, state };
+    return { page, state, frame };
 }
 
 describe('Validating browser validator contracts...', () => {
@@ -301,6 +301,35 @@ describe('Validating browser validator contracts...', () => {
         assert.include(report.coverage, 'no-data is not proof of health');
         assert.isFalse(report.workbookSaved);
         assert.notInclude(JSON.stringify(report), emptySource);
+    });
+
+    it('checks initial absence after the trigger becomes ready, before clicking it', async () => {
+        const workbook = JSON.parse(source);
+        const group = workbook.items.find(item => item.name === 'browser_fixture_group');
+        delete group.conditionalVisibility;
+        delete group.content.items.find(item => item.type === 3).conditionalVisibility;
+        workbook.items = [workbook.items[0], group];
+        const editor = editorPage(emptySource);
+        const original = editor.frame.getByRole.bind(editor.frame);
+        let mounted = false;
+        let clicked = false;
+        const trigger = {
+            or() { return this; },
+            async waitFor() { mounted = true; },
+            async scrollIntoViewIfNeeded() {},
+            async click() { clicked = true; }
+        };
+        editor.frame.getByRole = (role, options = {}) => {
+            if (options.name === 'Show details') return trigger;
+            if (role === 'heading' && options.name === 'Deferred table') {
+                return { count: async () => mounted ? 1 : 0, async waitFor() {} };
+            }
+            return original(role, options);
+        };
+        await rejects(validateWorkbookInBrowser(editor.page, JSON.stringify(workbook), {
+            deferred: [{ trigger: 'Show details', heading: 'Deferred table' }]
+        }), /mounted before its trigger/);
+        assert.isFalse(clicked);
     });
 
     it('emits a self-contained Playwright function without Node imports or credentials', async () => {
