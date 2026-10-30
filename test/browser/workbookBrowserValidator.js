@@ -932,6 +932,14 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}, pro
                     result.rowAudit = await grid.evaluate(auditGridRows, {
                         timeout: plan.timeout, maxRows: check.maxRows, nonEmptyColumns: check.nonEmptyColumns
                     });
+                    if (result.rowAudit.totalRows !== summary.rows || result.rowAudit.rowsAudited !== summary.rows) {
+                        throw new Error('Grid row count changed between the validated summary and full-row audit.');
+                    }
+                    const afterAudit = await grid.evaluate(readGridSummary);
+                    if (afterAudit.rows !== summary.rows ||
+                        JSON.stringify(afterAudit.columns) !== JSON.stringify(summary.columns)) {
+                        throw new Error('Grid count or columns changed after the validated summary and full-row audit.');
+                    }
                 }
             }
             deferredChecks.push(result);
@@ -981,12 +989,14 @@ async function validateWorkbookWithReport(page, workbookSource, options = {}, pr
             progress.phase = 'source';
             throw new Error('REPORT_SOURCE_MISMATCH');
         }
-        report.provenance.sourceSha256 = progress.sourceSha256;
-        report.provenance.checksSha256 = progress.checksSha256;
     } catch (error) {
         failed = true;
         failure = error;
         if (onFailure) onFailure(error);
+    }
+    if (progress.imported) {
+        report.provenance.sourceSha256 = progress.sourceSha256;
+        report.provenance.checksSha256 = progress.checksSha256;
     }
     const record = (id, area, status, evidence = {}, reason = null) =>
         recordValidationCheck(report, id, area, status, status === 'not-run' ? 'none' : 'automated', evidence, reason);

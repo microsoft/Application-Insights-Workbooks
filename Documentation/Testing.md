@@ -158,7 +158,9 @@ For PR evidence, request a **structured report**, not only successful tool execu
 
 The checks digest binds the normalized plan's exact primary tabs, deferred/table/audit contracts, and timeout, not private tenant/capture paths. Changed thresholds or columns therefore cannot silently reuse the same checks identity. Expected source/contract digest mismatches are rejected **before editor replacement or Apply/query activation**.
 
-Provenance checks support long Windows paths and spaces. Ignored/untracked workbook snapshots are marked modified rather than attributed to a clean commit. Git/read errors fail explicitly instead of being mislabeled as ordinary source edits.
+Completed-import hashes are retained even if a later table assertion fails or tenant authorization is lost, including direct API calls without precomputed provenance. Full-row audits must match the validated summary's total/completed row count and final count/header snapshot; a refresh during scrolling cannot turn a required two-row contract into a passing zero-row audit.
+
+Provenance checks support long Windows paths and spaces. Ignored/untracked workbook snapshots are marked modified rather than attributed to a clean commit. A missing Git executable produces an explicit warning and unknown revisions/modified flags while retaining content hashes; it does not prevent validation from a downloaded repository. Other Git execution errors and committed-source/status read failures fail explicitly rather than being mislabeled as ordinary source edits.
 
 The Mocha adapter always prints this report, including setup/authentication failures. To also persist both JSON and Markdown, choose a fresh private local filename prefix:
 

@@ -155,8 +155,10 @@ describe('Reporting workbook validation evidence...', () => {
             git(['init', '--template=']);
             const folder = path.join(repository, 'workbook path with spaces ' + 'x'.repeat(35));
             fs.mkdirSync(folder);
-            const file = path.join(folder, 'Long' + 'f'.repeat(120) + '.workbook');
+            const file = path.join(folder, 'Long' + 'f'.repeat(180) + '.workbook');
             assert.isAbove(file.length, 260);
+            assert.isAbove(path.posix.join('/tmp/workbook-report-XXXXXX', 'source-repository',
+                path.basename(folder), path.basename(file)).length, 260);
             fs.writeFileSync(file, source);
             git(['add', '--', file]);
             git(['-c', 'user.name=Workbook Validator Test', '-c', 'user.email=workbook-validator@example.invalid',
@@ -173,6 +175,43 @@ describe('Reporting workbook validation evidence...', () => {
             fs.rmSync(repository, { recursive: true });
         }
     }).timeout(15000);
+
+    it('retains content hashes and explicitly warns when Git is not installed', () => {
+        const env = { ...process.env };
+        for (const key of Object.keys(env)) if (key.toLowerCase() === 'path') delete env[key];
+        env.PATH = directory;
+        const script = `
+            const fs = require('fs');
+            const { readValidationProvenance } = require(${JSON.stringify(require.resolve('./browser/workbookValidationReport'))});
+            const { createValidationPlan } = require(${JSON.stringify(require.resolve('./browser/workbookBrowserValidator'))});
+            const file = ${JSON.stringify(fixture)};
+            const source = fs.readFileSync(file, 'utf8');
+            console.log(JSON.stringify(readValidationProvenance(file, source, createValidationPlan(source))));
+        `;
+        const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', env, timeout: 15000 });
+        assert.equal(result.status, 0, result.stderr);
+        assert.include(result.stderr, 'Git is unavailable; retaining content hashes');
+        const context = JSON.parse(result.stdout);
+        assert.equal(context.sourceSha256, sourceSha256);
+        assert.match(context.checksSha256, /^[a-f0-9]{64}$/);
+        assert.match(context.validatorSha256, /^[a-f0-9]{64}$/);
+        for (const field of ['workbookRevision', 'validatorRevision', 'workbookDirty', 'validatorDirty']) {
+            assert.isNull(context[field]);
+        }
+    });
+
+    it('does not hide Git execution errors other than an unavailable executable', () => {
+        const script = `
+            require('child_process').spawnSync = () => ({
+                error: Object.assign(new Error('Synthetic Git access failure'), { code: 'EACCES' })
+            });
+            const { readValidationProvenance } = require(${JSON.stringify(require.resolve('./browser/workbookValidationReport'))});
+            require('node:assert/strict').throws(() => readValidationProvenance(${JSON.stringify(fixture)},
+                ${JSON.stringify(source)}), { code: 'EACCES' });
+        `;
+        const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 15000 });
+        assert.equal(result.status, 0, result.stderr);
+    });
 
     it('emits portable reports that pause before browser access when tenant consent is absent', async () => {
         const script = createPlaywrightScript(source, {}, provenance);

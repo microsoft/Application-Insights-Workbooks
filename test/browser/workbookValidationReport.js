@@ -212,11 +212,18 @@ function formatValidationReport(report) {
 
 function readValidationProvenance(workbookPath, source, plan) {
     const digest = value => crypto.createHash('sha256').update(value.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')).digest('hex');
+    let unavailableGit;
     function git(directory, args) {
+        if (unavailableGit) return unavailableGit;
         const result = spawnSync('git', ['--no-pager', '-c', 'core.longpaths=true', '-C', directory, ...args], {
             encoding: 'utf8', windowsHide: true, timeout: 15000,
             maxBuffer: Math.max(1024 * 1024, Buffer.byteLength(source, 'utf8') * 2 + 1024)
         });
+        if (result.error?.code === 'ENOENT') {
+            unavailableGit = result;
+            console.warn('Git is unavailable; retaining content hashes with unknown revision provenance.');
+            return result;
+        }
         if (result.error) throw result.error;
         return result;
     }

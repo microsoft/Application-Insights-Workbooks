@@ -7,6 +7,7 @@ const path = require('path');
 const vm = require('vm');
 const { spawnSync } = require('child_process');
 const { Validator } = require('jsonschema');
+const { validationContractSource } = require('./browser/workbookValidationReport');
 const {
     isAzurePortalUrl,
     normalizeTenantSelection,
@@ -919,15 +920,58 @@ describe('Preserving executed workbook check progress...', () => {
             return control;
         };
         let failure;
-        const report = await validateWorkbookWithReport(editor.page, editor.source, {
+        const options = {
             tenant: testTenant,
             deferred: checks.deferred.map(({ tab, ...check }, index) => index ? check : { ...check, minRows: 1000, maxRows: 1000 })
-        }, {}, error => { failure = error; });
+        };
+        const report = await validateWorkbookWithReport(editor.page, editor.source, options, {},
+            error => { failure = error; });
         assert.match(failure.message, /returned 2 rows, below minRows 1000/);
         assert.equal(report.automationStatus, 'failed');
         assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'passed');
         assert.equal(report.checks.find(check => check.id === 'declared-tables').status, 'failed');
         assert.equal(report.checks.find(check => check.id === 'scenario-drilldowns').status, 'not-run');
+        assert.equal(report.provenance.sourceSha256, crypto.createHash('sha256').update(editor.source).digest('hex'));
+        assert.equal(report.provenance.checksSha256, crypto.createHash('sha256')
+            .update(validationContractSource(createValidationPlan(editor.source, options))).digest('hex'));
+    });
+
+    it('rejects count/schema changes between validated bounds, the audit, and the final snapshot', async () => {
+        for (const drift of ['audit-count', 'final-count', 'final-columns']) {
+            const editor = sharedDeferredEditor();
+            const original = editor.frame.getByRole.bind(editor.frame);
+            let scrolled = false;
+            let audited = false;
+            const grid = {
+                async waitFor() {},
+                async scrollIntoViewIfNeeded() { scrolled = true; },
+                async evaluate(callback) {
+                    if (callback === readGridSummary) return {
+                        rows: audited && drift === 'final-count' ? 0 : 2,
+                        columns: audited && drift === 'final-columns' ? ['Count', 'Label'] : ['Label', 'Count']
+                    };
+                    assert.equal(callback, auditGridRows);
+                    assert.isTrue(scrolled);
+                    audited = true;
+                    const rows = drift === 'audit-count' ? 0 : 2;
+                    return { totalRows: rows, rowsAudited: rows, nonEmptyColumns: ['Label', 'Count'] };
+                }
+            };
+            editor.frame.getByRole = (role, options = {}) => {
+                const control = original(role, options);
+                if (role === 'heading' && options.name === 'Deferred table') {
+                    control.locator = () => ({
+                        count: async () => 1,
+                        async evaluate() {},
+                        getByRole: () => grid
+                    });
+                }
+                return control;
+            };
+            await rejects(validateWorkbookInBrowser(editor.page, editor.source, {
+                deferred: checks.deferred.map(({ tab, ...check }) => check)
+            }), /changed (between|after) the validated summary and full-row audit/);
+        }
     });
 
     it('rejects provenance for a different source instead of publishing a pass for that revision', async () => {
@@ -954,6 +998,8 @@ describe('Preserving executed workbook check progress...', () => {
         assert.equal(report.automationStatus, 'blocked');
         assert.equal(report.checks.find(check => check.id === 'authenticated-session').status, 'blocked');
         assert.equal(report.checks.find(check => check.id === 'exact-source').status, 'passed');
+        assert.equal(report.provenance.sourceSha256, crypto.createHash('sha256').update(emptySource).digest('hex'));
+        assert.match(report.provenance.checksSha256, /^[a-f0-9]{64}$/);
     });
 
     it('refuses a different checks profile before editing or querying the workbook', async () => {
