@@ -44,40 +44,33 @@ function finalStatement(query) {
 }
 
 function durationSecondsFor(query, events, windowStart, windowEnd) {
-    const normalized = normalizeQuery(query);
-    const lookback = normalized.match(/let Lookback = (\d+)d;/);
-    assert.isNotNull(lookback);
-    assert.include(normalized,
-        "| extend DurationSeconds = datetime_diff('second', WindowedEnd, WindowedStart)");
+    const completed = letBlock(query, 'CompletedConnections');
+    const connections = letBlock(query, 'Connections');
+    const completedState = completed.match(/\| where State == "([^"]+)"/);
+    const connectedState = connections.match(
+        /ConnectedTime\s*=\s*minif\(TimeGenerated, State == "([^"]+)"\)/);
+    assert.isNotNull(completedState);
+    assert.isNotNull(connectedState);
+    assert.include(completed, '| summarize EndTime = min(TimeGenerated) by CorrelationId');
+    assert.include(connections,
+        "| extend DurationSeconds = datetime_diff('second', EndTime, ConnectedTime)");
 
-    const stateFor = field => {
-        const match = normalized.match(
-            new RegExp(`${field}\\s*=\\s*minif\\(TimeGenerated, State == "([^"]+)"\\)`));
-        assert.isNotNull(match, field);
-        return match[1];
-    };
     const windowStartMs = Date.parse(windowStart);
     const windowEndMs = Date.parse(windowEnd);
-    const lookbackStartMs = windowStartMs - Number(lookback[1]) * 24 * 60 * 60 * 1000;
-    const scopedEvents = events
-        .map(event => ({ ...event, time: Date.parse(event.time) }))
-        .filter(event => event.time >= lookbackStartMs && event.time <= windowEndMs);
-    const firstTime = state => {
-        const times = scopedEvents.filter(event => event.state === state).map(event => event.time);
-        return times.length ? Math.min(...times) : null;
-    };
-    const startedTime = firstTime(stateFor('StartedTime'));
-    const connectedTime = firstTime(stateFor('ConnectedTime'));
-    const endTime = firstTime(stateFor('EndTime'));
-
-    if (connectedTime === null && !(startedTime === null && endTime !== null)) {
+    const observed = events.map(event => ({ ...event, time: Date.parse(event.time) }));
+    const completions = observed.filter(event => event.state === completedState[1] &&
+        event.time >= windowStartMs && event.time <= windowEndMs);
+    if (!completions.length) {
         return null;
     }
-    const windowedStart = Math.max(connectedTime ?? windowStartMs, windowStartMs);
-    const windowedEnd = Math.min(endTime ?? windowEndMs, windowEndMs);
-    return windowedEnd > windowedStart
-        ? Math.floor(windowedEnd / 1000) - Math.floor(windowedStart / 1000)
-        : null;
+    const endTime = Math.min(...completions.map(event => event.time));
+    const starts = observed.filter(event => event.state === connectedState[1] && event.time <= endTime);
+    const connectedTime = starts.length ? Math.min(...starts.map(event => event.time)) : null;
+
+    if (connectedTime === null || endTime <= connectedTime) {
+        return null;
+    }
+    return Math.floor(endTime / 1000) - Math.floor(connectedTime / 1000);
 }
 
 function mttfBucketFor(query, totalDurationSeconds, disruptionCount) {
@@ -102,6 +95,39 @@ function mttfBucketFor(query, totalDurationSeconds, disruptionCount) {
     return threshold ? threshold[2] : fallback[1];
 }
 
+function udpTypeFor(query, udpUse) {
+    const caseBlock = letBlock(query, 'Connections')
+        .match(/\| extend UdpType = case\(\n([\s\S]*?)\n\)/);
+    assert.isNotNull(caseBlock);
+
+    const mappings = Array.from(caseBlock[1].matchAll(/UdpUse == "([^"]+)",\s*"([^"]+)"/g));
+    const fallback = caseBlock[1].trim().split('\n').at(-1).match(/^"([^"]+)"$/);
+    assert.isNotNull(fallback);
+
+    const value = udpUse === null || udpUse === undefined ? '' : String(udpUse);
+    const mapping = mappings.find(match => match[1] === value);
+    return mapping ? mapping[2] : fallback[1];
+}
+
+function durationLabelFor(query, seconds) {
+    const statement = finalStatement(query);
+    const units = statement.match(
+        /DurationUnitSeconds = iff\(DurationSeconds < ([\d.]+), ([\d.]+), ([\d.]+)\)/);
+    const suffixes = statement.match(
+        /iff\(DurationUnitSeconds == ([\d.]+), "([^"]+)", "([^"]+)"\)/);
+    assert.isNotNull(units);
+    assert.isNotNull(suffixes);
+    assert.include(statement,
+        '| extend DurationHundredths = tolong(round(DurationSeconds / DurationUnitSeconds * 100.0))');
+    assert.include(statement,
+        '| extend DurationDisplay = strcat(DurationHundredths / 100, ".", substring(tostring(100 + DurationHundredths % 100), 1), iff(');
+
+    const unitSeconds = seconds < Number(units[1]) ? Number(units[2]) : Number(units[3]);
+    const hundredths = Math.round(seconds / unitSeconds * 100);
+    const suffix = unitSeconds === Number(suffixes[1]) ? suffixes[2] : suffixes[3];
+    return `${Math.trunc(hundredths / 100)}.${String(hundredths % 100).padStart(2, '0')}${suffix}`;
+}
+
 const items = flattenItems(workbook.items);
 const navigationItems = flattenItems(navigationWorkbook.items);
 const reliabilityItems = flattenItems(reliabilityWorkbook.items);
@@ -110,7 +136,8 @@ const navigationMttfParameterGroups = ['parameters_mttf_filters']
     .map(name => navigationItems.find(item => item.name === name));
 const navigationMttfParameters = navigationMttfParameterGroups
     .flatMap(item => item.content.parameters);
-const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
+const querySteps = items.filter(item => item.type === 3 && item.content.queryType === 0);
+const dataViews = querySteps.filter(item => item.name !== 'MTTFDataAvailability');
 const resourceFilter = '| where _ResourceId in~ ({HostPools})';
 const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion), "Unknown", GatewayRegion)';
 const gatewayFilter = "| where '*' in ({GatewayRegion}) or GatewayLocation in ({GatewayRegion})";
@@ -121,18 +148,16 @@ const windowLets = [
     'let WindowStart = {MTTFTimeRange:start};',
     'let WindowEnd = min_of({MTTFTimeRange:end}, now());'
 ].join('\n');
-const timeLookback = '| where TimeGenerated between ((WindowStart - Lookback) .. WindowEnd)';
 const timeWindow = '| where TimeGenerated between (WindowStart .. WindowEnd)';
-const windowedDuration = [
-    '| where isnotempty(ConnectedTime) or (isempty(StartedTime) and isnotempty(EndTime))',
-    '| extend WindowedStart = max_of(coalesce(ConnectedTime, WindowStart), WindowStart)',
-    '| extend WindowedEnd = min_of(coalesce(EndTime, WindowEnd), WindowEnd)',
-    '| where WindowedEnd > WindowedStart',
-    "| extend DurationSeconds = datetime_diff('second', WindowedEnd, WindowedStart)"
+const timeHistory = '| where TimeGenerated <= WindowEnd';
+const completedDuration = [
+    '| where isnotnull(ConnectedTime)',
+    '| where EndTime > ConnectedTime',
+    "| extend DurationSeconds = datetime_diff('second', EndTime, ConnectedTime)"
 ].join('\n');
 const kqlParameters = parameters.filter(parameter => parameter.queryType === 0);
 const mttfQueries = [
-    ...dataViews.map(item => ({ name: item.name, content: item.content })),
+    ...querySteps.map(item => ({ name: item.name, content: item.content })),
     ...kqlParameters.map(parameter => ({ name: parameter.name, content: parameter }))
 ];
 
@@ -248,6 +273,7 @@ describe('Connection MTTF filtering', () => {
     it('offers 7, 14 and 30 days plus custom with 7 days selected', () => {
         const timeRange = parameters.find(parameter => parameter.name === 'MTTFTimeRange');
 
+        assert.equal(timeRange.label, 'Completion Time Range');
         assert.deepEqual(
             timeRange.typeSettings.selectableValues.map(value => value.durationMs),
             [604800000, 1209600000, 2592000000]);
@@ -256,7 +282,7 @@ describe('Connection MTTF filtering', () => {
         assert.isUndefined(parameters.find(parameter => parameter.name === 'TimeRange'));
     });
 
-    it('uses the selected range for filter options and preserves lookback for data views', () => {
+    it('selects completions in range and retrieves only their available history without a fixed lookback', () => {
         assert.sameMembers(kqlParameters.map(parameter => parameter.name),
             ['GatewayRegion', 'ClientType', 'ClientVersion']);
         for (const { name, content } of mttfQueries) {
@@ -266,22 +292,28 @@ describe('Connection MTTF filtering', () => {
             const query = normalizeQuery(content.query);
             assert.equal(query.slice(0, windowLets.length + 1), `${windowLets}\n`, name);
             assert.lengthOf(query.match(/\{MTTFTimeRange\b/g), 2, name);
-            const isParameter = kqlParameters.includes(content);
-            if (isParameter) {
-                assert.notMatch(query, /\bLookback\b/, name);
-            } else {
-                assert.include(query, 'let Lookback = 7d;', name);
-            }
-            for (const [table, timeFilter] of [
-                ['WVDConnections', isParameter ? timeWindow : timeLookback],
-                ['WVDMultiLinkAdd', timeLookback],
-                ['WVDErrors', timeWindow]
-            ]) {
+            assert.notMatch(query, /\bLookback\b|\bWindowedStart\b|\bWindowedEnd\b/, name);
+            const completed = letBlock(query, 'CompletedConnections');
+            assert.include(completed, timeWindow, name);
+            assert.include(completed, resourceFilter, name);
+            assert.include(completed, '| where State == "Completed"', name);
+            assert.include(completed, '| summarize EndTime = min(TimeGenerated) by CorrelationId', name);
+
+            const connectionReads = sourcePipelines(query, 'WVDConnections');
+            assert.lengthOf(connectionReads, 2, name);
+            assert.equal(connectionReads[0].split('\n')[0], timeWindow, name);
+            assert.equal(connectionReads[1].split('\n')[0], timeHistory, name);
+            assert.include(connectionReads[1], resourceFilter, name);
+            assert.include(connectionReads[1],
+                '| join kind=inner CompletedConnections on CorrelationId', name);
+            assert.include(connectionReads[1], '| where TimeGenerated <= EndTime', name);
+
+            for (const table of ['WVDMultiLinkAdd', 'WVDErrors']) {
                 const pipelines = sourcePipelines(query, table);
                 assert.lengthOf(pipelines, (query.match(new RegExp(`\\b${table}\\b`, 'g')) || []).length,
                     `${name} ${table}`);
                 for (const pipeline of pipelines) {
-                    assert.equal(pipeline.split('\n')[0], timeFilter, `${name} ${table}`);
+                    assert.equal(pipeline.split('\n')[0], timeHistory, `${name} ${table}`);
                 }
             }
         }
@@ -304,67 +336,63 @@ describe('Connection MTTF filtering', () => {
     it('keeps client option queries scoped to upstream filters', () => {
         for (const name of ['ClientType', 'ClientVersion']) {
             const query = parameters.find(parameter => parameter.name === name).query;
-            const connections = sourcePipelines(query, 'WVDConnections');
-            assert.lengthOf(connections, 1, name);
-            assert.include(connections[0], resourceFilter, name);
+            const sources = sourcePipelines(query, 'WVDConnections');
+            assert.lengthOf(sources, 2, name);
+            const connections = sources[1];
+            assert.include(connections, resourceFilter, name);
             assert.notInclude(query, 'WVDMultiLinkAdd', name);
-            const aggregationEnd = connections[0].indexOf('by CorrelationId');
+            const aggregationEnd = connections.indexOf('by CorrelationId');
             assert.isAtLeast(aggregationEnd, 0, name);
             for (const field of ['GatewayRegion', 'ClientType',
                 ...(name === 'ClientVersion' ? ['ClientVersion'] : [])]) {
-                assert.include(connections[0].slice(0, aggregationEnd),
+                assert.include(connections.slice(0, aggregationEnd),
                     `take_anyif(${field}, isnotempty(${field}))`, name);
             }
-            assert.include(connections[0], gatewayNormalization, name);
-            assert.include(connections[0], gatewayFilter, name);
-            assert.isAbove(connections[0].indexOf(gatewayNormalization), aggregationEnd, name);
-            assert.isAbove(connections[0].indexOf(gatewayFilter),
-                connections[0].indexOf(gatewayNormalization), name);
+            assert.include(connections, gatewayNormalization, name);
+            assert.include(connections, gatewayFilter, name);
+            assert.isAbove(connections.indexOf(gatewayNormalization), aggregationEnd, name);
+            assert.isAbove(connections.indexOf(gatewayFilter),
+                connections.indexOf(gatewayNormalization), name);
             if (name === 'ClientVersion') {
-                assert.include(connections[0],
+                assert.include(connections,
                     "| where '*' in ({ClientType}) or ClientType in ({ClientType})", name);
-                assert.isAbove(connections[0].indexOf("| where '*' in ({ClientType})"),
+                assert.isAbove(connections.indexOf("| where '*' in ({ClientType})"),
                     aggregationEnd, name);
             }
         }
     });
 
     for (const item of dataViews) {
-        it(`${item.name} applies resource, gateway and client filters to in-range durations`, () => {
+        it(`${item.name} applies resource, gateway and client filters to full completed-connection durations`, () => {
             assert.deepEqual(item.content.crossComponentResources, ['{HostPools}']);
 
-            const connections = sourcePipelines(item.content.query, 'WVDConnections');
-            assert.lengthOf(connections, 1);
-            assert.include(connections[0], resourceFilter);
-            const aggregationEnd = connections[0].indexOf('by CorrelationId');
+            const connections = letBlock(item.content.query, 'Connections');
+            assert.include(connections, resourceFilter);
+            const aggregationEnd = connections.indexOf('by CorrelationId, EndTime');
             assert.isAtLeast(aggregationEnd, 0);
-            for (const [field, state] of [
-                ['StartedTime', 'Started'], ['ConnectedTime', 'Connected'], ['EndTime', 'Completed']
-            ]) {
-                assert.match(connections[0].slice(0, aggregationEnd),
-                    new RegExp(`${field}\\s*=\\s*minif\\(TimeGenerated, State == "${state}"\\)`));
-            }
-            assert.isAbove(connections[0].indexOf(windowedDuration), aggregationEnd,
-                'durations must be clipped to the selected range after correlation');
-            assert.lengthOf(connections[0].match(/\bDurationSeconds\s*=/g), 1);
-            assert.notInclude(connections[0], 'isnotempty(ConnectedTime) and isnotempty(EndTime)');
+            assert.match(connections.slice(0, aggregationEnd),
+                /ConnectedTime\s*=\s*minif\(TimeGenerated, State == "Connected"\)/);
+            assert.isAbove(connections.indexOf(completedDuration), aggregationEnd,
+                'full durations require a real Connected event and the selected completion');
+            assert.lengthOf(connections.match(/\bDurationSeconds\s*=/g), 1);
+            assert.notInclude(connections, 'coalesce(ConnectedTime');
             for (const name of ['ClientType', 'ClientVersion']) {
                 const filter = `| where '*' in ({${name}}) or ${name} in ({${name}})`;
-                assert.include(connections[0], filter);
-                assert.match(connections[0].slice(0, aggregationEnd),
+                assert.include(connections, filter);
+                assert.match(connections.slice(0, aggregationEnd),
                     new RegExp(`${name}\\s*=\\s*take_anyif\\(${name}, isnotempty\\(${name}\\)\\)`));
-                assert.isAbove(connections[0].indexOf(filter), aggregationEnd,
+                assert.isAbove(connections.indexOf(filter), aggregationEnd,
                     `${name} must filter correlated connections, not individual lifecycle events`);
             }
 
-            assert.include(connections[0].slice(0, aggregationEnd),
+            assert.include(connections.slice(0, aggregationEnd),
                 'GatewayRegion = take_anyif(GatewayRegion, isnotempty(GatewayRegion))');
-            assert.include(connections[0], gatewayNormalization);
-            assert.include(connections[0], gatewayFilter);
-            assert.isAbove(connections[0].indexOf(gatewayNormalization), aggregationEnd,
+            assert.include(connections, gatewayNormalization);
+            assert.include(connections, gatewayFilter);
+            assert.isAbove(connections.indexOf(gatewayNormalization), aggregationEnd,
                 'empty lifecycle fields must not override a populated connection gateway');
-            assert.isAbove(connections[0].indexOf(gatewayFilter),
-                connections[0].indexOf(gatewayNormalization));
+            assert.isAbove(connections.indexOf(gatewayFilter),
+                connections.indexOf(gatewayNormalization));
             assert.notInclude(item.content.query, '_GatewayAllowed');
             assert.notInclude(item.content.query, '_HasMultiLink');
 
@@ -388,7 +416,7 @@ describe('Connection MTTF filtering', () => {
         it(`preserves the connection gateway predicate for ${selection.join(', ')}`, () => {
             const formatted = selection.map(value => `'${value}'`).join(',');
             for (const item of dataViews) {
-                const pipeline = sourcePipelines(item.content.query, 'WVDConnections')[0];
+                const pipeline = letBlock(item.content.query, 'Connections');
                 const expanded = pipeline.replace(/\{GatewayRegion\}/g, formatted);
                 assert.include(expanded,
                     `| where '*' in (${formatted}) or GatewayLocation in (${formatted})`, item.name);
@@ -408,26 +436,26 @@ describe('Connection MTTF calculation results', () => {
     const windowStart = '2026-01-10T00:00:00Z';
     const windowEnd = '2026-01-11T00:00:00Z';
 
-    it('clips cross-boundary durations and exercises every lifecycle fallback', () => {
+    it('uses full durations only for connections completed in the range with known Connected timestamps', () => {
         const cases = [
             {
-                name: 'still connected with a Connected event inside the lookback',
-                events: [{ state: 'Connected', time: '2026-01-04T00:00:00Z' }],
-                expected: 86400
+                name: 'still connected after connecting inside the range',
+                events: [{ state: 'Connected', time: '2026-01-10T02:00:00Z' }],
+                expected: null
             },
             {
-                name: 'still connected with its last Connected event outside the lookback',
+                name: 'still connected after connecting before the range',
                 events: [{ state: 'Connected', time: '2026-01-02T23:59:59Z' }],
                 expected: null
             },
             {
-                name: 'completed with earlier lifecycle events outside the lookback',
+                name: 'completed with Connected telemetry more than seven days before the range',
                 events: [
-                    { state: 'Started', time: '2026-01-01T00:00:00Z' },
-                    { state: 'Connected', time: '2026-01-01T00:01:00Z' },
+                    { state: 'Started', time: '2025-12-31T23:59:00Z' },
+                    { state: 'Connected', time: '2026-01-01T00:00:00Z' },
                     { state: 'Completed', time: '2026-01-10T03:00:00Z' }
                 ],
-                expected: 10800
+                expected: 788400
             },
             {
                 name: 'connected before the range and completed inside it',
@@ -435,7 +463,7 @@ describe('Connection MTTF calculation results', () => {
                     { state: 'Connected', time: '2026-01-09T23:00:00Z' },
                     { state: 'Completed', time: '2026-01-10T05:00:00Z' }
                 ],
-                expected: 18000
+                expected: 21600
             },
             {
                 name: 'connected inside the range with completion telemetry after the range',
@@ -443,7 +471,15 @@ describe('Connection MTTF calculation results', () => {
                     { state: 'Connected', time: '2026-01-10T02:00:00Z' },
                     { state: 'Completed', time: '2026-01-11T01:00:00Z' }
                 ],
-                expected: 79200
+                expected: null
+            },
+            {
+                name: 'completed before the range',
+                events: [
+                    { state: 'Connected', time: '2026-01-08T23:00:00Z' },
+                    { state: 'Completed', time: '2026-01-09T23:00:00Z' }
+                ],
+                expected: null
             },
             {
                 name: 'ten-second connection retains its full duration',
@@ -468,7 +504,39 @@ describe('Connection MTTF calculation results', () => {
             },
             {
                 name: 'completion exactly at the range start',
-                events: [{ state: 'Completed', time: windowStart }],
+                events: [
+                    { state: 'Connected', time: '2026-01-09T23:00:00Z' },
+                    { state: 'Completed', time: windowStart }
+                ],
+                expected: 3600
+            },
+            {
+                name: 'completion exactly at the range end',
+                events: [
+                    { state: 'Connected', time: '2026-01-10T23:00:00Z' },
+                    { state: 'Completed', time: windowEnd }
+                ],
+                expected: 3600
+            },
+            {
+                name: 'completion without retained Connected telemetry',
+                events: [{ state: 'Completed', time: '2026-01-10T03:00:00Z' }],
+                expected: null
+            },
+            {
+                name: 'Started and Completed do not substitute for Connected',
+                events: [
+                    { state: 'Started', time: '2026-01-10T01:00:00Z' },
+                    { state: 'Completed', time: '2026-01-10T03:00:00Z' }
+                ],
+                expected: null
+            },
+            {
+                name: 'Connected occurs after completion',
+                events: [
+                    { state: 'Connected', time: '2026-01-10T04:00:00Z' },
+                    { state: 'Completed', time: '2026-01-10T03:00:00Z' }
+                ],
                 expected: null
             },
             {
@@ -478,13 +546,91 @@ describe('Connection MTTF calculation results', () => {
             }
         ];
 
-        for (const testCase of cases) {
-            const actual = durationSecondsFor(query, testCase.events, windowStart, windowEnd);
-            if (testCase.expected === null) {
-                assert.isNull(actual, testCase.name);
-            } else {
-                assert.equal(actual, testCase.expected, testCase.name);
+        for (const item of dataViews) {
+            for (const testCase of cases) {
+                const actual = durationSecondsFor(item.content.query, testCase.events, windowStart, windowEnd);
+                const name = `${item.name}: ${testCase.name}`;
+                if (testCase.expected === null) {
+                    assert.isNull(actual, name);
+                } else {
+                    assert.equal(actual, testCase.expected, name);
+                }
             }
+        }
+    });
+
+    it('counts historical errors only for eligible connections and deduplicates each failed connection', () => {
+        for (const item of dataViews) {
+            const errors = sourcePipelines(item.content.query, 'WVDErrors')[0];
+            assert.include(errors, timeHistory, item.name);
+            assert.notInclude(errors, 'WindowStart', item.name);
+            assert.include(errors,
+                '| join kind=inner (Connections | project CorrelationId) on CorrelationId', item.name);
+            if (item.content.query.includes('let Failures =')) {
+                assert.include(errors, '| distinct CorrelationId', item.name);
+            } else {
+                assert.match(errors, /\| summarize .*HasError = true by CorrelationId/, item.name);
+            }
+        }
+    });
+
+    it('visibly reports excluded completed connections using the same filtered cohort as the charts', () => {
+        const availability = items.find(item => item.name === 'MTTFDataAvailability');
+        assert.isDefined(availability);
+        assert.isBelow(workbook.items.indexOf(availability),
+            workbook.items.findIndex(item => item.name === 'MTTFBarChartGroup'));
+        assert.deepEqual(availability.content.crossComponentResources, ['{HostPools}']);
+        assert.equal(availability.content.visualization, 'card');
+        assert.equal(letBlock(availability.content.query, 'Connections'),
+            letBlock(query, 'Connections').replace(`\n${completedDuration}`, ''));
+        assert.include(availability.content.query,
+            'MissingConnectedCount = countif(isnull(ConnectedTime))');
+        assert.include(availability.content.query,
+            'InvalidDurationCount = countif(isnotnull(ConnectedTime) and EndTime <= ConnectedTime)');
+        assert.include(finalStatement(availability.content.query), 'MissingConnectedCount');
+        assert.include(finalStatement(availability.content.query), 'InvalidDurationCount');
+    });
+
+    it('sums full completed durations per user and counts each historically failed connection once', () => {
+        const sessions = [
+            ['failed-1', 'user-a', '2026-01-09T21:00:00Z', '2026-01-10T01:00:00Z'],
+            ['healthy', 'user-a', '2026-01-10T02:00:00Z', '2026-01-10T04:00:00Z'],
+            ['failed-2', 'user-a', '2026-01-10T04:00:00Z', '2026-01-10T05:00:00Z'],
+            ['other-user', 'user-b', '2026-01-10T06:00:00Z', '2026-01-10T07:00:00Z'],
+            ['ongoing', 'user-a', '2026-01-09T01:00:00Z', null],
+            ['missing-start', 'user-a', null, '2026-01-10T06:00:00Z']
+        ];
+        const errors = [
+            ['failed-1', '2026-01-09T22:00:00Z'],
+            ['failed-1', '2026-01-09T23:00:00Z'],
+            ['failed-2', '2026-01-10T04:30:00Z'],
+            ['healthy', '2026-01-11T01:00:00Z'],
+            ['ongoing', '2026-01-10T03:00:00Z'],
+            ['missing-start', '2026-01-10T05:00:00Z']
+        ];
+        const failedIds = new Set(errors.filter(([, time]) => Date.parse(time) <= Date.parse(windowEnd))
+            .map(([id]) => id));
+
+        for (const item of dataViews) {
+            const users = {};
+            for (const [id, user, connected, completed] of sessions) {
+                const events = [];
+                if (connected) events.push({ state: 'Connected', time: connected });
+                if (completed) events.push({ state: 'Completed', time: completed });
+                const seconds = durationSecondsFor(item.content.query, events, windowStart, windowEnd);
+                if (seconds === null) continue;
+                const total = users[user] || (users[user] = { seconds: 0, failures: 0 });
+                total.seconds += seconds;
+                total.failures += Number(failedIds.has(id));
+            }
+            assert.deepEqual(users, {
+                'user-a': { seconds: 25200, failures: 2 },
+                'user-b': { seconds: 3600, failures: 0 }
+            }, item.name);
+            assert.equal(mttfBucketFor(item.content.query, users['user-a'].seconds, users['user-a'].failures),
+                '3 - 4 hrs', item.name);
+            assert.equal(mttfBucketFor(item.content.query, users['user-b'].seconds, users['user-b'].failures),
+                'Infinite', item.name);
         }
     });
 
@@ -530,24 +676,71 @@ describe('Connection MTTF calculation results', () => {
 
 describe('Connection MTTF optional MultiLink transport', () => {
     const queryOf = name => items.find(item => item.name === name).content.query;
-    const transportUnavailable = '| extend TransportCapability = coalesce(TransportCapability, "Unavailable")';
+    const transportFallback = '| extend TransportCapability = coalesce(TransportCapability, UdpType)';
+    const transportNames = ['MTTFTransportDetail', 'MTTFUnifiedConnections', 'MTTFTransportConnections',
+        'MTTFGatewayConnections'];
 
-    for (const name of ['MTTFTransportDetail', 'MTTFUnifiedConnections', 'MTTFTransportConnections',
-        'MTTFGatewayConnections']) {
-        it(`${name} keeps connections without MultiLink rows as Unavailable transport`, () => {
+    for (const name of transportNames) {
+        it(`${name} prefers MultiLink capability and falls back to the connection UDP type`, () => {
             const lines = finalStatement(queryOf(name)).split('\n');
             const join = lines.findIndex(line => /^\| join kind=leftouter \(?MultiLinkInfo\b/.test(line));
-            const coalesce = lines.indexOf(transportUnavailable);
+            const coalesce = lines.indexOf(transportFallback);
 
             assert.equal(lines[0], 'SelectedConnections');
             assert.notInclude(lines.join('\n'), 'join kind=inner');
             assert.isAtLeast(join, 0);
             assert.isAbove(coalesce, join);
+            if (name === 'MTTFTransportDetail') {
+                assert.include(letBlock(queryOf(name), 'SelectedConnections'),
+                    '| project CorrelationId, UdpType');
+            }
             if (name === 'MTTFTransportConnections') {
                 assert.isBelow(coalesce, lines.indexOf('| where TransportCapability == SelectedTransport'));
             }
         });
     }
+
+    it('uses the latest nonempty UDP value per connection without requiring the column', () => {
+        for (const name of transportNames) {
+            const connections = letBlock(queryOf(name), 'Connections');
+            assert.include(connections, [
+                '| extend UdpUse = tostring(column_ifexists("UdpUse", ""))',
+                '| extend UdpUseTime = iff(isnotempty(UdpUse), TimeGenerated, datetime(null))',
+                '| summarize',
+                'arg_max(UdpUseTime, UdpUse),'
+            ].join('\n'), name);
+            assert.isAbove(connections.indexOf('| extend UdpType = case('),
+                connections.indexOf('by CorrelationId'), name);
+        }
+    });
+
+    it('maps legacy UDP types and keeps missing or unrecognized values Unknown', () => {
+        const cases = [
+            [0, 'NotUsed'],
+            [1, 'ShortpathPrivate'],
+            [2, 'ShortpathPublic'],
+            [4, 'Relay'],
+            [16, 'Multipath'],
+            ['2', 'ShortpathPublic'],
+            [null, 'Unknown'],
+            [undefined, 'Unknown'],
+            ['', 'Unknown'],
+            [8, 'Unknown'],
+            ['invalid', 'Unknown']
+        ];
+        for (const name of transportNames) {
+            for (const [udpUse, expected] of cases) {
+                assert.equal(udpTypeFor(queryOf(name), udpUse), expected, `${name}: ${udpUse}`);
+            }
+        }
+    });
+
+    it('uses reported Multipath for the Multi-Link indicator only when link counts are absent', () => {
+        for (const name of transportNames.filter(name => name !== 'MTTFTransportDetail')) {
+            assert.include(finalStatement(queryOf(name)),
+                '| extend IsMultiLink = coalesce(LinkCount > 1, UdpType == "Multipath")', name);
+        }
+    });
 
     it('groups connection gateways without requiring MultiLink telemetry', () => {
         const query = queryOf('MTTFGatewayDetail');
@@ -594,13 +787,46 @@ describe('Connection MTTF optional MultiLink transport', () => {
         ]);
     });
 
-    it('displays in-range minutes without rounding before MTTF aggregation', () => {
+    it('shows minutes below two hours and hours at or above two hours with two decimal places', () => {
+        const cases = [
+            [51, '0.85 min'],
+            [90, '1.50 min'],
+            [3600, '60.00 min'],
+            [7199, '119.98 min'],
+            [7200, '2.00 hr'],
+            [7201, '2.00 hr'],
+            [9000, '2.50 hr'],
+            [172800, '48.00 hr']
+        ];
         for (const name of ['MTTFUnifiedConnections', 'MTTFTransportConnections', 'MTTFGatewayConnections']) {
-            const setting = items.find(item => item.name === name).content.gridSettings.labelSettings
-                .find(label => label.columnId === 'DurationMinutes');
-            assert.equal(setting?.label, 'Duration in Range (min)', name);
-            assert.include(finalStatement(queryOf(name)),
-                '| extend DurationMinutes = round(DurationSeconds / 60.0, 2)', name);
+            for (const [seconds, expected] of cases) {
+                assert.equal(durationLabelFor(queryOf(name), seconds), expected, `${name}: ${seconds} seconds`);
+            }
+        }
+    });
+
+    it('keeps duration sorting numeric and applies formatting only after MTTF aggregation', () => {
+        for (const name of ['MTTFUnifiedConnections', 'MTTFTransportConnections', 'MTTFGatewayConnections']) {
+            const grid = items.find(item => item.name === name).content.gridSettings;
+            const label = grid.labelSettings.find(setting => setting.columnId === 'DurationSeconds');
+            assert.equal(label?.label, 'Connection Duration', name);
+            const duration = grid.formatters.find(formatter => formatter.columnMatch === 'DurationSeconds');
+            assert.equal(duration?.formatter, 18, name);
+            assert.deepEqual(duration.formatOptions.thresholdsGrid, [{
+                operator: 'Default',
+                thresholdValue: null,
+                representation: 'Blank',
+                text: '["DurationDisplay"]'
+            }], name);
+            const display = grid.formatters.find(formatter => formatter.columnMatch === 'DurationDisplay');
+            assert.equal(display?.formatter, 5, name);
+            const statement = finalStatement(queryOf(name));
+            const projection = statement.match(/\| project\s+([\s\S]*?)\n\| sort by/);
+            assert.isNotNull(projection, name);
+            assert.includeMembers(projection[1].split(',').map(column => column.trim()),
+                ['DurationSeconds', 'DurationDisplay'], name);
+            assert.notMatch(statement, /\| extend DurationSeconds\s*=/, name);
+            assert.notInclude(queryOf(name), 'DurationMinutes', name);
             assert.notInclude(letBlock(queryOf(name), 'Connections'), 'round(', name);
             assert.notInclude(letBlock(queryOf(name), 'SelectedUsers'), 'round(', name);
         }
