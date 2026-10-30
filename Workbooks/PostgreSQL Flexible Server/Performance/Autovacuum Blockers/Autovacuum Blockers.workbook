@@ -2,35 +2,17 @@
   "version": "Notebook/1.0",
   "items": [
     {
-      "type": 12,
+      "type": 1,
       "content": {
-        "version": "NotebookGroup/1.0",
-        "groupType": "editable",
-        "items": [
-          {
-            "type": 1,
-            "content": {
-              "json": "## Monitoring autovacuum blockers and wraparound risks\r\nIn this troubleshooting guide we will try to identify blockers preventing autovacuum from removing dead tuples and fixes to mitigate the issue. The guide also gives details if the databases on the server are closer to triggering emergency autovacuum  or if the databases are closer to Transaction ID wraparound problem.",
-              "style": "info"
-            },
-            "name": "start"
-          },
-          {
-            "type": 1,
-            "content": {
-              "json": "Step | Description\r\n--- | ---\r\n**Analysis period** | Choose the time interval that you wish to analyze.\r\n**Emergency autovacuum and wraparound** | Analyze the metric to understand how close the databases on the server are to trigger an emergency autovacuum or Transaction ID wraparound protection. The section also provides resolutions around it.\r\n**Autovacuum blockers** | Identify if there are any autovacuum blockers, like long running transactions, inactive replication slots or orphaned prepared transactions. If any exists on the server, it renders all details about the  blocker, along with mitigation steps. If there are no blockers then autovacuum blockers section would indicate no blockers found.\r\n\r\n"
-            },
-            "name": "steps"
-          }
-        ],
-        "exportParameters": true
+        "json": "## Troubleshoot autovacuum blockers and wraparound risk\r\n\r\nIdentify what is preventing autovacuum from removing dead tuples on your PostgreSQL Flexible Server and check how close each database is to emergency autovacuum or Transaction ID wraparound. Common blockers: long-running transactions, orphaned prepared transactions, inactive replication slots, and replication lag.\r\n\r\n### Diagnostic steps\r\n\r\nFollow these steps in order to systematically diagnose the issue:\r\n\r\nStep | Description\r\n--- | ---\r\n**Analysis period** | Choose the time interval you want to analyze.\r\n**Emergency autovacuum and wraparound** | Review how close each database is to triggering emergency autovacuum or Transaction ID wraparound protection, and apply the suggested mitigations.\r\n**Autovacuum blockers** | Identify active autovacuum blockers (long-running transactions, inactive replication slots, orphaned prepared transactions) and follow the recommended mitigation steps. If none are found, the section indicates no blockers.",
+        "style": "info"
       },
       "name": "WorkbookTop"
     },
     {
       "type": 1,
       "content": {
-        "json": "#### Start by setting the following parameters:"
+        "json": "#### Select the analysis period:"
       },
       "name": "start"
     },
@@ -39,7 +21,7 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "crossComponentResources": [
-          "{Subscription}"
+          "value::selected"
         ],
         "parameters": [
           {
@@ -301,7 +283,7 @@
         ],
         "style": "above",
         "queryType": 1,
-        "resourceType": "microsoft.dbforpostgresql/flexibleservers"
+        "resourceType": "microsoft.resourcegraph/resources"
       },
       "name": "styling",
       "styleSettings": {
@@ -313,7 +295,7 @@
       "content": {
         "version": "KqlParameterItem/1.0",
         "crossComponentResources": [
-          "{ReplicaServerUri}"
+          "{Resource}"
         ],
         "parameters": [
           {
@@ -990,6 +972,18 @@
             "queryType": 12,
             "id": "ddee84ed-5902-4f5c-a073-22420a29a2ac",
             "value": null
+          },
+          {
+            "id": "b5a8c01e-5e10-4a30-9c2c-1a0f2f4b6a01",
+            "version": "KqlParameterItem/1.0",
+            "name": "CombinedErrorMessages",
+            "type": 1,
+            "query": "let i1 = iif('{IsServerPrimary}' == 'Yes' and '{IsServerInWraparoundProtection}' == 'Yes',\r\n  \"| Server in wraparound protection mode | The server has hit its Transaction ID limit and is rejecting new commands to prevent data loss. Review the **Recommendations** section under **Emergency autovacuum and wraparound** to recover. Do **not** fail over to a read replica. |\\n\", \"\");\r\nlet i2 = iif('{IsServerPrimary}' == 'No',\r\n  \"| Server is not a primary | Transaction ID and MultiXact ID values on a replica are not authoritative and can be inconsistent. Run this troubleshooting guide against the **primary** server. |\\n\", \"\");\r\nlet i3 = iif('{IsServerPrimary}' == 'Yes' and '{IsAutovacuumOn}' == 'No',\r\n  \"| Autovacuum disabled | `autovacuum` is currently OFF. Leaving it disabled leads to dead-tuple accumulation, bloat, and eventual transaction ID wraparound. Set server parameter `autovacuum` to `ON`. [Configure server parameters](https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-server-parameters-using-portal) |\\n\", \"\");\r\nlet i4 = iif('{IsServerPrimary}' == 'Yes' and '{IsPostgreSQLFlexSessionsSentToLogAnalytics}' == 'No',\r\n  \"| PostgreSQL Sessions data not in workspace | `PostgreSQLFlexSessions` is required to detect long-running transactions and blocking PIDs. Enable the diagnostic category (or `allLogs` / `audit` group). [Configure and access logs](https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs) |\\n\", \"\");\r\nlet i5 = iif('{IsServerPrimary}' == 'Yes' and '{IsDatabaseXactsSentToLogAnalytics}' == 'No',\r\n  \"| Remaining transactions data not in workspace | `PostgreSQLFlexDatabaseXacts` is required for wraparound and emergency autovacuum analysis. Enable the diagnostic category (or `allLogs` / `audit` group). [Configure and access logs](https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs) |\\n\", \"\");\r\nlet i6 = iif('{IsServerPrimary}' == 'Yes' and '{metric_collector_database_activityAPI}' != 'ON',\r\n  \"| Enhanced metrics disabled | Enhanced metrics are required for oldest xmin / oldest xmin age visibility. Set server parameter `metrics.collector_database_activity` to `ON` (repeat for each replica). |\\n\", \"\");\r\nlet rows = strcat(i1, i2, i3, i4, i5, i6);\r\nprint result = iif(isnotempty(rows),\r\n  strcat(\r\n    \"## Configuration issues detected\\n\\n\",\r\n    \"The following settings need attention for this troubleshooting guide to function correctly.\\n\\n\",\r\n    \"| Issue | Action Required |\\n\",\r\n    \"|:------|:---------------|\\n\",\r\n    rows,\r\n    \"\\n> All parameters listed above are dynamic and do not require a server restart. To configure diagnostic logging categories, refer to [Configure and access logs](https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs).\\n\"\r\n  ), \"\")",
+            "crossComponentResources": [
+              "{Resource}"
+            ],
+            "queryType": 0,
+            "resourceType": "microsoft.dbforpostgresql/flexibleservers"
           }
         ],
         "style": "pills",
@@ -1006,115 +1000,15 @@
     {
       "type": 1,
       "content": {
-        "json": "\r\n### The PostgreSQL server is currently in wraparound protection mode, which means it is preventing any new commands from being accepted to prevent potential data loss due to wraparound.\r\n\r\nThis error message typically occurs in a PostgreSQL database and indicates that the database has reached its maximum Transaction ID limit, which can lead to data loss if the database continues to operate in this state. The purpose of the wraparound protection is to prevent data loss by ensuring that old data is not overwritten.\r\n",
-        "style": "error"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "IsServerPrimary",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        },
-        {
-          "parameterName": "IsServerInWraparoundProtection",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        }
-      ],
-      "name": "wraparound check"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### The PostgreSQL Sessions data logs are not being transmitted to the log analytics workspace.\r\nThe PostgreSQL Sessions logs data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for category `PostgreSQL Sessions data` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
-        "style": "error"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "IsPostgreSQLFlexSessionsSentToLogAnalytics",
-          "comparison": "isEqualTo",
-          "value": "No"
-        },
-        {
-          "parameterName": "IsServerPrimary",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        }
-      ],
-      "name": "session logs check"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### Autovacuum is currently disabled.\r\nAutovacuum is currently disabled. This can lead to the accumulation of dead tuples, index fragmentation, transaction ID wraparound, increased disk space consumption, poor query performance. To prevent these issues, it is strongly recommended to enable autovacuum with appropriate settings and regularly monitor and maintain the database.\r\n\r\nYou can use the Azure Portal to configure server parameters and enable autovacuum. For more information, please follow this link: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-server-parameters-using-portal.",
-        "style": "error"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "IsAutovacuumOn",
-          "comparison": "isEqualTo",
-          "value": "No"
-        },
-        {
-          "parameterName": "IsServerPrimary",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        }
-      ],
-      "name": "disabled autovacuum"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### The PostgreSQL remaining transactions logs are not being transmitted to the log analytics workspace.\r\nThe PostgreSQL Table Stats data is not being sent to the log analytics workspace, which is necessary to use this troubleshooting guide. To configure the logging settings for category `PostgreSQL remaining transactions` and send the data to a log analytics workspace, please refer to this guide for detailed instructions: https://learn.microsoft.com/azure/postgresql/flexible-server/howto-configure-and-access-logs.",
-        "style": "error"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "IsDatabaseXactsSentToLogAnalytics",
-          "comparison": "isEqualTo",
-          "value": "No"
-        },
-        {
-          "parameterName": "IsServerPrimary",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        }
-      ],
-      "name": "transmitted to log analytics"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### The specified server is not a primary server.\r\nChecking transaction ID or MultiXact ID on a replica server in PostgreSQL can lead to inaccurate results. Replica servers are designed to replicate data from the primary server and may not have the most up-to-date information about transactions or multi-version concurrency control (MVCC) information. Checking these IDs on a replica server may provide inconsistent or incorrect results and should be avoided. For accurate results, please check the transaction ID or MultiXact ID on the primary server.",
+        "json": "{CombinedErrorMessages}",
         "style": "error"
       },
       "conditionalVisibility": {
-        "parameterName": "IsServerPrimary",
-        "comparison": "isEqualTo",
-        "value": "No"
+        "parameterName": "CombinedErrorMessages",
+        "comparison": "isNotEqualTo",
+        "value": ""
       },
-      "name": "primary check"
-    },
-    {
-      "type": 1,
-      "content": {
-        "json": "### Enhanced metrics not enabled\r\n\r\nEnhanced metrics are currently **disabled** on this server. This limits visibility into database activity.\r\n\r\n#### Enable enhanced metrics\r\nTo enable enhanced metrics, follow these steps in the Azure portal:\r\n\r\n1. Go to your **Azure Database for PostgreSQL – Flexible Server** instance.\r\n2. Navigate to **Server Parameters**.\r\n3. Search for **metrics.collector_database_activity**.\r\n4. Set the value to **ON**.\r\n5. Click **Save** to apply the change.\r\n\r\n> Repeat these steps for each read replica to ensure complete monitoring coverage.",
-        "style": "error"
-      },
-      "conditionalVisibilities": [
-        {
-          "parameterName": "IsServerPrimary",
-          "comparison": "isEqualTo",
-          "value": "Yes"
-        },
-        {
-          "parameterName": "metric_collector_database_activityAPI",
-          "comparison": "isNotEqualTo",
-          "value": "ON"
-        }
-      ],
-      "name": "enhance metrics check"
+      "name": "wraparound check - Copy"
     },
     {
       "type": 1,
