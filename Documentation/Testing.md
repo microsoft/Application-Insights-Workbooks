@@ -22,13 +22,15 @@ If you're only modifying a workbook, you can test your changes locally without a
 
 The browser validator complements the existing JSON/gallery validators and the [static analyzer](../scripts). It follows the repository's Mocha conventions, but authenticated tests live under `test/browser/` and are **not included in normal `npm test` discovery or CI**. Fast regression tests for the validator itself run in normal CI. `playwright-core` does not download a browser.
 
+For real-DOM safety/pixel regression tests without Azure sign-in, set `WORKBOOK_BROWSER_EXECUTABLE` to an installed Chromium/Edge executable and run `npm run test:browser:safety`. This opt-in suite uses synthetic `about:blank`/`srcdoc` fixtures, blocks external requests, tests overlapping and late parent overlays, and cleans its test-only screenshots. It does not use or alter your signed-in browser.
+
 The shared runner:
 
 - Supports either an explicitly selected/confirmed tenant or explicitly authorized browser-session continuation. The latter uses and privately pins the already-signed-in directory only if no chooser is pending. Both workflows recheck identity before tab changes, parameter actions, and screenshots and never choose or switch an account/tenant.
 - Refuses to replace a saved workbook or a non-empty Advanced Editor, and targets only the model bound to the visible editor rather than cached background models.
 - Applies the exact requested source and reports its normalized-source SHA-256, not its contents.
 - Checks the primary parameter-driven tabset's labels and selected states using native Enter-key activation, which remains usable during query-driven layout reflow.
-- Optionally checks that deferred content is not mounted before a parameter action, appears after it, and hides its producer when requested. A self-hiding producer must have its visibility parameter declared as global before it.
+- Optionally checks that deferred content is not mounted before a source-defined toolbar parameter action, appears after it, and hides its producer when requested. The runtime toolbar's full static labels must match the source; a same-label Markdown/query hyperlink is never a fallback. A self-hiding producer must have its visibility parameter declared as global before it.
 - Optionally verifies exact grid column labels and row bounds using `aria-rowcount`, not the number of virtualized rows currently rendered.
 - Offers optional local screenshots, disabled by default, with conservative masking applied before capture and a mandatory manual-review reminder.
 
@@ -53,7 +55,7 @@ The helper does not navigate away from an existing portal workbook or restart an
 
 For **strict expected-tenant validation**, keep using `--tenant <guid> --confirm-tenant` or the explicit-tenant environment variables below. Browser-session mode cannot silently replace an explicit tenant constraint or combine with strict-tenant flags. If neither workflow is authorized, ask **which tenant to use** and pause on an unavailable/declined/cancelled response.
 
-The repository [browser-validation skill](../.github/skills/validate-workbook-browser/SKILL.md) codifies both workflows. The user performs sign-in/directory switching themselves. Do not request credentials, commit tenant/account information, or reuse a prior run's confirmation. The runner matches directory GUIDs using English portal account-menu metadata, not display names. Missing/ambiguous identity or a later chooser pauses validation. Tenant IDs and account metadata are not included in reports.
+The repository [browser-validation skill](../.github/skills/validate-workbook-browser/SKILL.md) codifies both workflows. The user performs sign-in/directory switching themselves. Do not request credentials, commit tenant/account information, or reuse a prior run's confirmation. The runner collects every parenthesized GUID after `Directory:` in English portal account-menu metadata and rejects conflicting candidates, including a GUID embedded in a display name. Missing/ambiguous identity or a later chooser pauses validation. Tenant IDs and account metadata are not included in reports.
 
 ### Prepare a browser
 
@@ -118,7 +120,7 @@ Use the same validator for another workbook by changing the template path and, o
 - `tabs`: exact primary tab labels, in order. Static labels are inferred if omitted; parameterized labels require explicit expectations. All declared tab links must be parameter links; otherwise automatic navigation is refused.
 - `timeout`: per-operation timeout in milliseconds, from 1 to 120000; default 30000.
 - `tenant`: either a private per-run object with the user-selected GUID in `id` and explicit boolean `confirmed`, **or** `{ "useBrowserSession": true }` for the authorized in-browser workflow. These shapes are mutually exclusive. It can be supplied through CLI/environment instead of a checks file.
-- `deferred`: checks with `trigger` (a unique parameter-link label), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab).
+- `deferred`: checks with `trigger` (a unique parameter-link label from a `toolbar` links item), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab). All links in the producer toolbar must have static labels so the runtime container can be verified; unsupported/ambiguous renderers fail rather than falling back to another same-label control.
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.
 - `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
 
@@ -147,7 +149,9 @@ For the Mocha runner set `WORKBOOK_BROWSER_SCREENSHOTS` to a local directory. Th
 
 In default `auto` mode, `maskSelectors` is optional and **adds** masks; it cannot disable the defaults. Each selector must match in every captured stage. An invalid selector or one matching nothing fails capture rather than silently omitting a requested mask. URLs, network paths, and parent-directory traversal are refused for the output directory.
 
-The runner captures each visited primary tab and brings each successfully checked deferred panel into view for another capture. Images are of the workbook iframe viewport, not the surrounding portal/account chrome; this avoids unreliable element clipping across scrolled frames. Before capture it masks grid data cells, inputs, non-contract text, charts, images, and embedded content. Only exact contract tab, heading, and column labels are retained. Redaction CSS is installed in the workbook DOM and checked with a computed-style probe **before** calling screenshot APIs, so it does not depend solely on a browser adapter honoring Playwright's mask/style options. The CSS also hides newly mounted text and media, including virtualized rows. Temporary styles and markers are removed afterward, even if capture fails; blocked redaction fails capture and there is no unmasked fallback.
+The runner captures each visited primary tab and brings each successfully checked deferred panel into view for another capture. Images are of the workbook iframe viewport. During every capture, the surrounding parent document is temporarily hidden while the target iframe remains visible: this excludes overlapping account flyouts/dialogs, not just chrome outside the image rectangle. Newly mounted parent elements and visibility changes are concealed until capture ends, then original visibility styles are restored even on failure. Isolation failures stop capture.
+
+Within the workbook, auto mode masks grid data cells, inputs, non-contract text, charts, images, and embedded content. Only exact contract tab, heading, and column labels are retained. Redaction CSS is installed in the workbook DOM and checked with a computed-style probe **before** calling screenshot APIs, so it does not depend solely on a browser adapter honoring Playwright's mask/style options. The CSS also hides newly mounted text and media, including virtualized rows. Temporary styles and markers are removed afterward, even if capture fails; blocked redaction fails capture and there is no unmasked fallback. Parent-document isolation also applies to explicitly approved unredacted workbook captures; it is not permission to capture unrelated account chrome.
 
 Images have generated names rather than tenant-derived filenames. The report lists filenames and mask counts, not absolute output paths. Nothing is uploaded or committed automatically. Use a private local directory within your browser tool's permitted output roots, and review **every image** before sharing. Conservative masking is **not guaranteed anonymization**: contract labels themselves can be sensitive, and masking intentionally obscures data needed for some visual checks. Use synthetic fixtures to verify raw data formatting and inspect real data only in the authorized portal. Remove only your own evidence files when finished.
 

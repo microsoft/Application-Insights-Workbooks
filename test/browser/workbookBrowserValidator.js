@@ -59,8 +59,9 @@ async function verifySelectedTenant(page, value) {
     }
     const titles = await account.locator('[title]').evaluateAll(elements => elements.map(element => element.getAttribute('title') || ''));
     const ids = new Set(titles.flatMap(title => {
-        const match = title.match(/\bDirectory:\s*[\s\S]*?\(([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\)/i);
-        return match ? [match[1].toLowerCase()] : [];
+        const directory = title.match(/\bDirectory:([\s\S]*)/i);
+        return directory ? Array.from(directory[1].matchAll(/\(([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\)/gi),
+            match => match[1].toLowerCase()) : [];
     }));
     if (ids.size !== 1 || (!tenant.useBrowserSession && !ids.has(tenant.id))) {
         throw new Error('PAUSED: The signed-in tenant is different from, or cannot be matched to, the user-confirmed tenant. Ask the user to select it; do not switch automatically.');
@@ -287,19 +288,26 @@ function createValidationPlan(workbookSource, options = {}) {
             throw new Error(`Trigger "${trigger}" must identify one parameter link, not an external or ARM action.`);
         }
         const producer = matches[0];
+        if (producer.item.content.style !== 'toolbar') {
+            throw new Error(`Trigger "${trigger}" must belong to a source-defined toolbar; other link renderers cannot be bound safely.`);
+        }
+        const toolbarLabels = producer.item.content.links.map(link => label(link.linkLabel, 'Toolbar link label'));
+        if (toolbarLabels.some(value => /[{}]/.test(value))) {
+            throw new Error('Deferred toolbar contracts require static link labels for runtime binding.');
+        }
         if (hideTriggerAfterLoad &&
             producer.item.conditionalVisibility?.parameterName === producer.link.cellValue &&
             !producer.globals.has(producer.link.cellValue)) {
             throw new Error(`Trigger "${trigger}" must declare its visibility parameter as global before the producer.`);
         }
-        return { tab, trigger, heading, hideTriggerAfterLoad, minRows: check.minRows, maxRows: check.maxRows, columns };
+        return { tab, trigger, heading, hideTriggerAfterLoad, minRows: check.minRows, maxRows: check.maxRows, columns, toolbarLabels };
     });
 
     const groups = new Map();
     for (const check of deferred) {
         const key = JSON.stringify([check.tab, check.trigger]);
         if (!groups.has(key)) {
-            groups.set(key, { tab: check.tab, trigger: check.trigger, checks: [] });
+            groups.set(key, { tab: check.tab, trigger: check.trigger, toolbarLabels: check.toolbarLabels, checks: [] });
         }
         groups.get(key).checks.push(check);
     }
@@ -378,6 +386,85 @@ function applyScreenshotRedaction(body, settings) {
     }
 }
 
+function isolateWorkbookFrame(frame, marker) {
+    const document = frame.ownerDocument;
+    if (document.documentElement.hasAttribute('data-workbook-parent-isolation')) {
+        throw new Error('A parent-page screenshot isolation is already active; refusing to capture.');
+    }
+    const originals = new Map();
+    const setVisibility = element => {
+        if (!element.style) return;
+        const value = element === frame ? 'visible' : 'hidden';
+        if (element.style.getPropertyValue('visibility') === value &&
+            element.style.getPropertyPriority('visibility') === 'important') return;
+        if (!originals.has(element)) {
+            originals.set(element, {
+                value: element.style.getPropertyValue('visibility'),
+                priority: element.style.getPropertyPriority('visibility'),
+                hadStyle: element.hasAttribute('style')
+            });
+        }
+        element.style.setProperty('visibility', value, 'important');
+    };
+    const conceal = element => {
+        if (element.nodeType !== 1) return;
+        setVisibility(element);
+        for (const descendant of element.querySelectorAll('*')) setVisibility(descendant);
+    };
+    const style = document.createElement('style');
+    const observer = new document.defaultView.MutationObserver(mutations => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'attributes') setVisibility(mutation.target);
+            for (const node of mutation.addedNodes) conceal(node);
+        }
+    });
+    const restore = () => {
+        observer.disconnect();
+        style.remove();
+        document.documentElement.removeAttribute('data-workbook-parent-isolation');
+        for (const [element, previous] of originals) {
+            if (previous.value) element.style.setProperty('visibility', previous.value, previous.priority);
+            else element.style.removeProperty('visibility');
+            if (!previous.hadStyle && element.getAttribute('style') === '') element.removeAttribute('style');
+        }
+    };
+    try {
+        document.documentElement.setAttribute('data-workbook-parent-isolation', marker);
+        style.textContent = `html[data-workbook-parent-isolation="${marker}"] body,
+            html[data-workbook-parent-isolation="${marker}"] body *,
+            html[data-workbook-parent-isolation="${marker}"] body *::before,
+            html[data-workbook-parent-isolation="${marker}"] body *::after,
+            html[data-workbook-parent-isolation="${marker}"] ::backdrop { visibility: hidden !important; }`;
+        document.head.append(style);
+        conceal(document.body);
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+        const probe = document.createElement('span');
+        document.body.append(probe);
+        const hidden = document.defaultView.getComputedStyle(probe).visibility === 'hidden';
+        probe.remove();
+        if (!hidden || document.defaultView.getComputedStyle(frame).visibility !== 'visible') {
+            throw new Error('Parent-page screenshot isolation did not take effect; refusing to capture.');
+        }
+        return restore;
+    } catch (error) {
+        restore();
+        throw error;
+    }
+}
+
+async function screenshotIsolatedWorkbook(page, target, options, marker) {
+    const restore = await page.locator('iframe[name="Workbooks.ReactView"]').evaluateHandle(isolateWorkbookFrame, marker);
+    try {
+        await target.screenshot(options);
+    } finally {
+        try {
+            await restore.evaluate(cleanup => cleanup());
+        } finally {
+            await restore.dispose();
+        }
+    }
+}
+
 async function captureMaskedScreenshot(page, target, settings, allowedLabels, index) {
     settings = normalizeScreenshotOptions(settings);
     if (!settings || settings.redaction === 'none') {
@@ -396,13 +483,13 @@ async function captureMaskedScreenshot(page, target, settings, allowedLabels, in
         if (!maskedElements) throw new Error('No screenshot masks were applied; refusing to capture.');
         const css = screenshotRedactionStyle(marker, settings.redaction);
         await body.evaluate(applyScreenshotRedaction, { marker, css, redaction: settings.redaction });
-        await target.screenshot({
+        await screenshotIsolatedWorkbook(page, target, {
             path,
             type: 'png',
             scale: 'css',
             animations: 'disabled',
             caret: 'hide'
-        });
+        }, marker);
     } finally {
         await body.evaluate((element, marker) => {
             for (const masked of element.querySelectorAll(`[data-workbook-validation-mask="${marker}"]`)) {
@@ -430,10 +517,10 @@ async function captureWorkbookScreenshot(page, target, settings, allowedLabels, 
     }
     const file = `capture-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2)}.png`;
     const separator = settings.directory.includes('\\') ? '\\' : '/';
-    await target.screenshot({
+    await screenshotIsolatedWorkbook(page, target, {
         path: settings.directory.replace(/[\\/]+$/, '') + separator + file,
         type: 'png', scale: 'css', animations: 'disabled', caret: 'hide'
-    });
+    }, file.replace(/\.png$/, ''));
     return { file, maskedElements: 0, redaction: 'none', reviewRequired: true, publicationApproved: false };
 }
 
@@ -453,6 +540,22 @@ async function activateWorkbookControl(locator, timeout) {
         throw new Error('A requested workbook control is disabled; refusing to activate it.');
     }
     await locator.press('Enter');
+}
+
+async function bindParameterTrigger(frame, group, timeout) {
+    const trigger = frame.getByRole('menubar').getByRole('menuitem', { name: group.trigger, exact: true });
+    await trigger.waitFor({ state: 'visible', timeout });
+    const toolbar = trigger.locator('xpath=ancestor::*[@role="menubar"][1]');
+    if (await toolbar.count() !== 1) {
+        throw new Error('Cannot bind the parameter action to its source toolbar; refusing activation.');
+    }
+    const labels = await toolbar.getByRole('menuitem').evaluateAll(elements => elements.map(element =>
+        (element.getAttribute('aria-label') || element.textContent || '')
+            .replace(/^[\uE000-\uF8FF\s]+/, '').replace(/\s+/g, ' ').trim()));
+    if (JSON.stringify(labels) !== JSON.stringify(group.toolbarLabels)) {
+        throw new Error('Rendered parameter toolbar differs from the validated source; refusing activation.');
+    }
+    return trigger;
 }
 
 async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
@@ -541,10 +644,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             await tablist.getByRole('tab', { name: group.tab, exact: true, selected: true })
                 .waitFor({ state: 'visible', timeout: plan.timeout });
         }
-        const trigger = frame.getByRole('menuitem', { name: group.trigger, exact: true })
-            .or(frame.getByRole('button', { name: group.trigger, exact: true }))
-            .or(frame.getByRole('link', { name: group.trigger, exact: true }));
-        await trigger.waitFor({ state: 'visible', timeout: plan.timeout });
+        const trigger = await bindParameterTrigger(frame, group, plan.timeout);
         await trigger.scrollIntoViewIfNeeded();
         for (const check of group.checks) {
             if (await frame.getByRole('heading', { name: check.heading, exact: true, includeHidden: true }).count()) {
@@ -689,8 +789,8 @@ function createPlaywrightScript(workbookSource, options = {}) {
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
     const functions = [isAzurePortalUrl, normalizeTenantSelection, requireConfirmedTenant, portalSelectionPrompt, verifySelectedTenant,
         normalizeScreenshotOptions, createValidationPlan, markScreenshotMasks, screenshotRedactionStyle,
-        applyScreenshotRedaction, captureMaskedScreenshot, captureWorkbookScreenshot, readGridSummary,
-        activateWorkbookControl, validateWorkbookInBrowser]
+        applyScreenshotRedaction, isolateWorkbookFrame, screenshotIsolatedWorkbook, captureMaskedScreenshot,
+        captureWorkbookScreenshot, readGridSummary, activateWorkbookControl, bindParameterTrigger, validateWorkbookInBrowser]
         .map(callback => callback.toString()).join('\n\n');
     return `async (page) => {\n${functions}\nreturn validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)});\n}\n`;
 }
@@ -715,10 +815,13 @@ module.exports = {
     markScreenshotMasks,
     screenshotRedactionStyle,
     applyScreenshotRedaction,
+    isolateWorkbookFrame,
+    screenshotIsolatedWorkbook,
     captureMaskedScreenshot,
     captureWorkbookScreenshot,
     readGridSummary,
     activateWorkbookControl,
+    bindParameterTrigger,
     validateWorkbookInBrowser,
     loadValidationInput,
     validateCdpEndpoint,

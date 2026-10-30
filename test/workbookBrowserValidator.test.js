@@ -17,10 +17,12 @@ const {
     markScreenshotMasks,
     screenshotRedactionStyle,
     applyScreenshotRedaction,
+    isolateWorkbookFrame,
     captureMaskedScreenshot,
     captureWorkbookScreenshot,
     readGridSummary,
     activateWorkbookControl,
+    bindParameterTrigger,
     validateWorkbookInBrowser: validateWithExplicitTenant,
     loadValidationInput,
     validateCdpEndpoint,
@@ -39,7 +41,7 @@ function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     return validateWithExplicitTenant(page, workbookSource, { tenant: testTenant, ...options });
 }
 
-function accountPage(ids = [testTenant.id]) {
+function accountPage(ids = [testTenant.id], titleFactory) {
     return {
         url: () => 'https://portal.azure.com/#home',
         getByText: () => ({
@@ -55,13 +57,32 @@ function accountPage(ids = [testTenant.id]) {
                     assert.equal(selector, '[title]');
                     return {
                         evaluateAll: async callback => callback(ids.map(id => ({
-                            getAttribute: () => `Name: Synthetic account Directory: Synthetic directory (${id}) Domain: example.invalid`
+                            getAttribute: () => titleFactory ? titleFactory(id) :
+                                `Name: Synthetic account Directory: Synthetic directory (${id}) Domain: example.invalid`
                         })))
                     };
                 }
             };
         }
     };
+}
+
+function parameterToolbar(trigger, labels = ['Show details']) {
+    const toolbar = {
+        count: async () => 1,
+        getByRole(role, options = {}) {
+            assert.equal(role, 'menuitem');
+            if (options.name) return trigger;
+            return { evaluateAll: async callback => callback(labels.map(label => ({
+                getAttribute: () => label, textContent: label
+            }))) };
+        }
+    };
+    trigger.locator = selector => {
+        assert.equal(selector, 'xpath=ancestor::*[@role="menubar"][1]');
+        return toolbar;
+    };
+    return toolbar;
 }
 
 function changedSource(change) {
@@ -159,6 +180,7 @@ function sharedDeferredEditor(initialHeadings = []) {
         }
     };
     editor.frame.getByRole = (role, options = {}) => {
+        if (role === 'menubar' && !options.name) return parameterToolbar(trigger);
         if (options.name === 'Show details') return trigger;
         if (role === 'heading' && ['Deferred table', 'Loaded details'].includes(options.name)) {
             return {
@@ -310,6 +332,38 @@ describe('Validating browser validator contracts...', () => {
             links.push({ ...links[0], id: 'another-link' });
         });
         assert.throws(() => createValidationPlan(duplicate, checks), /one parameter link/);
+    });
+
+    it('requires a static source-defined toolbar instead of binding a same-label generic link', () => {
+        const plainLink = changedSource(workbook => {
+            workbook.items[3].content.items[0].content.style = 'links';
+        });
+        assert.throws(() => createValidationPlan(plainLink, checks), /source-defined toolbar/);
+        const dynamicToolbar = changedSource(workbook => {
+            workbook.items[3].content.items[0].content.links.push({
+                linkLabel: '{Dynamic}', linkTarget: 'parameter', cellValue: 'Other', subTarget: 'true'
+            });
+        });
+        assert.throws(() => createValidationPlan(dynamicToolbar, checks), /static link labels/);
+    });
+
+    it('verifies the entire runtime toolbar before returning a deferred trigger', async () => {
+        const trigger = { async waitFor() {} };
+        const toolbar = parameterToolbar(trigger);
+        const frame = {
+            getByRole(role) {
+                assert.equal(role, 'menubar');
+                return toolbar;
+            }
+        };
+        assert.equal(await bindParameterTrigger(frame, { trigger: 'Show details', toolbarLabels: ['Show details'] }, 30000), trigger);
+        await rejects(bindParameterTrigger(frame, {
+            trigger: 'Show details', toolbarLabels: ['Show details', 'Missing action']
+        }, 30000), /differs from the validated source/);
+        toolbar.count = async () => 0;
+        await rejects(bindParameterTrigger(frame, {
+            trigger: 'Show details', toolbarLabels: ['Show details']
+        }, 30000), /Cannot bind/);
     });
 
     it('catches a self-referential visibility export without a preceding global', () => {
@@ -469,6 +523,7 @@ describe('Validating browser validator contracts...', () => {
             async press() { clicked = true; }
         };
         editor.frame.getByRole = (role, options = {}) => {
+            if (role === 'menubar' && !options.name) return parameterToolbar(trigger);
             if (options.name === 'Show details') return trigger;
             if (role === 'heading' && options.name === 'Deferred table') {
                 return { count: async () => mounted ? 1 : 0, async waitFor() {} };
@@ -559,6 +614,16 @@ describe('Validating explicit tenant selection...', () => {
                 return true;
             });
         }
+    });
+
+    it('rejects a confirmed GUID embedded in the directory display name when the actual GUID differs', async () => {
+        const misleading = accountPage([otherTenantId],
+            actual => `Directory: Demo (${testTenant.id}) (${actual}) Domain: example.invalid`);
+        await rejects(verifySelectedTenant(misleading, testTenant), /cannot be matched/);
+        await rejects(verifySelectedTenant(misleading, { useBrowserSession: true }), /cannot be matched/);
+        const duplicate = accountPage([testTenant.id],
+            actual => `Directory: Demo (${actual}) (${actual}) Domain: example.invalid`);
+        assert.deepEqual(await verifySelectedTenant(duplicate, testTenant), testTenant);
     });
 
     it('pauses if tenant identity cannot be read instead of using the signed-in/default tenant', async () => {
@@ -771,7 +836,7 @@ describe('Validating optional screenshot safeguards...', () => {
         assert.deepEqual(missing.cell.attributes, {});
     });
 
-    function screenshotPage({ fail = false, masks = 3, blockedRedaction = false } = {}) {
+    function screenshotPage({ fail = false, masks = 3, blockedRedaction = false, blockedIsolation = false } = {}) {
         const calls = [];
         const cleanedRootAttributes = [];
         const body = {
@@ -804,7 +869,20 @@ describe('Validating optional screenshot safeguards...', () => {
                 return body;
             }
         };
-        const page = { locator: () => ({ contentFrame: () => frame }) };
+        const page = {
+            locator: () => ({
+                contentFrame: () => frame,
+                async evaluateHandle(callback) {
+                    assert.equal(callback, isolateWorkbookFrame);
+                    calls.push('isolate');
+                    if (blockedIsolation) throw new Error('parent isolation blocked');
+                    return {
+                        async evaluate() { calls.push('restore-parent'); },
+                        async dispose() { calls.push('dispose-parent'); }
+                    };
+                }
+            })
+        };
         const target = {
             async screenshot(options) {
                 calls.push('capture');
@@ -823,7 +901,7 @@ describe('Validating optional screenshot safeguards...', () => {
         const fixture = screenshotPage();
         const result = await captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 0);
-        assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'capture', 'restore-parent', 'dispose-parent', 'cleanup']);
         assert.isTrue(result.reviewRequired);
         assert.equal(result.redaction, 'auto');
         assert.isFalse(result.publicationApproved);
@@ -838,7 +916,7 @@ describe('Validating optional screenshot safeguards...', () => {
         const fixture = screenshotPage({ fail: true });
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 1), /simulated capture failure/);
-        assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
+        assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'capture', 'restore-parent', 'dispose-parent', 'cleanup']);
     });
 
     it('refuses mask-free captures while cleaning the temporary capture scope', async () => {
@@ -849,24 +927,18 @@ describe('Validating optional screenshot safeguards...', () => {
     });
 
     it('captures unredacted content only through a distinct explicitly approved path', async () => {
-        const calls = [];
-        const page = { locator() { throw new Error('Unredacted capture must not install or pretend to apply masks.'); } };
-        const target = { async screenshot(options) {
-            assert.isUndefined(options.mask);
-            assert.isUndefined(options.style);
-            calls.push(options.path);
-        } };
-        await rejects(captureWorkbookScreenshot(page, target,
-            { directory: 'private', redaction: 'none' }, [], 0), /PAUSED/);
-        assert.lengthOf(calls, 0);
-        const result = await captureWorkbookScreenshot(page, target,
-            { directory: 'private', redaction: 'none', allowSensitiveCapture: true }, [], 0);
-        assert.lengthOf(calls, 1);
+        const fixture = screenshotPage();
+        await rejects(captureWorkbookScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', redaction: 'none' }, [], 0), /PAUSED/);
+        assert.lengthOf(fixture.calls, 0);
+        const result = await captureWorkbookScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', redaction: 'none', allowSensitiveCapture: true }, [], 0);
+        assert.deepEqual(fixture.calls, ['isolate', 'capture', 'restore-parent', 'dispose-parent']);
         assert.equal(result.redaction, 'none');
         assert.equal(result.maskedElements, 0);
         assert.isTrue(result.reviewRequired);
         assert.isFalse(result.publicationApproved);
-        await rejects(captureMaskedScreenshot(page, target,
+        await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'private', redaction: 'none', allowSensitiveCapture: true }, [], 0), /Masked capture requires/);
     });
 
@@ -878,7 +950,7 @@ describe('Validating optional screenshot safeguards...', () => {
             }, ['Approved heading'], 0);
             assert.equal(result.redaction, redaction);
             assert.isFalse(result.publicationApproved);
-            assert.deepEqual(fixture.calls, ['mask', 'redact', 'capture', 'cleanup']);
+            assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'capture', 'restore-parent', 'dispose-parent', 'cleanup']);
         }
     });
 
@@ -887,6 +959,13 @@ describe('Validating optional screenshot safeguards...', () => {
         await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
             { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 3), /redaction blocked/);
         assert.deepEqual(fixture.calls, ['mask', 'redact', 'cleanup']);
+    });
+
+    it('refuses capture if parent-page isolation fails and still removes workbook masks', async () => {
+        const fixture = screenshotPage({ blockedIsolation: true });
+        await rejects(captureMaskedScreenshot(fixture.page, fixture.target,
+            { directory: 'C:\\private-evidence', maskSelectors: [] }, ['Approved heading'], 4), /parent isolation blocked/);
+        assert.deepEqual(fixture.calls, ['mask', 'redact', 'isolate', 'cleanup']);
     });
 
     it('refuses capture if the browser blocks or ignores DOM redaction styles', () => {
