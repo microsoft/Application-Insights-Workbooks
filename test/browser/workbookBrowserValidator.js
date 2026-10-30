@@ -104,7 +104,7 @@ function createValidationPlan(workbookSource, options = {}) {
     visit(workbook.items, new Map());
 
     const primaryTabs = tabsets[0] || [];
-    if (primaryTabs.some(link => link.linkTarget !== 'parameter')) {
+    if (tabsets.some(tabset => tabset.some(link => link.linkTarget !== 'parameter'))) {
         throw new Error('Automatic tab navigation supports parameter links only.');
     }
     if (options.tabs === undefined && primaryTabs.some(link => /[{}]/.test(link.linkLabel))) {

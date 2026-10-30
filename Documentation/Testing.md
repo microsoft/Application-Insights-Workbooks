@@ -76,7 +76,7 @@ Generate into a directory your browser tool permits. Existing output files are n
 
 Use the same validator for another workbook by changing the template path and, optionally, supplying a JSON checks file:
 
-- `tabs`: exact primary tab labels, in order. Static labels are inferred if omitted; parameterized labels require explicit expectations. Automatic navigation supports parameter links only.
+- `tabs`: exact primary tab labels, in order. Static labels are inferred if omitted; parameterized labels require explicit expectations. All declared tab links must be parameter links; otherwise automatic navigation is refused.
 - `timeout`: per-operation timeout in milliseconds, from 1 to 120000; default 30000.
 - `deferred`: checks with `trigger` (a unique parameter-link label), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab).
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.

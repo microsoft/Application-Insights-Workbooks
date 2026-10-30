@@ -83,6 +83,18 @@ describe('Validating browser validator contracts...', () => {
         const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'schema', 'workbook.json'), 'utf8'));
         const result = new Validator().validate(workbook, schema);
         assert.isTrue(result.valid, result.errors.map(error => error.stack).join('\n'));
+        const items = [];
+        function collect(entries) {
+            for (const item of entries) {
+                items.push(item);
+                if (item.type === 12) collect(item.content.items);
+            }
+        }
+        collect(workbook.items);
+        assert.isTrue(items.every(item => [1, 3, 9, 11, 12].includes(item.type)));
+        assert.isTrue(items.filter(item => item.type === 3).every(item => item.content.queryType === 8));
+        assert.isTrue(items.filter(item => item.type === 11)
+            .every(item => item.content.links.every(link => link.linkTarget === 'parameter')));
         const group = workbook.items.find(item => item.name === 'browser_fixture_group');
         const query = group.content.items.find(item => item.type === 3);
         assert.equal(query.content.queryType, 8);
@@ -136,6 +148,21 @@ describe('Validating browser validator contracts...', () => {
 
     it('does not automatically navigate external or ARM-action tabs', () => {
         const unsafe = changedSource(workbook => { workbook.items[1].content.links[0].linkTarget = 'ArmAction'; });
+        assert.throws(() => createValidationPlan(unsafe), /parameter links only/);
+    });
+
+    it('does not allow a secondary tabset to bypass the parameter-only navigation guard', () => {
+        const unsafe = changedSource(workbook => {
+            workbook.items.push({
+                type: 11,
+                name: 'additional_tabs',
+                content: {
+                    version: 'LinkItem/1.0',
+                    style: 'tabs',
+                    links: [{ linkLabel: 'External', linkTarget: 'url', cellValue: 'https://example.invalid/' }]
+                }
+            });
+        });
         assert.throws(() => createValidationPlan(unsafe), /parameter links only/);
     });
 
