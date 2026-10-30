@@ -161,6 +161,16 @@ function createValidationPlan(workbookSource, options = {}) {
     return { source, itemCount, tabs, deferred, timeout };
 }
 
+function readGridSummary(element) {
+    const count = element.getAttribute('aria-rowcount');
+    if (count === null || !/^\d+$/.test(count) || !Number.isSafeInteger(Number(count)) || Number(count) < 1) {
+        throw new Error('Cannot validate virtualized row limits without a reliable aria-rowcount.');
+    }
+    const columns = Array.from(element.querySelectorAll('[role="columnheader"]'), header =>
+        (header.textContent || '').replace(/^[\uE000-\uF8FF\s]+/, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    return { rows: Number(count) - 1, columns };
+}
+
 async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
     if (!isAzurePortalUrl(page.url())) {
@@ -256,15 +266,7 @@ async function validateWorkbookInBrowser(page, workbookSource, options = {}) {
             }
             const grid = panel.getByRole('grid');
             await grid.waitFor({ state: 'visible', timeout: plan.timeout });
-            const summary = await grid.evaluate(element => {
-                const count = element.getAttribute('aria-rowcount');
-                if (count === null || !/^\d+$/.test(count) || !Number.isSafeInteger(Number(count)) || Number(count) < 1) {
-                    throw new Error('Cannot validate virtualized row limits without a reliable aria-rowcount.');
-                }
-                const columns = Array.from(element.querySelectorAll('[role="columnheader"]'), header =>
-                    (header.textContent || '').replace(/^[\uE000-\uF8FF\s]+/, '').trim()).filter(Boolean);
-                return { rows: Number(count) - 1, columns };
-            });
+            const summary = await grid.evaluate(readGridSummary);
             if (check.minRows !== undefined && summary.rows < check.minRows) {
                 throw new Error(`"${check.heading}" returned ${summary.rows} rows, below minRows ${check.minRows}.`);
             }
@@ -321,7 +323,7 @@ function validateCdpEndpoint(value) {
 function createPlaywrightScript(workbookSource, options = {}) {
     const plan = createValidationPlan(workbookSource, options);
     // Keep the emitted runner independent of Node imports and the browser tool's filesystem access.
-    const functions = [isAzurePortalUrl, createValidationPlan, validateWorkbookInBrowser]
+    const functions = [isAzurePortalUrl, createValidationPlan, readGridSummary, validateWorkbookInBrowser]
         .map(callback => callback.toString()).join('\n\n');
     return `async (page) => {\n${functions}\nreturn validateWorkbookInBrowser(page, ${JSON.stringify(plan.source)}, ${JSON.stringify(options)});\n}\n`;
 }
@@ -329,6 +331,7 @@ function createPlaywrightScript(workbookSource, options = {}) {
 module.exports = {
     isAzurePortalUrl,
     createValidationPlan,
+    readGridSummary,
     validateWorkbookInBrowser,
     loadValidationInput,
     validateCdpEndpoint,

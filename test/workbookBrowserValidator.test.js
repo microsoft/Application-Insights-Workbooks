@@ -10,6 +10,7 @@ const { Validator } = require('jsonschema');
 const {
     isAzurePortalUrl,
     createValidationPlan,
+    readGridSummary,
     validateWorkbookInBrowser,
     loadValidationInput,
     validateCdpEndpoint,
@@ -117,6 +118,27 @@ describe('Validating browser validator contracts...', () => {
         assert.equal(plan.deferred[0].minRows, 2);
         assert.equal(plan.deferred[0].maxRows, 2);
         assert.deepEqual(plan.deferred[0].columns, ['Label', 'Count']);
+    });
+
+    it('uses total ARIA rows and normalizes display headers without inspecting record values', () => {
+        const grid = {
+            getAttribute(name) {
+                assert.equal(name, 'aria-rowcount');
+                return '101';
+            },
+            querySelectorAll(selector) {
+                assert.equal(selector, '[role="columnheader"]');
+                return [{ textContent: '\uE001' }, { textContent: '\uE001  First\n column ' },
+                    { textContent: ' Count\t total ' }];
+            }
+        };
+        assert.deepEqual(readGridSummary(grid), { rows: 100, columns: ['First column', 'Count total'] });
+    });
+
+    it('rejects unknown virtualized row counts instead of falling back to rendered rows', () => {
+        for (const count of [null, '', '-1', 'unknown', '0', '2.5', '9007199254740993']) {
+            assert.throws(() => readGridSummary({ getAttribute: () => count }), /reliable aria-rowcount/);
+        }
     });
 
     it('rejects invalid source and workbook versions before browser interaction', () => {

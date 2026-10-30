@@ -80,7 +80,7 @@ Use the same validator for another workbook by changing the template path and, o
 - `timeout`: per-operation timeout in milliseconds, from 1 to 120000; default 30000.
 - `deferred`: checks with `trigger` (a unique parameter-link label), `heading` (the content's unique heading), and optional `tab` (defaults to the first primary tab).
 - `hideTriggerAfterLoad`: require the trigger to become hidden; default false.
-- `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels; selection icons are excluded.
+- `minRows`, `maxRows`, `columns`: optional data contracts for a query panel. Row bounds exclude the header. Columns are exact, ordered, non-empty display labels with normalized whitespace; selection icons are excluded.
 
 The JSON report contains the source hash, visited tab labels, requested contract results, and aggregate row counts, not record values. Only requested contracts are covered; review even these summaries before publishing because labels can contain context. Do not publish generated scripts, browser profiles, or tenant screenshots as test evidence.
 
