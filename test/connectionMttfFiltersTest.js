@@ -31,7 +31,7 @@ function sourcePipelines(query, table) {
 
 function letBlock(query, name) {
     const match = normalizeQuery(query)
-        .match(new RegExp(`(?:^|\\n)let ${name} = materialize\\(\\n([\\s\\S]*?)\\n\\);`));
+        .match(new RegExp(`(?:^|\\n)let ${name} = (?:materialize)?\\(\\n([\\s\\S]*?)\\n\\);`));
     assert.isNotNull(match, name);
     return match[1];
 }
@@ -73,6 +73,16 @@ function durationSecondsFor(query, events, windowStart, windowEnd) {
     return Math.floor(endTime / 1000) - Math.floor(connectedTime / 1000);
 }
 
+function mttfHoursFor(query, totalDurationSeconds, disruptionCount) {
+    const fallback = normalizeQuery(query).match(
+        /MeanTimeToFailureHours = iff\([^\n]*,\s*(real\(\+inf\)|todouble\(([\d.]+)\))\)/);
+    assert.isNotNull(fallback);
+    if (disruptionCount > 0) {
+        return totalDurationSeconds / disruptionCount / 3600;
+    }
+    return fallback[1] === 'real(+inf)' ? Infinity : Number(fallback[2]);
+}
+
 function mttfBucketFor(query, totalDurationSeconds, disruptionCount) {
     const caseBlock = normalizeQuery(query)
         .match(/\| extend MTTFBin = case\(\n([\s\S]*?)\n\)/);
@@ -85,14 +95,32 @@ function mttfBucketFor(query, totalDurationSeconds, disruptionCount) {
     const fallback = caseBlock[1].trim().split('\n').at(-1).match(/^"([^"]+)"$/);
     assert.isNotNull(fallback);
 
-    const meanTimeToFailure = disruptionCount > 0
-        ? totalDurationSeconds / disruptionCount / 3600
-        : 0;
+    const meanTimeToFailure = mttfHoursFor(query, totalDurationSeconds, disruptionCount);
     if (disruptionCount === 0) {
         return infinite[1];
     }
     const threshold = thresholds.find(match => meanTimeToFailure < Number(match[1]));
     return threshold ? threshold[2] : fallback[1];
+}
+
+function userNameCandidatesFor(query, events) {
+    const selection = letBlock(query, 'Connections').match(
+        /UserName\s*=\s*take_any(if)?\(UserName(,\s*isnotempty\(UserName\))?\)/);
+    assert.isNotNull(selection);
+    assert.equal(Boolean(selection[1]), Boolean(selection[2]));
+    const candidates = events.map(event => event.UserName)
+        .filter(userName => !selection[1] || userName);
+    return Array.from(new Set(candidates));
+}
+
+function errorValuesFor(query, column, events) {
+    const expression = letBlock(query, 'ErrorInfo').match(new RegExp(
+        `${column} = make_set\\(iff\\(isempty\\((\\w+)\\), (\\w+), strcat\\(\\1, "([^"]*)", \\2\\)\\), (\\d+)\\)`));
+    assert.isNotNull(expression, column);
+    const [, source, field, separator, limit] = expression;
+    const values = events.map(event =>
+        event[source] ? `${event[source]}${separator}${event[field]}` : event[field]);
+    return Array.from(new Set(values)).slice(0, Number(limit));
 }
 
 function udpTypeFor(query, udpUse) {
@@ -436,6 +464,19 @@ describe('Connection MTTF calculation results', () => {
     const windowStart = '2026-01-10T00:00:00Z';
     const windowEnd = '2026-01-11T00:00:00Z';
 
+    it('cannot select a blank username when correlated lifecycle events contain a populated one', () => {
+        const cases = [
+            [{ UserName: '' }, { UserName: 'user-a' }, { UserName: '' }],
+            [{ UserName: 'user-a' }, { UserName: null }, { UserName: 'user-a' }]
+        ];
+        for (const item of querySteps) {
+            for (const events of cases) {
+                assert.sameMembers(userNameCandidatesFor(item.content.query, events),
+                    ['user-a'], item.name);
+            }
+        }
+    });
+
     it('uses full durations only for connections completed in the range with known Connected timestamps', () => {
         const cases = [
             {
@@ -574,6 +615,22 @@ describe('Connection MTTF calculation results', () => {
         }
     });
 
+    it('preserves error sources during deduplication and leaves source-less errors readable', () => {
+        const events = [
+            { Source: 'Client', CodeSymbolic: 'SameCode', Message: 'Connection failed' },
+            { Source: 'Stack', CodeSymbolic: 'SameCode', Message: 'Connection failed' },
+            { Source: 'Client', CodeSymbolic: 'SameCode', Message: 'Connection failed' },
+            { Source: '', CodeSymbolic: 'NoSource', Message: 'No source available' }
+        ];
+        for (const item of dataViews.filter(item => item.content.query.includes('let ErrorInfo ='))) {
+            assert.sameMembers(errorValuesFor(item.content.query, 'CodeSymbolic', events),
+                ['Client: SameCode', 'Stack: SameCode', 'NoSource'], item.name);
+            assert.sameMembers(errorValuesFor(item.content.query, 'ErrorMessage', events),
+                ['Client: Connection failed', 'Stack: Connection failed', 'No source available'],
+                item.name);
+        }
+    });
+
     it('visibly reports excluded completed connections using the same filtered cohort as the charts', () => {
         const availability = items.find(item => item.name === 'MTTFDataAvailability');
         assert.isDefined(availability);
@@ -640,8 +697,22 @@ describe('Connection MTTF calculation results', () => {
             assert.match(item.content.query,
                 /TotalDurationSeconds\s*= sum\(DurationSeconds\)/, item.name);
             assert.include(item.content.query,
-                'MeanTimeToFailureHours = iff(DisruptionCount > 0, TotalDurationSeconds / todouble(DisruptionCount) / 3600.0, todouble(0))',
+                'MeanTimeToFailureHours = iff(DisruptionCount > 0, TotalDurationSeconds / todouble(DisruptionCount) / 3600.0, real(+inf))',
                 item.name);
+        }
+    });
+
+    it('uses positive infinity for zero failures while retaining finite MTTF values', () => {
+        const cases = [
+            [0, 0, Infinity],
+            [3600, 0, Infinity],
+            [7200, 2, 1]
+        ];
+        for (const item of dataViews) {
+            for (const [seconds, failures, expected] of cases) {
+                assert.equal(mttfHoursFor(item.content.query, seconds, failures),
+                    expected, `${item.name}: ${seconds} seconds / ${failures} failures`);
+            }
         }
     });
 
