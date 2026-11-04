@@ -257,6 +257,28 @@ describe('Connection MTTF navigation', () => {
         assert.equal(sharedTimeRangeGroup.content.parameters[0].name, 'TimeRange');
     });
 
+    it('keeps resource pickers evaluable before tab-specific time ranges are declared', () => {
+        const timeRangeIndex = navigationWorkbook.items
+            .findIndex(item => item.name === 'parameters_timerange');
+        const scopeParameters = navigationWorkbook.items.slice(0, timeRangeIndex)
+            .filter(item => item.type === 9)
+            .flatMap(item => item.content.parameters);
+        const availableNames = new Set(scopeParameters.map(parameter => parameter.name));
+
+        for (const parameter of scopeParameters.filter(parameter => parameter.queryType === 1)) {
+            const source = [parameter.query, ...(parameter.crossComponentResources || [])].join('\n');
+            const dependencies = Array.from(source.matchAll(/\{(\w+)(?::[^}]*)?\}/g),
+                match => match[1]);
+            if (parameter.timeContextFromParameter) {
+                dependencies.push(parameter.timeContextFromParameter);
+            }
+            for (const dependency of dependencies) {
+                assert.isTrue(availableNames.has(dependency),
+                    `${parameter.name} requires ${dependency} before its declaration`);
+            }
+        }
+    });
+
     it('places the tab between Connection Performance and Users', () => {
         const labels = reportTabs.map(link => link.linkLabel);
         const connectionPerformanceIndex = labels.indexOf('Connection Performance');
