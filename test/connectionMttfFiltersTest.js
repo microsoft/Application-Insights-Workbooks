@@ -332,7 +332,7 @@ describe('Connection MTTF filtering', () => {
         assert.isUndefined(parameters.find(parameter => parameter.name === 'TimeRange'));
     });
 
-    it('selects completions in range and retrieves only their available history without a fixed lookback', () => {
+    it('scopes queries to completions in range and retrieves history only where needed without a fixed lookback', () => {
         assert.sameMembers(kqlParameters.map(parameter => parameter.name),
             ['GatewayRegion', 'ClientType', 'ClientVersion']);
         for (const { name, content } of mttfQueries) {
@@ -343,6 +343,10 @@ describe('Connection MTTF filtering', () => {
             assert.equal(query.slice(0, windowLets.length + 1), `${windowLets}\n`, name);
             assert.lengthOf(query.match(/\{MTTFTimeRange\b/g), 2, name);
             assert.notMatch(query, /\bLookback\b|\bWindowedStart\b|\bWindowedEnd\b/, name);
+        }
+
+        for (const { name, content } of querySteps) {
+            const query = normalizeQuery(content.query);
             const completed = letBlock(query, 'CompletedConnections');
             assert.include(completed, timeWindow, name);
             assert.include(completed, resourceFilter, name);
@@ -383,32 +387,34 @@ describe('Connection MTTF filtering', () => {
         }
     });
 
-    it('keeps client option queries scoped to upstream filters', () => {
+    it('reads client options directly from scoped completed connections and preserves upstream filters', () => {
         for (const name of ['ClientType', 'ClientVersion']) {
             const query = parameters.find(parameter => parameter.name === name).query;
             const sources = sourcePipelines(query, 'WVDConnections');
-            assert.lengthOf(sources, 2, name);
-            const connections = sources[1];
-            assert.include(connections, resourceFilter, name);
+            assert.lengthOf(sources, 1, name);
+            const connections = sources[0];
+            assert.deepEqual(connections.split('\n').slice(0, 3), [
+                timeWindow,
+                resourceFilter,
+                '| where State == "Completed"'
+            ], name);
             assert.notInclude(query, 'WVDMultiLinkAdd', name);
-            const aggregationEnd = connections.indexOf('by CorrelationId');
-            assert.isAtLeast(aggregationEnd, 0, name);
-            for (const field of ['GatewayRegion', 'ClientType',
-                ...(name === 'ClientVersion' ? ['ClientVersion'] : [])]) {
-                assert.include(connections.slice(0, aggregationEnd),
-                    `take_anyif(${field}, isnotempty(${field}))`, name);
-            }
+            assert.notMatch(query, /\b(join|summarize|materialize|CorrelationId)\b/, name);
             assert.include(connections, gatewayNormalization, name);
             assert.include(connections, gatewayFilter, name);
-            assert.isAbove(connections.indexOf(gatewayNormalization), aggregationEnd, name);
             assert.isAbove(connections.indexOf(gatewayFilter),
                 connections.indexOf(gatewayNormalization), name);
             if (name === 'ClientVersion') {
                 assert.include(connections,
                     "| where '*' in ({ClientType}) or ClientType in ({ClientType})", name);
                 assert.isAbove(connections.indexOf("| where '*' in ({ClientType})"),
-                    aggregationEnd, name);
+                    connections.indexOf(gatewayFilter), name);
             }
+            assert.deepEqual(connections.split('\n').slice(-3), [
+                `| where isnotempty(${name})`,
+                `| distinct ${name}`,
+                `| order by ${name} asc`
+            ], name);
         }
     });
 
@@ -865,14 +871,22 @@ describe('Connection MTTF optional MultiLink transport', () => {
         }
     });
 
-    it('sources gateway options from connections and offers Unknown rather than Unavailable', () => {
+    it('reads distinct gateway options directly from scoped completed connections and preserves Unknown', () => {
         const query = parameters.find(parameter => parameter.name === 'GatewayRegion').query;
 
         assert.notInclude(query, 'WVDMultiLinkAdd');
         assert.notInclude(query, 'Unavailable');
+        assert.notMatch(query, /\b(join|summarize|materialize|CorrelationId)\b/);
+        const sources = sourcePipelines(query, 'WVDConnections');
+        assert.lengthOf(sources, 1);
+        assert.deepEqual(sources[0].split('\n').slice(0, 3), [
+            timeWindow,
+            resourceFilter,
+            '| where State == "Completed"'
+        ]);
         assert.include(query,
-            '| summarize GatewayRegion = take_anyif(GatewayRegion, isnotempty(GatewayRegion)) by CorrelationId');
-        assert.include(query, gatewayNormalization);
+            '| project GatewayLocation = iff(isempty(GatewayRegion), "Unknown", GatewayRegion)');
+        assert.lengthOf(query.match(/\| distinct GatewayLocation/g), 1);
         assert.deepEqual(normalizeQuery(query).split('\n').slice(-3), [
             '| union (datatable(GatewayLocation:string)["Unknown"])',
             '| distinct GatewayLocation',
