@@ -164,8 +164,7 @@ const navigationMttfParameterGroups = ['parameters_mttf_filters']
     .map(name => navigationItems.find(item => item.name === name));
 const navigationMttfParameters = navigationMttfParameterGroups
     .flatMap(item => item.content.parameters);
-const querySteps = items.filter(item => item.type === 3 && item.content.queryType === 0);
-const dataViews = querySteps.filter(item => item.name !== 'MTTFDataAvailability');
+const dataViews = items.filter(item => item.type === 3 && item.content.queryType === 0);
 const resourceFilter = '| where _ResourceId in~ ({HostPools})';
 const gatewayNormalization = '| extend GatewayLocation = iff(isempty(GatewayRegion), "Unknown", GatewayRegion)';
 const gatewayFilter = "| where '*' in ({GatewayRegion}) or GatewayLocation in ({GatewayRegion})";
@@ -185,7 +184,7 @@ const completedDuration = [
 ].join('\n');
 const kqlParameters = parameters.filter(parameter => parameter.queryType === 0);
 const mttfQueries = [
-    ...querySteps.map(item => ({ name: item.name, content: item.content })),
+    ...dataViews.map(item => ({ name: item.name, content: item.content })),
     ...kqlParameters.map(parameter => ({ name: parameter.name, content: parameter }))
 ];
 
@@ -304,7 +303,7 @@ describe('Connection MTTF navigation', () => {
 describe('Connection MTTF filtering', () => {
     it('covers every data view and transport enrichment read', () => {
         assert.sameMembers(dataViews.map(item => item.name), [
-            'MTTFBarChart', 'MTTFHistogram', 'MTTFUnifiedDetail', 'MTTFTransportDetail',
+            'MTTFBarChart', 'MTTFUnifiedDetail', 'MTTFTransportDetail',
             'MTTFGatewayDetail', 'MTTFUnifiedConnections', 'MTTFTransportConnections',
             'MTTFGatewayConnections'
         ]);
@@ -345,7 +344,7 @@ describe('Connection MTTF filtering', () => {
             assert.notMatch(query, /\bLookback\b|\bWindowedStart\b|\bWindowedEnd\b/, name);
         }
 
-        for (const { name, content } of querySteps) {
+        for (const { name, content } of dataViews) {
             const query = normalizeQuery(content.query);
             const completed = letBlock(query, 'CompletedConnections');
             assert.include(completed, timeWindow, name);
@@ -480,10 +479,29 @@ describe('Connection MTTF filtering', () => {
         });
     }
 
-    it('uses the same filtered query for the histogram and chart', () => {
-        assert.equal(
-            items.find(item => item.name === 'MTTFBarChart').content.query,
-            items.find(item => item.name === 'MTTFHistogram').content.query);
+    it('renders the histogram from the chart result instead of re-running the query', () => {
+        const chartIndex = workbook.items.findIndex(item => item.name === 'MTTFBarChart');
+        const histogramIndex = workbook.items.findIndex(item => item.name === 'MTTFHistogram');
+        assert.isAtLeast(chartIndex, 0, 'MTTFBarChart must be a root step');
+        assert.isAbove(histogramIndex, chartIndex, 'MTTFHistogram must follow its merge source at root');
+        const chart = workbook.items[chartIndex].content;
+        const histogram = workbook.items[histogramIndex].content;
+        assert.equal(chart.queryType, 0);
+        assert.equal(histogram.queryType, 7);
+        assert.notProperty(histogram, 'crossComponentResources');
+
+        const projection = normalizeQuery(chart.query).split('\n').pop().match(/^\| project (.+)$/);
+        assert.isNotNull(projection);
+        const columns = projection[1].split(/,\s*/);
+        const merge = JSON.parse(histogram.query);
+        assert.lengthOf(merge.merges, 1);
+        assert.include(merge.merges[0], { mergeType: 'table', leftTable: 'MTTFBarChart' });
+        assert.deepEqual(merge.projectRename.map(column => column.mergedName), columns);
+        assert.include(columns, histogram.exportFieldName);
+        for (const column of merge.projectRename) {
+            assert.equal(column.originalName, `[MTTFBarChart].${column.mergedName}`);
+            assert.equal(column.fromId, merge.merges[0].id);
+        }
     });
 });
 
@@ -497,7 +515,7 @@ describe('Connection MTTF calculation results', () => {
             [{ UserName: '' }, { UserName: 'user-a' }, { UserName: '' }],
             [{ UserName: 'user-a' }, { UserName: null }, { UserName: 'user-a' }]
         ];
-        for (const item of querySteps) {
+        for (const item of dataViews) {
             for (const events of cases) {
                 assert.sameMembers(userNameCandidatesFor(item.content.query, events),
                     ['user-a'], item.name);
@@ -657,23 +675,6 @@ describe('Connection MTTF calculation results', () => {
                 ['Client: Connection failed', 'Stack: Connection failed', 'No source available'],
                 item.name);
         }
-    });
-
-    it('visibly reports excluded completed connections using the same filtered cohort as the charts', () => {
-        const availability = items.find(item => item.name === 'MTTFDataAvailability');
-        assert.isDefined(availability);
-        assert.isBelow(workbook.items.indexOf(availability),
-            workbook.items.findIndex(item => item.name === 'MTTFBarChartGroup'));
-        assert.deepEqual(availability.content.crossComponentResources, ['{HostPools}']);
-        assert.equal(availability.content.visualization, 'card');
-        assert.equal(letBlock(availability.content.query, 'Connections'),
-            letBlock(query, 'Connections').replace(`\n${completedDuration}`, ''));
-        assert.include(availability.content.query,
-            'MissingConnectedCount = countif(isnull(ConnectedTime))');
-        assert.include(availability.content.query,
-            'InvalidDurationCount = countif(isnotnull(ConnectedTime) and EndTime <= ConnectedTime)');
-        assert.include(finalStatement(availability.content.query), 'MissingConnectedCount');
-        assert.include(finalStatement(availability.content.query), 'InvalidDurationCount');
     });
 
     it('sums full completed durations per user and counts each historically failed connection once', () => {
