@@ -7,6 +7,7 @@ describe('Validating serverless cost summary...', () => {
         'Workbooks', 'Azure Security Center', 'Cost Estimation', 'CostEstimation.workbook'
     ), 'utf8'));
     const summaries = [];
+    const totals = [];
 
     function findSummaries(value) {
         if (!value || typeof value !== 'object') {
@@ -15,10 +16,25 @@ describe('Validating serverless cost summary...', () => {
         if (value.name === 'Serverless CSPM summary') {
             summaries.push(value.content);
         }
+        if (value.content && value.content.title === 'Grand total (known costs)') {
+            totals.push(value.content);
+        }
         Object.values(value).forEach(findSummaries);
     }
 
     findSummaries(workbook);
+
+    it('hides the grand-total status column in both modes without removing its source data', () => {
+        assert.lengthOf(totals, 2);
+        totals.forEach(total => {
+            const formatters = total.gridSettings.formatters.filter(
+                formatter => formatter.columnMatch === 'Unpriced serverless inputs');
+            assert.deepEqual(formatters, [
+                { columnMatch: 'Unpriced serverless inputs', formatter: 5 }
+            ]);
+            assert.equal(JSON.parse(total.query).version, 'Merge/1.0');
+        });
+    });
 
     it('covers both subscription and tenant modes', () => {
         assert.lengthOf(summaries, 2);
