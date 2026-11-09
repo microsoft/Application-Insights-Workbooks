@@ -94,7 +94,7 @@ describe('Validating serverless cost summary...', () => {
                 { columnId: 'Cloud', label: 'Cloud' },
                 { columnId: 'Component', label: 'Component' },
                 { columnId: 'KnownQuantity', label: 'Resource quantity' },
-                { columnId: 'BillableUnits', label: 'Equivalent billable quantity' },
+                { columnId: 'BillableUnits', label: 'Billable quantity' },
                 { columnId: 'KnownMonthlyCost', label: 'Included monthly cost (USD)' }
             ]);
             assert.include(summary.query,
