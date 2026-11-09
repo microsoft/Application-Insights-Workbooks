@@ -32,6 +32,20 @@ describe('Validating serverless cost summary...', () => {
 
     findSummaries(workbook);
 
+    it('uses discovery only without forecast controls, overrides, or stale guidance', () => {
+        const serialized = JSON.stringify(workbook);
+        assert.notMatch(serialized, /forecast|override|ServerlessProtectionAverage|ServerlessContainersAverage/i);
+        summaries.forEach(summary => {
+            assert.include(summary.query,
+                '| extend KnownQuantity = iff(Cloud == "Azure" and AutoValid, AutoQuantity, 0.0)');
+            assert.include(summary.query,
+                '| extend UnpricedInputs = iff(Cloud == "Azure" and AutoValid, AutoMissing, 1)');
+        });
+        [...azureTables, ...otherCloudTables.filter(table => table.title === 'AWS')].forEach(table => {
+            assert.notMatch(table.query, /SLPProvided|SLCProvided|SLPText|SLCText/);
+        });
+    });
+
     it('uses the expanded CSPM column name across all cloud and total tables in both modes', () => {
         const tables = [...totals, ...azureTables, ...otherCloudTables];
         assert.lengthOf(tables, 8);
