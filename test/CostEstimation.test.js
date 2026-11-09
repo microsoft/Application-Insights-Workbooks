@@ -106,7 +106,16 @@ describe('Validating serverless cost summary...', () => {
             assert.include(summary.query, '| extend KnownMonthlyCost = KnownQuantity * MonthlyRate');
             assert.include(summary.query, 'KnownQuantity = sum(KnownQuantity)');
             assert.include(summary.query,
-                '| project Cloud, Component, KnownQuantity, BillableUnits, KnownMonthlyCost = iff(UnpricedInputs > 0 and KnownQuantity == 0.0, real(null), KnownMonthlyCost)');
+                '| project Cloud, Component, KnownQuantity, BillableUnits, KnownMonthlyCost = iff(UnpricedInputs > 0 and KnownQuantity == 0.0, real(null), KnownMonthlyCost), ResourceKind');
+            assert.include(summary.query,
+                '| extend ResourceKind = iff(Component == "protection", iff(Cloud == "AWS", "Lambda functions", "apps/functions"), "running containers")');
+            const quantityFormatter = summary.gridSettings.formatters.find(
+                item => item.columnMatch === 'KnownQuantity');
+            assert.exists(quantityFormatter);
+            assert.equal(quantityFormatter.formatOptions.thresholdsGrid[0].text,
+                '{0} (["ResourceKind"])');
+            assert.deepInclude(summary.gridSettings.formatters,
+                { columnMatch: 'ResourceKind', formatter: 5 });
             assert.equal((summary.query.match(/\{discountToMultiplyVal\}/g) || []).length, 1);
         });
     });
