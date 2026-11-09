@@ -32,6 +32,17 @@ describe('Validating serverless cost summary...', () => {
 
     findSummaries(workbook);
 
+    it('uses the expanded CSPM column name across all cloud and total tables in both modes', () => {
+        const tables = [...totals, ...azureTables, ...otherCloudTables];
+        assert.lengthOf(tables, 8);
+        tables.forEach(table => {
+            assert.deepInclude(table.gridSettings.labelSettings, {
+                columnId: 'Defender CSPM',
+                label: 'Microsoft Cloud Security Posture Management'
+            });
+        });
+    });
+
     it('labels the final cost column consistently across all cost tables in both modes', () => {
         const tables = [...totals, ...azureTables, ...otherCloudTables, ...summaries];
         assert.lengthOf(tables, 10);
