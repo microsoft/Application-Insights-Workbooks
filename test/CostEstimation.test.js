@@ -9,6 +9,7 @@ describe('Validating serverless cost summary...', () => {
     const summaries = [];
     const totals = [];
     const azureTables = [];
+    const otherCloudTables = [];
 
     function findSummaries(value) {
         if (!value || typeof value !== 'object') {
@@ -23,10 +24,26 @@ describe('Validating serverless cost summary...', () => {
         if (value.content && value.content.title === 'Azure') {
             azureTables.push(value.content);
         }
+        if (value.content && ['AWS', 'GCP'].includes(value.content.title)) {
+            otherCloudTables.push(value.content);
+        }
         Object.values(value).forEach(findSummaries);
     }
 
     findSummaries(workbook);
+
+    ['AWS', 'GCP'].forEach(cloud => {
+        it(`hides the ${cloud} status column in both modes`, () => {
+            const tables = otherCloudTables.filter(table => table.title === cloud);
+            assert.lengthOf(tables, 2);
+            tables.forEach(table => {
+                assert.deepEqual(table.gridSettings.formatters.filter(
+                    formatter => formatter.columnMatch === 'ServerlessUnpricedInputs'), [
+                    { columnMatch: 'ServerlessUnpricedInputs', formatter: 5 }
+                ]);
+            });
+        });
+    });
 
     it('hides the Azure subscription status column in both modes', () => {
         assert.lengthOf(azureTables, 2);
