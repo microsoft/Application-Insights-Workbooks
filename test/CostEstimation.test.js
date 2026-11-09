@@ -29,23 +29,26 @@ describe('Validating serverless cost summary...', () => {
     });
 
     ['microsoft.resourcegraph/resources', 'microsoft.resources/tenants'].forEach(resourceType => {
-        it(`${resourceType} shows quantity and monthly cost without pricing-unit or status columns`, () => {
+        it(`${resourceType} distinguishes resource and billable quantities without a status column`, () => {
             const summary = summaries.find(item => item.resourceType === resourceType);
             assert.exists(summary);
             assert.deepEqual(summary.gridSettings.labelSettings, [
                 { columnId: 'Cloud', label: 'Cloud' },
                 { columnId: 'Component', label: 'Component' },
-                { columnId: 'KnownQuantity', label: 'Quantity' },
+                { columnId: 'KnownQuantity', label: 'Resource quantity' },
+                { columnId: 'BillableUnits', label: 'Equivalent billable quantity' },
                 { columnId: 'KnownMonthlyCost', label: 'Included monthly cost (USD)' }
             ]);
-            assert.notInclude(summary.query, 'BillableUnits');
+            assert.include(summary.query,
+                '| extend BillableUnits = KnownQuantity / iff(Component == "protection", 8.0, 2.0)');
+            assert.notMatch(summary.query, /\b(ceil|ceiling|round|toint|tolong)\(KnownQuantity/);
             assert.notInclude(summary.query, '| extend Status =');
             assert.include(summary.query,
                 '| extend MonthlyRate = todouble({retailPricing:$.monthly.cspm}) / iff(Component == "protection", 8.0, 2.0) * {discountToMultiplyVal}');
             assert.include(summary.query, '| extend KnownMonthlyCost = KnownQuantity * MonthlyRate');
             assert.include(summary.query, 'KnownQuantity = sum(KnownQuantity)');
             assert.include(summary.query,
-                '| project Cloud, Component, KnownQuantity, KnownMonthlyCost = iff(UnpricedInputs > 0 and KnownQuantity == 0.0, real(null), KnownMonthlyCost)');
+                '| project Cloud, Component, KnownQuantity, BillableUnits, KnownMonthlyCost = iff(UnpricedInputs > 0 and KnownQuantity == 0.0, real(null), KnownMonthlyCost)');
             assert.equal((summary.query.match(/\{discountToMultiplyVal\}/g) || []).length, 1);
         });
     });
