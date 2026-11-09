@@ -32,6 +32,57 @@ describe('Validating serverless cost summary...', () => {
 
     findSummaries(workbook);
 
+    ['subscriptionGroup', 'tenantGroup'].forEach(groupName => {
+        it(`${groupName} gates API costs and queries documented live usage without changing plan pricing`, () => {
+            const items = workbook.items.find(item => item.name === groupName).content.items;
+            const tenant = groupName === 'tenantGroup';
+            const control = items.find(item => item.name === 'Defender for APIs inclusion').content.parameters[0];
+            assert.equal(control.name, 'includeDefenderApis');
+            assert.equal(control.type, 10);
+            assert.equal(control.value, '1');
+            assert.sameMembers(JSON.parse(control.jsonData).map(option => option.value), ['0', '1']);
+            const pricing = items.find(item => item.name === (tenant ? 'pricing grid - tenant' : 'pricing grid'));
+            assert.include(pricing.content.query,
+                "iff(tolong('{AzureAPISubPlans}')==1 and tolong('{includeDefenderApis}')==1,");
+            const scope = items.find(item => item.name === 'Defender for APIs usage scope').content.parameters;
+            const entitlement = scope.find(parameter => parameter.name === 'apiPlanEntitlement');
+            assert.deepEqual(entitlement.criteriaData.slice(0, 5).map(row => row.criteriaContext.resultVal),
+                ['1,000,000', '5,000,000', '50,000,000', '100,000,000', '1,000,000,000']);
+            const resources = scope.find(parameter => parameter.name === 'apiManagementServices');
+            assert.include(resources.query, 'type =~ "microsoft.apimanagement/service"');
+            assert.equal(resources.resourceType,
+                tenant ? 'microsoft.resources/tenants' : 'microsoft.resourcegraph/resources');
+            if (!tenant) assert.deepEqual(resources.crossComponentResources, ['{Subscriptions}']);
+            const detail = items.at(-1);
+            assert.equal(detail.name, 'Defender for APIs estimate');
+            assert.deepInclude(detail.conditionalVisibilities,
+                { parameterName: 'includeDefenderApis', comparison: 'isEqualTo', value: '1' });
+            assert.deepInclude(detail.conditionalVisibilities,
+                { parameterName: 'AzureAPISubPlans', comparison: 'isEqualTo', value: '1' });
+            const [guidance, metrics, costs] = detail.content.items.map(item => item.content);
+            assert.include(guidance.json, 'https://learn.microsoft.com/azure/defender-for-cloud/defender-for-apis-deploy');
+            assert.include(guidance.json, 'not calendar-month billing');
+            assert.include(guidance.json, 'Overages above the selected entitlement are not included');
+            assert.equal(metrics.version, 'MetricsItem/2.0');
+            assert.deepEqual(metrics.resourceIds, ['{apiManagementServices}']);
+            assert.equal(metrics.timeContext.durationMs, 30 * 24 * 60 * 60 * 1000);
+            assert.deepEqual(metrics.metrics, [{
+                namespace: 'microsoft.apimanagement/service',
+                metric: 'microsoft.apimanagement/service-Gateway Requests-Requests',
+                aggregation: 1
+            }]);
+            assert.deepEqual(metrics.gridSettings.hierarchySettings.groupBy, ['Subscription']);
+            assert.include(costs.query, '| summarize ApiManagementServices = count() by Subscription');
+            assert.include(costs.query,
+                `MonthlyCost = todouble("{azureAPIMonthlyPrice${tenant ? 'Tenant' : ''}}") * {discountToMultiplyVal}`);
+            assert.equal(costs.gridSettings.labelSettings.at(-1).label, 'Monthly cost (USD)');
+            const table = azureTables[tenant ? 1 : 0];
+            const format = table.gridSettings.formatters.find(item => item.columnMatch === 'defenderForApiCost');
+            assert.equal(format.formatOptions.thresholdsGrid.find(row => row.operator === 'Default').text,
+                '{0} ({apiPlanEntitlement} requests/month entitlement)');
+        });
+    });
+
     it('uses discovery only without forecast controls, overrides, or stale guidance', () => {
         const serialized = JSON.stringify(workbook);
         assert.notMatch(serialized, /forecast|override|ServerlessProtectionAverage|ServerlessContainersAverage/i);
