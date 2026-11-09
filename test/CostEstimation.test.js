@@ -32,6 +32,19 @@ describe('Validating serverless cost summary...', () => {
 
     findSummaries(workbook);
 
+    it('labels the final cost column consistently across all cost tables in both modes', () => {
+        const tables = [...totals, ...azureTables, ...otherCloudTables, ...summaries];
+        assert.lengthOf(tables, 10);
+        tables.forEach(table => {
+            const column = table.gridSettings.labelSettings.at(-1);
+            assert.equal(column.label, 'Monthly cost (USD)');
+            assert.include([
+                'Grand total', 'Total for subscription', 'Total for AWS account',
+                'Total for GCP project', 'KnownMonthlyCost'
+            ], column.columnId);
+        });
+    });
+
     it('shows one subscription as the Resource Manager billing quantity in both modes', () => {
         assert.lengthOf(azureTables, 2);
         azureTables.forEach(table => {
@@ -95,7 +108,7 @@ describe('Validating serverless cost summary...', () => {
                 { columnId: 'Component', label: 'Component' },
                 { columnId: 'KnownQuantity', label: 'Resource quantity' },
                 { columnId: 'BillableUnits', label: 'Billable quantity' },
-                { columnId: 'KnownMonthlyCost', label: 'Included monthly cost (USD)' }
+                { columnId: 'KnownMonthlyCost', label: 'Monthly cost (USD)' }
             ]);
             assert.include(summary.query,
                 '| extend BillableUnits = KnownQuantity / iff(Component == "protection", 8.0, 2.0)');
