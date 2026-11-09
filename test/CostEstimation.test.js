@@ -32,6 +32,17 @@ describe('Validating serverless cost summary...', () => {
 
     findSummaries(workbook);
 
+    it('shows one subscription as the Resource Manager billing quantity in both modes', () => {
+        assert.lengthOf(azureTables, 2);
+        azureTables.forEach(table => {
+            const formatter = table.gridSettings.formatters.find(
+                item => item.columnMatch === 'defenderForArmCost');
+            assert.exists(formatter);
+            assert.equal(formatter.formatOptions.thresholdsGrid.find(
+                threshold => threshold.operator === 'Default').text, '{0} (1 subscription)');
+        });
+    });
+
     ['AWS', 'GCP'].forEach(cloud => {
         it(`hides the ${cloud} status column in both modes`, () => {
             const tables = otherCloudTables.filter(table => table.title === cloud);
