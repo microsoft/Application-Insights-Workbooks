@@ -8,6 +8,7 @@ describe('Validating serverless cost summary...', () => {
     ), 'utf8'));
     const summaries = [];
     const totals = [];
+    const azureTables = [];
 
     function findSummaries(value) {
         if (!value || typeof value !== 'object') {
@@ -19,10 +20,23 @@ describe('Validating serverless cost summary...', () => {
         if (value.content && value.content.title === 'Grand total (known costs)') {
             totals.push(value.content);
         }
+        if (value.content && value.content.title === 'Azure') {
+            azureTables.push(value.content);
+        }
         Object.values(value).forEach(findSummaries);
     }
 
     findSummaries(workbook);
+
+    it('hides the Azure subscription status column in both modes', () => {
+        assert.lengthOf(azureTables, 2);
+        azureTables.forEach(table => {
+            assert.deepEqual(table.gridSettings.formatters.filter(
+                formatter => formatter.columnMatch === 'ServerlessUnpricedInputs'), [
+                { columnMatch: 'ServerlessUnpricedInputs', formatter: 5 }
+            ]);
+        });
+    });
 
     it('hides the grand-total status column in both modes without removing its source data', () => {
         assert.lengthOf(totals, 2);
