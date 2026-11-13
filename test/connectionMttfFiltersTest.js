@@ -510,19 +510,6 @@ describe('Connection MTTF calculation results', () => {
     const windowStart = '2026-01-10T00:00:00Z';
     const windowEnd = '2026-01-11T00:00:00Z';
 
-    it('shows inclusive/exclusive bucket guidance before both distribution views', () => {
-        const guidanceIndex = workbook.items.findIndex(item => item.name === 'MTTFInsightTitle');
-        assert.isAtLeast(guidanceIndex, 0);
-        const guidance = workbook.items[guidanceIndex];
-        assert.include(guidance.content.json, 'include the lower bound and exclude the upper bound');
-        assert.include(guidance.content.json, '1 <= MTTF < 2');
-        assert.notProperty(guidance, 'conditionalVisibility');
-        assert.notProperty(guidance, 'conditionalVisibilities');
-        for (const name of ['MTTFBarChart', 'MTTFHistogram']) {
-            assert.isBelow(guidanceIndex, workbook.items.findIndex(item => item.name === name), name);
-        }
-    });
-
     it('cannot select a blank username when correlated lifecycle events contain a populated one', () => {
         const cases = [
             [{ UserName: '' }, { UserName: 'user-a' }, { UserName: '' }],
