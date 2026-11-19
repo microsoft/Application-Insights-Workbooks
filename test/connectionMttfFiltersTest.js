@@ -1049,4 +1049,17 @@ describe('Connection transport capability', () => {
                 /HasTURNRelay, "TURN Relay",\s*HasTCPWebSocket, "TCP WebSocket",\s*"Other"\s*\)/);
         });
     }
+
+    it('scans Reliability MultiLink only when TransportCapability is read', () => {
+        const gates = {
+            PivotedDisconnectsTable: '| where "{DisconnectPivot}" == "TransportCapability"',
+            RankedGroupedErrors: '| where "{DisconnectPivot}" == "TransportCapability" and "{PivotValue}" != "All"',
+            DisconnectionListSample: '| where "{DisconnectPivot}" == "TransportCapability" and "{PivotValue}" != "All"'
+        };
+        for (const [name, gate] of Object.entries(gates)) {
+            const query = reliabilityItems.find(item => item.name === name).content.query;
+            const [links] = sourcePipelines(query, 'WVDMultiLinkAdd');
+            assert.isTrue(links.startsWith(`${gate} //`), name);
+        }
+    });
 });
