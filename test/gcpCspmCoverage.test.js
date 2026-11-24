@@ -65,3 +65,32 @@ describe('GCP Defender Servers details', () => {
         });
     });
 });
+
+describe('GCP Defender Databases details', () => {
+    const workbook = JSON.parse(fs.readFileSync(path.join(
+        'Workbooks', 'Azure Security Center', 'Coverage', 'Coverage.workbook'
+    ), 'utf8'));
+    const gcp = workbook.items.find(item => item.name === 'GCP').content.items;
+    const details = gcp.find(item => item.name === 'queryGcpDetailedDatabases - Copy').content;
+    const info = workbook.items.find(item => item.name === 'infoText').content.json;
+
+    it('reports connector Arc provisioning and the subscription SQL Servers on Machines plan', () => {
+        assert.deepStrictEqual(details.gridSettings.labelSettings.map(label => label.columnId), [
+            'id', 'arcAutoProvisioning', 'sqlServersOnMachines'
+        ]);
+        assert.match(details.query, /offering\.arcAutoProvisioning\.enabled/);
+        assert.match(details.query, /microsoft\.security\/pricings/);
+        assert.match(details.query, /name =~ "SqlServerVirtualMachines"/);
+        assert.match(details.query, /properties\.pricingTier/);
+        assert.match(details.query, /join kind=leftouter/);
+        assert.match(info, /SQL plan status is subscription-scoped/);
+    });
+
+    it('documents why the separate AMA provisioning toggle is not reported', () => {
+        assert.doesNotMatch(details.query, /azure.?monitor.?agent/i);
+        assert.match(info, /Azure Monitoring Agent for SQL server on machines/);
+        assert.match(info, /no verified Resource Graph source in this workbook/);
+        const formatter = details.gridSettings.formatters.find(column => column.columnMatch === 'sqlServersOnMachines');
+        assert(formatter.formatOptions.thresholdsGrid.some(value => value.text === 'Not reported'));
+    });
+});
