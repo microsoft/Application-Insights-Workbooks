@@ -65,7 +65,6 @@ Run the existing repository workbook validators from the repository root:
 
 ```shell
 npm test -- test/jsonValidationTest.js --grep "Validating Workbooks" --timeout 30000
-npm test -- test/defenderCspm.test.js
 ```
 
 Use [the workbook testing guide](../../../Documentation/Testing.md) to import the template through Advanced Mode. Verify all four tabs, subscription selection, the two rows of four Settings panels, per-component missing/disabled states, the advanced diagnostics button, findings status/search/row-limit controls, totals versus list rows, row-selected full context, and retained attack-path drill-downs. Check that reported timestamps display the source UTC time, including in a non-UTC browser time zone. Check the diagnostic inventory and populated selected-context tables' **Export to CSV** actions and inspect the downloaded columns. Use an appropriately authorized account and do not publish tenant findings or resource identifiers in screenshots.
