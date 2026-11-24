@@ -1,18 +1,17 @@
+// Not run by `npm test` (CI only runs ./test). Run it from the repository root:
+// npx mocha "Workbooks/Windows Virtual Desktop/AtScale/Connection MTTF/connectionMttfFiltersTest.js"
 const assert = require('chai').assert;
 const fs = require('fs');
 const path = require('path');
 
-const workbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
-    'AtScale', 'Connection MTTF', 'Connection MTTF.workbook');
+const atScalePath = path.join(__dirname, '..');
+const workbookPath = path.join(atScalePath, 'Connection MTTF', 'Connection MTTF.workbook');
 const workbook = JSON.parse(fs.readFileSync(workbookPath, 'utf8'));
-const navigationWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
-    'AtScale', 'WVD Insights', 'WVDWorkbookV2.workbook');
+const navigationWorkbookPath = path.join(atScalePath, 'WVD Insights', 'WVDWorkbookV2.workbook');
 const navigationWorkbook = JSON.parse(fs.readFileSync(navigationWorkbookPath, 'utf8'));
-const overviewWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
-    'AtScale', 'Overview', 'Overview.workbook');
+const overviewWorkbookPath = path.join(atScalePath, 'Overview', 'Overview.workbook');
 const overviewWorkbook = JSON.parse(fs.readFileSync(overviewWorkbookPath, 'utf8'));
-const reliabilityWorkbookPath = path.join(__dirname, '..', 'Workbooks', 'Windows Virtual Desktop',
-    'AtScale', 'Connection Reliability', 'Connection Reliability.workbook');
+const reliabilityWorkbookPath = path.join(atScalePath, 'Connection Reliability', 'Connection Reliability.workbook');
 const reliabilityWorkbook = JSON.parse(fs.readFileSync(reliabilityWorkbookPath, 'utf8'));
 
 function flattenItems(items) {
