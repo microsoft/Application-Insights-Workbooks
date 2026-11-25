@@ -2,8 +2,7 @@ import { BestPracticeResults, BestPracticeRuleResult, BestPracticeSummaryResult,
 import { Rules } from "./Rules";
 import { Summarizers } from "./Summarizers";
 import { isEmpty, isNullOrWhitespace } from "./Utils";
-
-const JsonPath = require('jsonpath');
+import * as JsonPath from "./JsonPath";
 
 function joinPath(topPath: string, path: any[]) {
     // ["$", "items", 5, "parameters", 3] => "$.items[5].parameters[3]"
