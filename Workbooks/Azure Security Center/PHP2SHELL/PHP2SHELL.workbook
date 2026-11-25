@@ -1,0 +1,793 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## PHP2SHELL - organization and environment investigation\nStart with Organization overview, then investigate Azure, AWS, GCP, Hybrid / Arc, DevOps or external/unclassified environments through one shared findings surface. Scope is the signed-in tenant and selected readable subscriptions, not a guaranteed census of the entire organization. The workload filter narrows reported recommendations; explicit source-scope exceptions are described below. This workbook does not deploy agents, enable plans, change WAF policies, or patch workloads.\n\n**Start here:** [Microsoft PHP2SHELL upgrade and Azure WAF guidance](https://techcommunity.microsoft.com/blog/azurenetworksecurityblog/addressing-php2shell-cve-2026-109618-and-cve-2026-109619-upgrade-guidance-and-az/4566623) | [Microsoft request-side WAF mitigation guidance](https://techcommunity.microsoft.com/blog/azurenetworksecurityblog/azure-waf-custom-rules-for-php2shell-mitigation/4566684) | [CVE-2026-109618: PHP OOM advisory](https://github.com/php/php-src/security/advisories/GHSA-w8hw-w9fx-j79w) | [CVE-2026-109619: PHP stale-state advisory](https://github.com/php/php-src/security/advisories/GHSA-6wmf-4rv5-p3rp).\n\n**Review your findings:** [Defender for Cloud recommendations](https://portal.azure.com/#blade/Microsoft_Azure_Security/RecommendationsBlade) | [Security alerts](https://portal.azure.com/#blade/Microsoft_Azure_Security/SecurityAlertsBlade) | [Defender for Cloud](https://portal.azure.com/#view/Microsoft_Azure_Security/SecurityMenuBlade/~/overview) | [Defender XDR Advanced Hunting](https://security.microsoft.com/v2/advanced-hunting). In Defender for Cloud, use **Cloud Security Explorer**, **Attack path analysis**, and **DevOps security** for the investigation pivots described below. Portal links open their own scope; reapply the subscriptions selected here.\n\nThis workbook matches the two advisory CVE identifiers in existing scanner findings; it does **not** assume a dedicated PHP2SHELL recommendation or alert exists. If no finding is returned, use the public Microsoft guidance above and verify inventory and scanner coverage. **Only upgrading to a build containing the PHP fixes fully remediates the vulnerabilities. WAF mitigations are supplementary.**"
+      },
+      "name": "PHP2SHELL headline and finding links"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Before you start: enable and verify the data you need\n| View / data | Required setup and permissions | Important boundary |\n| --- | --- | --- |\n| Azure resource inventory | Azure Reader access to the selected subscriptions/resources and permission to query Azure Resource Graph. | ARM configuration is not installed-software inventory. A VM, registry, cluster, custom container, or unreported runtime is a **candidate**, not a confirmed vulnerable PHP asset. |\n| Machine vulnerability findings | Supported Defender Vulnerability Management assessment through Defender for Cloud. For agentless VM scanning, enable **Defender CSPM or Defender for Servers Plan 2**, enable **Agentless scanning for machines**, and meet the [supported-platform and permission requirements](https://learn.microsoft.com/azure/defender-for-cloud/concept-agentless-data-collection). Other supported agent-based assessment paths have their own prerequisites. | A Standard plan alone does not establish successful scans, asset coverage, or CVE detection. Arc and connected AWS/GCP resources require their supported onboarding/assessment paths. |\n| Container image findings | Enable **Defender for Containers**, or **Defender CSPM** for supported scenarios. Enable **Registry access**. Running-image association requires **Kubernetes API access or the Defender sensor**; registry-agnostic runtime scanning also requires agentless machine scanning. See [container vulnerability management](https://learn.microsoft.com/azure/defender-for-cloud/agentless-vulnerability-assessment-azure). | Registry scanning and runtime discovery are asynchronous. An unscanned image, old image, unsupported node, or image not mapped to a running workload is not cleared by an empty result. |\n| Cloud Security Explorer, attack paths, code-to-cloud context | Enable the paid **Defender CSPM** plan, the applicable discovery/scanning components, and connectors for each environment. | Posture/attack paths are not workload exploit detections. No PHP text in a path does not mean no path to a PHP asset. |\n| Defender for Cloud DevOps security | Connect supported Azure DevOps, GitHub, or GitLab environments; grant repository access; configure a supported scanner and let it complete. Agentless code scanning (preview), Microsoft Security DevOps, and GitHub Advanced Security have different platform, language, and licensing requirements. See [DevOps prerequisites](https://learn.microsoft.com/azure/defender-for-cloud/devops-support). **Defender CSPM** is required for advanced code-to-cloud/explorer/attack-path capabilities, not all foundational DevOps inventory and findings. | Composer dependency findings or an SBOM do not prove the deployed PHP interpreter is vulnerable or fixed. Agentless code scanning's documented code-language coverage is not a promise of PHP source-code scanning. |\n| Defender workload alerts | Enable the relevant workload protection plan (for example **Defender for Servers, Containers, or App Service**) and required sensors/integrations. | CSPM posture alone is not runtime alert coverage. Generic web-shell/process alerts are leads, not PHP2SHELL attribution. |\n| Optional Log Analytics / Sentinel views | Select a readable workspace and only a table actually collected there. Enable resource diagnostic settings, AMA/DCR collection, Container Insights, Defender for Cloud continuous export, or the appropriate Sentinel connector as indicated in the Alerts and hunting tab. Ingestion, retention, Sentinel, and paid plans can incur charges. | Missing tables and access errors remain visible; they are not converted into zero findings. No telemetry is installed or enabled by opening this workbook. |\n| Defender XDR software inventory and endpoint hunts | Onboard supported devices to Defender for Endpoint; have the relevant Defender Vulnerability Management/Advanced Hunting permissions. Query **DeviceTvmSoftwareInventory** and **DeviceTvmSoftwareVulnerabilities** in Defender XDR. Endpoint event tables can be queried here only if separately ingested into the chosen workspace. | **TVM tables are not ingested by the standard Microsoft Sentinel Defender XDR connector.** Schema visibility in Sentinel is not data availability. See the [TVM table data boundary](https://learn.microsoft.com/defender-xdr/advanced-hunting-devicetvmsoftwarevulnerabilities-table). |\n\n**Evidence rules:** confirmed scanner CVE finding, PHP/configuration candidate, and suspicious-activity heuristic are different evidence classes. No rows means **no matching data returned in the selected scope**, not no PHP, no vulnerability, no compromise, or a verified patch. Recommendations are current Resource Graph state, not a time-range history. Scan lag, unsupported software/builds, stale/deleted assets, incomplete RBAC, missing connectors, and diagnostic coverage can all create gaps. Configuration and state-change timestamps are not proof of a recent successful scan.\n\n**Current findings:** use individual `SoftwareUpdate` / `ServiceUpgrade` assessments and `CvesDetails.CveId`. The grouped model was deprecated on 2026-07-31; retired grouped queries are not a current PHP2SHELL coverage source. The unified detail query uses a **tenant-scoped CVE metadata left join**, while the assessment and resource-context sides explicitly retain selected subscription filters. Missing CVE/risk metadata never removes a finding. Foundational/Free, paid CSPM and workload protection are evidence layers, not finding-display gates.\n\n**Serverless applicability:** eligible [Serverless protection](https://learn.microsoft.com/azure/defender-for-cloud/serverless-protection) and [Serverless Containers](https://learn.microsoft.com/azure/defender-for-cloud/posture-for-serverless-containers) need the appropriate Defender CSPM components, supported clouds/platforms, permissions and collection. Full Serverless Containers features require Registry access. Portal-specific package assessment, exclusions and posture-only coverage must be verified; neither feature establishes that the PHP interpreter is inventoried, patched or protected by runtime EDR. Do not weaken private/public network controls to obtain a scan.",
+        "style": "info"
+      },
+      "name": "Always visible prerequisites and evidence boundaries"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "php2shell-subscriptions", "version": "KqlParameterItem/1.0", "name": "Subscription", "label": "Subscriptions", "type": 6,
+            "description": "Scope all Resource Graph views to the selected readable subscriptions. Log sources have the separate scope rules described in Alerts and hunting.",
+            "isRequired": true, "multiSelect": true, "quote": "'", "delimiter": ",",
+            "typeSettings": {"additionalResourceOptions": ["value::all"], "includeAll": true, "showDefault": false},
+            "defaultValue": "value::all"
+          },
+          {
+            "id": "php2shell-workload", "version": "KqlParameterItem/1.0", "name": "Workload", "label": "Recommendation workload", "type": 2, "isRequired": true,
+            "description": "Filter the shared finding, posture and applicable machine-coverage views. Connector discovery is environment scoped; additional source-specific investigation has separate scope notes.",
+            "jsonData": "[{\"value\":\"All\",\"label\":\"All workloads\"},{\"value\":\"Machines\",\"label\":\"Machines\"},{\"value\":\"Containers\",\"label\":\"Containers / Kubernetes\"},{\"value\":\"Serverless\",\"label\":\"Apps / serverless\"},{\"value\":\"DevOps\",\"label\":\"Code repositories\"},{\"value\":\"Other\",\"label\":\"Other / unclassified\"}]", "value": "All"
+          },
+          {
+            "id": "php2shell-extra-investigation", "version": "KqlParameterItem/1.0", "name": "ShowDetails", "label": "Additional inventory and hunting", "type": 10, "isRequired": true,
+            "description": "Opt in to the existing detailed inventory, exposure, DevOps, optional collected-source hunts and response checklist. Their separate subscription/workspace scopes are explained before the controls.",
+            "jsonData": "[{\"value\":\"Off\",\"label\":\"Off\"},{\"value\":\"On\",\"label\":\"On\"}]", "value": "Off"
+          },
+          {
+            "id": "php2shell-environment", "version": "KqlParameterItem/1.0", "name": "Environment", "label": "Recommendation environment", "type": 1, "isRequired": true,
+            "description": "Set by the environment tabs. Organization overview combines all visible environments in the selected tenant/subscription scope, not an organization-wide census.",
+            "isHiddenWhenLocked": true, "value": "All"
+          },
+          {
+            "id": "php2shell-time-range", "version": "KqlParameterItem/1.0", "name": "TimeRange", "label": "Alert / log time range", "type": 4,
+            "description": "Applies to alerts and optional logs, not current inventory, recommendations, or plan configuration.", "isRequired": true,
+            "typeSettings": {"selectableValues": [{"durationMs": 86400000}, {"durationMs": 259200000}, {"durationMs": 604800000}, {"durationMs": 2592000000}], "allowCustom": true},
+            "value": {"durationMs": 604800000}
+          }
+        ],
+        "style": "pills", "queryType": 1, "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "Subscription and investigation time parameters"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0", "style": "tabs",
+        "links": [
+          {"id": "php2shell-environment-all", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "Organization overview", "subTarget": "All", "style": "link"},
+          {"id": "php2shell-environment-azure", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "Azure", "subTarget": "Azure", "style": "link"},
+          {"id": "php2shell-environment-aws", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "AWS", "subTarget": "AWS", "style": "link"},
+          {"id": "php2shell-environment-gcp", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "GCP", "subTarget": "GCP", "style": "link"},
+          {"id": "php2shell-environment-hybrid", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "Hybrid / Arc", "subTarget": "Hybrid", "style": "link"},
+          {"id": "php2shell-environment-devops", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "DevOps", "subTarget": "DevOps", "style": "link"},
+          {"id": "php2shell-environment-other", "cellValue": "Environment", "linkTarget": "parameter", "linkLabel": "Other / external", "subTarget": "Other", "style": "link"}
+        ]
+      },
+      "name": "Organization and environment tabs"
+    },
+    {
+      "type": 1,
+      "content": {"json": "### Organization overview\nThe shared tables combine visible reported findings and coverage context. Foundational/Free, paid CSPM and workload protection do not gate displayed findings. Connected environments can appear without a PHP2SHELL finding; connector discovery is not health or scan-completion evidence."},
+      "name": "Environment guidance All",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "All"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "### Azure\nReview native Azure findings across machine, image, Kubernetes, app and serverless workloads. Azure-hosted connector subscriptions do not make AWS/GCP, code or external findings native Azure."},
+      "name": "Environment guidance Azure",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "Azure"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "### AWS\nReview reported AWS provenance, including Arc machines with AWS cloud metadata. Verify native account scope, connector offerings, permissions and successful assessments separately; Azure anchor pricing is not an AWS entitlement verdict."},
+      "name": "Environment guidance AWS",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "AWS"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "### GCP\nReview reported GCP provenance, including Arc machines with GCP cloud metadata. Verify native project/organization scope and applicable connector offerings and scans; absent findings do not establish coverage."},
+      "name": "Environment guidance GCP",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "GCP"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "### Hybrid / Arc\nRetain other Arc/hybrid findings and disconnected machine inventory. Known AWS/GCP provenance takes precedence over Arc representation. Hybrid does not mean every resource is on-premises, and cloud agentless scanning does not automatically cover on-premises disks."},
+      "name": "Environment guidance Hybrid",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "Hybrid"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "### DevOps\nReview connected GitHub, Azure DevOps and GitLab evidence independently of finding volume. Scanners, SBOM, language support and entitlements differ. Composer dependencies and platform constraints are not the deployed PHP interpreter."},
+      "name": "Environment guidance DevOps",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "DevOps"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "### Other / external\nRetain external registry and unclassified provenance, including reported Docker Hub/JFrog integrations. A generic Azure source plus an unresolved/new connector is not assumed to be native Azure. Inspect the raw source, connector platform/ID and resource type."},
+      "name": "Environment guidance Other",
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "Other"}
+    },
+    {
+      "type": 1,
+      "content": {"json": "The same classifier and environment/workload filters drive the summary, unified CVE findings and broader posture evidence. Native AWS/GCP provenance takes precedence over Arc representation; unresolved/external metadata remains Other rather than inheriting the Azure anchor subscription. **Only the two PHP2SHELL advisory CVEs are attributed here**; no broad PHP/Composer keyword is a substitute.\n\nRecommendation counts are distinct IDs, not scanner totals or an exhaustive asset census. Detail tables are bounded to 1,000 rows and ARG expansion limits apply; narrow scope and use paginated native exports for complete results. The unified table preserves per-CVE fixed versions and labeled assessment/MDVM/other-scanner fallbacks, including empty-version handling. It does not merge every scanner payload or establish patch closure.\n\nConnector discovery is independent of finding volume and is environment scoped, not narrowed by the recommendation workload selector. Machine inventory applies to All/Machines, retains disconnected Arc machines and excludes known AKS node resource groups; it is not complete PHP software inventory. A tenant-scoped CVE metadata left join never removes findings when metadata is missing, and assessment/context subscription filters remain explicit."},
+      "name": "Organization evidence interpretation"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/assessments'\n| where properties.metadata.recommendationCategory in~ ('SoftwareUpdate', 'ServiceUpgrade')\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| extend AssessmentId = id, Resource = coalesce(tostring(properties.resourceDetails.Id), tostring(properties.resourceDetails.id), tostring(properties.resourceDetails.AzureResourceId), tostring(properties.resourceDetails.NativeResourceId), tostring(properties.resourceDetails.nativeResourceId), extract('(?i)^(.*?)/providers/microsoft.security/assessments/', 1, id)), ResourceType = tolower(tostring(properties.resourceDetails.ResourceType)), CloudSource = coalesce(tostring(properties.resourceDetails.Source), tostring(properties.resourceDetails.source)), ConnectorId = coalesce(tostring(properties.resourceDetails.ConnectorId), tostring(properties.resourceDetails.connectorId), extract('(?i)^(.*/providers/microsoft[.]security/securityconnectors/[^/]+)', 1, id))\n| extend ContextLookupId = tolower(iff(ResourceType startswith 'microsoft.hybridcompute/', Resource, ConnectorId))\n| join kind=leftouter (\n    resources\n    | where subscriptionId in~ ({Subscription:subid})\n    | where type in~ ('microsoft.hybridcompute/machines', 'microsoft.security/securityconnectors')\n    | project ContextLookupId = tolower(id), ArcCloudProvider = tostring(properties.cloudMetadata.provider), ConnectorPlatform = tostring(properties.environmentName), ArcConnectionStatus = iff(type =~ 'microsoft.hybridcompute/machines', coalesce(tostring(properties.status), 'Not reported'), 'Not applicable - connector context')\n) on ContextLookupId\n| extend Environment = case(CloudSource in~ ('AzureDevOps', 'Github', 'GitLab') or ConnectorPlatform in~ ('AzureDevOps', 'Github', 'GitLab') or ResourceType contains 'devops' or ResourceType contains 'github' or ResourceType contains 'gitlab' or ResourceType has_any ('repository', 'repositories', 'repos') or AssessmentId matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/', 'DevOps', CloudSource =~ 'AWS' or ArcCloudProvider =~ 'AWS' or ConnectorPlatform =~ 'AWS' or ResourceType startswith 'microsoft.awsconnector/', 'AWS', CloudSource =~ 'GCP' or ArcCloudProvider =~ 'GCP' or ConnectorPlatform =~ 'GCP' or ResourceType startswith 'microsoft.gcpconnector/', 'GCP', CloudSource in~ ('DockerHub', 'JFrog') or ConnectorPlatform in~ ('DockerHub', 'JFrog'), 'Other', ResourceType startswith 'microsoft.hybridcompute/' or CloudSource in~ ('Hybrid', 'OnPremise'), 'Hybrid', CloudSource =~ 'Azure' and (isempty(ConnectorId) or ConnectorPlatform =~ 'Azure'), 'Azure', 'Other')\n| extend Workload = case(Environment == 'DevOps', 'DevOps', ResourceType has_any ('sites', 'containerapps', 'containergroups', 'lambdafunctions', 'functions'), 'Serverless', ResourceType == 'microsoft.containerregistry/registries' or ResourceType has_any ('containerimage', 'containerimages', 'container', 'containers', 'managedclusters', 'connectedclusters', 'eksclusters', 'kubernetesclusters'), 'Containers', ResourceType has_any ('virtualmachines', 'virtualmachinescalesets', 'machines', 'ec2instances', 'computeinstances'), 'Machines', 'Other')\n| where '{Environment}' == 'All' or Environment == '{Environment}'\n| where '{Workload}' == 'All' or Workload == '{Workload}'\n| extend CvesDetails = parse_json(tostring(properties.additionalData.CvesDetails))\n| where tostring(CvesDetails) has_any ('CVE-2026-109618', 'CVE-2026-109619')\n| mv-expand CveDetail = CvesDetails limit 2000\n| extend CVE = toupper(tostring(CveDetail.CveId))\n| where CVE in~ ('CVE-2026-109618', 'CVE-2026-109619')\n| summarize ReportedRecommendations = dcount(AssessmentId), DistinctCVEs = dcount(CVE) by Environment, Workload\n| order by Environment asc, Workload asc",
+        "title": "Reported target-CVE recommendations by environment and workload", "size": 0, "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+        "noDataMessage": "No matching individual recommendations returned for these filters. Verify coverage, permissions, support and completed scans; this is not vulnerability clearance.",
+        "showExportToExcel": true,
+        "gridSettings": {"filter": true, "labelSettings": [
+          {"columnId": "Environment", "label": "Reported environment"},
+          {"columnId": "Workload", "label": "Reported workload"},
+          {"columnId": "ReportedRecommendations", "label": "Distinct recommendation IDs"},
+          {"columnId": "DistinctCVEs", "label": "Distinct target CVEs"}
+        ]}
+      },
+      "name": "PHP2SHELL organization summary"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/assessments'\n| where properties.metadata.recommendationCategory in~ ('SoftwareUpdate', 'ServiceUpgrade')\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| extend AssessmentId = id, Resource = coalesce(tostring(properties.resourceDetails.Id), tostring(properties.resourceDetails.id), tostring(properties.resourceDetails.AzureResourceId), tostring(properties.resourceDetails.NativeResourceId), tostring(properties.resourceDetails.nativeResourceId), extract('(?i)^(.*?)/providers/microsoft.security/assessments/', 1, id)), ResourceType = tolower(tostring(properties.resourceDetails.ResourceType)), CloudSource = coalesce(tostring(properties.resourceDetails.Source), tostring(properties.resourceDetails.source)), ConnectorId = coalesce(tostring(properties.resourceDetails.ConnectorId), tostring(properties.resourceDetails.connectorId), extract('(?i)^(.*/providers/microsoft[.]security/securityconnectors/[^/]+)', 1, id))\n| extend ContextLookupId = tolower(iff(ResourceType startswith 'microsoft.hybridcompute/', Resource, ConnectorId))\n| join kind=leftouter (\n    resources\n    | where subscriptionId in~ ({Subscription:subid})\n    | where type in~ ('microsoft.hybridcompute/machines', 'microsoft.security/securityconnectors')\n    | project ContextLookupId = tolower(id), ArcCloudProvider = tostring(properties.cloudMetadata.provider), ConnectorPlatform = tostring(properties.environmentName), ArcConnectionStatus = iff(type =~ 'microsoft.hybridcompute/machines', coalesce(tostring(properties.status), 'Not reported'), 'Not applicable - connector context')\n) on ContextLookupId\n| extend Environment = case(CloudSource in~ ('AzureDevOps', 'Github', 'GitLab') or ConnectorPlatform in~ ('AzureDevOps', 'Github', 'GitLab') or ResourceType contains 'devops' or ResourceType contains 'github' or ResourceType contains 'gitlab' or ResourceType has_any ('repository', 'repositories', 'repos') or AssessmentId matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/', 'DevOps', CloudSource =~ 'AWS' or ArcCloudProvider =~ 'AWS' or ConnectorPlatform =~ 'AWS' or ResourceType startswith 'microsoft.awsconnector/', 'AWS', CloudSource =~ 'GCP' or ArcCloudProvider =~ 'GCP' or ConnectorPlatform =~ 'GCP' or ResourceType startswith 'microsoft.gcpconnector/', 'GCP', CloudSource in~ ('DockerHub', 'JFrog') or ConnectorPlatform in~ ('DockerHub', 'JFrog'), 'Other', ResourceType startswith 'microsoft.hybridcompute/' or CloudSource in~ ('Hybrid', 'OnPremise'), 'Hybrid', CloudSource =~ 'Azure' and (isempty(ConnectorId) or ConnectorPlatform =~ 'Azure'), 'Azure', 'Other')\n| extend Workload = case(Environment == 'DevOps', 'DevOps', ResourceType has_any ('sites', 'containerapps', 'containergroups', 'lambdafunctions', 'functions'), 'Serverless', ResourceType == 'microsoft.containerregistry/registries' or ResourceType has_any ('containerimage', 'containerimages', 'container', 'containers', 'managedclusters', 'connectedclusters', 'eksclusters', 'kubernetesclusters'), 'Containers', ResourceType has_any ('virtualmachines', 'virtualmachinescalesets', 'machines', 'ec2instances', 'computeinstances'), 'Machines', 'Other')\n| where '{Environment}' == 'All' or Environment == '{Environment}'\n| where '{Workload}' == 'All' or Workload == '{Workload}'\n| extend ScannersDetails = parse_json(tostring(properties.additionalData.ScannersDetails)), WorkloadData = parse_json(tostring(properties.resourceAdditionalData))\n| extend FirstScannerName = tostring(set_difference(bag_keys(ScannersDetails), dynamic(['mdvm']))[0])\n| extend FirstScanner = ScannersDetails[FirstScannerName]\n| extend AssessmentDetected = iff(tostring(parse_json(tostring(properties.additionalData.DetectedSoftwareVersions))) in ('', '[]', '{}', 'null'), '', tostring(properties.additionalData.DetectedSoftwareVersions)), MdvmDetected = iff(tostring(parse_json(tostring(ScannersDetails.mdvm.DetectedSoftwareVersions))) in ('', '[]', '{}', 'null'), '', tostring(ScannersDetails.mdvm.DetectedSoftwareVersions)), FirstScannerDetected = iff(tostring(parse_json(tostring(FirstScanner.DetectedSoftwareVersions))) in ('', '[]', '{}', 'null'), '', tostring(FirstScanner.DetectedSoftwareVersions))\n| extend AssessmentFixed = iff(tostring(parse_json(tostring(properties.additionalData.FixedVersion))) in ('', '[]', '{}', 'null'), '', tostring(properties.additionalData.FixedVersion)), MdvmFixed = iff(tostring(parse_json(tostring(ScannersDetails.mdvm.FixedVersion))) in ('', '[]', '{}', 'null'), '', tostring(ScannersDetails.mdvm.FixedVersion)), FirstScannerFixed = iff(tostring(parse_json(tostring(FirstScanner.FixedVersion))) in ('', '[]', '{}', 'null'), '', tostring(FirstScanner.FixedVersion))\n| extend DetectedVersions = coalesce(AssessmentDetected, MdvmDetected, FirstScannerDetected, 'Not reported'), DetectedVersionSource = case(isnotempty(AssessmentDetected), 'Assessment', isnotempty(MdvmDetected), 'MDVM scanner', isnotempty(FirstScannerDetected), strcat('Scanner: ', FirstScannerName), 'Not reported')\n| extend CvesDetails = parse_json(tostring(properties.additionalData.CvesDetails))\n| where tostring(CvesDetails) has_any ('CVE-2026-109618', 'CVE-2026-109619')\n| mv-expand CveDetail = CvesDetails limit 2000\n| extend CVE = toupper(tostring(CveDetail.CveId))\n| where CVE in~ ('CVE-2026-109618', 'CVE-2026-109619')\n| extend CveFixed = iff(tostring(parse_json(tostring(CveDetail.FixedVersion))) in ('', '[]', '{}', 'null'), '', tostring(CveDetail.FixedVersion))\n| extend FixedVersion = coalesce(CveFixed, AssessmentFixed, MdvmFixed, FirstScannerFixed, 'Not reported'), FixedVersionSource = case(isnotempty(CveFixed), 'CVE finding', isnotempty(AssessmentFixed), 'Assessment', isnotempty(MdvmFixed), 'MDVM scanner', isnotempty(FirstScannerFixed), strcat('Scanner: ', FirstScannerName), 'Not reported')\n| join kind=leftouter (\n    securityresources\n    | where type =~ 'microsoft.security/cvedetails'\n    | extend CVE = toupper(tostring(properties.cveId)), MetadataRank = coalesce(array_length(bag_keys(properties.cvss)), 0)\n    | summarize arg_max(MetadataRank, properties) by CVE\n    | project CVE, MetadataCVE = CVE, CVESeverity = tostring(properties.severity), CVSS = tostring(properties.cvss)\n) on CVE\n| extend Severity = coalesce(CVESeverity, tostring(CveDetail.Severity), 'Unknown - not reported'), CVEMetadataState = iff(isempty(MetadataCVE), 'Not visible - verify tenant/read access', 'Metadata returned - not asset scan evidence')\n| extend RiskLevel = coalesce(tostring(properties.risk.level), 'Not evaluated / no visible context')\n| extend RiskOrder = case(RiskLevel =~ 'Critical', 0, RiskLevel =~ 'High', 1, RiskLevel =~ 'Medium', 2, RiskLevel =~ 'Low', 3, 4)\n| order by RiskOrder asc, Environment asc, CVE asc, Resource asc\n| project Environment, Workload, RiskLevel, CVE, Severity, RecommendationSeverity = tostring(properties.metadata.severity), Resource, ResourceType, Software = tostring(properties.additionalData.SoftwareName), DetectedVersions, DetectedVersionSource, FixedVersion, FixedVersionSource, Image = tostring(WorkloadData.ImageUri), Repository = tostring(WorkloadData.RepositoryDetails.RepositoryName), Branch = tostring(WorkloadData.BranchName), CloudSource, ArcCloudProvider, ArcConnectionStatus, ConnectorPlatform, ConnectorId, CVEMetadataState, CVSS, RiskFactors = tostring(properties.risk.riskFactors), AttackPathReferences = tostring(properties.risk.attackPathsReferences), AssessmentId, subscriptionId, FindingLink = coalesce(tostring(properties.links.azurePortal), 'https://portal.azure.com/#blade/Microsoft_Azure_Security/RecommendationsBlade'), CVELink = strcat('https://nvd.nist.gov/vuln/detail/', CVE)\n| take 1000",
+        "title": "One target-CVE findings surface across the selected environments", "size": 0, "queryType": 1,
+        "resourceType": "microsoft.resources/tenants", "crossComponentResources": ["value::tenant"], "visualization": "table",
+        "noDataMessage": "No exact target-CVE findings returned for the selected environment/workload. Missing scans, unsupported packaging, restricted metadata and stale data can create gaps; no rows is not patch or compromise clearance.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "filter": true,
+          "labelSettings": [
+            {"columnId": "Environment", "label": "Reported environment"}, {"columnId": "Workload", "label": "Reported workload"}, {"columnId": "RiskLevel", "label": "CSPM risk if reported"},
+            {"columnId": "CVE", "label": "CVE"}, {"columnId": "Severity", "label": "CVE severity if reported"}, {"columnId": "RecommendationSeverity", "label": "Recommendation severity"},
+            {"columnId": "Resource", "label": "Reported resource identifier"}, {"columnId": "ResourceType", "label": "Reported resource type"}, {"columnId": "Software", "label": "Reported software"},
+            {"columnId": "DetectedVersions", "label": "Detected version evidence"}, {"columnId": "DetectedVersionSource", "label": "Detected-version evidence source"},
+            {"columnId": "FixedVersion", "label": "Reported fixed version"}, {"columnId": "FixedVersionSource", "label": "Fixed-version evidence source"},
+            {"columnId": "Image", "label": "Reported image URI / digest"}, {"columnId": "Repository", "label": "Reported image repository"}, {"columnId": "Branch", "label": "Reported branch"},
+            {"columnId": "CloudSource", "label": "Raw reported source"}, {"columnId": "ArcCloudProvider", "label": "Reported Arc cloud provider"},
+            {"columnId": "ArcConnectionStatus", "label": "Arc connection evidence if available"}, {"columnId": "ConnectorPlatform", "label": "Reported connector platform"},
+            {"columnId": "ConnectorId", "label": "Connector identifier"}, {"columnId": "CVEMetadataState", "label": "CVE metadata visibility"},
+            {"columnId": "CVSS", "label": "Reported CVSS versions / values"}, {"columnId": "RiskFactors", "label": "Reported CSPM risk factors"},
+            {"columnId": "AttackPathReferences", "label": "Reported attack path references"}, {"columnId": "AssessmentId", "label": "Recommendation identifier"},
+            {"columnId": "subscriptionId", "label": "Azure assessment / anchor subscription"}, {"columnId": "FindingLink", "label": "Finding / recommendations"}, {"columnId": "CVELink", "label": "Public CVE reference"}
+          ],
+          "formatters": [
+            {"columnMatch": "FindingLink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Review finding"}},
+            {"columnMatch": "CVELink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "CVE reference"}}
+          ]
+        }
+      },
+      "name": "Unified PHP2SHELL findings"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/assessments'\n| extend AssessmentId = id, Resource = coalesce(tostring(properties.resourceDetails.Id), tostring(properties.resourceDetails.id), tostring(properties.resourceDetails.AzureResourceId), tostring(properties.resourceDetails.NativeResourceId), tostring(properties.resourceDetails.nativeResourceId), extract('(?i)^(.*?)/providers/microsoft.security/assessments/', 1, id)), ResourceType = tolower(tostring(properties.resourceDetails.ResourceType)), CloudSource = coalesce(tostring(properties.resourceDetails.Source), tostring(properties.resourceDetails.source)), ConnectorId = coalesce(tostring(properties.resourceDetails.ConnectorId), tostring(properties.resourceDetails.connectorId), extract('(?i)^(.*/providers/microsoft[.]security/securityconnectors/[^/]+)', 1, id))\n| extend ContextLookupId = tolower(iff(ResourceType startswith 'microsoft.hybridcompute/', Resource, ConnectorId))\n| join kind=leftouter (\n    resources\n    | where subscriptionId in~ ({Subscription:subid})\n    | where type in~ ('microsoft.hybridcompute/machines', 'microsoft.security/securityconnectors')\n    | project ContextLookupId = tolower(id), ArcCloudProvider = tostring(properties.cloudMetadata.provider), ConnectorPlatform = tostring(properties.environmentName), ArcConnectionStatus = iff(type =~ 'microsoft.hybridcompute/machines', coalesce(tostring(properties.status), 'Not reported'), 'Not applicable - connector context')\n) on ContextLookupId\n| extend Environment = case(CloudSource in~ ('AzureDevOps', 'Github', 'GitLab') or ConnectorPlatform in~ ('AzureDevOps', 'Github', 'GitLab') or ResourceType contains 'devops' or ResourceType contains 'github' or ResourceType contains 'gitlab' or ResourceType has_any ('repository', 'repositories', 'repos') or AssessmentId matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/', 'DevOps', CloudSource =~ 'AWS' or ArcCloudProvider =~ 'AWS' or ConnectorPlatform =~ 'AWS' or ResourceType startswith 'microsoft.awsconnector/', 'AWS', CloudSource =~ 'GCP' or ArcCloudProvider =~ 'GCP' or ConnectorPlatform =~ 'GCP' or ResourceType startswith 'microsoft.gcpconnector/', 'GCP', CloudSource in~ ('DockerHub', 'JFrog') or ConnectorPlatform in~ ('DockerHub', 'JFrog'), 'Other', ResourceType startswith 'microsoft.hybridcompute/' or CloudSource in~ ('Hybrid', 'OnPremise'), 'Hybrid', CloudSource =~ 'Azure' and (isempty(ConnectorId) or ConnectorPlatform =~ 'Azure'), 'Azure', 'Other')\n| extend Workload = case(Environment == 'DevOps', 'DevOps', ResourceType has_any ('sites', 'containerapps', 'containergroups', 'lambdafunctions', 'functions'), 'Serverless', ResourceType == 'microsoft.containerregistry/registries' or ResourceType has_any ('containerimage', 'containerimages', 'container', 'containers', 'managedclusters', 'connectedclusters', 'eksclusters', 'kubernetesclusters'), 'Containers', ResourceType has_any ('virtualmachines', 'virtualmachinescalesets', 'machines', 'ec2instances', 'computeinstances'), 'Machines', 'Other')\n| where '{Environment}' == 'All' or Environment == '{Environment}'\n| where '{Workload}' == 'All' or Workload == '{Workload}'\n| extend ReportedState = tostring(properties.status.code)\n| summarize ReportedRecommendations = dcount(AssessmentId), Unhealthy = countif(ReportedState =~ 'Unhealthy'), Healthy = countif(ReportedState =~ 'Healthy'), NotApplicable = countif(ReportedState =~ 'NotApplicable'), MissingStatus = countif(isempty(ReportedState)) by Environment, Workload\n| order by Environment asc, Workload asc",
+        "title": "Broader recommendation evidence (not a PHP2SHELL verdict)", "size": 0, "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+        "noDataMessage": "No recommendation evidence returned for these filters. Verify scope, permissions and onboarding; this is not a posture or PHP2SHELL clearance.", "showExportToExcel": true,
+        "gridSettings": {"filter": true, "labelSettings": [
+          {"columnId": "Environment", "label": "Reported environment"}, {"columnId": "Workload", "label": "Reported workload"},
+          {"columnId": "ReportedRecommendations", "label": "Distinct recommendation IDs"}, {"columnId": "Unhealthy", "label": "Unhealthy records"},
+          {"columnId": "Healthy", "label": "Healthy records (not PHP closure)"}, {"columnId": "NotApplicable", "label": "Not applicable records"}, {"columnId": "MissingStatus", "label": "Missing status records"}
+        ]}
+      },
+      "name": "Environment posture evidence"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/securityconnectors'\n| extend ConnectedPlatform = coalesce(tostring(properties.environmentName), 'Not reported'), EnvironmentType = tostring(properties.environmentData.environmentType)\n| extend Environment = case(ConnectedPlatform in~ ('Github', 'AzureDevOps', 'GitLab'), 'DevOps', ConnectedPlatform =~ 'AWS', 'AWS', ConnectedPlatform =~ 'GCP', 'GCP', ConnectedPlatform =~ 'Azure', 'Azure', 'Other')\n| where '{Environment}' == 'All' or Environment == '{Environment}'\n| extend Offerings = iff(array_length(properties.offerings) > 0, properties.offerings, dynamic([{}]))\n| mv-expand Offering = Offerings limit 2000\n| extend OfferingType = coalesce(tostring(Offering.offeringType), 'Not reported')\n| summarize OfferingTypes = make_set(OfferingType) by Environment, ConnectedPlatform, Connector = name, EnvironmentType, ConnectedScope = tostring(properties.hierarchyIdentifier), ConnectorId = id, AnchorSubscription = subscriptionId, ResourceGroup = resourceGroup\n| extend ConnectionEvidence = 'Discovered only - health, complete scope and scan completion not verified'\n| project Environment, ConnectedPlatform, Connector, EnvironmentType, ConnectedScope, OfferingTypes, ConnectionEvidence, ConnectorId, AnchorSubscription, ResourceGroup\n| order by Environment asc, ConnectedPlatform asc, Connector asc\n| take 1000",
+        "title": "Discovered connectors, including environments without target-CVE findings", "size": 0, "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+        "noDataMessage": "No readable connectors returned for this environment. No connector rows is not proof of no assets; verify account/repository scope and onboarding independently.", "showExportToExcel": true,
+        "gridSettings": {"filter": true, "labelSettings": [
+          {"columnId": "Environment", "label": "Reported environment"}, {"columnId": "ConnectedPlatform", "label": "Raw connector platform"},
+          {"columnId": "Connector", "label": "Connector"}, {"columnId": "EnvironmentType", "label": "Reported environment type"},
+          {"columnId": "ConnectedScope", "label": "Reported native hierarchy / scope"}, {"columnId": "OfferingTypes", "label": "Reported offering names only"},
+          {"columnId": "ConnectionEvidence", "label": "Discovery boundary"}, {"columnId": "ConnectorId", "label": "Connector identifier"},
+          {"columnId": "AnchorSubscription", "label": "Azure anchor subscription"}, {"columnId": "ResourceGroup", "label": "Azure connector resource group"}
+        ]}
+      },
+      "name": "Environment connector inventory"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0", "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {"json": "**Plan names:** `CloudPosture` = Defender CSPM; `VirtualMachines` = Defender for Servers; `Containers` = Defender for Containers; `AppServices` = Defender for App Service. `Standard` means the plan is reported enabled; `Free` is the reported free tier. **Not reported** means configuration was not returned, not that it is disabled. A resource-level override, cloud connector, exclusion, unsupported workload, or failed scan can change effective coverage. Review **Defender for Cloud > Environment settings** before enabling anything; this workbook never changes billing.\n\nRelevant component API names include `AgentlessVmScanning`, `ContainerRegistriesVulnerabilityAssessments` (Registry access), `AgentlessDiscoveryForKubernetes` (Kubernetes API access), and `ContainerSensor`. Newer components such as `AgentlessServerlessPosture` and `ServerlessContainers` can add supported serverless context but do not establish PHP interpreter detection. **Resource-level plan overrides and connected-cloud settings are not resolved by this subscription-level configuration table.**\n\nThese are Azure anchor-subscription settings, not AWS/GCP/DevOps entitlements or a verdict on each asset. The table is shown in Organization overview and is not filtered by recommendation workload. Explicit Free and Standard values are retained; missing data remains Not reported."},
+            "name": "Plan coverage interpretation"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.resources/subscriptions'\n| project subscriptionId, SubscriptionName = name\n| join kind=leftouter (\n    securityresources\n    | where subscriptionId in~ ({Subscription:subid})\n    | where type =~ 'microsoft.security/pricings'\n    | where id matches regex '(?i)^/subscriptions/[^/]+/providers/microsoft.security/pricings/[^/]+$'\n    | where name in~ ('CloudPosture', 'VirtualMachines', 'Containers', 'AppServices')\n    | project subscriptionId, Plan = name, Tier = tostring(properties.pricingTier), SubPlan = tostring(properties.subPlan), Extensions = properties.extensions\n) on subscriptionId\n| extend Plan = iff(isempty(Plan), 'Not reported', Plan), Tier = iff(isempty(Tier), 'Not reported', Tier), SubPlan = iff(isempty(SubPlan), 'Not reported', SubPlan)\n| extend Extensions = iff(array_length(Extensions) > 0, Extensions, dynamic([{}]))\n| mv-expand Extension = Extensions limit 2000\n| extend Component = iff(isempty(tostring(Extension.name)), 'Not reported', tostring(Extension.name)), ComponentState = case(tostring(Extension.isEnabled) =~ 'true', 'Enabled', tostring(Extension.isEnabled) =~ 'false', 'Disabled', 'Not reported')\n| project SubscriptionName, subscriptionId, Plan, Tier, SubPlan, Component, ComponentState\n| order by SubscriptionName asc, Plan asc, Component asc\n| take 1000",
+              "title": "Reported plan and component configuration (not proof of protection)", "size": 0, "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+              "noDataMessage": "No readable subscription configuration returned. Verify subscription selection and permissions; missing state must not be interpreted as Disabled.", "showExportToExcel": true,
+              "gridSettings": {"filter": true, "labelSettings": [
+                {"columnId": "SubscriptionName", "label": "Subscription name"}, {"columnId": "subscriptionId", "label": "Subscription ID"},
+                {"columnId": "Plan", "label": "Plan API name"}, {"columnId": "Tier", "label": "Reported pricing tier"}, {"columnId": "SubPlan", "label": "Reported subplan"},
+                {"columnId": "Component", "label": "Component API name"}, {"columnId": "ComponentState", "label": "Reported component state"}
+              ]}
+            },
+            "name": "Reported Defender plan component coverage"
+          }
+        ]
+      },
+      "conditionalVisibility": {"parameterName": "Environment", "comparison": "isEqualTo", "value": "All"},
+      "name": "Organization subscription plan evidence"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n| extend ArcCloudProvider = tostring(properties.cloudMetadata.provider)\n| extend Environment = case(type =~ 'microsoft.hybridcompute/machines' and ArcCloudProvider =~ 'AWS', 'AWS', type =~ 'microsoft.hybridcompute/machines' and ArcCloudProvider =~ 'GCP', 'GCP', type =~ 'microsoft.hybridcompute/machines', 'Hybrid', 'Azure')\n| where '{Environment}' == 'All' or Environment == '{Environment}'\n| where '{Workload}' in ('All', 'Machines')\n| extend MachineId = tolower(id), NodeResourceGroupKey = strcat(tolower(subscriptionId), '/', tolower(resourceGroup)), ArcConnectionStatus = iff(type =~ 'microsoft.hybridcompute/machines', coalesce(tostring(properties.status), 'Not reported'), 'Not applicable - native Azure VM')\n| join kind=leftouter (\n    resources\n    | where subscriptionId in~ ({Subscription:subid})\n    | where type =~ 'microsoft.containerservice/managedclusters'\n    | project NodeResourceGroupKey = strcat(tolower(subscriptionId), '/', tolower(tostring(properties.nodeResourceGroup))), IsKubernetesNode = 1\n    | distinct NodeResourceGroupKey, IsKubernetesNode\n) on NodeResourceGroupKey\n| where isempty(IsKubernetesNode)\n| join kind=leftouter (\n    securityresources\n    | where subscriptionId in~ ({Subscription:subid})\n    | where type =~ 'microsoft.security/softwareinventories'\n    | project MachineId = tolower(extract('(?i)^(.*?)/providers/microsoft[.]security/softwareinventories/', 1, id)), HasSoftwareInventory = 1\n    | where isnotempty(MachineId)\n    | distinct MachineId, HasSoftwareInventory\n) on MachineId\n| extend InventoryEvidence = iff(isempty(HasSoftwareInventory), 'Not observed - verify collection and support', 'Reported inventory - not proof of a complete PHP scan')\n| project Environment, Machine = name, ArcCloudProvider, ArcConnectionStatus, InventoryEvidence, MachineId, subscriptionId, resourceGroup\n| order by Environment asc, Machine asc\n| take 1000",
+        "title": "Azure / Arc machine inventory evidence (not confirmed PHP installations)", "size": 0, "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+        "noDataMessage": "No machine inventory rows returned. This view applies to All/Machines workloads, excludes known AKS node resource groups and does not enumerate every VMSS/native-cloud/unonboarded asset.", "showExportToExcel": true,
+        "gridSettings": {"filter": true, "labelSettings": [
+          {"columnId": "Environment", "label": "Reported environment"}, {"columnId": "Machine", "label": "Machine"},
+          {"columnId": "ArcCloudProvider", "label": "Reported Arc cloud provider"}, {"columnId": "ArcConnectionStatus", "label": "Arc connection evidence"},
+          {"columnId": "InventoryEvidence", "label": "Software-inventory evidence boundary"}, {"columnId": "MachineId", "label": "Azure / Arc resource identifier"},
+          {"columnId": "subscriptionId", "label": "Azure / Arc anchor subscription"}, {"columnId": "resourceGroup", "label": "Resource group"}
+        ]}
+      },
+      "name": "Machine inventory and connection gaps"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0", "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Additional inventory and investigation - independent source scope\nThese detailed ARM/DevOps resource grids use the selected **Azure anchor subscriptions**; they do **not** inherit the Environment or Recommendation workload filters above. The existing per-source subscription/workspace/time rules for alerts and logs still apply. In particular, endpoint events and unmapped alerts are workspace/device scoped. Use the shared environment findings and connector/machine coverage above to establish native provenance; do not infer AWS/GCP/DevOps entitlement or PHP installation from an Azure anchor.\n\nNo optional log query runs unless this section is On, Alerts and hunting is selected, a collected source is chosen and a readable workspace is supplied. Native portal/XDR pivots have their own scope; reapply it there.",
+              "style": "info"
+            },
+            "name": "Additional investigation scope exceptions"
+          },
+          {
+            "type": 11,
+            "content": {
+              "version": "LinkItem/1.0", "style": "tabs",
+              "links": [
+                {"id": "php2shell-tab-machines", "cellValue": "SelectedTab", "linkTarget": "parameter", "linkLabel": "Machines", "subTarget": "Machines", "style": "link"},
+                {"id": "php2shell-tab-containers", "cellValue": "SelectedTab", "linkTarget": "parameter", "linkLabel": "Containers", "subTarget": "Containers", "style": "link"},
+                {"id": "php2shell-tab-exposure", "cellValue": "SelectedTab", "linkTarget": "parameter", "linkLabel": "Web apps and exposure", "subTarget": "Exposure", "style": "link"},
+                {"id": "php2shell-tab-devops", "cellValue": "SelectedTab", "linkTarget": "parameter", "linkLabel": "DevOps", "subTarget": "DevOps", "style": "link"},
+                {"id": "php2shell-tab-hunting", "cellValue": "SelectedTab", "linkTarget": "parameter", "linkLabel": "Alerts and hunting", "subTarget": "Hunting", "style": "link"},
+                {"id": "php2shell-tab-response", "cellValue": "SelectedTab", "linkTarget": "parameter", "linkLabel": "Response and verification", "subTarget": "Response", "style": "link"}
+              ]
+            },
+            "name": "Additional investigation section tabs"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0", "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {"json": "### Machines\nUse the shared findings table above for exact-CVE scanner evidence. This section contains **candidate ARM machine inventory**, including Azure VMs, scale sets, and Arc machines. Connected AWS/GCP findings can appear when their supported assessment path is configured. A resource name, OS, tag, or VM extension cannot establish that PHP is installed. See the organization/environment surface and always-visible prerequisites for finding and coverage context.\n\nFor PHP software evidence beyond vulnerability matches, use **Cloud Security Explorer > machine > Installed software** and the Defender XDR queries below. Agentless discovery, Defender for Endpoint inventory, and bundled/custom-compiled PHP do not necessarily have identical coverage."},
+                  "name": "Machine evidence guidance"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.compute/virtualmachinescalesets', 'microsoft.hybridcompute/machines')\n| project Resource = id, Machine = name, ResourceType = type, OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.virtualMachineProfile.storageProfile.osDisk.osType), tostring(properties.osType), 'Not reported'), location, resourceGroup, subscriptionId, PHPEvidence = 'Not established by ARM inventory - verify installed software'\n| order by Machine asc\n| take 1000",
+                    "title": "Machine candidates to inventory (not a list of PHP installations)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No readable machine candidates returned in this scope. Unconnected/non-ARM assets and software remain outside this inventory.", "showExportToExcel": true,
+                    "gridSettings": {"filter": true, "formatters": [{"columnMatch": "Resource", "formatter": 13, "formatOptions": {"linkTarget": "Resource", "showIcon": true}}], "labelSettings": [
+                      {"columnId": "Resource", "label": "Resource"}, {"columnId": "Machine", "label": "Machine"}, {"columnId": "ResourceType", "label": "Resource type"},
+                      {"columnId": "OS", "label": "Reported OS"}, {"columnId": "location", "label": "Location"}, {"columnId": "resourceGroup", "label": "Resource group"},
+                      {"columnId": "subscriptionId", "label": "Subscription"}, {"columnId": "PHPEvidence", "label": "PHP evidence boundary"}
+                    ]}
+                  },
+                  "name": "ARM machine inventory candidates"
+                },
+                {
+                  "type": 1,
+                  "content": {"json": "#### Defender XDR: copy these queries into Advanced Hunting\nThese TVM queries **do not run against Log Analytics** and are not restricted by this workbook's Azure subscription picker. Validate Defender device scope and permissions separately. Absence of a TVM row does not exclude embedded or unrecognized PHP.\n\n**Inventory of reported PHP software (not a vulnerability assertion):**\n```kusto\nDeviceTvmSoftwareInventory\n| where SoftwareName contains \"php\"\n| project DeviceId, DeviceName, OSPlatform, SoftwareVendor, SoftwareName, SoftwareVersion, EndOfSupportStatus\n| order by DeviceName asc\n```\n\n**Exact advisory CVE findings:**\n```kusto\nDeviceTvmSoftwareVulnerabilities\n| where CveId in~ (\"CVE-2026-109618\", \"CVE-2026-109619\")\n| project DeviceId, DeviceName, OSPlatform, SoftwareName, SoftwareVersion, CveId, VulnerabilitySeverityLevel, RecommendedSecurityUpdate\n| order by DeviceName asc, CveId asc\n```\n\nUse [software inventory](https://learn.microsoft.com/defender-xdr/advanced-hunting-devicetvmsoftwareinventory-table) and [software vulnerability schema documentation](https://learn.microsoft.com/defender-xdr/advanced-hunting-devicetvmsoftwarevulnerabilities-table) to review current availability. Preserve runtime/SAPI and vendor-backport evidence separately; a version string alone is not sufficient for closure."},
+                  "name": "Defender XDR software inventory and CVE pivots"
+                }
+              ]
+            },
+            "conditionalVisibility": {"parameterName": "SelectedTab", "comparison": "isEqualTo", "value": "Machines"},
+            "name": "Machines tab"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0", "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {"json": "### Containers\nUse the shared findings table above for reported image CVEs and published image/repository evidence. Use the other tables for **candidate infrastructure and configured image references**, not inferred PHP installations. Image names/tags containing PHP are only hints; an image without PHP in its name can still bundle PHP.\n\nUse **Cloud Security Explorer** to connect vulnerable images to running Kubernetes workloads and internet exposure. ARM inventory does not enumerate Kubernetes pods, and a vulnerable registry image is not proof that the image is deployed. Rebuild and redeploy patched images, replace all running instances, and verify digests; repointing a mutable tag alone is not closure. See [container scan coverage and timing](https://learn.microsoft.com/azure/defender-for-cloud/agentless-vulnerability-assessment-azure)."},
+                  "name": "Container evidence and runtime association guidance"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.containerregistry/registries', 'microsoft.containerservice/managedclusters', 'microsoft.kubernetes/connectedclusters', 'microsoft.app/containerapps', 'microsoft.containerinstance/containergroups')\n| project Resource = id, Name = name, ResourceType = type, location, resourceGroup, subscriptionId, PHPEvidence = 'Infrastructure candidate only - inspect packages and deployed image digests'\n| order by ResourceType asc, Name asc\n| take 1000",
+                    "title": "Container infrastructure candidates (ACR, AKS, Arc Kubernetes, Container Apps, ACI)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No matching readable container infrastructure returned. External registries and unconnected clusters are outside this ARM inventory.", "showExportToExcel": true,
+                    "gridSettings": {"filter": true, "formatters": [{"columnMatch": "Resource", "formatter": 13, "formatOptions": {"linkTarget": "Resource", "showIcon": true}}], "labelSettings": [
+                      {"columnId": "Resource", "label": "Resource"}, {"columnId": "Name", "label": "Name"}, {"columnId": "ResourceType", "label": "Resource type"},
+                      {"columnId": "location", "label": "Location"}, {"columnId": "resourceGroup", "label": "Resource group"}, {"columnId": "subscriptionId", "label": "Subscription"}, {"columnId": "PHPEvidence", "label": "PHP evidence boundary"}
+                    ]}
+                  },
+                  "name": "Container infrastructure inventory candidates"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.app/containerapps', 'microsoft.containerinstance/containergroups')\n| extend Containers = iff(type =~ 'microsoft.app/containerapps', properties.template.containers, properties.containers)\n| extend Containers = iff(array_length(Containers) > 0, Containers, dynamic([{}]))\n| mv-expand Container = Containers limit 2000\n| project Resource = id, Workload = name, ContainerName = coalesce(tostring(Container.name), 'Not reported'), Image = coalesce(tostring(Container.image), tostring(Container.properties.image), 'Not reported'), PHPNameHint = iff(tostring(Container.image) contains 'php' or tostring(Container.properties.image) contains 'php', 'Image name mentions PHP - verify contents', 'No PHP name hint - contents unknown'), resourceGroup, subscriptionId\n| order by Workload asc, ContainerName asc\n| take 1000",
+                    "title": "Configured Container Apps / ACI image references (not runtime software evidence)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No readable Container Apps / ACI configurations returned. Use cluster or platform inventory for pods, revisions, jobs, init containers, and actual running image digests.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "Resource", "formatter": 13, "formatOptions": {"linkTarget": "Resource", "showIcon": true}}], "labelSettings": [
+                      {"columnId": "Resource", "label": "Resource"}, {"columnId": "Workload", "label": "Workload"}, {"columnId": "ContainerName", "label": "Configured container"},
+                      {"columnId": "Image", "label": "Configured image reference"}, {"columnId": "PHPNameHint", "label": "Name hint only"}, {"columnId": "resourceGroup", "label": "Resource group"}, {"columnId": "subscriptionId", "label": "Subscription"}
+                    ]}
+                  },
+                  "name": "Configured serverless container image candidates"
+                }
+              ]
+            },
+            "conditionalVisibility": {"parameterName": "SelectedTab", "comparison": "isEqualTo", "value": "Containers"},
+            "name": "Containers tab"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0", "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {"json": "### Web apps and exposure\nInventory App Service apps **and deployment slots**, configured runtimes, public-access state, front ends, and contextual recommendations. An App Service major/minor stack setting is not the effective patched PHP build. Resource Graph may not expose site configuration, and custom containers or bundled PHP require independent inspection. All readable apps are retained so missing PHP metadata is not silently discarded.\n\n**Exposure is not reachability proof:** `publicNetworkAccess`, a public hostname/IP, HTTPS-only, a configured WAF policy, or private networking each describe part of the route. Validate listeners, DNS, access restrictions, network controls, authentication, direct-origin bypass, WAF association, body inspection/limits, and the actual policy mode for each PHP route. Front Door response-side PHP2SHELL mitigation currently **does not generate WAF log entries or hit counts**, according to the linked Microsoft guidance; absence of such logs cannot measure its effectiveness."},
+                  "name": "Web exposure interpretation"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.web/sites', 'microsoft.web/sites/slots')\n| extend LinuxStack = tostring(properties.siteConfig.linuxFxVersion), WindowsStack = tostring(properties.siteConfig.windowsFxVersion), PHPVersion = tostring(properties.siteConfig.phpVersion)\n| extend PHPConfiguration = case(LinuxStack startswith 'PHP|', 'Configured PHP stack - verify effective patch', isnotempty(PHPVersion), 'PHP version setting present - verify active SAPI', LinuxStack startswith 'DOCKER|' or kind contains 'container', 'Custom container - inspect image contents', 'No PHP setting observed - runtime not established')\n| project Resource = id, AppOrSlot = name, Kind = kind, LinuxStack = iff(isempty(LinuxStack), 'Not reported in Resource Graph', LinuxStack), WindowsStack = iff(isempty(WindowsStack), 'Not reported in Resource Graph', WindowsStack), PHPVersion = iff(isempty(PHPVersion), 'Not reported in Resource Graph', PHPVersion), PHPConfiguration, PublicNetworkAccess = coalesce(tostring(properties.publicNetworkAccess), 'Not reported - verify access restrictions'), HTTPSOnly = coalesce(tostring(properties.httpsOnly), 'Not reported'), Hostname = tostring(properties.defaultHostName), State = tostring(properties.state), resourceGroup, subscriptionId\n| order by AppOrSlot asc\n| take 1000",
+                    "title": "App Service apps and slots: reported runtime and exposure configuration", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No readable App Service apps or slots returned in the selected scope. This does not inventory PHP hosted on other services.", "showExportToExcel": true,
+                    "gridSettings": {"filter": true, "formatters": [{"columnMatch": "Resource", "formatter": 13, "formatOptions": {"linkTarget": "Resource", "showIcon": true}}], "labelSettings": [
+                      {"columnId": "Resource", "label": "Resource"}, {"columnId": "AppOrSlot", "label": "App / slot"}, {"columnId": "Kind", "label": "App kind"},
+                      {"columnId": "LinuxStack", "label": "Reported Linux stack"}, {"columnId": "WindowsStack", "label": "Reported Windows stack"}, {"columnId": "PHPVersion", "label": "Reported PHP setting"},
+                      {"columnId": "PHPConfiguration", "label": "PHP configuration evidence"}, {"columnId": "PublicNetworkAccess", "label": "Public network access setting"},
+                      {"columnId": "HTTPSOnly", "label": "HTTPS-only setting"}, {"columnId": "Hostname", "label": "Default hostname"}, {"columnId": "State", "label": "Reported state"},
+                      {"columnId": "resourceGroup", "label": "Resource group"}, {"columnId": "subscriptionId", "label": "Subscription"}
+                    ]}
+                  },
+                  "name": "App Service and slot runtime candidates"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.network/frontdoorwebapplicationfirewallpolicies', 'microsoft.network/applicationgatewaywebapplicationfirewallpolicies')\n| extend CustomRules = iff(isnotnull(properties.customRules.rules), properties.customRules.rules, properties.customRules)\n| project Resource = id, Policy = name, ResourceType = type, Mode = coalesce(tostring(properties.policySettings.mode), 'Not reported'), State = coalesce(tostring(properties.policySettings.enabledState), tostring(properties.policySettings.state), 'Not reported'), ManagedRuleSets = tostring(properties.managedRules.managedRuleSets), CustomRuleCount = iff(isnull(array_length(CustomRules)), 'Not reported', tostring(array_length(CustomRules))), resourceGroup, subscriptionId\n| order by Policy asc\n| take 1000",
+                    "title": "WAF policy candidates: review mode, rule availability, and association", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No matching readable WAF policies returned. Inline Application Gateway WAF settings and other edge controls require separate inspection.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "Resource", "formatter": 13, "formatOptions": {"linkTarget": "Resource", "showIcon": true}}], "labelSettings": [
+                      {"columnId": "Resource", "label": "Resource"}, {"columnId": "Policy", "label": "WAF policy"}, {"columnId": "ResourceType", "label": "Policy resource type"},
+                      {"columnId": "Mode", "label": "Reported policy mode"}, {"columnId": "State", "label": "Reported policy state"},
+                      {"columnId": "ManagedRuleSets", "label": "Reported managed rulesets (review overrides)"}, {"columnId": "CustomRuleCount", "label": "Configured custom rule count (not effectiveness)"},
+                      {"columnId": "resourceGroup", "label": "Resource group"}, {"columnId": "subscriptionId", "label": "Subscription"}
+                    ]}
+                  },
+                  "name": "WAF policy configuration candidates"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.network/applicationgateways', 'microsoft.network/frontdoors', 'microsoft.cdn/profiles', 'microsoft.network/publicipaddresses', 'microsoft.apimanagement/service', 'microsoft.servicenetworking/trafficcontrollers')\n| project Resource = id, FrontEnd = name, ResourceType = type, SKU = tostring(sku.name), PublicIP = tostring(properties.ipAddress), FirewallPolicy = tostring(properties.firewallPolicy.id), InlineWAFMode = tostring(properties.webApplicationFirewallConfiguration.firewallMode), resourceGroup, subscriptionId\n| order by ResourceType asc, FrontEnd asc\n| take 1000",
+                    "title": "Front-end / public-IP inventory candidates (not a PHP exposure map)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No matching front-end resources returned. This inventory does not assess direct origins, external DNS/CDNs, listeners, or end-to-end reachability.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "Resource", "formatter": 13, "formatOptions": {"linkTarget": "Resource", "showIcon": true}}], "labelSettings": [
+                      {"columnId": "Resource", "label": "Resource"}, {"columnId": "FrontEnd", "label": "Front end / public IP"}, {"columnId": "ResourceType", "label": "Resource type"},
+                      {"columnId": "SKU", "label": "SKU"}, {"columnId": "PublicIP", "label": "Reported public IP"}, {"columnId": "FirewallPolicy", "label": "Reported firewall policy reference"},
+                      {"columnId": "InlineWAFMode", "label": "Reported inline WAF mode"}, {"columnId": "resourceGroup", "label": "Resource group"}, {"columnId": "subscriptionId", "label": "Subscription"}
+                    ]}
+                  },
+                  "name": "Front end and public IP context candidates"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/attackpaths'\n| where tostring(properties) has_any ('php', 'php2shell', 'CVE-2026-109618', 'CVE-2026-109619')\n| project Path = tostring(properties.displayName), Risk = coalesce(tostring(properties.riskLevel), tostring(properties.RiskLevel), 'Not reported'), PathId = name, Resource = id, subscriptionId, Evidence = 'PHP / CVE text match only - validate affected nodes in Attack path analysis'\n| order by Path asc\n| take 1000",
+                    "title": "Attack paths mentioning PHP / target CVEs (text-match context only)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No PHP/CVE text matches returned. Paths may omit software/CVE text; verify Defender CSPM coverage and investigate the actual assets in Cloud Security Explorer.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Path", "label": "Attack path"}, {"columnId": "Risk", "label": "Reported risk"}, {"columnId": "PathId", "label": "Attack path ID"},
+                      {"columnId": "Resource", "label": "Attack path resource identifier"}, {"columnId": "subscriptionId", "label": "Subscription"}, {"columnId": "Evidence", "label": "Evidence boundary"}
+                    ]}
+                  },
+                  "name": "PHP keyword attack path context"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/assessments'\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| where not(id matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/')\n| extend Recommendation = tostring(properties.displayName)\n| where Recommendation has_any ('internet', 'public', 'WAF', 'secret', 'identity', 'privilege')\n| project Recommendation, Severity = tostring(properties.metadata.severity), Resource = coalesce(tostring(properties.resourceDetails.Id), tostring(properties.resourceDetails.id), tostring(properties.resourceDetails.NativeResourceId)), FindingLink = coalesce(tostring(properties.links.azurePortal), 'https://portal.azure.com/#blade/Microsoft_Azure_Security/RecommendationsBlade'), subscriptionId\n| order by Recommendation asc, Resource asc\n| take 1000",
+                    "title": "Cross-cutting exposure and blast-radius recommendations (not PHP-specific)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No keyword-matching unhealthy recommendations returned. This is not a complete exposure, identity, or secrets assessment.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "FindingLink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Review recommendation"}}], "labelSettings": [
+                      {"columnId": "Recommendation", "label": "Contextual recommendation"}, {"columnId": "Severity", "label": "Reported severity"},
+                      {"columnId": "Resource", "label": "Reported resource identifier"}, {"columnId": "FindingLink", "label": "Recommendation link"}, {"columnId": "subscriptionId", "label": "Subscription"}
+                    ]}
+                  },
+                  "name": "Exposure identity and secrets recommendation context"
+                }
+              ]
+            },
+            "conditionalVisibility": {"parameterName": "SelectedTab", "comparison": "isEqualTo", "value": "Exposure"},
+            "name": "Web apps and exposure tab"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0", "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {"json": "### Defender for Cloud DevOps: trace code to deployed runtime\nConnect the repository environment and complete supported scans first. The tables use the same repository resource types and recommendation categories as the existing **DevOps Security** workbook. Foundational inventory/findings and paid **Defender CSPM** code-to-cloud capabilities have different prerequisites; see [the platform support matrix](https://learn.microsoft.com/azure/defender-for-cloud/devops-support).\n\n1. Review exact CVE dependency findings and PHP keyword candidates. **A Composer package, `composer.json` platform constraint, IaC value, or repository language does not establish the running PHP interpreter/version.** Also inspect Dockerfiles/base images, build artifacts, lockfiles, deployment targets, and vendor backports.\n2. In **Cloud Security Explorer**, use **Resource type > DevOps > repository > Has installed software > Name / Version** to query a completed agentless-scan SBOM. Follow [Microsoft's SBOM query instructions](https://learn.microsoft.com/azure/defender-for-cloud/query-software-bill-of-materials). This workbook does not pretend the Cloud Security Graph software inventory is an ARM/Resource Graph table.\n3. Use Defender CSPM code-to-cloud mapping and attack paths to connect source findings to the actual deployed resource/image. Confirm repository, branch, build, commit, image digest, environment and owner. No mapping is not proof of no deployment.\n4. Review code, IaC, and exposed-secret recommendation metadata for the relevant repositories. These are **context**, not PHP2SHELL detections. Secret contents, raw scanner payloads, and full source snippets are deliberately not projected."},
+                  "name": "DevOps prerequisites and code to cloud investigation"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type in~ ('microsoft.security/securityconnectors/devops/azuredevopsorgs/projects/repos', 'microsoft.security/securityconnectors/devops/githubowners/repos', 'microsoft.security/securityconnectors/devops/gitlabgroups/projects')\n| project Repository = name, Platform = case(type contains '/azuredevopsorgs/', 'Azure DevOps', type contains '/githubowners/', 'GitHub', 'GitLab'), Resource = id, Connector = extract('(?i)^(.*/providers/microsoft[.]security/securityconnectors/[^/]+)', 1, id), subscriptionId, Evidence = 'Connected repository inventory - verify scanner and default-branch scan completion'\n| order by Platform asc, Repository asc\n| take 1000",
+                    "title": "Connected DevOps repository inventory (not a PHP repository detector)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No connected repositories returned. Verify DevOps connector/repository permissions and discovery; this does not mean no PHP source or deployments exist.", "showExportToExcel": true,
+                    "gridSettings": {"filter": true, "labelSettings": [
+                      {"columnId": "Repository", "label": "Repository"}, {"columnId": "Platform", "label": "DevOps platform"}, {"columnId": "Resource", "label": "Repository resource identifier"},
+                      {"columnId": "Connector", "label": "Connector resource identifier"}, {"columnId": "subscriptionId", "label": "Connector subscription"}, {"columnId": "Evidence", "label": "Evidence boundary"}
+                    ]}
+                  },
+                  "name": "DevOps connected repository inventory"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/assessments'\n| where id matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/'\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| extend Package = tostring(properties.additionalData.SoftwareName), Recommendation = tostring(properties.displayName), Category = tostring(properties.metadata.recommendationCategory)\n| where Package contains 'php' or Recommendation has_any ('php', 'php2shell', 'composer')\n| project RepositoryResource = extract('(?i)^(.*?)/providers/microsoft.security/assessments/', 1, id), Recommendation, Category, Package, Severity = tostring(properties.metadata.severity), FindingLink = coalesce(tostring(properties.links.azurePortal), 'https://portal.azure.com/#blade/Microsoft_Azure_Security/RecommendationsBlade'), subscriptionId\n| order by RepositoryResource asc, Recommendation asc\n| take 1000",
+                    "title": "PHP / Composer keyword candidates in repository recommendations", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No matching PHP/Composer recommendation text returned. This is not a PHP source, SBOM, or runtime inventory.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "FindingLink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Review recommendation"}}], "labelSettings": [
+                      {"columnId": "RepositoryResource", "label": "Repository resource identifier"}, {"columnId": "Recommendation", "label": "Keyword-matched recommendation"},
+                      {"columnId": "Category", "label": "Recommendation category"}, {"columnId": "Package", "label": "Reported package"}, {"columnId": "Severity", "label": "Reported severity"},
+                      {"columnId": "FindingLink", "label": "Recommendation link"}, {"columnId": "subscriptionId", "label": "Connector subscription"}
+                    ]}
+                  },
+                  "name": "DevOps PHP keyword candidates"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/assessments'\n| where id matches regex '(?i)/providers/microsoft[.]security/securityconnectors/[^/]+/devops/'\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| extend Category = tostring(properties.metadata.recommendationCategory)\n| where Category in~ ('CodeVulnerabilities', 'ApiVulnerabilities', 'IacVulnerabilities', 'SoftwareUpdate', 'ExposedSecrets')\n| project RepositoryResource = extract('(?i)^(.*?)/providers/microsoft.security/assessments/', 1, id), Category, Severity = tostring(properties.metadata.severity), Tool = tostring(properties.additionalData.ToolName), FirstEvaluation = todatetime(properties.status.firstEvaluationDate), FindingLink = coalesce(tostring(properties.links.azurePortal), 'https://portal.azure.com/#blade/Microsoft_Azure_Security/RecommendationsBlade'), subscriptionId\n| order by RepositoryResource asc, Category asc\n| take 1000",
+                    "title": "Repository code, IaC, dependency and secret hardening context (not PHP-specific)", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No matching unhealthy DevOps recommendation metadata returned. Verify each scanner and its platform/language support; this is not a clean-code or no-secrets assertion.", "showExportToExcel": true,
+                    "gridSettings": {"filter": true, "formatters": [{"columnMatch": "FindingLink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Review in Defender for Cloud"}}], "labelSettings": [
+                      {"columnId": "RepositoryResource", "label": "Repository resource identifier"}, {"columnId": "Category", "label": "Recommendation category"}, {"columnId": "Severity", "label": "Reported severity"},
+                      {"columnId": "Tool", "label": "Reported tool"}, {"columnId": "FirstEvaluation", "label": "First evaluation (not last scan)"}, {"columnId": "FindingLink", "label": "Recommendation link"}, {"columnId": "subscriptionId", "label": "Connector subscription"}
+                    ]}
+                  },
+                  "name": "DevOps hardening metadata without secret contents"
+                }
+              ]
+            },
+            "conditionalVisibility": {"parameterName": "SelectedTab", "comparison": "isEqualTo", "value": "DevOps"},
+            "name": "DevOps tab"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0", "groupType": "editable",
+              "items": [
+                {
+                  "type": 1,
+                  "content": {"json": "### Alerts and hunting\n**All detections here are investigation leads, not validated PHP2SHELL signatures or exploit attribution.** Legitimate maintenance, Composer, uploads, application errors, and API traffic can match. In-worker exploitation may create no child process or file event. A quiet source does not establish no compromise.\n\nResource Graph alerts use the selected subscriptions and alert/log time range. Optional Azure resource logs use the selected workspace(s), time range, and workload `_SubscriptionId`. **SecurityAlert rows without an Azure ResourceId and endpoint event tables have no reliable Azure subscription mapping here: those rows are workspace/device scoped and can include assets outside the subscription picker.** Verify resource/device identity before correlating sources. A client IP or hostname alone is not a reliable join key.\n\nSelect **one actually collected source** below; the default is **Do not query optional logs**. Then choose its workspace(s). Missing tables/access failures remain explicit query errors. Usage records only indicate reported ingestion volume, not per-asset coverage, successful detections, or event freshness. For forensic pivots preserve UTC, resource/device ID, alert/report/transaction ID, workload/worker and image digest; do not export credentials, request bodies, cookies or secret-bearing command lines."},
+                  "name": "Hunting source prerequisites and scope boundaries"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "securityresources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.security/locations/alerts'\n| extend Alert = coalesce(tostring(properties.AlertDisplayName), tostring(properties.alertDisplayName)), Description = coalesce(tostring(properties.Description), tostring(properties.description)), AlertTime = todatetime(coalesce(tostring(properties.TimeGeneratedUtc), tostring(properties.timeGeneratedUtc)))\n| where AlertTime {TimeRange:query}\n| where strcat(Alert, ' ', Description) has_any ('php', 'php2shell', 'webshell', 'web shell', 'CVE-2026-109618', 'CVE-2026-109619')\n| project AlertTime, Alert, Severity = coalesce(tostring(properties.Severity), tostring(properties.severity)), Status = coalesce(tostring(properties.Status), tostring(properties.status)), Entity = coalesce(tostring(properties.CompromisedEntity), tostring(properties.compromisedEntity)), AlertId = name, AlertLink = coalesce(tostring(properties.AlertUri), tostring(properties.alertUri), 'https://portal.azure.com/#blade/Microsoft_Azure_Security/SecurityAlertsBlade'), subscriptionId\n| order by AlertTime desc\n| take 1000",
+                    "title": "Reported Defender for Cloud PHP / web-shell alert candidates", "size": 0, "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"], "visualization": "table",
+                    "noDataMessage": "No keyword-matching alerts returned in this time range. Confirm workload protection and review the full alert queue; generic exploit activity may use other alert names.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "AlertLink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Investigate alert"}}], "labelSettings": [
+                      {"columnId": "AlertTime", "label": "Alert time (UTC)"}, {"columnId": "Alert", "label": "Reported alert"}, {"columnId": "Severity", "label": "Severity"},
+                      {"columnId": "Status", "label": "Status"}, {"columnId": "Entity", "label": "Reported entity"}, {"columnId": "AlertId", "label": "Alert ID"}, {"columnId": "AlertLink", "label": "Alert link"}, {"columnId": "subscriptionId", "label": "Subscription"}
+                    ]}
+                  },
+                  "name": "Resource Graph PHP and web shell alert candidates"
+                },
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [{
+                      "id": "php2shell-log-source", "version": "KqlParameterItem/1.0", "name": "LogSource", "label": "Optional collected source", "type": 2,
+                      "description": "Choose only a table already available in the workspace. Each source's prerequisites are listed below. No automatic ingestion or connector setup is performed.",
+                      "isRequired": true, "multiSelect": false,
+                      "jsonData": "[{\"value\":\"None\",\"label\":\"Do not query optional logs\",\"selected\":true},{\"value\":\"SecurityAlert\",\"label\":\"SecurityAlert - exported / connected alerts\"},{\"value\":\"AppServiceHTTPLogs\",\"label\":\"AppServiceHTTPLogs - POST / 5xx heuristic\"},{\"value\":\"AppServiceConsoleLogs\",\"label\":\"AppServiceConsoleLogs - PHP worker errors\"},{\"value\":\"AGWFirewallLogs\",\"label\":\"AGWFirewallLogs - Application Gateway WAF\"},{\"value\":\"FrontDoorWAF\",\"label\":\"AzureDiagnostics - Front Door WAF\"},{\"value\":\"ContainerLogV2\",\"label\":\"ContainerLogV2 - container PHP errors\"},{\"value\":\"Syslog\",\"label\":\"Syslog - routed PHP worker failures\"},{\"value\":\"DeviceProcessEvents\",\"label\":\"DeviceProcessEvents - worker child processes\"},{\"value\":\"DeviceNetworkEvents\",\"label\":\"DeviceNetworkEvents - direct worker egress\"},{\"value\":\"DeviceFileEvents\",\"label\":\"DeviceFileEvents - PHP-family file writes\"}]",
+                      "value": "None"
+                    }],
+                    "style": "pills"
+                  },
+                  "name": "Optional log source selector"
+                },
+                {
+                  "type": 1,
+                  "content": {"json": "| Source choice | Enable / collect first | Interpretation |\n| --- | --- | --- |\n| SecurityAlert | Defender for Cloud [continuous export](https://learn.microsoft.com/azure/defender-for-cloud/continuous-export) or the applicable Sentinel security-product connector. | Latest returned alert update per SystemAlertId in the selected time range; rows without Azure identity remain explicitly unmapped. |\n| AppServiceHTTPLogs / AppServiceConsoleLogs | App Service HTTP/console diagnostic settings to this workspace; route actual PHP/FPM/Apache errors to the collected stream. | HTTP hunt: at least **5 POST 5xx requests in 5 minutes**, with a request **over 100,000 bytes**. Fixed bins can split bursts. HTTP logs do not expose response-cookie content or request bodies. Console hunt is a keyword heuristic. |\n| AGWFirewallLogs | Application Gateway WAF resource-specific diagnostic collection; Analytics table plan for these workbook queries. | All rule-match summaries, not dedicated PHP2SHELL detections. Review actual policy mode and ruleset. An action or match alone does not prove the origin was blocked or patched. |\n| Front Door WAF | FrontDoorWebApplicationFirewallLog diagnostics to **AzureDiagnostics**. | All request-side WAF rule-match summaries. Mode is shown only when reported. Response-side PHP2SHELL mitigation does not emit hits/logs per Microsoft guidance; validate its configuration separately. |\n| ContainerLogV2 | Container Insights with ContainerLogV2 collection and PHP worker stdout/stderr routing. | PHP/Apache memory, crash and worker-error keyword leads; not a pod/image vulnerability scan. |\n| Syslog | AMA plus approved DCR facility/severity collection and routing of relevant application error logs into Syslog. | PHP error files are not automatically Syslog. Keyword leads are neither unique to PHP2SHELL nor complete. |\n| DeviceProcessEvents / DeviceNetworkEvents / DeviceFileEvents | Defender for Endpoint onboarding and selected raw event-table streaming through a supported Sentinel integration into this workspace, with appropriate licensing and permissions. | Workspace/device scoped. Process/file/network hunts are behavior heuristics. For native Defender XDR Advanced Hunting, use its Timestamp schema and convert the workspace query's TimeGenerated references; do not paste it unchanged. TVM inventory tables are a separate XDR-only pivot. |\n\nDo not enable additional collection, a paid plan, or an enforcement policy without the customer's authorization. For sources using Basic/Auxiliary table plans or unavailable connectors, use a supported native investigation surface instead of interpreting an error as no detections.\n\n**Endpoint time schemas:** these collected-source queries use Log Analytics **TimeGenerated** and export **Timestamp = TimeGenerated** only for display. Native XDR Advanced Hunting uses **Timestamp** instead. See the Azure Monitor schemas for [DeviceProcessEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/deviceprocessevents), [DeviceNetworkEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/devicenetworkevents) and [DeviceFileEvents](https://learn.microsoft.com/azure/azure-monitor/reference/tables/devicefileevents)."},
+                  "name": "Per source collection and detection prerequisites"
+                },
+                {
+                  "type": 9,
+                  "content": {
+                    "version": "KqlParameterItem/1.0",
+                    "parameters": [{
+                      "id": "php2shell-workspaces", "version": "KqlParameterItem/1.0", "name": "Workspace", "label": "Collected-source workspaces", "type": 5,
+                      "description": "Select only workspaces containing the chosen table. Workspace/device-scoped endpoint and unmapped alert rows can include assets outside the subscription picker.",
+                      "isRequired": true, "multiSelect": true, "quote": "'", "delimiter": ",",
+                      "query": "resources\n| where subscriptionId in~ ({Subscription:subid})\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id, name, resourceGroup\n| order by name asc",
+                      "queryType": 1, "resourceType": "microsoft.resourcegraph/resources", "crossComponentResources": ["{Subscription}"],
+                      "typeSettings": {"additionalResourceOptions": [], "showDefault": false}, "value": []
+                    }],
+                    "style": "pills"
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isNotEqualTo", "value": "None"},
+                  "name": "Optional log workspace selector"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "Usage\n| where TimeGenerated {TimeRange}\n| where DataType in ('SecurityAlert', 'AppServiceHTTPLogs', 'AppServiceConsoleLogs', 'AGWFirewallLogs', 'AzureDiagnostics', 'ContainerLogV2', 'Syslog', 'DeviceProcessEvents', 'DeviceNetworkEvents', 'DeviceFileEvents')\n| summarize LastUsageRecord = max(TimeGenerated), ReportedQuantity = sum(Quantity) by DataType, QuantityUnit\n| order by DataType asc",
+                    "title": "Observed workspace ingestion usage (not asset coverage or event freshness)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching Usage records returned. Confirm table availability, permissions, retention, collection scope and actual recent events before relying on an empty hunt.",
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "DataType", "label": "Reported table"}, {"columnId": "QuantityUnit", "label": "Usage quantity unit"},
+                      {"columnId": "LastUsageRecord", "label": "Last usage record (not last event)"}, {"columnId": "ReportedQuantity", "label": "Reported ingestion quantity"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isNotEqualTo", "value": "None"},
+                  "name": "Optional workspace ingestion usage context"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "SecurityAlert\n| where TimeGenerated {TimeRange}\n| where isnotempty(SystemAlertId)\n| summarize arg_max(TimeGenerated, *) by SystemAlertId\n| where strcat(AlertName, ' ', Description) has_any ('php', 'php2shell', 'webshell', 'web shell', 'CVE-2026-109618', 'CVE-2026-109619')\n| extend ResourceSubscription = extract('(?i)^/subscriptions/([^/]+)', 1, ResourceId)\n| where isempty(ResourceSubscription) or ResourceSubscription in~ ({Subscription:subid})\n| project TimeGenerated, AlertName, AlertSeverity, Status, ProductName, CompromisedEntity, ResourceId, ResourceScope = iff(isempty(ResourceSubscription), 'Unmapped - workspace scope only', 'Selected Azure subscription'), SystemAlertId, AlertLink\n| order by TimeGenerated desc\n| take 1000",
+                    "title": "Collected PHP / web-shell alert candidates (unmapped rows remain workspace scoped)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching collected alerts returned. Verify export/connector ingestion and review other alert names; no rows does not rule out compromise.", "showExportToExcel": true,
+                    "gridSettings": {"formatters": [{"columnMatch": "AlertLink", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Investigate alert"}}], "labelSettings": [
+                      {"columnId": "TimeGenerated", "label": "Latest returned update (UTC)"}, {"columnId": "AlertName", "label": "Alert"}, {"columnId": "AlertSeverity", "label": "Severity"},
+                      {"columnId": "Status", "label": "Status"}, {"columnId": "ProductName", "label": "Product"}, {"columnId": "CompromisedEntity", "label": "Reported entity"},
+                      {"columnId": "ResourceId", "label": "Reported Azure resource"}, {"columnId": "ResourceScope", "label": "Subscription mapping"}, {"columnId": "SystemAlertId", "label": "System alert ID"}, {"columnId": "AlertLink", "label": "Alert link"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "SecurityAlert"},
+                  "name": "Collected security alert candidates"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "AppServiceHTTPLogs\n| where TimeGenerated {TimeRange}\n| where _SubscriptionId in~ ({Subscription:subid})\n| where CsMethod =~ 'POST' and ScStatus between (500 .. 599)\n| summarize Errors = count(), LargestRequestBytes = max(CsBytes), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by Window = bin(TimeGenerated, 5m), Resource = _ResourceId, Host = CsHost, ClientIP = CIp\n| where Errors >= 5 and LargestRequestBytes > 100000\n| order by LastSeen desc\n| take 1000",
+                    "title": "App Service POST / 5xx / request-size bursts (heuristic, not a signature)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No bursts met the documented thresholds. Check actual HTTP ingestion, scope and false-negative limits; this does not establish no exploitation.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Window", "label": "Five-minute window (UTC)"}, {"columnId": "Resource", "label": "App resource"}, {"columnId": "Host", "label": "Host"},
+                      {"columnId": "ClientIP", "label": "Reported client IP"}, {"columnId": "Errors", "label": "POST 5xx count"}, {"columnId": "LargestRequestBytes", "label": "Largest request (bytes)"},
+                      {"columnId": "FirstSeen", "label": "First matching event (UTC)"}, {"columnId": "LastSeen", "label": "Last matching event (UTC)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "AppServiceHTTPLogs"},
+                  "name": "App Service HTTP burst heuristic"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "AppServiceConsoleLogs\n| where TimeGenerated {TimeRange}\n| where _SubscriptionId in~ ({Subscription:subid})\n| where ResultDescription has_any ('php', 'php-fpm', 'apache', 'apache2', 'httpd')\n| where ResultDescription has_any ('memory', 'segmentation', 'segfault', 'fatal', 'worker', 'exited')\n| summarize Events = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by Window = bin(TimeGenerated, 10m), Resource = _ResourceId, Level\n| order by LastSeen desc\n| take 1000",
+                    "title": "App Service PHP / web-worker error keywords (heuristic)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching console error keywords returned. Verify PHP error routing and actual collection; absence is not a healthy-runtime or no-compromise assertion.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Window", "label": "Ten-minute window (UTC)"}, {"columnId": "Resource", "label": "App resource"}, {"columnId": "Level", "label": "Reported level"},
+                      {"columnId": "Events", "label": "Keyword-matching events"}, {"columnId": "FirstSeen", "label": "First matching event (UTC)"}, {"columnId": "LastSeen", "label": "Last matching event (UTC)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "AppServiceConsoleLogs"},
+                  "name": "App Service console error heuristic"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "AGWFirewallLogs\n| where TimeGenerated {TimeRange}\n| where _SubscriptionId in~ ({Subscription:subid})\n| summarize Matches = count(), LastSeen = max(TimeGenerated) by Resource = _ResourceId, PolicyId, RuleId, RuleSetType, RuleSetVersion, Action\n| order by LastSeen desc\n| take 1000",
+                    "title": "Application Gateway WAF rule-match context (all rules, not PHP attribution)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No WAF match records returned. Check diagnostic collection and policy scope/mode; this is not proof of protection or no malicious requests.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Resource", "label": "Application Gateway"}, {"columnId": "PolicyId", "label": "Reported policy"}, {"columnId": "RuleId", "label": "Reported rule"},
+                      {"columnId": "RuleSetType", "label": "Ruleset type"}, {"columnId": "RuleSetVersion", "label": "Ruleset version"}, {"columnId": "Action", "label": "Logged action (verify effective mode)"},
+                      {"columnId": "Matches", "label": "Logged matches (not unique requests)"}, {"columnId": "LastSeen", "label": "Last matching event (UTC)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "AGWFirewallLogs"},
+                  "name": "Application Gateway WAF match context"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where _SubscriptionId in~ ({Subscription:subid})\n| where Category =~ 'FrontDoorWebApplicationFirewallLog'\n| extend Rule = tostring(column_ifexists('ruleName_s', '')), Action = tostring(column_ifexists('action_s', '')), Policy = tostring(column_ifexists('policy_s', '')), ReportedMode = tostring(column_ifexists('policyMode_s', ''))\n| extend ReportedMode = iff(isempty(ReportedMode), 'Not reported - inspect actual policy mode', ReportedMode)\n| summarize Matches = count(), LastSeen = max(TimeGenerated) by Resource = _ResourceId, Policy, Rule, Action, ReportedMode\n| order by LastSeen desc\n| take 1000",
+                    "title": "Front Door request-side WAF match context (not response-mitigation effectiveness)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No Front Door request-side WAF records returned. Verify diagnostics; response-side PHP2SHELL mitigation does not emit WAF hits/logs according to Microsoft guidance.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Resource", "label": "Front Door resource"}, {"columnId": "Policy", "label": "Reported policy"}, {"columnId": "Rule", "label": "Reported rule"},
+                      {"columnId": "Action", "label": "Logged action (not enforcement proof)"}, {"columnId": "ReportedMode", "label": "Mode if reported by source"},
+                      {"columnId": "Matches", "label": "Logged matches (not unique requests)"}, {"columnId": "LastSeen", "label": "Last matching event (UTC)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "FrontDoorWAF"},
+                  "name": "Front Door WAF request match context"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "ContainerLogV2\n| where TimeGenerated {TimeRange}\n| where _SubscriptionId in~ ({Subscription:subid})\n| extend Message = tostring(LogMessage)\n| where Message has_any ('php', 'php-fpm', 'apache', 'apache2', 'httpd')\n| where Message has_any ('memory', 'segmentation', 'segfault', 'fatal', 'worker', 'exited')\n| summarize Events = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by Window = bin(TimeGenerated, 10m), Resource = _ResourceId, PodNamespace, PodName, ContainerName\n| order by LastSeen desc\n| take 1000",
+                    "title": "Container PHP / web-worker error keywords (heuristic)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching container error keywords returned. Confirm ContainerLogV2, pod coverage, and PHP error routing; this is not runtime clearance.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Window", "label": "Ten-minute window (UTC)"}, {"columnId": "Resource", "label": "Cluster resource"}, {"columnId": "PodNamespace", "label": "Namespace"},
+                      {"columnId": "PodName", "label": "Pod"}, {"columnId": "ContainerName", "label": "Container"}, {"columnId": "Events", "label": "Keyword-matching events"},
+                      {"columnId": "FirstSeen", "label": "First matching event (UTC)"}, {"columnId": "LastSeen", "label": "Last matching event (UTC)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "ContainerLogV2"},
+                  "name": "Container worker error heuristic"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "Syslog\n| where TimeGenerated {TimeRange}\n| where _SubscriptionId in~ ({Subscription:subid})\n| where strcat(ProcessName, ' ', SyslogMessage) has_any ('php', 'php-fpm', 'apache', 'apache2', 'httpd')\n| where SyslogMessage has_any ('memory', 'segmentation', 'segfault', 'fatal', 'worker', 'exited')\n| summarize Events = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by Window = bin(TimeGenerated, 10m), Resource = _ResourceId, Computer, ProcessName, Facility, SeverityLevel\n| order by LastSeen desc\n| take 1000",
+                    "title": "Routed PHP / web-worker Syslog failures (heuristic)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching Syslog failures returned. Confirm the relevant error files, hosts, facilities, severities and DCR routing; missing collection is not healthy-runtime evidence.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Window", "label": "Ten-minute window (UTC)"}, {"columnId": "Resource", "label": "Machine resource"}, {"columnId": "Computer", "label": "Computer"},
+                      {"columnId": "ProcessName", "label": "Reported process"}, {"columnId": "Facility", "label": "Facility"}, {"columnId": "SeverityLevel", "label": "Syslog severity"},
+                      {"columnId": "Events", "label": "Keyword-matching events"}, {"columnId": "FirstSeen", "label": "First matching event (UTC)"}, {"columnId": "LastSeen", "label": "Last matching event (UTC)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "Syslog"},
+                  "name": "Routed Syslog worker failure heuristic"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "DeviceProcessEvents\n| where TimeGenerated {TimeRange}\n| where ActionType == 'ProcessCreated'\n| where InitiatingProcessFileName startswith 'php' or InitiatingProcessFileName in~ ('apache2', 'httpd', 'httpd.exe', 'lsphp', 'frankenphp')\n| where FileName in~ ('sh', 'bash', 'dash', 'zsh', 'ksh', 'cmd.exe', 'powershell.exe', 'pwsh.exe', 'curl', 'wget', 'nc', 'ncat', 'python', 'python3', 'perl')\n| project Timestamp = TimeGenerated, DeviceId, DeviceName, InitiatingProcessFileName, InitiatingProcessId, FileName, ProcessId, AccountName, ReportId\n| order by Timestamp desc\n| take 1000",
+                    "title": "Web-worker shell / tool children (workspace/device-scoped heuristic)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching worker child-process events returned. Verify event streaming and device scope; in-worker execution need not create a child process.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Timestamp", "label": "Event time (UTC)"}, {"columnId": "DeviceId", "label": "Defender device ID"}, {"columnId": "DeviceName", "label": "Device"},
+                      {"columnId": "InitiatingProcessFileName", "label": "Reported parent binary"}, {"columnId": "InitiatingProcessId", "label": "Parent process ID"},
+                      {"columnId": "FileName", "label": "Child binary"}, {"columnId": "ProcessId", "label": "Child process ID"}, {"columnId": "AccountName", "label": "Reported account"}, {"columnId": "ReportId", "label": "Report ID (correlate with device and time)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "DeviceProcessEvents"},
+                  "name": "Endpoint web worker child process heuristic"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "DeviceNetworkEvents\n| where TimeGenerated {TimeRange}\n| where InitiatingProcessFileName startswith 'php' or InitiatingProcessFileName in~ ('apache2', 'httpd', 'httpd.exe', 'lsphp', 'frankenphp')\n| where RemoteIPType =~ 'Public'\n| project Timestamp = TimeGenerated, DeviceId, DeviceName, InitiatingProcessFileName, InitiatingProcessId, RemoteIP, RemotePort, Protocol, ActionType, ReportId\n| order by Timestamp desc\n| take 1000",
+                    "title": "Direct web-worker public egress (workspace/device-scoped heuristic)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching direct-worker public egress returned. This hunt does not cover child tools, unclassified/private destinations, or devices without streamed telemetry.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Timestamp", "label": "Event time (UTC)"}, {"columnId": "DeviceId", "label": "Defender device ID"}, {"columnId": "DeviceName", "label": "Device"},
+                      {"columnId": "InitiatingProcessFileName", "label": "Reported initiating binary"}, {"columnId": "InitiatingProcessId", "label": "Initiating process ID"},
+                      {"columnId": "RemoteIP", "label": "Public remote IP"}, {"columnId": "RemotePort", "label": "Remote port"}, {"columnId": "Protocol", "label": "Protocol"},
+                      {"columnId": "ActionType", "label": "Reported action"}, {"columnId": "ReportId", "label": "Report ID (correlate with device and time)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "DeviceNetworkEvents"},
+                  "name": "Endpoint direct worker network heuristic"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "DeviceFileEvents\n| where TimeGenerated {TimeRange}\n| where ActionType in ('FileCreated', 'FileModified')\n| where InitiatingProcessFileName startswith 'php' or InitiatingProcessFileName in~ ('apache2', 'httpd', 'httpd.exe', 'lsphp', 'frankenphp')\n| where FileName matches regex @'(?i)\\.(php[0-9]?|phtml|phar)$'\n| project Timestamp = TimeGenerated, DeviceId, DeviceName, InitiatingProcessFileName, FileName, FolderPath, SHA256, ActionType, ReportId\n| order by Timestamp desc\n| take 1000",
+                    "title": "Worker-created / modified PHP-family files (workspace/device-scoped heuristic)", "size": 0, "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces", "crossComponentResources": ["{Workspace}"], "timeContextFromParameter": "TimeRange", "visualization": "table",
+                    "noDataMessage": "No matching PHP-family file writes returned. Legitimate caches/deployments can match; no rows does not rule out fileless or in-worker execution.", "showExportToExcel": true,
+                    "gridSettings": {"labelSettings": [
+                      {"columnId": "Timestamp", "label": "Event time (UTC)"}, {"columnId": "DeviceId", "label": "Defender device ID"}, {"columnId": "DeviceName", "label": "Device"},
+                      {"columnId": "InitiatingProcessFileName", "label": "Reported initiating binary"}, {"columnId": "FileName", "label": "PHP-family filename"},
+                      {"columnId": "FolderPath", "label": "Folder (verify full path)"}, {"columnId": "SHA256", "label": "SHA-256 if collected"},
+                      {"columnId": "ActionType", "label": "Reported action"}, {"columnId": "ReportId", "label": "Report ID (correlate with device and time)"}
+                    ]}
+                  },
+                  "conditionalVisibility": {"parameterName": "LogSource", "comparison": "isEqualTo", "value": "DeviceFileEvents"},
+                  "name": "Endpoint PHP family file write heuristic"
+                }
+              ]
+            },
+            "conditionalVisibility": {"parameterName": "SelectedTab", "comparison": "isEqualTo", "value": "Hunting"},
+            "name": "Alerts and hunting tab"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0", "groupType": "editable",
+              "items": [{
+                "type": 1,
+                "content": {"json": "### Respond, patch, and verify\nFollow the [current Microsoft PHP2SHELL response guidance](https://techcommunity.microsoft.com/blog/azurenetworksecurityblog/addressing-php2shell-cve-2026-109618-and-cve-2026-109619-upgrade-guidance-and-az/4566623) and both primary PHP advisories. Reference guidance reviewed **2026-10-29**; product support and mitigations can change.\n\n| PHP branch | First fixed release identified in the two advisories |\n| --- | --- |\n| 8.2 | 8.2.35 |\n| 8.3 | 8.3.36 |\n| 8.4 | 8.4.27 |\n| 8.5 | 8.5.12 |\n\nUpgrade older/unsupported branches to a supported patched release, or verify an applicable vendor-supported security backport with the vendor. Do not compare version strings lexicographically or declare a configured major/minor stack patched. Do not expose `phpinfo()` publicly. Verify the **effective web SAPI**, not only the CLI binary or a build manifest.\n\n1. **Establish scope and evidence.** Record asset owner, Azure/Defender identifiers, cloud, SAPI, exact runtime/build/vendor evidence, installed packages, image digest, deployment/slot/revision, scan/source coverage, UTC window and related alerts. Investigate suspicious activity through the customer's incident-response process. Preserve evidence before destructive remediation.\n2. **Prioritize exposure and blast radius.** Correlate reported vulnerable assets with running workloads, public routes, direct-origin bypass, identity privileges, secrets and sensitive data. Use Defender CSPM explorer/attack paths and DevOps code-to-cloud evidence where enabled. Do not equate public access configuration with demonstrated internet reachability.\n3. **Use WAF only as reviewed temporary mitigation.** Validate the three request-side custom-rule patterns in [Microsoft's WAF article](https://techcommunity.microsoft.com/blog/azurenetworksecurityblog/azure-waf-custom-rules-for-php2shell-mitigation/4566684), application impact, request inspection/size limits, policy association, exclusions, direct origins and effective mode before enforcement. Detection-mode matches and logged Block actions alone do not prove an enforced end-to-end block.\n4. **Review platform-specific response mitigation independently.** Microsoft's guidance describes an Azure Front Door WAF managed response rule in **MS-ThreatIntel-Response-CVEs** for supported DRS versions, with the required rule action, and a separate interim **Application Gateway v2 response-header rewrite**. Check availability and the current instructions on the actual policy/platform. The Front Door response-side mitigation **does not generate WAF log entries or hit counts**; this workbook must not be used as its effectiveness counter. Do not copy a rule/policy between Front Door, Application Gateway and Application Gateway for Containers without platform-specific validation. Do not collect real session-cookie contents to demonstrate it.\n5. **Patch the real runtime.** Upgrade PHP to a build containing both fixes; rebuild/redeploy immutable images, update VM/custom builds and hosted runtimes as applicable, and restart **all workers**. Cover slots, replicas, revisions, scheduled jobs and dormant deployable images. PHP configuration workarounds and request limits are partial measures with availability/security trade-offs, not automatic fixes; use the primary advisories and vendor guidance rather than blindly changing memory limits.\n6. **Verify closure.** Recheck the effective runtime/SAPI/build or vendor backport and all active image digests. Allow for scanner/discovery lag, obtain fresh applicable assessment evidence, confirm source coverage, and review telemetry in a documented before/after window. Independently validate WAF association/mode and legitimate traffic where relevant. A Healthy recommendation, no CVE row, no alert, no response-rule hits, or a changed tag is not by itself closure.\n\n#### Customer handoff checklist\n- [ ] In-scope PHP assets and owners recorded, including unmanaged/bundled/unsupported gaps.\n- [ ] Exact-CVE scanner evidence separated from inventory candidates and behavioral heuristics.\n- [ ] Required Defender/DevOps plans, connectors, components, permissions and actual successful data collection verified.\n- [ ] Source repository/build/commit and deployed runtime/image association verified where available.\n- [ ] Incident investigation and evidence preservation completed as appropriate.\n- [ ] Patched effective web runtime or supported vendor backport verified; all worker instances replaced/restarted.\n- [ ] Temporary WAF controls validated independently; no response-log or exploit-prevention guarantee inferred.\n- [ ] Fresh scan evidence, telemetry coverage, exceptions and remaining blind spots documented.\n\nThis is a read-only investigation template, not an exploit test, automated remediation, comprehensive PHP inventory, or guarantee that any product detects every exploitation path."},
+                "name": "Response and closure verification checklist"
+              }]
+            },
+            "conditionalVisibility": {"parameterName": "SelectedTab", "comparison": "isEqualTo", "value": "Response"},
+            "name": "Response and verification tab"
+          }
+        ]
+      },
+      "conditionalVisibility": {"parameterName": "ShowDetails", "comparison": "isEqualTo", "value": "On"},
+      "name": "Opt in additional inventory and hunting"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
